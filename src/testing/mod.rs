@@ -480,3 +480,4 @@ impl<L: Ledger + 'static> MockEventSource<L> {
 #[macro_use]
 pub mod tests;
 pub use tests::generic_wallet_tests;
+pub mod mocks;
