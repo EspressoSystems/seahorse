@@ -2197,9 +2197,17 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
     }
 
     /// add an auditor key to the wallet's key set
-    pub async fn add_audit_key(&mut self, audit_key: AuditorKeyPair) -> Result<(), WalletError<L>> {
-        let WalletSharedState { state, session, .. } = &mut *self.mutex.lock().await;
-        state.add_audit_key(session, audit_key).await
+    pub fn add_audit_key<'l>(
+        &'l mut self,
+        audit_key: AuditorKeyPair,
+    ) -> std::pin::Pin<Box<dyn SendFuture<'a, Result<(), WalletError<L>>> + 'l>>
+    where
+        'a: 'l,
+    {
+        Box::pin(async move {
+            let WalletSharedState { state, session, .. } = &mut *self.mutex.lock().await;
+            state.add_audit_key(session, audit_key).await
+        })
     }
 
     /// generate a new auditor key and add it to the wallet's key set
@@ -2221,12 +2229,17 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
     }
 
     /// add a freezer key to the wallet's key set
-    pub async fn add_freeze_key(
-        &mut self,
+    pub fn add_freeze_key<'l>(
+        &'l mut self,
         freeze_key: FreezerKeyPair,
-    ) -> Result<(), WalletError<L>> {
-        let WalletSharedState { state, session, .. } = &mut *self.mutex.lock().await;
-        state.add_freeze_key(session, freeze_key).await
+    ) -> std::pin::Pin<Box<dyn SendFuture<'a, Result<(), WalletError<L>>> + 'l>>
+    where
+        'a: 'l,
+    {
+        Box::pin(async move {
+            let WalletSharedState { state, session, .. } = &mut *self.mutex.lock().await;
+            state.add_freeze_key(session, freeze_key).await
+        })
     }
 
     /// generate a new freezer key and add it to the wallet's key set
@@ -2248,24 +2261,29 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
     }
 
     /// add a user/spender key to the wallet's key set
-    pub async fn add_user_key(
-        &mut self,
+    pub fn add_user_key<'l>(
+        &'l mut self,
         user_key: UserKeyPair,
         scan_from: EventIndex,
-    ) -> Result<(), WalletError<L>> {
-        let (user_key, events) = {
-            let WalletSharedState { state, session, .. } = &mut *self.mutex.lock().await;
-            state
-                .add_user_key(session, Some(user_key), Some(scan_from))
-                .await?
-        };
+    ) -> std::pin::Pin<Box<dyn SendFuture<'a, Result<(), WalletError<L>>> + 'l>>
+    where
+        'a: 'l,
+    {
+        Box::pin(async move {
+            let (user_key, events) = {
+                let WalletSharedState { state, session, .. } = &mut *self.mutex.lock().await;
+                state
+                    .add_user_key(session, Some(user_key), Some(scan_from))
+                    .await?
+            };
 
-        if let Some(events) = events {
-            // Start a background task to scan for records belonging to the new key.
-            self.spawn_key_scan(user_key.clone(), events).await;
-        }
+            if let Some(events) = events {
+                // Start a background task to scan for records belonging to the new key.
+                self.spawn_key_scan(user_key.clone(), events).await;
+            }
 
-        Ok(())
+            Ok(())
+        })
     }
 
     /// generate a new user key and add it to the wallet's key set. Keys are generated
