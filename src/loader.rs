@@ -132,7 +132,7 @@ pub struct Loader {
     method: LoadMethod,
     encrypted: bool,
     dir: PathBuf,
-    pub(crate) rng: ChaChaRng,
+    pub rng: ChaChaRng,
     input: LoaderInput,
 }
 

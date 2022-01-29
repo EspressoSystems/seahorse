@@ -59,19 +59,19 @@ pub trait CLIArgs {
 type Wallet<'a, C> = crate::Wallet<'a, <C as CLI<'a>>::Backend, <C as CLI<'a>>::Ledger>;
 
 // A REPL command.
-struct Command<'a, C: CLI<'a>> {
+pub struct Command<'a, C: CLI<'a>> {
     // The name of the command, for display and lookup.
-    name: String,
+    pub name: String,
     // The parameters of the command and their types, as strings, for display purposes in the 'help'
     // command.
-    params: Vec<(String, String)>,
+    pub params: Vec<(String, String)>,
     // The keyword parameters of the command and their types, as strings, for display purposes in
     // the 'help' command.
-    kwargs: Vec<(String, String)>,
+    pub kwargs: Vec<(String, String)>,
     // A brief description of what the command does.
-    help: String,
+    pub help: String,
     // Run the command with a list of arguments.
-    run: CommandFunc<'a, C>,
+    pub run: CommandFunc<'a, C>,
 }
 
 type CommandFunc<'a, C> = Box<
@@ -207,7 +207,7 @@ macro_rules! count {
 
 // Types which can be listed in terminal output and parsed from a list index.
 #[async_trait]
-trait Listable<'a, C: CLI<'a>>: Sized {
+pub trait Listable<'a, C: CLI<'a>>: Sized {
     async fn list(wallet: &mut Wallet<'a, C>) -> Vec<ListItem<Self>>;
 
     fn list_sync(wallet: &mut Wallet<'a, C>) -> Vec<ListItem<Self>> {
@@ -215,10 +215,10 @@ trait Listable<'a, C: CLI<'a>>: Sized {
     }
 }
 
-struct ListItem<T> {
-    index: usize,
-    item: T,
-    annotation: Option<String>,
+pub struct ListItem<T> {
+    pub index: usize,
+    pub item: T,
+    pub annotation: Option<String>,
 }
 
 impl<T: Display> Display for ListItem<T> {
@@ -712,7 +712,7 @@ async fn print_keys<'a, C: CLI<'a>>(wallet: &Wallet<'a, C>) {
     }
 }
 
-enum KeyType {
+pub enum KeyType {
     Audit,
     Freeze,
     Spend,
@@ -739,7 +739,7 @@ pub async fn cli_main<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
     }
 }
 
-fn key_gen<'a, C: CLI<'a>>(mut path: PathBuf) -> Result<(), WalletError<C::Ledger>> {
+pub fn key_gen<'a, C: CLI<'a>>(mut path: PathBuf) -> Result<(), WalletError<C::Ledger>> {
     let key_pair = crate::new_key_pair();
 
     let mut file = File::create(path.clone()).context(IoError)?;
