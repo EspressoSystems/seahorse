@@ -2,6 +2,7 @@ pub mod cli;
 pub mod encryption;
 pub mod events;
 pub mod hd;
+mod io;
 pub mod loader;
 pub mod persistence;
 pub mod reader;
@@ -1320,10 +1321,14 @@ impl<'a, L: Ledger> WalletState<'a, L> {
                 {
                     // If the audit memo contains all the information we need to potentially freeze
                     // this record, save it in our database for later freezing.
-                    if let Some(freeze_key) = self
-                        .freeze_keys
-                        .get(memo.asset.policy_ref().freezer_pub_key())
-                    {
+                    let asset_freezer = memo.asset.policy_ref().freezer_pub_key();
+                    if let Some(freeze_key) = self.freeze_keys.iter().find_map(|(pub_key, key)| {
+                        if pub_key == asset_freezer {
+                            Some(key)
+                        } else {
+                            None
+                        }
+                    }) {
                         let record_opening = RecordOpening {
                             amount,
                             asset_def: memo.asset.clone(),
@@ -1382,9 +1387,14 @@ impl<'a, L: Ledger> WalletState<'a, L> {
 
             // If the policy lists ourself as the auditor, we will automatically start auditing
             // transactions involving this asset.
+            //
+            // TODO this check should be:
+            //   self.audit_keys.contains_key(asset_definition.policy_ref().auditor_pub_key());
+            // But Hash doesn't work for AuditorPubKey (github.com/SpectrumXYZ/jellyfish-apps/issues/88).
             let audit = self
                 .audit_keys
-                .contains_key(asset_definition.policy_ref().auditor_pub_key());
+                .keys()
+                .any(|key| key == asset_definition.policy_ref().auditor_pub_key());
 
             // Persist the change that we're about to make before updating our in-memory state. We
             // can't report success until we know the new asset has been saved to disk (otherwise we
@@ -2059,6 +2069,17 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
     pub async fn balance(&self, account: &UserAddress, asset: &AssetCode) -> u64 {
         let WalletSharedState { state, .. } = &*self.mutex.lock().await;
         state.balance(account, asset, FreezeFlag::Unfrozen)
+    }
+
+    pub async fn records(&self) -> impl Iterator<Item = RecordInfo> {
+        let WalletSharedState { state, .. } = &*self.mutex.lock().await;
+        state
+            .txn_state
+            .records
+            .iter()
+            .cloned()
+            .collect::<Vec<_>>()
+            .into_iter()
     }
 
     pub async fn frozen_balance(&self, account: &UserAddress, asset: &AssetCode) -> u64 {

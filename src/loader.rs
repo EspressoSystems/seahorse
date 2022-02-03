@@ -42,7 +42,7 @@ enum LoaderInput {
 }
 
 impl LoaderInput {
-    fn create_password<L: Ledger>(&self) -> Result<String, WalletError<L>> {
+    fn create_password<L: Ledger>(&mut self) -> Result<String, WalletError<L>> {
         match self {
             Self::User(reader) => loop {
                 let password = reader.read_password("Create password: ")?;
@@ -58,7 +58,7 @@ impl LoaderInput {
         }
     }
 
-    fn read_password<L: Ledger>(&self) -> Result<String, WalletError<L>> {
+    fn read_password<L: Ledger>(&mut self) -> Result<String, WalletError<L>> {
         match self {
             Self::User(reader) => reader.read_password("Enter password: "),
             Self::Literal(s) => Ok(s.clone()),
@@ -113,7 +113,7 @@ impl LoaderInput {
         }
     }
 
-    fn read_mnemonic<L: Ledger>(&self) -> Result<String, WalletError<L>> {
+    fn read_mnemonic<L: Ledger>(&mut self) -> Result<String, WalletError<L>> {
         match self {
             Self::User(reader) => reader.read_password("Enter mnemonic phrase: "),
             Self::Literal(s) => Ok(s.clone()),
@@ -157,6 +157,13 @@ impl Loader {
         }
     }
 
+    pub fn into_reader(self) -> Option<Reader> {
+        match self.input {
+            LoaderInput::User(reader) => Some(reader),
+            _ => None,
+        }
+    }
+
     fn create_from_password<L: Ledger>(&mut self) -> Result<(KeyTree, Salt), WalletError<L>> {
         let password = if self.encrypted {
             self.input.create_password()?
@@ -167,7 +174,7 @@ impl Loader {
     }
 
     fn load_from_password<L: Ledger>(
-        &self,
+        &mut self,
         meta: &LoaderMetadata,
     ) -> Result<KeyTree, WalletError<L>> {
         let password = if meta.encrypted {
@@ -191,7 +198,7 @@ impl Loader {
     }
 
     fn load_from_mnemonic<L: Ledger>(
-        &self,
+        &mut self,
         meta: &LoaderMetadata,
     ) -> Result<KeyTree, WalletError<L>> {
         let mnemonic = if meta.encrypted {
