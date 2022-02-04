@@ -797,6 +797,28 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                 }
             }
         ),
+        // The following commands are not part of the public interface, but are used for
+        // synchronization in automated CLI tests.
+        #[cfg(any(test, feature = "testing"))]
+        command!(
+            now,
+            "print the index of the latest event processed by the wallet",
+            C,
+            |io, wallet| {
+                cli_writeln!(io, "{}", wallet.now().await);
+            }
+        ),
+        #[cfg(any(test, feature = "testing"))]
+        command!(
+            sync,
+            "wait until the wallet has processed up to a given event index",
+            C,
+            |io, wallet, t: EventIndex| {
+                if let Err(err) = wallet.sync(t).await {
+                    cli_writeln!(io, "Error waiting for sync point {}: {}", t, err);
+                }
+            }
+        ),
     ]
 }
 
@@ -1157,6 +1179,29 @@ mod test {
         match_output(output, &Vec::<&str>::new());
     }
 
+    // A version of `testing::await_transaction` that uses the CLI.
+    fn await_transaction(
+        receipt: &str,
+        sender: (&mut impl Write, &mut impl BufRead),
+        receivers: &mut [(&mut impl Write, &mut impl BufRead)],
+    ) {
+        // Wait for the sender to verify the transaction is complete, and get the index of an event
+        // equal to or later than the last event related to this transaction.
+        writeln!(sender.0, "wait {}", receipt).unwrap();
+        wait_for_prompt(sender.1);
+        writeln!(sender.0, "now").unwrap();
+        let matches = match_output(sender.1, &["(?P<t>.*)"]);
+        let t = matches.get("t");
+
+        // Wait for each receiver to process up to the last relevant event.
+        for receiver in receivers.iter_mut() {
+            writeln!(receiver.0, "sync {}", t).unwrap();
+        }
+        for receiver in receivers.iter_mut() {
+            wait_for_prompt(receiver.1);
+        }
+    }
+
     #[async_std::test]
     async fn test_audit_freeze() {
         let mut t = MockSystem::default();
@@ -1223,10 +1268,11 @@ mod test {
         .unwrap();
         let matches = match_output(&mut auditor_output, &["(?P<txn>TXN~.*)"]);
         let receipt = matches.get("txn");
-        writeln!(auditor_input, "wait {}", receipt).unwrap();
-        writeln!(sender_input, "wait {}", receipt).unwrap();
-        wait_for_prompt(&mut auditor_output);
-        wait_for_prompt(&mut sender_output);
+        await_transaction(
+            &receipt,
+            (&mut auditor_input, &mut auditor_output),
+            &mut [(&mut sender_input, &mut sender_output)],
+        );
         writeln!(sender_input, "balance 1").unwrap();
         match_output(&mut sender_output, &[format!("{} 1000", sender_address)]);
 
@@ -1240,12 +1286,14 @@ mod test {
         .unwrap();
         let matches = match_output(&mut sender_output, &["(?P<txn>TXN~.*)"]);
         let receipt = matches.get("txn");
-        writeln!(auditor_input, "wait {}", receipt).unwrap();
-        writeln!(sender_input, "wait {}", receipt).unwrap();
-        writeln!(receiver_input, "wait {}", receipt).unwrap();
-        wait_for_prompt(&mut auditor_output);
-        wait_for_prompt(&mut sender_output);
-        wait_for_prompt(&mut receiver_output);
+        await_transaction(
+            &receipt,
+            (&mut sender_input, &mut sender_output),
+            &mut [
+                (&mut receiver_input, &mut receiver_output),
+                (&mut auditor_input, &mut auditor_output),
+            ],
+        );
 
         // Audit the transaction. We should find two unspent records: first the amount-50
         // transaction output, and second the amount-950 change output. These records have UIDs 5
@@ -1282,10 +1330,11 @@ mod test {
         .unwrap();
         let matches = match_output(&mut auditor_output, &["(?P<txn>TXN~.*)"]);
         let receipt = matches.get("txn");
-        writeln!(auditor_input, "wait {}", receipt).unwrap();
-        writeln!(sender_input, "wait {}", receipt).unwrap();
-        wait_for_prompt(&mut auditor_output);
-        wait_for_prompt(&mut sender_output);
+        await_transaction(
+            &receipt,
+            (&mut auditor_input, &mut auditor_output),
+            &mut [(&mut sender_input, &mut sender_output)],
+        );
         writeln!(auditor_input, "audit 1").unwrap();
         // Note that the UID changes after freezing, because the freeze consume the unfrozen record
         // and creates a new frozen one.
@@ -1318,10 +1367,11 @@ mod test {
         .unwrap();
         let matches = match_output(&mut auditor_output, &["(?P<txn>TXN~.*)"]);
         let receipt = matches.get("txn");
-        writeln!(auditor_input, "wait {}", receipt).unwrap();
-        writeln!(sender_input, "wait {}", receipt).unwrap();
-        wait_for_prompt(&mut auditor_output);
-        wait_for_prompt(&mut sender_output);
+        await_transaction(
+            &receipt,
+            (&mut auditor_input, &mut auditor_output),
+            &mut [(&mut sender_input, &mut sender_output)],
+        );
         writeln!(auditor_input, "audit 1").unwrap();
         match_output(
             &mut auditor_output,
