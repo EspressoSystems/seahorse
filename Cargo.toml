@@ -45,7 +45,7 @@ jf-aap = { features=["std"], git = "ssh://git@github.com/SpectrumXYZ/jellyfish-a
 jf-utils = { features=["std"], git = "ssh://git@github.com/SpectrumXYZ/jellyfish.git" }
 arbitrary-wrappers = { git = "ssh://git@github.com/SpectrumXYZ/arbitrary-wrappers.git", rev = "bd84e90d131bdc4418a6c96543cb1003db1dd73b" }
 net = { git = "ssh://git@github.com/SpectrumXYZ/net.git" }
-reef = { git = "ssh://git@github.com/SpectrumXYZ/reef.git", branch = "keyao-change-dep" }
+reef = { git = "ssh://git@github.com/SpectrumXYZ/reef.git", rev = "859f50ef6181dc81adb20d041e98ec75700cac94" }
 universal-param = { git = "ssh://git@github.com/SpectrumXYZ/universal-param.git" }
 tagged-base64 = { git = "ssh://git@github.com/SpectrumXYZ/tagged-base64.git", branch = "main" }
 
