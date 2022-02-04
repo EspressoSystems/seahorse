@@ -2499,6 +2499,14 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
         }
     }
 
+    pub async fn now(&self) -> EventIndex {
+        self.mutex.lock().await.state.txn_state.now
+    }
+
+    pub async fn sync_with_peer(&self, peer: &Self) -> Result<(), oneshot::Canceled> {
+        self.sync(peer.now().await).await
+    }
+
     pub async fn await_key_scan(&self, address: &UserAddress) -> Result<(), oneshot::Canceled> {
         let mut guard = self.mutex.lock().await;
         let WalletSharedState {
