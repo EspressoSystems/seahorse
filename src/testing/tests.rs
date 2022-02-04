@@ -343,7 +343,7 @@ pub mod generic_wallet_tests {
         } else if freeze {
             wallets[0]
                 .0
-                .freeze(&sender, 1, &asset, 1, receiver.clone())
+                .freeze(&sender, 1, &asset.code, 1, receiver.clone())
                 .await
                 .unwrap();
         } else {
@@ -468,7 +468,7 @@ pub mod generic_wallet_tests {
         } else if freeze {
             wallets[0]
                 .0
-                .freeze(&sender, 1, &asset, 1, receiver)
+                .freeze(&sender, 1, &asset.code, 1, receiver)
                 .await
                 .unwrap();
         } else {
@@ -618,13 +618,13 @@ pub mod generic_wallet_tests {
         ledger.lock().await.hold_next_transaction();
         wallets[2]
             .0
-            .freeze(&src, 1, &asset, 1, dst.clone())
+            .freeze(&src, 1, &asset.code, 1, dst.clone())
             .await
             .unwrap();
 
         // Check that, like transfer inputs, freeze inputs are placed on hold and unusable while a
         // freeze that uses them is pending.
-        match wallets[2].0.freeze(&src, 1, &asset, 1, dst).await {
+        match wallets[2].0.freeze(&src, 1, &asset.code, 1, dst).await {
             Err(WalletError::TransactionError {
                 source: TransactionError::InsufficientBalance { .. },
             }) => {}
@@ -675,7 +675,7 @@ pub mod generic_wallet_tests {
         let dst = wallets[0].1.clone();
         wallets[2]
             .0
-            .unfreeze(&src, 1, &asset, 1, dst)
+            .unfreeze(&src, 1, &asset.code, 1, dst)
             .await
             .unwrap();
         t.sync(&ledger, &wallets).await;

@@ -1287,7 +1287,16 @@ impl<'a, L: Ledger> WalletState<'a, L> {
                     self.txn_state.records.insert_freezable(
                         ro.clone(),
                         *uid,
-                        &self.freeze_keys[ro.asset_def.policy_ref().freezer_pub_key()],
+                        self.freeze_keys
+                            .iter()
+                            .find_map(|(pub_key, key)| {
+                                if pub_key == ro.asset_def.policy_ref().freezer_pub_key() {
+                                    Some(key)
+                                } else {
+                                    None
+                                }
+                            })
+                            .unwrap(),
                     );
                     *remember = true;
                 }
@@ -1700,18 +1709,24 @@ impl<'a, L: Ledger> WalletState<'a, L> {
         session: &mut WalletSession<'a, L, impl WalletBackend<'a, L>>,
         account: &UserAddress,
         fee: u64,
-        asset: &AssetDefinition,
+        asset: &AssetCode,
         amount: u64,
         owner: UserAddress,
         outputs_frozen: FreezeFlag,
     ) -> Result<(FreezeNote, TransactionInfo<L>), WalletError<L>> {
-        let freeze_key = match self.freeze_keys.get(asset.policy_ref().freezer_pub_key()) {
-            Some(key) => key,
-            None => {
-                return Err(WalletError::<L>::AssetNotFreezable {
-                    asset: asset.clone(),
-                });
+        let asset = match self.assets().get(asset) {
+            Some(info) => info.asset.clone(),
+            None => return Err(WalletError::<L>::UndefinedAsset { asset: *asset }),
+        };
+        let freeze_key = match self.freeze_keys.iter().find_map(|(pub_key, key)| {
+            if pub_key == asset.policy_ref().freezer_pub_key() {
+                Some(key)
+            } else {
+                None
             }
+        }) {
+            Some(key) => key,
+            None => return Err(WalletError::<L>::AssetNotFreezable { asset }),
         };
 
         self.txn_state
@@ -1720,7 +1735,7 @@ impl<'a, L: Ledger> WalletState<'a, L> {
                 freeze_key,
                 &self.proving_keys.freeze,
                 fee,
-                asset,
+                &asset,
                 amount,
                 session.backend.get_public_key(&owner).await?,
                 outputs_frozen,
@@ -2379,7 +2394,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
         &mut self,
         account: &UserAddress,
         fee: u64,
-        asset: &AssetDefinition,
+        asset: &AssetCode,
         amount: u64,
         owner: UserAddress,
     ) -> Result<(FreezeNote, TransactionInfo<L>), WalletError<L>> {
@@ -2401,7 +2416,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
         &mut self,
         account: &UserAddress,
         fee: u64,
-        asset: &AssetDefinition,
+        asset: &AssetCode,
         amount: u64,
         owner: UserAddress,
     ) -> Result<TransactionReceipt<L>, WalletError<L>> {
@@ -2416,7 +2431,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
         &mut self,
         account: &UserAddress,
         fee: u64,
-        asset: &AssetDefinition,
+        asset: &AssetCode,
         amount: u64,
         owner: UserAddress,
     ) -> Result<(FreezeNote, TransactionInfo<L>), WalletError<L>> {
@@ -2438,7 +2453,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
         &mut self,
         account: &UserAddress,
         fee: u64,
-        asset: &AssetDefinition,
+        asset: &AssetCode,
         amount: u64,
         owner: UserAddress,
     ) -> Result<TransactionReceipt<L>, WalletError<L>> {

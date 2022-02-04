@@ -465,29 +465,8 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             "transfer some owned assets to another user",
             C,
             |io, wallet, asset: ListItem<AssetCode>, from: UserAddress, to: UserAddress, amount: u64, fee: u64; wait: Option<bool>| {
-                match wallet
-                    .transfer(&from.0, &asset.item, &[(to.0, amount)], fee)
-                    .await
-                {
-                    Ok(receipt) => {
-                        if wait == Some(true) {
-                            match wallet.await_transaction(&receipt).await {
-                                Err(err) => {
-                                    cli_writeln!(io, "Error waiting for transaction to complete: {}", err);
-                                }
-                                Ok(TransactionStatus::Retired) => {},
-                                _ => {
-                                    cli_writeln!(io, "Transaction failed");
-                                }
-                            }
-                        } else {
-                            cli_writeln!(io, "Transaction {}", receipt);
-                        }
-                    }
-                    Err(err) => {
-                        cli_writeln!(io, "{}\nAssets were not transferred.", err);
-                    }
-                }
+                let res = wallet.transfer(&from.0, &asset.item, &[(to.0, amount)], fee).await;
+                finish_transaction::<C>(io, wallet, res, wait, "transferred").await;
             }
         ),
         command!(
@@ -550,29 +529,30 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             "mint an asset",
             C,
             |io, wallet, asset: ListItem<AssetCode>, from: UserAddress, to: UserAddress, amount: u64, fee: u64; wait: Option<bool>| {
-                match wallet
-                    .mint(&from.0, fee, &asset.item, amount, to.0)
-                    .await
-                {
-                    Ok(receipt) => {
-                        if wait == Some(true) {
-                            match wallet.await_transaction(&receipt).await {
-                                Err(err) => {
-                                    cli_writeln!(io, "Error waiting for transaction to complete: {}", err);
-                                }
-                                Ok(TransactionStatus::Retired) => {},
-                                _ => {
-                                    cli_writeln!(io, "Transaction failed");
-                                }
-                            }
-                        } else {
-                            cli_writeln!(io, "Transaction {}", receipt);
-                        }
-                    }
-                    Err(err) => {
-                        cli_writeln!(io, "{}\nAssets were not minted.", err);
-                    }
-                }
+                let res = wallet.mint(&from.0, fee, &asset.item, amount, to.0).await;
+                finish_transaction::<C>(io, wallet, res, wait, "minted").await;
+            }
+        ),
+        command!(
+            freeze,
+            "freeze assets owned by another users",
+            C,
+            |io, wallet, asset: ListItem<AssetCode>, fee_account: UserAddress, target: UserAddress,
+             amount: u64, fee: u64; wait: Option<bool>|
+            {
+                let res = wallet.freeze(&fee_account.0, fee, &asset.item, amount, target.0).await;
+                finish_transaction::<C>(io, wallet, res, wait, "frozen").await;
+            }
+        ),
+        command!(
+            unfreeze,
+            "unfreeze previously frozen assets owned by another users",
+            C,
+            |io, wallet, asset: ListItem<AssetCode>, fee_account: UserAddress, target: UserAddress,
+             amount: u64, fee: u64; wait: Option<bool>|
+            {
+                let res = wallet.unfreeze(&fee_account.0, fee, &asset.item, amount, target.0).await;
+                finish_transaction::<C>(io, wallet, res, wait, "unfrozen").await;
             }
         ),
         command!(
@@ -848,6 +828,37 @@ impl<'a, C: CLI<'a>> CLIInput<'a, C> for KeyType {
             "freeze" => Some(Self::Freeze),
             "spend" => Some(Self::Spend),
             _ => None,
+        }
+    }
+}
+
+async fn finish_transaction<'a, C: CLI<'a>>(
+    io: &mut SharedIO,
+    wallet: &Wallet<'a, C>,
+    result: Result<TransactionReceipt<C::Ledger>, WalletError<C::Ledger>>,
+    wait: Option<bool>,
+    success_state: &str,
+) {
+    match result {
+        Ok(receipt) => {
+            if wait == Some(true) {
+                match wallet.await_transaction(&receipt).await {
+                    Err(err) => {
+                        cli_writeln!(io, "Error waiting for transaction to complete: {}", err);
+                    }
+                    Ok(TransactionStatus::Retired) => {
+                        cli_writeln!(io, "Assets successfully {}", success_state);
+                    }
+                    _ => {
+                        cli_writeln!(io, "Transaction failed. Assets were not {}", success_state);
+                    }
+                }
+            } else {
+                cli_writeln!(io, "{}", receipt);
+            }
+        }
+        Err(err) => {
+            cli_writeln!(io, "{}\nAssets were not {}.", err, success_state);
         }
     }
 }
@@ -1147,7 +1158,7 @@ mod test {
     }
 
     #[async_std::test]
-    async fn test_audit() {
+    async fn test_audit_freeze() {
         let mut t = MockSystem::default();
         let (ledger, key_streams) = create_network(&mut t, &[1000, 1000, 0]).await;
 
@@ -1259,6 +1270,66 @@ mod test {
         match_output(
             &mut auditor_output,
             &["^UID\\s+AMOUNT\\s+FROZEN$", "^6\\s+950\\s+false$"],
+        );
+
+        // If we can see the record openings and we hold the freezer key, we should be able to
+        // freeze them.
+        writeln!(
+            auditor_input,
+            "freeze 1 {} {} 950 1",
+            auditor_address, sender_address
+        )
+        .unwrap();
+        let matches = match_output(&mut auditor_output, &["(?P<txn>TXN~.*)"]);
+        let receipt = matches.get("txn");
+        writeln!(auditor_input, "wait {}", receipt).unwrap();
+        writeln!(sender_input, "wait {}", receipt).unwrap();
+        wait_for_prompt(&mut auditor_output);
+        wait_for_prompt(&mut sender_output);
+        writeln!(auditor_input, "audit 1").unwrap();
+        // Note that the UID changes after freezing, because the freeze consume the unfrozen record
+        // and creates a new frozen one.
+        match_output(
+            &mut auditor_output,
+            &[
+                "^UID\\s+AMOUNT\\s+FROZEN\\s+OWNER$",
+                format!("^5\\s+50\\s+false\\s+{}$", receiver_address).as_str(),
+                format!("^8\\s+950\\s+true\\s+{}$", sender_address).as_str(),
+            ],
+        );
+
+        // Transfers that need the frozen record as an input should now fail.
+        writeln!(
+            sender_input,
+            "transfer 1 {} {} 50 1",
+            sender_address, receiver_address
+        )
+        .unwrap();
+        // Search for error message with a slightly permissive regex to allow the CLI some freedom
+        // in reporting a readable error.
+        match_output(&mut sender_output, &["[Ii]nsufficient.*[Bb]alance"]);
+
+        // Unfreezing the record makes it available again.
+        writeln!(
+            auditor_input,
+            "unfreeze 1 {} {} 950 1",
+            auditor_address, sender_address
+        )
+        .unwrap();
+        let matches = match_output(&mut auditor_output, &["(?P<txn>TXN~.*)"]);
+        let receipt = matches.get("txn");
+        writeln!(auditor_input, "wait {}", receipt).unwrap();
+        writeln!(sender_input, "wait {}", receipt).unwrap();
+        wait_for_prompt(&mut auditor_output);
+        wait_for_prompt(&mut sender_output);
+        writeln!(auditor_input, "audit 1").unwrap();
+        match_output(
+            &mut auditor_output,
+            &[
+                "^UID\\s+AMOUNT\\s+FROZEN\\s+OWNER$",
+                format!("^5\\s+50\\s+false\\s+{}$", receiver_address).as_str(),
+                format!("^10\\s+950\\s+false\\s+{}$", sender_address).as_str(),
+            ],
         );
     }
 }
