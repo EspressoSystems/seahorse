@@ -1287,16 +1287,7 @@ impl<'a, L: Ledger> WalletState<'a, L> {
                     self.txn_state.records.insert_freezable(
                         ro.clone(),
                         *uid,
-                        self.freeze_keys
-                            .iter()
-                            .find_map(|(pub_key, key)| {
-                                if pub_key == ro.asset_def.policy_ref().freezer_pub_key() {
-                                    Some(key)
-                                } else {
-                                    None
-                                }
-                            })
-                            .unwrap(),
+                        &self.freeze_keys[ro.asset_def.policy_ref().freezer_pub_key()],
                     );
                     *remember = true;
                 }
@@ -1330,14 +1321,10 @@ impl<'a, L: Ledger> WalletState<'a, L> {
                 {
                     // If the audit memo contains all the information we need to potentially freeze
                     // this record, save it in our database for later freezing.
-                    let asset_freezer = memo.asset.policy_ref().freezer_pub_key();
-                    if let Some(freeze_key) = self.freeze_keys.iter().find_map(|(pub_key, key)| {
-                        if pub_key == asset_freezer {
-                            Some(key)
-                        } else {
-                            None
-                        }
-                    }) {
+                    if let Some(freeze_key) = self
+                        .freeze_keys
+                        .get(memo.asset.policy_ref().freezer_pub_key())
+                    {
                         let record_opening = RecordOpening {
                             amount,
                             asset_def: memo.asset.clone(),
@@ -1402,8 +1389,7 @@ impl<'a, L: Ledger> WalletState<'a, L> {
             // But Hash doesn't work for AuditorPubKey (github.com/SpectrumXYZ/jellyfish-apps/issues/88).
             let audit = self
                 .audit_keys
-                .keys()
-                .any(|key| key == asset_definition.policy_ref().auditor_pub_key());
+                .contains_key(asset_definition.policy_ref().auditor_pub_key());
 
             // Persist the change that we're about to make before updating our in-memory state. We
             // can't report success until we know the new asset has been saved to disk (otherwise we
@@ -1718,13 +1704,7 @@ impl<'a, L: Ledger> WalletState<'a, L> {
             Some(info) => info.asset.clone(),
             None => return Err(WalletError::<L>::UndefinedAsset { asset: *asset }),
         };
-        let freeze_key = match self.freeze_keys.iter().find_map(|(pub_key, key)| {
-            if pub_key == asset.policy_ref().freezer_pub_key() {
-                Some(key)
-            } else {
-                None
-            }
-        }) {
+        let freeze_key = match self.freeze_keys.get(asset.policy_ref().freezer_pub_key()) {
             Some(key) => key,
             None => return Err(WalletError::<L>::AssetNotFreezable { asset }),
         };
