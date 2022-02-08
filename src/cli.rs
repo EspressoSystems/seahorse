@@ -7,6 +7,7 @@
 
 use crate::{
     events::EventIndex,
+    io::SharedIO,
     loader::{LoadMethod, Loader, LoaderMetadata, WalletLoader},
     reader::Reader,
     AssetInfo, BincodeError, IoError, MintInfo, TransactionReceipt, TransactionStatus,
@@ -19,7 +20,9 @@ use futures::future::BoxFuture;
 use jf_aap::{
     keys::{AuditorKeyPair, AuditorPubKey, FreezerKeyPair, FreezerPubKey, UserKeyPair},
     proof::UniversalParam,
-    structs::{AssetCode, AssetDefinition, AssetPolicy, ReceiverMemo, RecordCommitment},
+    structs::{
+        AssetCode, AssetDefinition, AssetPolicy, FreezeFlag, ReceiverMemo, RecordCommitment,
+    },
 };
 use net::{MerklePath, UserAddress};
 use reef::Ledger;
@@ -42,7 +45,7 @@ pub trait CLI<'a> {
 
     fn init_backend(
         universal_param: &'a UniversalParam,
-        args: &'a Self::Args,
+        args: Self::Args,
         loader: &mut impl WalletLoader<Self::Ledger, Meta = LoaderMetadata>,
     ) -> Result<Self::Backend, WalletError<Self::Ledger>>;
 }
@@ -50,7 +53,14 @@ pub trait CLI<'a> {
 pub trait CLIArgs {
     fn key_gen_path(&self) -> Option<PathBuf>;
     fn storage_path(&self) -> Option<PathBuf>;
-    fn interactive(&self) -> bool;
+
+    /// Override the default, terminal-based IO.
+    ///
+    /// If io() returns Some, the CLI will use the provided IO adapters, without interactive line
+    /// editing or password input hiding. Otherwise, it will use stdin (which must be a terminal)
+    /// and stdout, with interactive line editing and password hiding.
+    fn io(&self) -> Option<SharedIO>;
+
     fn encrypted(&self) -> bool;
     fn load_method(&self) -> LoadMethod;
     fn use_tmp_storage(&self) -> bool;
@@ -75,8 +85,14 @@ pub struct Command<'a, C: CLI<'a>> {
 }
 
 type CommandFunc<'a, C> = Box<
-    dyn Sync
-        + for<'l> Fn(&'l mut Wallet<'a, C>, Vec<String>, HashMap<String, String>) -> BoxFuture<'l, ()>,
+    dyn Send
+        + Sync
+        + for<'l> Fn(
+            SharedIO,
+            &'l mut Wallet<'a, C>,
+            Vec<String>,
+            HashMap<String, String>,
+        ) -> BoxFuture<'l, ()>,
 >;
 
 impl<'a, C: CLI<'a>> Display for Command<'a, C> {
@@ -120,11 +136,19 @@ impl<'a, C: CLI<'a>, L: Ledger> CLIInput<'a, C> for TransactionReceipt<L> {
     }
 }
 
+// Convenience macros for panicking if output fails.
+macro_rules! cli_writeln {
+    ($($arg:expr),+ $(,)?) => { writeln!($($arg),+).expect("failed to write CLI output") };
+}
+macro_rules! cli_write {
+    ($($arg:expr),+ $(,)?) => { write!($($arg),+).expect("failed to write CLI output") };
+}
+
 macro_rules! command {
     ($name:ident,
      $help:expr,
      $cli:ident,
-     |$wallet:pat, $($arg:ident : $argty:ty),*
+     |$io:pat, $wallet:pat, $($arg:ident : $argty:ty),*
       $(; $($kwarg:ident : Option<$kwargty:ty>),*)?| $run:expr) => {
         Command {
             name: String::from(stringify!($name)),
@@ -137,9 +161,9 @@ macro_rules! command {
                 String::from(type_name::<$kwargty>()),
             )),*)?],
             help: String::from($help),
-            run: Box::new(|wallet, args, kwargs| Box::pin(async move {
+            run: Box::new(|mut io, wallet, args, kwargs| Box::pin(async move {
                 if args.len() != count!($($arg)*) {
-                    println!("incorrect number of arguments (expected {})", count!($($arg)*));
+                    cli_writeln!(io, "incorrect number of arguments (expected {})", count!($($arg)*));
                     return;
                 }
 
@@ -153,7 +177,8 @@ macro_rules! command {
                     let $arg = match <$argty as CLIInput<$cli>>::parse_for_wallet(wallet, args.next().unwrap().as_str()) {
                         Some(arg) => arg,
                         None => {
-                            println!(
+                            cli_writeln!(
+                                io,
                                 "invalid value for argument {} (expected {})",
                                 stringify!($arg),
                                 type_name::<$argty>());
@@ -170,7 +195,8 @@ macro_rules! command {
                         Some(val) => match <$kwargty as CLIInput<$cli>>::parse_for_wallet(wallet, val) {
                             Some(arg) => Some(arg),
                             None => {
-                                println!(
+                                cli_writeln!(
+                                    io,
                                     "invalid value for argument {} (expected {})",
                                     stringify!($kwarg),
                                     type_name::<$kwargty>());
@@ -183,6 +209,7 @@ macro_rules! command {
                 // `kwargs` will be unused if there are no keyword params.
                 let _ = kwargs;
 
+                let $io = &mut io;
                 let $wallet = wallet;
                 $run
             }))
@@ -190,13 +217,13 @@ macro_rules! command {
     };
 
     // Don't require a comma after $wallet if there are no additional args.
-    ($name:ident, $help:expr, $cli:ident, |$wallet:pat| $run:expr) => {
-        command!($name, $help, $cli, |$wallet,| $run)
+    ($name:ident, $help:expr, $cli:ident, |$io:pat, $wallet:pat| $run:expr) => {
+        command!($name, $help, $cli, |$io, $wallet,| $run)
     };
 
     // Don't require wallet at all.
-    ($name:ident, $help:expr, $cli:ident, || $run:expr) => {
-        command!($name, $help, $cli, |_| $run)
+    ($name:ident, $help:expr, $cli:ident, |$io:pat| $run:expr) => {
+        command!($name, $help, $cli, |$io, _| $run)
     };
 }
 
@@ -320,9 +347,9 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             address,
             "print all public addresses of this wallet",
             C,
-            |wallet| {
+            |io, wallet| {
                 for pub_key in wallet.pub_keys().await {
-                    println!("{}", UserAddress(pub_key.address()));
+                    cli_writeln!(io, "{}", UserAddress(pub_key.address()));
                 }
             }
         ),
@@ -330,23 +357,28 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             pub_key,
             "print all of the public keys of this wallet",
             C,
-            |wallet| {
+            |io, wallet| {
                 for pub_key in wallet.pub_keys().await {
-                    println!("{:?}", pub_key);
+                    cli_writeln!(io, "{:?}", pub_key);
                 }
             }
         ),
-        command!(assets, "list assets known to the wallet", C, |wallet| {
-            for item in <AssetCode as Listable<C>>::list(wallet).await {
-                println!("{}", item);
+        command!(
+            assets,
+            "list assets known to the wallet",
+            C,
+            |io, wallet| {
+                for item in <AssetCode as Listable<C>>::list(wallet).await {
+                    cli_writeln!(io, "{}", item);
+                }
+                cli_writeln!(io, "(a=auditable, f=freezeable, m=mintable)");
             }
-            println!("(a=auditable, f=freezeable, m=mintable)");
-        }),
+        ),
         command!(
             asset,
             "print information about an asset",
             C,
-            |wallet, asset: ListItem<AssetCode>| {
+            |io, wallet, asset: ListItem<AssetCode>| {
                 let assets = wallet.assets().await;
                 let info = if asset.item == AssetCode::native() {
                     // We always recognize the native asset type in the CLI, even if it's not
@@ -356,7 +388,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                     match assets.get(&asset.item) {
                         Some(info) => info.clone(),
                         None => {
-                            println!("No such asset {}", asset.item);
+                            cli_writeln!(io, "No such asset {}", asset.item);
                             return;
                         }
                     }
@@ -375,40 +407,40 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                 } else {
                     String::from("Asset")
                 };
-                println!("{} {}", desc, info.asset.code);
+                cli_writeln!(io, "{} {}", desc, info.asset.code);
 
                 // Print the auditor, noting if it is us.
                 let policy = info.asset.policy_ref();
                 if policy.is_auditor_pub_key_set() {
                     let auditor_key = policy.auditor_pub_key();
                     if wallet.auditor_pub_keys().await.contains(auditor_key) {
-                        println!("Auditor: me");
+                        cli_writeln!(io, "Auditor: me");
                     } else {
-                        println!("Auditor: {}", *auditor_key);
+                        cli_writeln!(io, "Auditor: {}", *auditor_key);
                     }
                 } else {
-                    println!("Not auditable");
+                    cli_writeln!(io, "Not auditable");
                 }
 
                 // Print the freezer, noting if it is us.
                 if policy.is_freezer_pub_key_set() {
                     let freezer_key = policy.freezer_pub_key();
                     if wallet.freezer_pub_keys().await.contains(freezer_key) {
-                        println!("Freezer: me");
+                        cli_writeln!(io, "Freezer: me");
                     } else {
-                        println!("Freezer: {}", *freezer_key);
+                        cli_writeln!(io, "Freezer: {}", *freezer_key);
                     }
                 } else {
-                    println!("Not freezeable");
+                    cli_writeln!(io, "Not freezeable");
                 }
 
                 // Print the minter, noting if it is us.
                 if info.mint_info.is_some() {
-                    println!("Minter: me");
+                    cli_writeln!(io, "Minter: me");
                 } else if info.asset.code == AssetCode::native() {
-                    println!("Not mintable");
+                    cli_writeln!(io, "Not mintable");
                 } else {
-                    println!("Minter: unknown");
+                    cli_writeln!(io, "Minter: unknown");
                 }
             }
         ),
@@ -416,10 +448,11 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             balance,
             "print owned balances of asset",
             C,
-            |wallet, asset: ListItem<AssetCode>| {
-                println!("Address Balance");
+            |io, wallet, asset: ListItem<AssetCode>| {
+                cli_writeln!(io, "Address Balance");
                 for pub_key in wallet.pub_keys().await {
-                    println!(
+                    cli_writeln!(
+                        io,
                         "{} {}",
                         UserAddress(pub_key.address()),
                         wallet.balance(&pub_key.address(), &asset.item).await
@@ -431,37 +464,19 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             transfer,
             "transfer some owned assets to another user",
             C,
-            |wallet, asset: ListItem<AssetCode>, from: UserAddress, to: UserAddress, amount: u64, fee: u64; wait: Option<bool>| {
-                match wallet
-                    .transfer(&from.0, &asset.item, &[(to.0, amount)], fee)
-                    .await
-                {
-                    Ok(receipt) => {
-                        if wait == Some(true) {
-                            match wallet.await_transaction(&receipt).await {
-                                Err(err) => {
-                                    println!("Error waiting for transaction to complete: {}", err);
-                                }
-                                Ok(TransactionStatus::Retired) => {},
-                                _ => {
-                                    println!("Transaction failed");
-                                }
-                            }
-                        } else {
-                            println!("Transaction {}", receipt);
-                        }
-                    }
-                    Err(err) => {
-                        println!("{}\nAssets were not transferred.", err);
-                    }
-                }
+            |io, wallet, asset: ListItem<AssetCode>, from: UserAddress, to: UserAddress, amount: u64, fee: u64; wait: Option<bool>| {
+                let res = wallet.transfer(&from.0, &asset.item, &[(to.0, amount)], fee).await;
+                finish_transaction::<C>(io, wallet, res, wait, "transferred").await;
             }
         ),
         command!(
             issue,
             "create a new asset",
             C,
-            |wallet, desc: String; auditor: Option<AuditorPubKey>, freezer: Option<FreezerPubKey>| {
+            |io, wallet, desc: String; auditor: Option<AuditorPubKey>, freezer: Option<FreezerPubKey>,
+             trace_amount: Option<bool>, trace_address: Option<bool>, trace_blind: Option<bool>,
+             reveal_threshold: Option<u64>|
+            {
                 let mut policy = AssetPolicy::default();
                 if let Some(auditor) = auditor {
                     policy = policy.set_auditor_pub_key(auditor);
@@ -469,12 +484,42 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                 if let Some(freezer) = freezer {
                     policy = policy.set_freezer_pub_key(freezer);
                 }
+                if Some(true) == trace_amount {
+                    policy = match policy.reveal_amount() {
+                        Ok(policy) => policy,
+                        Err(err) => {
+                            cli_writeln!(io, "Invalid policy: {}", err);
+                            return;
+                        }
+                    }
+                }
+                if Some(true) == trace_address {
+                    policy = match policy.reveal_user_address() {
+                        Ok(policy) => policy,
+                        Err(err) => {
+                            cli_writeln!(io, "Invalid policy: {}", err);
+                            return;
+                        }
+                    }
+                }
+                if Some(true) == trace_blind {
+                    policy = match policy.reveal_blinding_factor() {
+                        Ok(policy) => policy,
+                        Err(err) => {
+                            cli_writeln!(io, "Invalid policy: {}", err);
+                            return;
+                        }
+                    }
+                }
+                if let Some(reveal_threshold) = reveal_threshold {
+                    policy = policy.set_reveal_threshold(reveal_threshold);
+                }
                 match wallet.define_asset(desc.as_bytes(), policy).await {
                     Ok(def) => {
-                        println!("{}", def.code);
+                        cli_writeln!(io, "{}", def.code);
                     }
                     Err(err) => {
-                        println!("{}\nAsset was not created.", err);
+                        cli_writeln!(io, "{}\nAsset was not created.", err);
                     }
                 }
             }
@@ -483,40 +528,41 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             mint,
             "mint an asset",
             C,
-            |wallet, asset: ListItem<AssetCode>, from: UserAddress, to: UserAddress, amount: u64, fee: u64; wait: Option<bool>| {
-                match wallet
-                    .mint(&from.0, fee, &asset.item, amount, to.0)
-                    .await
-                {
-                    Ok(receipt) => {
-                        if wait == Some(true) {
-                            match wallet.await_transaction(&receipt).await {
-                                Err(err) => {
-                                    println!("Error waiting for transaction to complete: {}", err);
-                                }
-                                Ok(TransactionStatus::Retired) => {},
-                                _ => {
-                                    println!("Transaction failed");
-                                }
-                            }
-                        } else {
-                            println!("Transaction {}", receipt);
-                        }
-                    }
-                    Err(err) => {
-                        println!("{}\nAssets were not minted.", err);
-                    }
-                }
+            |io, wallet, asset: ListItem<AssetCode>, from: UserAddress, to: UserAddress, amount: u64, fee: u64; wait: Option<bool>| {
+                let res = wallet.mint(&from.0, fee, &asset.item, amount, to.0).await;
+                finish_transaction::<C>(io, wallet, res, wait, "minted").await;
+            }
+        ),
+        command!(
+            freeze,
+            "freeze assets owned by another users",
+            C,
+            |io, wallet, asset: ListItem<AssetCode>, fee_account: UserAddress, target: UserAddress,
+             amount: u64, fee: u64; wait: Option<bool>|
+            {
+                let res = wallet.freeze(&fee_account.0, fee, &asset.item, amount, target.0).await;
+                finish_transaction::<C>(io, wallet, res, wait, "frozen").await;
+            }
+        ),
+        command!(
+            unfreeze,
+            "unfreeze previously frozen assets owned by another users",
+            C,
+            |io, wallet, asset: ListItem<AssetCode>, fee_account: UserAddress, target: UserAddress,
+             amount: u64, fee: u64; wait: Option<bool>|
+            {
+                let res = wallet.unfreeze(&fee_account.0, fee, &asset.item, amount, target.0).await;
+                finish_transaction::<C>(io, wallet, res, wait, "unfrozen").await;
             }
         ),
         command!(
             transactions,
             "list past transactions sent and received by this wallet",
             C,
-            |wallet| {
+            |io, wallet| {
                 match wallet.transaction_history().await {
                     Ok(txns) => {
-                        println!("Submitted Status Asset Type Sender Receiver Amount ...");
+                        cli_writeln!(io, "Submitted Status Asset Type Sender Receiver Amount ...");
                         for txn in txns {
                             let status = match &txn.receipt {
                                 Some(receipt) => wallet
@@ -553,17 +599,25 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                                 Some(sender) => UserAddress(sender).to_string(),
                                 None => String::from("unknown"),
                             };
-                            print!("{} {} {} {} {} ", txn.time, status, asset, txn.kind, sender);
+                            cli_write!(
+                                io,
+                                "{} {} {} {} {} ",
+                                txn.time,
+                                status,
+                                asset,
+                                txn.kind,
+                                sender
+                            );
                             for (receiver, amount) in txn.receivers {
-                                print!("{} {} ", UserAddress(receiver), amount);
+                                cli_write!(io, "{} {} ", UserAddress(receiver), amount);
                             }
                             if let Some(receipt) = txn.receipt {
-                                print!("{}", receipt);
+                                cli_write!(io, "{}", receipt);
                             }
-                            println!();
+                            cli_writeln!(io);
                         }
                     }
-                    Err(err) => println!("Error reading transaction history: {}", err),
+                    Err(err) => cli_writeln!(io, "Error reading transaction history: {}", err),
                 }
             }
         ),
@@ -571,10 +625,10 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             transaction,
             "print the status of a transaction",
             C,
-            |wallet, receipt: TransactionReceipt<C::Ledger>| {
+            |io, wallet, receipt: TransactionReceipt<C::Ledger>| {
                 match wallet.transaction_status(&receipt).await {
-                    Ok(status) => println!("{}", status),
-                    Err(err) => println!("Error getting transaction status: {}", err),
+                    Ok(status) => cli_writeln!(io, "{}", status),
+                    Err(err) => cli_writeln!(io, "Error getting transaction status: {}", err),
                 }
             }
         ),
@@ -582,33 +636,40 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             wait,
             "wait for a transaction to complete",
             C,
-            |wallet, receipt: TransactionReceipt<C::Ledger>| {
+            |io, wallet, receipt: TransactionReceipt<C::Ledger>| {
                 match wallet.await_transaction(&receipt).await {
-                    Ok(status) => println!("{}", status),
-                    Err(err) => println!("Error waiting for transaction: {}", err),
+                    Ok(status) => cli_writeln!(io, "{}", status),
+                    Err(err) => cli_writeln!(io, "Error waiting for transaction: {}", err),
                 }
             }
         ),
-        command!(keys, "list keys tracked by this wallet", C, |wallet| {
-            print_keys::<C>(wallet).await;
+        command!(keys, "list keys tracked by this wallet", C, |io, wallet| {
+            print_keys::<C>(io, wallet).await;
         }),
         command!(
             gen_key,
             "generate new keys",
             C,
-            |wallet, key_type: KeyType; scan_from: Option<EventIndex>| {
+            |io, wallet, key_type: KeyType; scan_from: Option<EventIndex>, wait: Option<bool>| {
                 match key_type {
                     KeyType::Audit => match wallet.generate_audit_key().await {
-                        Ok(pub_key) => println!("{}", pub_key),
-                        Err(err) => println!("Error generating audit key: {}", err),
+                        Ok(pub_key) => cli_writeln!(io, "{}", pub_key),
+                        Err(err) => cli_writeln!(io, "Error generating audit key: {}", err),
                     },
                     KeyType::Freeze => match wallet.generate_freeze_key().await {
-                        Ok(pub_key) => println!("{}", pub_key),
-                        Err(err) => println!("Error generating freeze key: {}", err),
+                        Ok(pub_key) => cli_writeln!(io, "{}", pub_key),
+                        Err(err) => cli_writeln!(io, "Error generating freeze key: {}", err),
                     },
                     KeyType::Spend => match wallet.generate_user_key(scan_from).await {
-                        Ok(pub_key) => println!("{}", UserAddress(pub_key.address())),
-                        Err(err) => println!("Error generating spending key: {}", err),
+                        Ok(pub_key) => {
+                            if wait == Some(true) {
+                                if let Err(err) = wallet.await_key_scan(&pub_key.address()).await {
+                                    cli_writeln!(io, "Error waiting for key scan: {}", err);
+                                }
+                            }
+                            cli_writeln!(io, "{}", UserAddress(pub_key.address()));
+                        }
+                        Err(err) => cli_writeln!(io, "Error generating spending key: {}", err),
                     },
                 }
             }
@@ -617,37 +678,37 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             load_key,
             "load a key from a file",
             C,
-            |wallet, key_type: KeyType, path: PathBuf; scan_from: Option<EventIndex>| {
+            |io, wallet, key_type: KeyType, path: PathBuf; scan_from: Option<EventIndex>, wait: Option<bool>| {
                 let mut file = match File::open(path.clone()) {
                     Ok(file) => file,
                     Err(err) => {
-                        println!("Error opening file {:?}: {}", path, err);
+                        cli_writeln!(io, "Error opening file {:?}: {}", path, err);
                         return;
                     }
                 };
                 let mut bytes = Vec::new();
                 if let Err(err) = file.read_to_end(&mut bytes) {
-                    println!("Error reading file: {}", err);
+                    cli_writeln!(io, "Error reading file: {}", err);
                     return;
                 }
 
                 match key_type {
                     KeyType::Audit => match bincode::deserialize::<AuditorKeyPair>(&bytes) {
                         Ok(key) => match wallet.add_audit_key(key.clone()).await {
-                            Ok(()) => println!("{}", key.pub_key()),
-                            Err(err) => println!("Error saving audit key: {}", err),
+                            Ok(()) => cli_writeln!(io, "{}", key.pub_key()),
+                            Err(err) => cli_writeln!(io, "Error saving audit key: {}", err),
                         },
                         Err(err) => {
-                            println!("Error loading audit key: {}", err);
+                            cli_writeln!(io, "Error loading audit key: {}", err);
                         }
                     },
                     KeyType::Freeze => match bincode::deserialize::<FreezerKeyPair>(&bytes) {
                         Ok(key) => match wallet.add_freeze_key(key.clone()).await {
-                            Ok(()) => println!("{}", key.pub_key()),
-                            Err(err) => println!("Error saving freeze key: {}", err),
+                            Ok(()) => cli_writeln!(io, "{}", key.pub_key()),
+                            Err(err) => cli_writeln!(io, "Error saving freeze key: {}", err),
                         },
                         Err(err) => {
-                            println!("Error loading freeze key: {}", err);
+                            cli_writeln!(io, "Error loading freeze key: {}", err);
                         }
                     },
                     KeyType::Spend => match bincode::deserialize::<UserKeyPair>(&bytes) {
@@ -656,17 +717,23 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                             scan_from.unwrap_or_default(),
                         ).await {
                             Ok(()) => {
-                                println!(
-                                    "Note: assets belonging to this key will become available after\
-                                     a scan of the ledger. This may take a long time. If you have\
-                                     the owner memo for a record you want to use immediately, use\
-                                     import_memo.");
-                                println!("{}", UserAddress(key.address()));
+                                if wait == Some(true) {
+                                    if let Err(err) = wallet.await_key_scan(&key.address()).await {
+                                        cli_writeln!(io, "Error waiting for key scan: {}", err);
+                                    }
+                                } else {
+                                    cli_writeln!(io,
+                                        "Note: assets belonging to this key will become available
+                                        after a scan of the ledger. This may take a long time. If
+                                        you have the owner memo for a record you want to use
+                                        immediately, use import_memo.");
+                                    cli_writeln!(io, "{}", UserAddress(key.address()));
+                                }
                             }
-                            Err(err) => println!("Error saving spending key: {}", err),
+                            Err(err) => cli_writeln!(io, "Error saving spending key: {}", err),
                         },
                         Err(err) => {
-                            println!("Error loading spending key: {}", err);
+                            cli_writeln!(io, "Error loading spending key: {}", err);
                         }
                     },
                 };
@@ -676,9 +743,14 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             import_memo,
             "import an owner memo belonging to this wallet",
             C,
-            |wallet, memo: ReceiverMemo, comm: RecordCommitment, uid: u64, proof: MerklePath| {
+            |io,
+             wallet,
+             memo: ReceiverMemo,
+             comm: RecordCommitment,
+             uid: u64,
+             proof: MerklePath| {
                 if let Err(err) = wallet.import_memo(memo, comm, uid, proof.0).await {
-                    println!("{}", err);
+                    cli_writeln!(io, "{}", err);
                 }
             }
         ),
@@ -686,29 +758,82 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             info,
             "print general information about this wallet",
             C,
-            |wallet| {
-                println!("Addresses:");
+            |io, wallet| {
+                cli_writeln!(io, "Addresses:");
                 for pub_key in wallet.pub_keys().await {
-                    println!("  {}", UserAddress(pub_key.address()));
+                    cli_writeln!(io, "  {}", UserAddress(pub_key.address()));
                 }
-                print_keys::<C>(wallet).await;
+                print_keys::<C>(io, wallet).await;
+            }
+        ),
+        command!(
+            audit,
+            "list unspent records of auditable asset types",
+            C,
+            |io, wallet, asset: ListItem<AssetCode>; account: Option<UserAddress>| {
+                let records = wallet
+                    .records()
+                    .await
+                    .filter(|rec| rec.ro.asset_def.code == asset.item && match &account {
+                        Some(address) => rec.ro.pub_key.address() == address.0,
+                        None => true
+                    });
+
+                cli_write!(io, "UID\tAMOUNT\tFROZEN");
+                if account.is_none() {
+                    cli_write!(io, "\tOWNER");
+                }
+                cli_writeln!(io);
+                for record in records {
+                    cli_write!(io, "{}\t{}\t{}",
+                        record.uid,
+                        record.ro.amount,
+                        record.ro.freeze_flag == FreezeFlag::Frozen
+                    );
+                    if account.is_none() {
+                        cli_write!(io, "\t{}", UserAddress::from(record.ro.pub_key.address()));
+                    }
+                    cli_writeln!(io);
+                }
+            }
+        ),
+        // The following commands are not part of the public interface, but are used for
+        // synchronization in automated CLI tests.
+        #[cfg(any(test, feature = "testing"))]
+        command!(
+            now,
+            "print the index of the latest event processed by the wallet",
+            C,
+            |io, wallet| {
+                cli_writeln!(io, "{}", wallet.now().await);
+            }
+        ),
+        #[cfg(any(test, feature = "testing"))]
+        command!(
+            sync,
+            "wait until the wallet has processed up to a given event index",
+            C,
+            |io, wallet, t: EventIndex| {
+                if let Err(err) = wallet.sync(t).await {
+                    cli_writeln!(io, "Error waiting for sync point {}: {}", t, err);
+                }
             }
         ),
     ]
 }
 
-async fn print_keys<'a, C: CLI<'a>>(wallet: &Wallet<'a, C>) {
-    println!("Public keys:");
+async fn print_keys<'a, C: CLI<'a>>(io: &mut SharedIO, wallet: &Wallet<'a, C>) {
+    cli_writeln!(io, "Public keys:");
     for key in wallet.pub_keys().await {
-        println!("  {}", key);
+        cli_writeln!(io, "  {}", key);
     }
-    println!("Audit keys:");
+    cli_writeln!(io, "Audit keys:");
     for key in wallet.auditor_pub_keys().await {
-        println!("  {}", key);
+        cli_writeln!(io, "  {}", key);
     }
-    println!("Freeze keys:");
+    cli_writeln!(io, "Freeze keys:");
     for key in wallet.freezer_pub_keys().await {
-        println!("  {}", key);
+        cli_writeln!(io, "  {}", key);
     }
 }
 
@@ -729,8 +854,39 @@ impl<'a, C: CLI<'a>> CLIInput<'a, C> for KeyType {
     }
 }
 
+async fn finish_transaction<'a, C: CLI<'a>>(
+    io: &mut SharedIO,
+    wallet: &Wallet<'a, C>,
+    result: Result<TransactionReceipt<C::Ledger>, WalletError<C::Ledger>>,
+    wait: Option<bool>,
+    success_state: &str,
+) {
+    match result {
+        Ok(receipt) => {
+            if wait == Some(true) {
+                match wallet.await_transaction(&receipt).await {
+                    Err(err) => {
+                        cli_writeln!(io, "Error waiting for transaction to complete: {}", err);
+                    }
+                    Ok(TransactionStatus::Retired) => {
+                        cli_writeln!(io, "Assets successfully {}", success_state);
+                    }
+                    _ => {
+                        cli_writeln!(io, "Transaction failed. Assets were not {}", success_state);
+                    }
+                }
+            } else {
+                cli_writeln!(io, "{}", receipt);
+            }
+        }
+        Err(err) => {
+            cli_writeln!(io, "{}\nAssets were not {}.", err, success_state);
+        }
+    }
+}
+
 pub async fn cli_main<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
-    args: &'a C::Args,
+    args: C::Args,
 ) -> Result<(), WalletError<L>> {
     if let Some(path) = args.key_gen_path() {
         key_gen::<C>(path)
@@ -755,7 +911,7 @@ pub fn key_gen<'a, C: CLI<'a>>(mut path: PathBuf) -> Result<(), WalletError<C::L
 }
 
 async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
-    args: &'a C::Args,
+    args: C::Args,
 ) -> Result<(), WalletError<L>> {
     let (storage, _tmp_dir) = match args.storage_path() {
         Some(storage) => (storage, None),
@@ -776,14 +932,18 @@ async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
         }
     };
 
-    println!(
+    let (mut io, reader) = match args.io() {
+        Some(io) => (io.clone(), Reader::automated(io)),
+        None => (SharedIO::std(), Reader::interactive()),
+    };
+    cli_writeln!(
+        io,
         "Welcome to the {} wallet, version {}",
         C::Ledger::name(),
         env!("CARGO_PKG_VERSION")
     );
-    println!("(c) 2021 Translucence Research, Inc.");
+    cli_writeln!(io, "(c) 2021 Translucence Research, Inc.");
 
-    let reader = Reader::new(args.interactive());
     let mut loader = Loader::new(args.load_method(), args.encrypted(), storage, reader);
     let universal_param = Box::leak(Box::new(universal_param::get(
         &mut loader.rng,
@@ -793,12 +953,12 @@ async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
 
     // Loading the wallet takes a while. Let the user know that's expected.
     //todo !jeb.bearer Make it faster
-    println!("connecting...");
+    cli_writeln!(io, "connecting...");
     let mut wallet = Wallet::<C>::new(backend).await?;
-    println!("Type 'help' for a list of commands.");
+    cli_writeln!(io, "Type 'help' for a list of commands.");
     let commands = init_commands::<C>();
 
-    let mut input = Reader::new(args.interactive());
+    let mut input = loader.into_reader().unwrap();
     'repl: while let Some(line) = input.read_line() {
         let tokens = line.split_whitespace().collect::<Vec<_>>();
         if tokens.is_empty() {
@@ -806,7 +966,7 @@ async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
         }
         if tokens[0] == "help" {
             for command in commands.iter() {
-                println!("{}", command);
+                cli_writeln!(io, "{}", command);
             }
             continue;
         }
@@ -821,12 +981,405 @@ async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
                         args.push(String::from(tok));
                     }
                 }
-                run(&mut wallet, args, kwargs).await;
+                run(io.clone(), &mut wallet, args, kwargs).await;
                 continue 'repl;
             }
         }
-        println!("Unknown command. Type 'help' for a list of valid commands.");
+        cli_writeln!(
+            io,
+            "Unknown command. Type 'help' for a list of valid commands."
+        );
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::{
+        hd,
+        io::Tee,
+        testing::{
+            mocks::{MockBackend, MockLedger, MockNetwork, MockStorage, MockSystem},
+            SystemUnderTest,
+        },
+    };
+    use async_std::{
+        sync::{Arc, Mutex},
+        task::spawn,
+    };
+    use futures::stream::{iter, StreamExt};
+    use pipe::{PipeReader, PipeWriter};
+    use reef::aap;
+    use regex::Regex;
+    use std::io::BufRead;
+    use std::time::Instant;
+
+    type MockAAPLedger<'a> =
+        Arc<Mutex<MockLedger<'a, aap::Ledger, MockNetwork<'a>, MockStorage<'a>>>>;
+
+    struct MockArgs<'a> {
+        io: SharedIO,
+        key_stream: hd::KeyTree,
+        ledger: MockAAPLedger<'a>,
+    }
+
+    impl<'a> CLIArgs for MockArgs<'a> {
+        fn key_gen_path(&self) -> Option<PathBuf> {
+            None
+        }
+
+        fn storage_path(&self) -> Option<PathBuf> {
+            None
+        }
+
+        fn io(&self) -> Option<SharedIO> {
+            Some(self.io.clone())
+        }
+
+        fn encrypted(&self) -> bool {
+            true
+        }
+
+        fn load_method(&self) -> LoadMethod {
+            LoadMethod::Mnemonic
+        }
+
+        fn use_tmp_storage(&self) -> bool {
+            true
+        }
+    }
+
+    struct MockCLI;
+
+    impl<'a> CLI<'a> for MockCLI {
+        type Ledger = aap::Ledger;
+        type Backend = MockBackend<'a>;
+        type Args = MockArgs<'a>;
+
+        fn init_backend(
+            _universal_param: &'a UniversalParam,
+            args: Self::Args,
+            _loader: &mut impl WalletLoader<Self::Ledger, Meta = LoaderMetadata>,
+        ) -> Result<Self::Backend, WalletError<Self::Ledger>> {
+            Ok(MockBackend::new(
+                args.ledger.clone(),
+                Default::default(),
+                args.key_stream,
+            ))
+        }
+    }
+
+    async fn create_network<'a>(
+        t: &mut MockSystem,
+        initial_grants: &[u64],
+    ) -> (MockAAPLedger<'a>, Vec<hd::KeyTree>) {
+        // Use `create_test_network` to create a ledger with some initial records.
+        let (ledger, wallets) = t
+            .create_test_network(&[(3, 3)], initial_grants.to_vec(), &mut Instant::now())
+            .await;
+        // Set `block_size` to `1` so we don't have to explicitly flush the ledger after each
+        // transaction submission.
+        ledger.lock().await.set_block_size(1).unwrap();
+        // We don't actually care about the open wallets returned by `create_test_network`, because
+        // the CLI does its own wallet loading. But we do want to get their key streams, so that
+        // the wallets we create through the CLI can deterministically generate the keys that own
+        // the initial records.
+        let key_streams = iter(wallets)
+            .then(|(wallet, _)| async move { wallet.lock().await.backend().key_stream() })
+            .collect::<Vec<_>>()
+            .await;
+        (ledger, key_streams)
+    }
+
+    fn create_wallet(
+        ledger: MockAAPLedger<'static>,
+        key_stream: hd::KeyTree,
+    ) -> (Tee<PipeWriter>, Tee<PipeReader>) {
+        let (io, input, output) = SharedIO::pipe();
+
+        // Run a CLI interface for a wallet in the background.
+        spawn(async move {
+            let args = MockArgs {
+                io,
+                key_stream,
+                ledger,
+            };
+            cli_main::<aap::Ledger, MockCLI>(args).await.unwrap();
+        });
+
+        // Wait for the CLI to start up and then return the input and output pipes.
+        let input = Tee::new(input);
+        let mut output = Tee::new(output);
+        wait_for_prompt(&mut output);
+        (input, output)
+    }
+
+    #[derive(Clone, Debug, Default)]
+    struct MatchResult(HashMap<String, String>);
+
+    impl MatchResult {
+        fn insert(&mut self, capture: String, value: String) {
+            self.0.insert(capture, value);
+        }
+
+        fn get(&self, capture: &str) -> String {
+            self.0.get(capture).unwrap().clone()
+        }
+    }
+
+    /// Read output from a given output stream until hitting a prompt (">"). Each regex in
+    /// `patterns` must match at least one line of output (but not necessarily in order, and not all
+    /// of the output must match a pattern). The patterns are matched against sub-strings of each
+    /// output line, so to match an entire line use `^(pattern)$`.
+    ///
+    /// Named patterns (`(?P<name>pattern)`) in the regexes are added to a MatchResult dictionary,
+    /// which is returned at the end of the operation.
+    fn match_output(output: &mut impl BufRead, patterns: &[impl AsRef<str>]) -> MatchResult {
+        // Read output until we get a prompt or EOF.
+        let mut lines = vec![];
+        let mut line = String::new();
+        while let Ok(n) = output.read_line(&mut line) {
+            if n == 0 || line.trim() == ">" {
+                break;
+            }
+            lines.push(std::mem::take(&mut line));
+        }
+
+        // Try matching each pattern against an output line. Panic if any pattern doesn't match.
+        let mut matches = MatchResult::default();
+        'pattern: for pattern in patterns {
+            let regex = Regex::new(pattern.as_ref()).unwrap();
+            for line in &lines {
+                if let Some(re_match) = regex.captures(line.trim()) {
+                    for capture in regex.capture_names().flatten() {
+                        if let Some(capture_match) = re_match.name(capture) {
+                            matches.insert(
+                                String::from(capture),
+                                String::from(capture_match.as_str()),
+                            );
+                        }
+                    }
+                    continue 'pattern;
+                }
+            }
+
+            panic!(
+                "Pattern `{}' did not match output:\n{}",
+                regex,
+                lines.join("")
+            );
+        }
+
+        matches
+    }
+
+    fn wait_for_prompt(output: &mut impl BufRead) {
+        match_output(output, &Vec::<&str>::new());
+    }
+
+    // A version of `testing::await_transaction` that uses the CLI.
+    fn await_transaction(
+        receipt: &str,
+        sender: (&mut impl Write, &mut impl BufRead),
+        receivers: &mut [(&mut impl Write, &mut impl BufRead)],
+    ) {
+        // Wait for the sender to verify the transaction is complete, and get the index of an event
+        // equal to or later than the last event related to this transaction.
+        writeln!(sender.0, "wait {}", receipt).unwrap();
+        wait_for_prompt(sender.1);
+        writeln!(sender.0, "now").unwrap();
+        let matches = match_output(sender.1, &["(?P<t>.*)"]);
+        let t = matches.get("t");
+
+        // Wait for each receiver to process up to the last relevant event.
+        for receiver in receivers.iter_mut() {
+            writeln!(receiver.0, "sync {}", t).unwrap();
+        }
+        for receiver in receivers.iter_mut() {
+            wait_for_prompt(receiver.1);
+        }
+    }
+
+    #[async_std::test]
+    async fn test_audit_freeze() {
+        let mut t = MockSystem::default();
+        let (ledger, key_streams) = create_network(&mut t, &[1000, 1000, 0]).await;
+
+        // Create three wallet clients: one to mint and audit an asset, one to make an anonymous
+        // transfer, and one to receive an anonymous transfer. We will see if the auditor can
+        // discover the output record of the anonymous transfer, in which it is not a participant.
+        let (mut auditor_input, mut auditor_output) =
+            create_wallet(ledger.clone(), key_streams[0].clone());
+        let (mut sender_input, mut sender_output) =
+            create_wallet(ledger.clone(), key_streams[1].clone());
+        let (mut receiver_input, mut receiver_output) =
+            create_wallet(ledger, key_streams[2].clone());
+
+        // Get the auditor's funded address.
+        writeln!(auditor_input, "gen_key spend scan_from=start wait=true").unwrap();
+        let matches = match_output(&mut auditor_output, &["(?P<addr>ADDR~.*)"]);
+        let auditor_address = matches.get("addr");
+        writeln!(auditor_input, "balance 0").unwrap();
+        match_output(
+            &mut auditor_output,
+            &[format!("{} {}", auditor_address, 1000)],
+        );
+
+        // Get the sender's funded address.
+        writeln!(sender_input, "gen_key spend scan_from=start wait=true").unwrap();
+        let matches = match_output(&mut sender_output, &["(?P<addr>ADDR~.*)"]);
+        let sender_address = matches.get("addr");
+        writeln!(sender_input, "balance 0").unwrap();
+        match_output(
+            &mut sender_output,
+            &[format!("{} {}", sender_address, 1000)],
+        );
+
+        // Get the receiver's (unfunded) address.
+        writeln!(receiver_input, "gen_key spend").unwrap();
+        let matches = match_output(&mut receiver_output, &["(?P<addr>ADDR~.*)"]);
+        let receiver_address = matches.get("addr");
+
+        // Generate an audit key.
+        writeln!(auditor_input, "gen_key audit").unwrap();
+        let matches = match_output(&mut auditor_output, &["(?P<audkey>AUDPUBKEY~.*)"]);
+        let audkey = matches.get("audkey");
+        // Currently we only audit assets that we can freeze, so we need a freeze key.
+        writeln!(auditor_input, "gen_key freeze").unwrap();
+        let matches = match_output(&mut auditor_output, &["(?P<freezekey>FREEZEPUBKEY~.*)"]);
+        let freezekey = matches.get("freezekey");
+        // Define an auditable asset.
+        writeln!(
+            auditor_input,
+            "issue my_asset auditor={} freezer={} trace_amount=true trace_address=true trace_blind=true",
+            audkey, freezekey
+        )
+        .unwrap();
+        wait_for_prompt(&mut auditor_output);
+        // Mint some of the asset on behalf of `sender` (the asset has numeric code 1, since the
+        // native asset is always 0).
+        writeln!(
+            auditor_input,
+            "mint 1 {} {} 1000 1",
+            auditor_address, sender_address
+        )
+        .unwrap();
+        let matches = match_output(&mut auditor_output, &["(?P<txn>TXN~.*)"]);
+        let receipt = matches.get("txn");
+        await_transaction(
+            &receipt,
+            (&mut auditor_input, &mut auditor_output),
+            &mut [(&mut sender_input, &mut sender_output)],
+        );
+        writeln!(sender_input, "balance 1").unwrap();
+        match_output(&mut sender_output, &[format!("{} 1000", sender_address)]);
+
+        // Make an anonymous transfer that doesn't involve the auditor (so we can check that the
+        // auditor nonetheless discovers the details of the transaction).
+        writeln!(
+            sender_input,
+            "transfer 1 {} {} 50 1",
+            sender_address, receiver_address
+        )
+        .unwrap();
+        let matches = match_output(&mut sender_output, &["(?P<txn>TXN~.*)"]);
+        let receipt = matches.get("txn");
+        await_transaction(
+            &receipt,
+            (&mut sender_input, &mut sender_output),
+            &mut [
+                (&mut receiver_input, &mut receiver_output),
+                (&mut auditor_input, &mut auditor_output),
+            ],
+        );
+
+        // Audit the transaction. We should find two unspent records: first the amount-50
+        // transaction output, and second the amount-950 change output. These records have UIDs 5
+        // and 6, because we already have 5 records: 3 initial grants, a mint output, and a mint fee
+        // change record.
+        writeln!(auditor_input, "audit 1").unwrap();
+        match_output(
+            &mut auditor_output,
+            &[
+                "^UID\\s+AMOUNT\\s+FROZEN\\s+OWNER$",
+                format!("^5\\s+50\\s+false\\s+{}$", receiver_address).as_str(),
+                format!("^6\\s+950\\s+false\\s+{}$", sender_address).as_str(),
+            ],
+        );
+        // Filter by account.
+        writeln!(auditor_input, "audit 1 account={}", receiver_address).unwrap();
+        match_output(
+            &mut auditor_output,
+            &["^UID\\s+AMOUNT\\s+FROZEN$", "^5\\s+50\\s+false$"],
+        );
+        writeln!(auditor_input, "audit 1 account={}", sender_address).unwrap();
+        match_output(
+            &mut auditor_output,
+            &["^UID\\s+AMOUNT\\s+FROZEN$", "^6\\s+950\\s+false$"],
+        );
+
+        // If we can see the record openings and we hold the freezer key, we should be able to
+        // freeze them.
+        writeln!(
+            auditor_input,
+            "freeze 1 {} {} 950 1",
+            auditor_address, sender_address
+        )
+        .unwrap();
+        let matches = match_output(&mut auditor_output, &["(?P<txn>TXN~.*)"]);
+        let receipt = matches.get("txn");
+        await_transaction(
+            &receipt,
+            (&mut auditor_input, &mut auditor_output),
+            &mut [(&mut sender_input, &mut sender_output)],
+        );
+        writeln!(auditor_input, "audit 1").unwrap();
+        // Note that the UID changes after freezing, because the freeze consume the unfrozen record
+        // and creates a new frozen one.
+        match_output(
+            &mut auditor_output,
+            &[
+                "^UID\\s+AMOUNT\\s+FROZEN\\s+OWNER$",
+                format!("^5\\s+50\\s+false\\s+{}$", receiver_address).as_str(),
+                format!("^8\\s+950\\s+true\\s+{}$", sender_address).as_str(),
+            ],
+        );
+
+        // Transfers that need the frozen record as an input should now fail.
+        writeln!(
+            sender_input,
+            "transfer 1 {} {} 50 1",
+            sender_address, receiver_address
+        )
+        .unwrap();
+        // Search for error message with a slightly permissive regex to allow the CLI some freedom
+        // in reporting a readable error.
+        match_output(&mut sender_output, &["[Ii]nsufficient.*[Bb]alance"]);
+
+        // Unfreezing the record makes it available again.
+        writeln!(
+            auditor_input,
+            "unfreeze 1 {} {} 950 1",
+            auditor_address, sender_address
+        )
+        .unwrap();
+        let matches = match_output(&mut auditor_output, &["(?P<txn>TXN~.*)"]);
+        let receipt = matches.get("txn");
+        await_transaction(
+            &receipt,
+            (&mut auditor_input, &mut auditor_output),
+            &mut [(&mut sender_input, &mut sender_output)],
+        );
+        writeln!(auditor_input, "audit 1").unwrap();
+        match_output(
+            &mut auditor_output,
+            &[
+                "^UID\\s+AMOUNT\\s+FROZEN\\s+OWNER$",
+                format!("^5\\s+50\\s+false\\s+{}$", receiver_address).as_str(),
+                format!("^10\\s+950\\s+false\\s+{}$", sender_address).as_str(),
+            ],
+        );
+    }
 }

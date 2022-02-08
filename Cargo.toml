@@ -21,6 +21,7 @@ hmac = "0.11.0"
 itertools = "0.10.1"
 lazy_static = "1.4.0"
 mnemonic = "1.0.1"
+pipe = { version = "0.4" }
 proptest = { version = "0.8.7", optional = true }
 rand_chacha = { version = "0.3.1", features = ["serde1"] }
 rpassword = "5.0.1"
@@ -41,7 +42,7 @@ atomic_store = { git = "ssh://git@github.com/SpectrumXYZ/atomicstore.git" }
 commit = { git = "ssh://git@github.com/SpectrumXYZ/commit.git", rev = "f48cd52c59755eade0605111826eef3df6abdcf8" }
 key-set = { git = "ssh://git@github.com/SpectrumXYZ/key-set.git" }
 zerok-macros = { git = "ssh://git@github.com/SpectrumXYZ/zerok-macros.git" }
-jf-aap = { features=["std"], git = "ssh://git@github.com/SpectrumXYZ/jellyfish-apps.git", rev = "8c32d8df3faf511e54ad89fa51627837ebcd8f20" }
+jf-aap = { features=["std"], git = "ssh://git@github.com/SpectrumXYZ/jellyfish-apps.git", rev = "c789791d61b46e69367f07bb375c1ae2cf66e0d9" }
 jf-utils = { features=["std"], git = "ssh://git@github.com/SpectrumXYZ/jellyfish.git" }
 arbitrary-wrappers = { git = "ssh://git@github.com/SpectrumXYZ/arbitrary-wrappers.git" }
 net = { git = "ssh://git@github.com/SpectrumXYZ/net.git" }
@@ -51,6 +52,7 @@ tagged-base64 = { git = "ssh://git@github.com/SpectrumXYZ/tagged-base64.git", br
 
 [dev-dependencies]
 proptest = "0.8.7"
+regex = "1.5.4"
 
 [features]
 testing = ["proptest"]

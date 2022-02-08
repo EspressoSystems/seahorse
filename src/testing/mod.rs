@@ -198,9 +198,8 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         &mut self,
         ledger: Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork, Self::MockStorage>>>,
         initial_grants: Vec<(RecordOpening, u64)>,
-        seed: [u8; 32],
+        key_stream: hd::KeyTree,
         storage: Arc<Mutex<Self::MockStorage>>,
-        key_pair: UserKeyPair,
     ) -> Self::MockBackend;
     async fn create_network(
         &mut self,
@@ -230,7 +229,10 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         let mut users = vec![];
         let mut initial_records = vec![];
         for amount in initial_grants {
-            let key = UserKeyPair::generate(&mut rng);
+            let key_stream = hd::KeyTree::random(&mut rng).unwrap().0;
+            let key = key_stream
+                .derive_sub_tree("user".as_bytes())
+                .derive_user_keypair(&0u64.to_le_bytes());
             if amount > 0 {
                 let ro = RecordOpening::new(
                     &mut rng,
@@ -242,10 +244,10 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
                 let comm = RecordCommitment::from(&ro);
                 let uid = record_merkle_tree.num_leaves();
                 record_merkle_tree.push(comm.to_field_element());
-                users.push((key, vec![(ro.clone(), uid)]));
+                users.push((key_stream, key, vec![(ro.clone(), uid)]));
                 initial_records.push((ro, uid));
             } else {
-                users.push((key, vec![]));
+                users.push((key_stream, key, vec![]));
             }
         }
 
@@ -300,7 +302,7 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         // Create a wallet for each user based on the validator and the per-user information
         // computed above.
         let mut wallets = Vec::new();
-        for (key_pair, initial_grants) in users {
+        for (key_stream, key_pair, initial_grants) in users {
             let mut rng = ChaChaRng::from_rng(&mut rng).unwrap();
             let ledger = ledger.clone();
             let storage = Arc::new(Mutex::new(self.create_storage().await));
@@ -309,15 +311,18 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
             let mut seed = [0u8; 32];
             rng.fill_bytes(&mut seed);
             let mut wallet = Wallet::new(
-                self.create_backend(ledger, initial_grants, seed, storage, key_pair.clone())
+                self.create_backend(ledger, initial_grants, key_stream, storage)
                     .await,
             )
             .await
             .unwrap();
-            wallet
-                .add_user_key(key_pair.clone(), Default::default())
-                .await
-                .unwrap();
+            assert_eq!(
+                wallet
+                    .generate_user_key(Some(EventIndex::default()))
+                    .await
+                    .unwrap(),
+                key_pair.pub_key()
+            );
             // Wait for the wallet to find any records already belonging to this key from the
             // initial grants.
             wallet.await_key_scan(&key_pair.address()).await.unwrap();

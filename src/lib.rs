@@ -2,6 +2,7 @@ pub mod cli;
 pub mod encryption;
 pub mod events;
 pub mod hd;
+mod io;
 pub mod loader;
 pub mod persistence;
 pub mod reader;
@@ -1382,6 +1383,10 @@ impl<'a, L: Ledger> WalletState<'a, L> {
 
             // If the policy lists ourself as the auditor, we will automatically start auditing
             // transactions involving this asset.
+            //
+            // TODO this check should be:
+            //   self.audit_keys.contains_key(asset_definition.policy_ref().auditor_pub_key());
+            // But Hash doesn't work for AuditorPubKey (github.com/SpectrumXYZ/jellyfish-apps/issues/88).
             let audit = self
                 .audit_keys
                 .contains_key(asset_definition.policy_ref().auditor_pub_key());
@@ -1690,18 +1695,18 @@ impl<'a, L: Ledger> WalletState<'a, L> {
         session: &mut WalletSession<'a, L, impl WalletBackend<'a, L>>,
         account: &UserAddress,
         fee: u64,
-        asset: &AssetDefinition,
+        asset: &AssetCode,
         amount: u64,
         owner: UserAddress,
         outputs_frozen: FreezeFlag,
     ) -> Result<(FreezeNote, TransactionInfo<L>), WalletError<L>> {
+        let asset = match self.assets().get(asset) {
+            Some(info) => info.asset.clone(),
+            None => return Err(WalletError::<L>::UndefinedAsset { asset: *asset }),
+        };
         let freeze_key = match self.freeze_keys.get(asset.policy_ref().freezer_pub_key()) {
             Some(key) => key,
-            None => {
-                return Err(WalletError::<L>::AssetNotFreezable {
-                    asset: asset.clone(),
-                });
-            }
+            None => return Err(WalletError::<L>::AssetNotFreezable { asset }),
         };
 
         self.txn_state
@@ -1710,7 +1715,7 @@ impl<'a, L: Ledger> WalletState<'a, L> {
                 freeze_key,
                 &self.proving_keys.freeze,
                 fee,
-                asset,
+                &asset,
                 amount,
                 session.backend.get_public_key(&owner).await?,
                 outputs_frozen,
@@ -2061,6 +2066,17 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
         state.balance(account, asset, FreezeFlag::Unfrozen)
     }
 
+    pub async fn records(&self) -> impl Iterator<Item = RecordInfo> {
+        let WalletSharedState { state, .. } = &*self.mutex.lock().await;
+        state
+            .txn_state
+            .records
+            .iter()
+            .cloned()
+            .collect::<Vec<_>>()
+            .into_iter()
+    }
+
     pub async fn frozen_balance(&self, account: &UserAddress, asset: &AssetCode) -> u64 {
         let WalletSharedState { state, .. } = &*self.mutex.lock().await;
         state.balance(account, asset, FreezeFlag::Frozen)
@@ -2358,7 +2374,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
         &mut self,
         account: &UserAddress,
         fee: u64,
-        asset: &AssetDefinition,
+        asset: &AssetCode,
         amount: u64,
         owner: UserAddress,
     ) -> Result<(FreezeNote, TransactionInfo<L>), WalletError<L>> {
@@ -2380,7 +2396,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
         &mut self,
         account: &UserAddress,
         fee: u64,
-        asset: &AssetDefinition,
+        asset: &AssetCode,
         amount: u64,
         owner: UserAddress,
     ) -> Result<TransactionReceipt<L>, WalletError<L>> {
@@ -2395,7 +2411,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
         &mut self,
         account: &UserAddress,
         fee: u64,
-        asset: &AssetDefinition,
+        asset: &AssetCode,
         amount: u64,
         owner: UserAddress,
     ) -> Result<(FreezeNote, TransactionInfo<L>), WalletError<L>> {
@@ -2417,7 +2433,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
         &mut self,
         account: &UserAddress,
         fee: u64,
-        asset: &AssetDefinition,
+        asset: &AssetCode,
         amount: u64,
         owner: UserAddress,
     ) -> Result<TransactionReceipt<L>, WalletError<L>> {

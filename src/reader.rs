@@ -1,32 +1,44 @@
-use super::WalletError;
+use crate::{io::SharedIO, WalletError};
 use reef::Ledger;
 use rpassword::prompt_password_stdout;
+use std::io::{BufRead, Write};
 
 pub enum Reader {
     Interactive(rustyline::Editor<()>),
-    Automated,
+    Automated(SharedIO),
+}
+
+impl Clone for Reader {
+    fn clone(&self) -> Self {
+        match self {
+            Self::Interactive(_) => Self::interactive(),
+            Self::Automated(io) => Self::automated(io.clone()),
+        }
+    }
 }
 
 impl Reader {
-    pub fn new(interactive: bool) -> Self {
-        if interactive {
-            Self::Interactive(rustyline::Editor::<()>::new())
-        } else {
-            Self::Automated
-        }
+    pub fn interactive() -> Self {
+        Self::Interactive(rustyline::Editor::<()>::new())
     }
 
-    pub fn read_password<L: Ledger>(&self, prompt: &str) -> Result<String, WalletError<L>> {
+    pub fn automated(io: SharedIO) -> Self {
+        Self::Automated(io)
+    }
+
+    pub fn read_password<L: Ledger>(&mut self, prompt: &str) -> Result<String, WalletError<L>> {
         match self {
             Self::Interactive(_) => {
                 prompt_password_stdout(prompt).map_err(|err| WalletError::Failed {
                     msg: err.to_string(),
                 })
             }
-            Self::Automated => {
-                println!("{}", prompt);
+            Self::Automated(io) => {
+                writeln!(io, "{}", prompt).map_err(|err| WalletError::Failed {
+                    msg: err.to_string(),
+                })?;
                 let mut password = String::new();
-                match std::io::stdin().read_line(&mut password) {
+                match io.read_line(&mut password) {
                     Ok(_) => Ok(password),
                     Err(err) => Err(WalletError::Failed {
                         msg: err.to_string(),
@@ -40,10 +52,10 @@ impl Reader {
         let prompt = "> ";
         match self {
             Self::Interactive(editor) => editor.readline(prompt).ok(),
-            Self::Automated => {
-                println!("{}", prompt);
+            Self::Automated(io) => {
+                writeln!(io, "{}", prompt).ok();
                 let mut line = String::new();
-                match std::io::stdin().read_line(&mut line) {
+                match io.read_line(&mut line) {
                     Ok(0) => {
                         // EOF
                         None

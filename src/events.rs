@@ -150,6 +150,12 @@ impl FromStr for EventIndex {
         // separated list of key-value pairs, like `query_service=42`. The result starts as a
         // default EventIndex, and is successively modified according to each key value pair. This
         // allows the fields to be specified in any order, or not at all.
+        //
+        // For convenience, it will also accept the string "start", indicating the all-zero event
+        // index representing the start of all event streams.
+        if s.trim() == "start" {
+            return Ok(Self::default());
+        }
 
         let mut ret = Self::default();
         for kv in s.split(',') {

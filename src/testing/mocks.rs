@@ -1,7 +1,9 @@
+pub use crate::testing::MockLedger;
+
 use crate::{
     events::{EventIndex, EventSource, LedgerEvent},
     hd,
-    testing::{MockEventSource, MockLedger, MockNetwork as _},
+    testing::{MockEventSource, MockNetwork as _},
     txn_builder::{TransactionHistoryEntry, TransactionState},
     CryptoError, RoleKeyPair, WalletBackend, WalletError, WalletState, WalletStorage,
 };
@@ -10,7 +12,7 @@ use async_trait::async_trait;
 use futures::stream::Stream;
 use itertools::izip;
 use jf_aap::{
-    keys::{UserAddress, UserKeyPair, UserPubKey},
+    keys::{UserAddress, UserPubKey},
     proof::UniversalParam,
     structs::{
         AssetCodeSeed, AssetDefinition, Nullifier, ReceiverMemo, RecordCommitment, RecordOpening,
@@ -128,6 +130,56 @@ pub struct MockNetwork<'a> {
     events: MockEventSource<aap::Ledger>,
 }
 
+impl<'a> MockNetwork<'a> {
+    pub fn new(
+        rng: &mut ChaChaRng,
+        proof_crs: ProverKeySet<'a, OrderByOutputs>,
+        records: MerkleTree,
+        initial_grants: Vec<(RecordOpening, u64)>,
+    ) -> Self {
+        let mut network = Self {
+            validator: aap::Validator {
+                now: 0,
+                num_records: initial_grants.len() as u64,
+            },
+            records,
+            nullifiers: Default::default(),
+            committed_blocks: Vec::new(),
+            proving_keys: Arc::new(proof_crs),
+            address_map: HashMap::default(),
+            events: MockEventSource::new(EventSource::QueryService),
+        };
+
+        // Broadcast receiver memos for the records which are included in the tree from the start,
+        // so that clients can access records they have been granted at ledger setup time in a
+        // uniform way.
+        let memo_outputs = initial_grants
+            .into_iter()
+            .map(|(ro, uid)| {
+                let memo = ReceiverMemo::from_ro(rng, &ro, &[]).unwrap();
+                let (comm, merkle_path) = network
+                    .records
+                    .get_leaf(uid)
+                    .expect_ok()
+                    .map(|(_, proof)| {
+                        (
+                            RecordCommitment::from_field_element(proof.leaf.0),
+                            proof.path,
+                        )
+                    })
+                    .unwrap();
+                (memo, comm, uid, merkle_path)
+            })
+            .collect();
+        network.generate_event(LedgerEvent::Memos {
+            outputs: memo_outputs,
+            transaction: None,
+        });
+
+        network
+    }
+}
+
 impl<'a> super::MockNetwork<'a, aap::Ledger> for MockNetwork<'a> {
     fn now(&self) -> EventIndex {
         self.events.now()
@@ -226,6 +278,20 @@ pub struct MockBackend<'a> {
     storage: Arc<Mutex<MockStorage<'a>>>,
     ledger: Arc<Mutex<MockLedger<'a, aap::Ledger, MockNetwork<'a>, MockStorage<'a>>>>,
     key_stream: hd::KeyTree,
+}
+
+impl<'a> MockBackend<'a> {
+    pub fn new(
+        ledger: Arc<Mutex<MockLedger<'a, aap::Ledger, MockNetwork<'a>, MockStorage<'a>>>>,
+        storage: Arc<Mutex<MockStorage<'a>>>,
+        key_stream: hd::KeyTree,
+    ) -> Self {
+        Self {
+            ledger,
+            storage,
+            key_stream,
+        }
+    }
 }
 
 #[async_trait]
@@ -395,46 +461,7 @@ impl<'a> super::SystemUnderTest<'a> for MockSystem {
         initial_grants: Vec<(RecordOpening, u64)>,
     ) -> Self::MockNetwork {
         let mut rng = ChaChaRng::from_seed([42u8; 32]);
-        let mut network = MockNetwork {
-            validator: aap::Validator {
-                now: 0,
-                num_records: initial_grants.len() as u64,
-            },
-            records,
-            nullifiers: Default::default(),
-            committed_blocks: Vec::new(),
-            proving_keys: Arc::new(proof_crs),
-            address_map: HashMap::default(),
-            events: MockEventSource::new(EventSource::QueryService),
-        };
-
-        // Broadcast receiver memos for the records which are included in the tree from the start,
-        // so that clients can access records they have been granted at ledger setup time in a
-        // uniform way.
-        let memo_outputs = initial_grants
-            .into_iter()
-            .map(|(ro, uid)| {
-                let memo = ReceiverMemo::from_ro(&mut rng, &ro, &[]).unwrap();
-                let (comm, merkle_path) = network
-                    .records
-                    .get_leaf(uid)
-                    .expect_ok()
-                    .map(|(_, proof)| {
-                        (
-                            RecordCommitment::from_field_element(proof.leaf.0),
-                            proof.path,
-                        )
-                    })
-                    .unwrap();
-                (memo, comm, uid, merkle_path)
-            })
-            .collect();
-        network.generate_event(LedgerEvent::Memos {
-            outputs: memo_outputs,
-            transaction: None,
-        });
-
-        network
+        MockNetwork::new(&mut rng, proof_crs, records, initial_grants)
     }
 
     async fn create_storage(&mut self) -> Self::MockStorage {
@@ -445,17 +472,10 @@ impl<'a> super::SystemUnderTest<'a> for MockSystem {
         &mut self,
         ledger: Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork, Self::MockStorage>>>,
         _initial_grants: Vec<(RecordOpening, u64)>,
-        seed: [u8; 32],
+        key_stream: hd::KeyTree,
         storage: Arc<Mutex<Self::MockStorage>>,
-        _key_pair: UserKeyPair,
     ) -> Self::MockBackend {
-        MockBackend {
-            ledger,
-            storage,
-            key_stream: hd::KeyTree::random(&mut ChaChaRng::from_seed(seed))
-                .unwrap()
-                .0,
-        }
+        MockBackend::new(ledger, storage, key_stream)
     }
 
     fn universal_param(&self) -> &'a UniversalParam {
