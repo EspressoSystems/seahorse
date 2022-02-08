@@ -48,6 +48,13 @@ pub trait CLI<'a> {
         args: Self::Args,
         loader: &mut impl WalletLoader<Self::Ledger, Meta = LoaderMetadata>,
     ) -> Result<Self::Backend, WalletError<Self::Ledger>>;
+
+    fn extra_commands() -> Vec<Command<'a, Self>>
+    where
+        Self: Sized,
+    {
+        vec![]
+    }
 }
 
 pub trait CLIArgs {
@@ -66,7 +73,7 @@ pub trait CLIArgs {
     fn use_tmp_storage(&self) -> bool;
 }
 
-type Wallet<'a, C> = crate::Wallet<'a, <C as CLI<'a>>::Backend, <C as CLI<'a>>::Ledger>;
+pub type Wallet<'a, C> = crate::Wallet<'a, <C as CLI<'a>>::Backend, <C as CLI<'a>>::Ledger>;
 
 // A REPL command.
 pub struct Command<'a, C: CLI<'a>> {
@@ -84,7 +91,7 @@ pub struct Command<'a, C: CLI<'a>> {
     pub run: CommandFunc<'a, C>,
 }
 
-type CommandFunc<'a, C> = Box<
+pub type CommandFunc<'a, C> = Box<
     dyn Send
         + Sync
         + for<'l> Fn(
@@ -137,13 +144,16 @@ impl<'a, C: CLI<'a>, L: Ledger> CLIInput<'a, C> for TransactionReceipt<L> {
 }
 
 // Convenience macros for panicking if output fails.
+#[macro_export]
 macro_rules! cli_writeln {
     ($($arg:expr),+ $(,)?) => { writeln!($($arg),+).expect("failed to write CLI output") };
 }
+#[macro_export]
 macro_rules! cli_write {
     ($($arg:expr),+ $(,)?) => { write!($($arg),+).expect("failed to write CLI output") };
 }
 
+#[macro_export]
 macro_rules! command {
     ($name:ident,
      $help:expr,
@@ -227,10 +237,17 @@ macro_rules! command {
     };
 }
 
+#[macro_export]
 macro_rules! count {
     () => (0);
     ($x:tt $($xs:tt)*) => (1 + count!($($xs)*));
 }
+
+// Export macros as items of this module (since #[macro_export] puts them at the crate root).
+pub use crate::cli_write;
+pub use crate::cli_writeln;
+pub use crate::command;
+pub use crate::count;
 
 // Types which can be listed in terminal output and parsed from a list index.
 #[async_trait]
@@ -342,7 +359,8 @@ impl<'a, C: CLI<'a>> Listable<'a, C> for AssetCode {
 }
 
 fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
-    vec![
+    let mut commands = C::extra_commands();
+    commands.append(&mut vec![
         command!(
             address,
             "print all public addresses of this wallet",
@@ -819,7 +837,9 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                 }
             }
         ),
-    ]
+    ]);
+
+    commands
 }
 
 async fn print_keys<'a, C: CLI<'a>>(io: &mut SharedIO, wallet: &Wallet<'a, C>) {
@@ -854,7 +874,7 @@ impl<'a, C: CLI<'a>> CLIInput<'a, C> for KeyType {
     }
 }
 
-async fn finish_transaction<'a, C: CLI<'a>>(
+pub async fn finish_transaction<'a, C: CLI<'a>>(
     io: &mut SharedIO,
     wallet: &Wallet<'a, C>,
     result: Result<TransactionReceipt<C::Ledger>, WalletError<C::Ledger>>,

@@ -2,7 +2,7 @@ pub mod cli;
 pub mod encryption;
 pub mod events;
 pub mod hd;
-mod io;
+pub mod io;
 pub mod loader;
 pub mod persistence;
 pub mod reader;
