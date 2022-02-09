@@ -1504,4 +1504,68 @@ pub mod generic_wallet_tests {
             2
         );
     }
+
+    #[async_std::test]
+    pub async fn test_create_with_existing_ledger<'a, T: SystemUnderTest<'a>>() {
+        let mut t = T::default();
+        let mut rng = ChaChaRng::from_seed([127u8; 32]);
+
+        // Initialize a ledger and wallet, and get the owner address.
+        let mut now = Instant::now();
+        let initial_grant = 10;
+        let (ledger, mut wallets) = t
+            .create_test_network(&[(2, 2)], vec![initial_grant], &mut now)
+            .await;
+        ledger.lock().await.set_block_size(1).unwrap();
+
+        let (mut wallet1, address1) = wallets.remove(0);
+        let receipt = wallet1
+            .transfer(&address1, &AssetCode::native(), &[(address1.clone(), 1)], 1)
+            .await
+            .unwrap();
+        await_transaction(&receipt, &wallet1, &[]).await;
+        assert_eq!(
+            wallet1.balance(&address1, &AssetCode::native()).await,
+            initial_grant - 1
+        );
+
+        // A new wallet joins the system after there are already some transactions on the ledger.
+        let storage = t.create_storage().await;
+        let key_stream = hd::KeyTree::random(&mut rng).unwrap().0;
+        let backend = t
+            .create_backend(
+                ledger.clone(),
+                vec![],
+                key_stream,
+                Arc::new(Mutex::new(storage)),
+            )
+            .await;
+        let mut wallet2 = Wallet::new(backend).await.unwrap();
+        wallet2.sync(ledger.lock().await.now()).await.unwrap();
+        let address2 = wallet2.generate_user_key(None).await.unwrap().address();
+
+        // Transfer to the late wallet.
+        let receipt = wallet1
+            .transfer(&address1, &AssetCode::native(), &[(address2.clone(), 2)], 1)
+            .await
+            .unwrap();
+        await_transaction(&receipt, &wallet1, &[&wallet2]).await;
+        assert_eq!(
+            wallet1.balance(&address1, &AssetCode::native()).await,
+            initial_grant - 4
+        );
+        assert_eq!(wallet2.balance(&address2, &AssetCode::native()).await, 2);
+
+        // Transfer back.
+        let receipt = wallet2
+            .transfer(&address2, &AssetCode::native(), &[(address1.clone(), 1)], 1)
+            .await
+            .unwrap();
+        await_transaction(&receipt, &wallet2, &[&wallet1]).await;
+        assert_eq!(
+            wallet1.balance(&address1, &AssetCode::native()).await,
+            initial_grant - 3
+        );
+        assert_eq!(wallet2.balance(&address2, &AssetCode::native()).await, 0);
+    }
 }
