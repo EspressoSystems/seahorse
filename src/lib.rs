@@ -28,7 +28,7 @@ use futures::{
     prelude::*,
     stream::{iter, Stream},
 };
-use jf_aap::{
+use jf_cap::{
     errors::TxnApiError,
     freeze::FreezeNote,
     keys::{
@@ -1742,7 +1742,7 @@ impl<'a, L: Ledger> WalletState<'a, L> {
             nullifier_pfs.push(proof);
         }
 
-        let txn = Transaction::<L>::aap(note, nullifier_pfs);
+        let txn = Transaction::<L>::cap(note, nullifier_pfs);
         self.submit_elaborated_transaction(session, txn, info).await
     }
 
@@ -2130,7 +2130,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
             inputs: xfr_info.inputs,
             outputs: xfr_info.outputs,
         };
-        self.submit_aap(TransactionNote::Transfer(Box::new(xfr_info.note)), txn_info)
+        self.submit_cap(TransactionNote::Transfer(Box::new(xfr_info.note)), txn_info)
             .await
     }
 
@@ -2187,7 +2187,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
             .await
     }
 
-    pub async fn submit_aap(
+    pub async fn submit_cap(
         &mut self,
         txn: TransactionNote,
         info: TransactionInfo<L>,
@@ -2366,7 +2366,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
         let (note, info) = self
             .build_mint(account, fee, asset_code, amount, owner)
             .await?;
-        self.submit_aap(TransactionNote::Mint(Box::new(note)), info)
+        self.submit_cap(TransactionNote::Mint(Box::new(note)), info)
             .await
     }
 
@@ -2403,7 +2403,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
         let (note, info) = self
             .build_freeze(account, fee, asset, amount, owner)
             .await?;
-        self.submit_aap(TransactionNote::Freeze(Box::new(note)), info)
+        self.submit_cap(TransactionNote::Freeze(Box::new(note)), info)
             .await
     }
 
@@ -2440,7 +2440,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
         let (note, info) = self
             .build_unfreeze(account, fee, asset, amount, owner)
             .await?;
-        self.submit_aap(TransactionNote::Freeze(Box::new(note)), info)
+        self.submit_cap(TransactionNote::Freeze(Box::new(note)), info)
             .await
     }
 

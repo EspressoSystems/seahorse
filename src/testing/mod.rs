@@ -11,7 +11,7 @@
 use super::*;
 use async_std::sync::{Arc, Mutex};
 use futures::channel::mpsc;
-use jf_aap::{proof::UniversalParam, MerkleTree, TransactionVerifyingKey};
+use jf_cap::{proof::UniversalParam, MerkleTree, TransactionVerifyingKey};
 use key_set::{KeySet, OrderByOutputs, ProverKeySet, VerifierKeySet};
 use rand_chacha::rand_core::RngCore;
 use std::collections::BTreeMap;
@@ -262,7 +262,7 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         let mut xfr_prove_keys = vec![];
         let mut xfr_verif_keys = vec![];
         for (num_inputs, num_outputs) in xfr_sizes {
-            let (xfr_prove_key, xfr_verif_key, _) = jf_aap::proof::transfer::preprocess(
+            let (xfr_prove_key, xfr_verif_key, _) = jf_cap::proof::transfer::preprocess(
                 universal_param,
                 *num_inputs,
                 *num_outputs,
@@ -273,10 +273,10 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
             xfr_verif_keys.push(TransactionVerifyingKey::Transfer(xfr_verif_key));
         }
         let (mint_prove_key, mint_verif_key, _) =
-            jf_aap::proof::mint::preprocess(universal_param, Self::Ledger::merkle_height())
+            jf_cap::proof::mint::preprocess(universal_param, Self::Ledger::merkle_height())
                 .unwrap();
         let (freeze_prove_key, freeze_verif_key, _) =
-            jf_aap::proof::freeze::preprocess(universal_param, 2, Self::Ledger::merkle_height())
+            jf_cap::proof::freeze::preprocess(universal_param, 2, Self::Ledger::merkle_height())
                 .unwrap();
         let ledger = Arc::new(Mutex::new(MockLedger::new(
             self.create_network(
