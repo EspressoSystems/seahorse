@@ -329,7 +329,7 @@ impl<'a> WalletBackend<'a, aap::Ledger> for MockBackend<'a> {
                     record_mt,
                     merkle_leaf_to_forget,
 
-                    now: Default::default(),
+                    now: network.now(),
                     transactions: Default::default(),
                 },
                 key_state: Default::default(),
