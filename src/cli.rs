@@ -1021,6 +1021,7 @@ mod test {
         hd,
         io::Tee,
         testing::{
+            cli_match::*,
             mocks::{MockBackend, MockLedger, MockNetwork, MockStorage, MockSystem},
             SystemUnderTest,
         },
@@ -1032,8 +1033,6 @@ mod test {
     use futures::stream::{iter, StreamExt};
     use pipe::{PipeReader, PipeWriter};
     use reef::cap;
-    use regex::Regex;
-    use std::io::BufRead;
     use std::time::Instant;
 
     type MockCapLedger<'a> =
@@ -1134,92 +1133,6 @@ mod test {
         let mut output = Tee::new(output);
         wait_for_prompt(&mut output);
         (input, output)
-    }
-
-    #[derive(Clone, Debug, Default)]
-    struct MatchResult(HashMap<String, String>);
-
-    impl MatchResult {
-        fn insert(&mut self, capture: String, value: String) {
-            self.0.insert(capture, value);
-        }
-
-        fn get(&self, capture: &str) -> String {
-            self.0.get(capture).unwrap().clone()
-        }
-    }
-
-    /// Read output from a given output stream until hitting a prompt (">"). Each regex in
-    /// `patterns` must match at least one line of output (but not necessarily in order, and not all
-    /// of the output must match a pattern). The patterns are matched against sub-strings of each
-    /// output line, so to match an entire line use `^(pattern)$`.
-    ///
-    /// Named patterns (`(?P<name>pattern)`) in the regexes are added to a MatchResult dictionary,
-    /// which is returned at the end of the operation.
-    fn match_output(output: &mut impl BufRead, patterns: &[impl AsRef<str>]) -> MatchResult {
-        // Read output until we get a prompt or EOF.
-        let mut lines = vec![];
-        let mut line = String::new();
-        while let Ok(n) = output.read_line(&mut line) {
-            if n == 0 || line.trim() == ">" {
-                break;
-            }
-            lines.push(std::mem::take(&mut line));
-        }
-
-        // Try matching each pattern against an output line. Panic if any pattern doesn't match.
-        let mut matches = MatchResult::default();
-        'pattern: for pattern in patterns {
-            let regex = Regex::new(pattern.as_ref()).unwrap();
-            for line in &lines {
-                if let Some(re_match) = regex.captures(line.trim()) {
-                    for capture in regex.capture_names().flatten() {
-                        if let Some(capture_match) = re_match.name(capture) {
-                            matches.insert(
-                                String::from(capture),
-                                String::from(capture_match.as_str()),
-                            );
-                        }
-                    }
-                    continue 'pattern;
-                }
-            }
-
-            panic!(
-                "Pattern `{}' did not match output:\n{}",
-                regex,
-                lines.join("")
-            );
-        }
-
-        matches
-    }
-
-    fn wait_for_prompt(output: &mut impl BufRead) {
-        match_output(output, &Vec::<&str>::new());
-    }
-
-    // A version of `testing::await_transaction` that uses the CLI.
-    fn await_transaction(
-        receipt: &str,
-        sender: (&mut impl Write, &mut impl BufRead),
-        receivers: &mut [(&mut impl Write, &mut impl BufRead)],
-    ) {
-        // Wait for the sender to verify the transaction is complete, and get the index of an event
-        // equal to or later than the last event related to this transaction.
-        writeln!(sender.0, "wait {}", receipt).unwrap();
-        wait_for_prompt(sender.1);
-        writeln!(sender.0, "now").unwrap();
-        let matches = match_output(sender.1, &["(?P<t>.*)"]);
-        let t = matches.get("t");
-
-        // Wait for each receiver to process up to the last relevant event.
-        for receiver in receivers.iter_mut() {
-            writeln!(receiver.0, "sync {}", t).unwrap();
-        }
-        for receiver in receivers.iter_mut() {
-            wait_for_prompt(receiver.1);
-        }
     }
 
     #[async_std::test]

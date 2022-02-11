@@ -24,6 +24,7 @@ mnemonic = "1.0.1"
 pipe = { version = "0.4" }
 proptest = { version = "0.8.7", optional = true }
 rand_chacha = { version = "0.3.1", features = ["serde1"] }
+regex = "1.5.4"
 rpassword = "5.0.1"
 rust-argon2 = "0.8.3"
 rustyline = "9.0.0"
@@ -52,7 +53,6 @@ tagged-base64 = { git = "ssh://git@github.com/SpectrumXYZ/tagged-base64.git", br
 
 [dev-dependencies]
 proptest = "0.8.7"
-regex = "1.5.4"
 
 [features]
 testing = ["proptest"]

@@ -517,4 +517,5 @@ pub async fn await_transaction<
 #[macro_use]
 pub mod tests;
 pub use tests::generic_wallet_tests;
+pub mod cli_match;
 pub mod mocks;
