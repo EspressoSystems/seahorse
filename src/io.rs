@@ -92,7 +92,7 @@ pub struct Tee<S> {
 }
 
 impl<S> Tee<S> {
-    #[cfg(test)]
+    #[cfg(any(test, feature = "testing"))]
     pub fn new(stream: S) -> Self {
         Self { stream }
     }
