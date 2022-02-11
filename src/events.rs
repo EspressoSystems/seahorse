@@ -1,5 +1,5 @@
 use arbitrary::Arbitrary;
-use jf_aap::{
+use jf_cap::{
     structs::{ReceiverMemo, RecordCommitment},
     MerklePath,
 };

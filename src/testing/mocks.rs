@@ -11,7 +11,7 @@ use async_std::sync::{Arc, Mutex, MutexGuard};
 use async_trait::async_trait;
 use futures::stream::Stream;
 use itertools::izip;
-use jf_aap::{
+use jf_cap::{
     keys::{UserAddress, UserPubKey},
     proof::UniversalParam,
     structs::{
@@ -22,32 +22,32 @@ use jf_aap::{
 use key_set::{OrderByOutputs, ProverKeySet, VerifierKeySet};
 use lazy_static::lazy_static;
 use rand_chacha::{rand_core::SeedableRng, ChaChaRng};
-use reef::{aap, traits::Ledger as _, traits::Transaction as _, traits::Validator as _};
+use reef::{cap, traits::Ledger as _, traits::Transaction as _, traits::Validator as _};
 use snafu::ResultExt;
 use std::collections::{HashMap, HashSet};
 use std::pin::Pin;
 
 #[derive(Clone, Debug, Default)]
 pub struct MockStorage<'a> {
-    committed: Option<WalletState<'a, aap::Ledger>>,
-    working: Option<WalletState<'a, aap::Ledger>>,
-    txn_history: Vec<TransactionHistoryEntry<aap::Ledger>>,
+    committed: Option<WalletState<'a, cap::Ledger>>,
+    working: Option<WalletState<'a, cap::Ledger>>,
+    txn_history: Vec<TransactionHistoryEntry<cap::Ledger>>,
 }
 
 #[async_trait]
-impl<'a> WalletStorage<'a, aap::Ledger> for MockStorage<'a> {
+impl<'a> WalletStorage<'a, cap::Ledger> for MockStorage<'a> {
     fn exists(&self) -> bool {
         self.committed.is_some()
     }
 
-    async fn load(&mut self) -> Result<WalletState<'a, aap::Ledger>, WalletError<aap::Ledger>> {
+    async fn load(&mut self) -> Result<WalletState<'a, cap::Ledger>, WalletError<cap::Ledger>> {
         Ok(self.committed.as_ref().unwrap().clone())
     }
 
     async fn store_snapshot(
         &mut self,
-        state: &WalletState<'a, aap::Ledger>,
-    ) -> Result<(), WalletError<aap::Ledger>> {
+        state: &WalletState<'a, cap::Ledger>,
+    ) -> Result<(), WalletError<cap::Ledger>> {
         if let Some(working) = &mut self.working {
             working.txn_state = state.txn_state.clone();
             working.key_scans = state.key_scans.clone();
@@ -59,14 +59,14 @@ impl<'a> WalletStorage<'a, aap::Ledger> for MockStorage<'a> {
     async fn store_auditable_asset(
         &mut self,
         asset: &AssetDefinition,
-    ) -> Result<(), WalletError<aap::Ledger>> {
+    ) -> Result<(), WalletError<cap::Ledger>> {
         if let Some(working) = &mut self.working {
             working.auditable_assets.insert(asset.code, asset.clone());
         }
         Ok(())
     }
 
-    async fn store_key(&mut self, key: &RoleKeyPair) -> Result<(), WalletError<aap::Ledger>> {
+    async fn store_key(&mut self, key: &RoleKeyPair) -> Result<(), WalletError<cap::Ledger>> {
         if let Some(working) = &mut self.working {
             match key {
                 RoleKeyPair::Auditor(key) => {
@@ -88,7 +88,7 @@ impl<'a> WalletStorage<'a, aap::Ledger> for MockStorage<'a> {
         asset: &AssetDefinition,
         seed: AssetCodeSeed,
         desc: &[u8],
-    ) -> Result<(), WalletError<aap::Ledger>> {
+    ) -> Result<(), WalletError<cap::Ledger>> {
         if let Some(working) = &mut self.working {
             working
                 .defined_assets
@@ -99,15 +99,15 @@ impl<'a> WalletStorage<'a, aap::Ledger> for MockStorage<'a> {
 
     async fn store_transaction(
         &mut self,
-        txn: TransactionHistoryEntry<aap::Ledger>,
-    ) -> Result<(), WalletError<aap::Ledger>> {
+        txn: TransactionHistoryEntry<cap::Ledger>,
+    ) -> Result<(), WalletError<cap::Ledger>> {
         self.txn_history.push(txn);
         Ok(())
     }
 
     async fn transaction_history(
         &mut self,
-    ) -> Result<Vec<TransactionHistoryEntry<aap::Ledger>>, WalletError<aap::Ledger>> {
+    ) -> Result<Vec<TransactionHistoryEntry<cap::Ledger>>, WalletError<cap::Ledger>> {
         Ok(self.txn_history.clone())
     }
 
@@ -121,13 +121,13 @@ impl<'a> WalletStorage<'a, aap::Ledger> for MockStorage<'a> {
 }
 
 pub struct MockNetwork<'a> {
-    validator: aap::Validator,
+    validator: cap::Validator,
     nullifiers: HashSet<Nullifier>,
     records: MerkleTree,
-    committed_blocks: Vec<(aap::Block, Vec<Vec<u64>>)>,
+    committed_blocks: Vec<(cap::Block, Vec<Vec<u64>>)>,
     proving_keys: Arc<ProverKeySet<'a, key_set::OrderByOutputs>>,
     address_map: HashMap<UserAddress, UserPubKey>,
-    events: MockEventSource<aap::Ledger>,
+    events: MockEventSource<cap::Ledger>,
 }
 
 impl<'a> MockNetwork<'a> {
@@ -138,7 +138,7 @@ impl<'a> MockNetwork<'a> {
         initial_grants: Vec<(RecordOpening, u64)>,
     ) -> Self {
         let mut network = Self {
-            validator: aap::Validator {
+            validator: cap::Validator {
                 now: 0,
                 num_records: initial_grants.len() as u64,
             },
@@ -180,12 +180,12 @@ impl<'a> MockNetwork<'a> {
     }
 }
 
-impl<'a> super::MockNetwork<'a, aap::Ledger> for MockNetwork<'a> {
+impl<'a> super::MockNetwork<'a, cap::Ledger> for MockNetwork<'a> {
     fn now(&self) -> EventIndex {
         self.events.now()
     }
 
-    fn submit(&mut self, block: aap::Block) -> Result<(), WalletError<aap::Ledger>> {
+    fn submit(&mut self, block: cap::Block) -> Result<(), WalletError<cap::Ledger>> {
         match self.validator.validate_and_apply(block.clone()) {
             Ok(mut uids) => {
                 // Add nullifiers
@@ -227,7 +227,7 @@ impl<'a> super::MockNetwork<'a, aap::Ledger> for MockNetwork<'a> {
         txn_id: u64,
         memos: Vec<ReceiverMemo>,
         sig: Signature,
-    ) -> Result<(), WalletError<aap::Ledger>> {
+    ) -> Result<(), WalletError<cap::Ledger>> {
         let (block, block_uids) = &self.committed_blocks[block_id as usize];
         let txn = &block[txn_id as usize];
         let comms = txn.output_commitments();
@@ -247,7 +247,7 @@ impl<'a> super::MockNetwork<'a, aap::Ledger> for MockNetwork<'a> {
                     .1
             })
             .collect::<Vec<_>>();
-        self.generate_event(LedgerEvent::<aap::Ledger>::Memos {
+        self.generate_event(LedgerEvent::<cap::Ledger>::Memos {
             outputs: izip!(memos, comms, uids, merkle_paths).collect(),
             transaction: Some((block_id, txn_id)),
         });
@@ -259,7 +259,7 @@ impl<'a> super::MockNetwork<'a, aap::Ledger> for MockNetwork<'a> {
         EventSource::QueryService
     }
 
-    fn generate_event(&mut self, e: LedgerEvent<aap::Ledger>) {
+    fn generate_event(&mut self, e: LedgerEvent<cap::Ledger>) {
         println!(
             "generating event {}: {}",
             self.now(),
@@ -276,13 +276,13 @@ impl<'a> super::MockNetwork<'a, aap::Ledger> for MockNetwork<'a> {
 #[derive(Clone)]
 pub struct MockBackend<'a> {
     storage: Arc<Mutex<MockStorage<'a>>>,
-    ledger: Arc<Mutex<MockLedger<'a, aap::Ledger, MockNetwork<'a>, MockStorage<'a>>>>,
+    ledger: Arc<Mutex<MockLedger<'a, cap::Ledger, MockNetwork<'a>, MockStorage<'a>>>>,
     key_stream: hd::KeyTree,
 }
 
 impl<'a> MockBackend<'a> {
     pub fn new(
-        ledger: Arc<Mutex<MockLedger<'a, aap::Ledger, MockNetwork<'a>, MockStorage<'a>>>>,
+        ledger: Arc<Mutex<MockLedger<'a, cap::Ledger, MockNetwork<'a>, MockStorage<'a>>>>,
         storage: Arc<Mutex<MockStorage<'a>>>,
         key_stream: hd::KeyTree,
     ) -> Self {
@@ -295,15 +295,15 @@ impl<'a> MockBackend<'a> {
 }
 
 #[async_trait]
-impl<'a> WalletBackend<'a, aap::Ledger> for MockBackend<'a> {
-    type EventStream = Pin<Box<dyn Stream<Item = (LedgerEvent<aap::Ledger>, EventSource)> + Send>>;
+impl<'a> WalletBackend<'a, cap::Ledger> for MockBackend<'a> {
+    type EventStream = Pin<Box<dyn Stream<Item = (LedgerEvent<cap::Ledger>, EventSource)> + Send>>;
     type Storage = MockStorage<'a>;
 
     async fn storage<'l>(&'l mut self) -> MutexGuard<'l, Self::Storage> {
         self.storage.lock().await
     }
 
-    async fn create(&mut self) -> Result<WalletState<'a, aap::Ledger>, WalletError<aap::Ledger>> {
+    async fn create(&mut self) -> Result<WalletState<'a, cap::Ledger>, WalletError<cap::Ledger>> {
         let state = {
             let mut ledger = self.ledger.lock().await;
             let network = ledger.network();
@@ -329,7 +329,7 @@ impl<'a> WalletBackend<'a, aap::Ledger> for MockBackend<'a> {
                     record_mt,
                     merkle_leaf_to_forget,
 
-                    now: Default::default(),
+                    now: network.now(),
                     transactions: Default::default(),
                 },
                 key_state: Default::default(),
@@ -362,11 +362,11 @@ impl<'a> WalletBackend<'a, aap::Ledger> for MockBackend<'a> {
     async fn get_public_key(
         &self,
         address: &UserAddress,
-    ) -> Result<UserPubKey, WalletError<aap::Ledger>> {
+    ) -> Result<UserPubKey, WalletError<cap::Ledger>> {
         let mut ledger = self.ledger.lock().await;
         match ledger.network().address_map.get(address) {
             Some(key) => Ok(key.clone()),
-            None => Err(WalletError::<aap::Ledger>::InvalidAddress {
+            None => Err(WalletError::<cap::Ledger>::InvalidAddress {
                 address: address.clone(),
             }),
         }
@@ -374,9 +374,9 @@ impl<'a> WalletBackend<'a, aap::Ledger> for MockBackend<'a> {
 
     async fn get_nullifier_proof(
         &self,
-        _set: &mut aap::NullifierSet,
+        _set: &mut cap::NullifierSet,
         nullifier: Nullifier,
-    ) -> Result<(bool, ()), WalletError<aap::Ledger>> {
+    ) -> Result<(bool, ()), WalletError<cap::Ledger>> {
         let mut ledger = self.ledger.lock().await;
         Ok((ledger.network().nullifiers.contains(&nullifier), ()))
     }
@@ -385,13 +385,13 @@ impl<'a> WalletBackend<'a, aap::Ledger> for MockBackend<'a> {
         &self,
         block_id: u64,
         txn_id: u64,
-    ) -> Result<aap::Transaction, WalletError<aap::Ledger>> {
+    ) -> Result<cap::Transaction, WalletError<cap::Ledger>> {
         let mut ledger = self.ledger.lock().await;
         let network = ledger.network();
         let block = &network
             .committed_blocks
             .get(block_id as usize)
-            .ok_or_else(|| WalletError::<aap::Ledger>::Failed {
+            .ok_or_else(|| WalletError::<cap::Ledger>::Failed {
                 msg: format!(
                     "invalid block id {}/{}",
                     block_id,
@@ -401,7 +401,7 @@ impl<'a> WalletBackend<'a, aap::Ledger> for MockBackend<'a> {
             .0;
 
         if txn_id as usize >= block.len() {
-            return Err(WalletError::<aap::Ledger>::Failed {
+            return Err(WalletError::<cap::Ledger>::Failed {
                 msg: format!(
                     "invalid transaction id {}/{} for block {}",
                     txn_id,
@@ -416,7 +416,7 @@ impl<'a> WalletBackend<'a, aap::Ledger> for MockBackend<'a> {
     async fn register_user_key(
         &mut self,
         pub_key: &UserPubKey,
-    ) -> Result<(), WalletError<aap::Ledger>> {
+    ) -> Result<(), WalletError<cap::Ledger>> {
         let mut ledger = self.ledger.lock().await;
         ledger
             .network()
@@ -425,7 +425,7 @@ impl<'a> WalletBackend<'a, aap::Ledger> for MockBackend<'a> {
         Ok(())
     }
 
-    async fn submit(&mut self, txn: aap::Transaction) -> Result<(), WalletError<aap::Ledger>> {
+    async fn submit(&mut self, txn: cap::Transaction) -> Result<(), WalletError<cap::Ledger>> {
         self.ledger.lock().await.submit(txn)
     }
 
@@ -435,7 +435,7 @@ impl<'a> WalletBackend<'a, aap::Ledger> for MockBackend<'a> {
         txn_id: u64,
         memos: Vec<ReceiverMemo>,
         sig: Signature,
-    ) -> Result<(), WalletError<aap::Ledger>> {
+    ) -> Result<(), WalletError<cap::Ledger>> {
         self.ledger
             .lock()
             .await
@@ -448,7 +448,7 @@ pub struct MockSystem;
 
 #[async_trait]
 impl<'a> super::SystemUnderTest<'a> for MockSystem {
-    type Ledger = aap::Ledger;
+    type Ledger = cap::Ledger;
     type MockBackend = MockBackend<'a>;
     type MockNetwork = MockNetwork<'a>;
     type MockStorage = MockStorage<'a>;
@@ -486,7 +486,7 @@ impl<'a> super::SystemUnderTest<'a> for MockSystem {
 lazy_static! {
     static ref UNIVERSAL_PARAM: UniversalParam = universal_param::get(
         &mut ChaChaRng::from_seed([1u8; 32]),
-        aap::Ledger::merkle_height()
+        cap::Ledger::merkle_height()
     );
 }
 

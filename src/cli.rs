@@ -1,5 +1,5 @@
 ////////////////////////////////////////////////////////////////////////////////
-// The generic AAP Wallet Frontend
+// The generic cap Wallet Frontend
 //
 // For now, this "frontend" is simply a comand-line read-eval-print loop which
 // allows the user to enter commands for a wallet interactively.
@@ -17,7 +17,7 @@ use async_std::task::block_on;
 use async_trait::async_trait;
 use fmt::{Display, Formatter};
 use futures::future::BoxFuture;
-use jf_aap::{
+use jf_cap::{
     keys::{AuditorKeyPair, AuditorPubKey, FreezerKeyPair, FreezerPubKey, UserKeyPair},
     proof::UniversalParam,
     structs::{
@@ -1126,16 +1126,16 @@ mod test {
     };
     use futures::stream::{iter, StreamExt};
     use pipe::{PipeReader, PipeWriter};
-    use reef::aap;
+    use reef::cap;
     use std::time::Instant;
 
-    type MockAAPLedger<'a> =
-        Arc<Mutex<MockLedger<'a, aap::Ledger, MockNetwork<'a>, MockStorage<'a>>>>;
+    type MockCapLedger<'a> =
+        Arc<Mutex<MockLedger<'a, cap::Ledger, MockNetwork<'a>, MockStorage<'a>>>>;
 
     struct MockArgs<'a> {
         io: SharedIO,
         key_stream: hd::KeyTree,
-        ledger: MockAAPLedger<'a>,
+        ledger: MockCapLedger<'a>,
     }
 
     impl<'a> CLIArgs for MockArgs<'a> {
@@ -1167,7 +1167,7 @@ mod test {
     struct MockCLI;
 
     impl<'a> CLI<'a> for MockCLI {
-        type Ledger = aap::Ledger;
+        type Ledger = cap::Ledger;
         type Backend = MockBackend<'a>;
         type Args = MockArgs<'a>;
 
@@ -1187,7 +1187,7 @@ mod test {
     async fn create_network<'a>(
         t: &mut MockSystem,
         initial_grants: &[u64],
-    ) -> (MockAAPLedger<'a>, Vec<hd::KeyTree>) {
+    ) -> (MockCapLedger<'a>, Vec<hd::KeyTree>) {
         // Use `create_test_network` to create a ledger with some initial records.
         let (ledger, wallets) = t
             .create_test_network(&[(3, 3)], initial_grants.to_vec(), &mut Instant::now())
@@ -1207,7 +1207,7 @@ mod test {
     }
 
     fn create_wallet(
-        ledger: MockAAPLedger<'static>,
+        ledger: MockCapLedger<'static>,
         key_stream: hd::KeyTree,
     ) -> (Tee<PipeWriter>, Tee<PipeReader>) {
         let (io, input, output) = SharedIO::pipe();
@@ -1219,7 +1219,7 @@ mod test {
                 key_stream,
                 ledger,
             };
-            cli_main::<aap::Ledger, MockCLI>(args).await.unwrap();
+            cli_main::<cap::Ledger, MockCLI>(args).await.unwrap();
         });
 
         // Wait for the CLI to start up and then return the input and output pipes.
