@@ -3,7 +3,7 @@ use arbitrary::{Arbitrary, Unstructured};
 use arbitrary_wrappers::*;
 use ark_serialize::*;
 use chrono::{DateTime, Local};
-use jf_aap::{
+use jf_cap::{
     errors::TxnApiError,
     freeze::{FreezeNote, FreezeNoteInput},
     keys::{AuditorPubKey, FreezerKeyPair, FreezerPubKey, UserAddress, UserKeyPair, UserPubKey},
@@ -22,7 +22,7 @@ use jf_utils::tagged_blob;
 use key_set::KeySet;
 use rand_chacha::ChaChaRng;
 #[cfg(test)]
-use reef::aap;
+use reef::cap;
 use reef::{
     traits::{Ledger, Transaction as _, TransactionKind as _, Validator as _},
     types::*,
@@ -390,7 +390,7 @@ impl TransactionStatus {
     }
 }
 
-#[ser_test(arbitrary, types(aap::Ledger))]
+#[ser_test(arbitrary, types(cap::Ledger))]
 #[tagged_blob("TXN")]
 #[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
 pub struct TransactionReceipt<L: Ledger> {
@@ -420,7 +420,7 @@ where
     }
 }
 
-#[ser_test(arbitrary, types(aap::Ledger), ark(false))]
+#[ser_test(arbitrary, types(cap::Ledger), ark(false))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(bound = "")]
 pub struct PendingTransaction<L: Ledger> {
@@ -460,7 +460,7 @@ impl<L: Ledger> PendingTransaction<L> {
     }
 }
 
-#[ser_test(arbitrary, types(aap::Ledger), ark(false))]
+#[ser_test(arbitrary, types(cap::Ledger), ark(false))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(bound = "")]
 pub struct TransactionAwaitingMemos<L: Ledger> {
@@ -490,7 +490,7 @@ where
 
 // Serialization intermediate for TransactionDatabase, which eliminates the redundancy of the
 // in-memory indices in TransactionDatabase.
-#[ser_test(arbitrary, types(aap::Ledger), ark(false))]
+#[ser_test(arbitrary, types(cap::Ledger), ark(false))]
 #[derive(Debug, Default, Serialize, Deserialize)]
 #[serde(bound = "")]
 struct TransactionStorage<L: Ledger> {
@@ -517,7 +517,7 @@ where
     }
 }
 
-#[ser_test(arbitrary, types(aap::Ledger))]
+#[ser_test(arbitrary, types(cap::Ledger))]
 #[tagged_blob("TXUID")]
 #[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
 pub struct TransactionUID<L: Ledger>(pub TransactionHash<L>);
@@ -545,7 +545,7 @@ where
     }
 }
 
-#[ser_test(arbitrary, types(aap::Ledger), ark(false))]
+#[ser_test(arbitrary, types(cap::Ledger), ark(false))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(from = "TransactionStorage<L>", into = "TransactionStorage<L>")]
 #[serde(bound = "")]
@@ -771,7 +771,7 @@ impl<L: Ledger> PartialEq<Self> for TransactionHistoryEntry<L> {
 
 // Additional information about a transaction not included in the note, needed to submit it and
 // track it after submission..
-#[ser_test(arbitrary, types(aap::Ledger), ark(false))]
+#[ser_test(arbitrary, types(cap::Ledger), ark(false))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct TransactionInfo<L: Ledger> {
@@ -859,9 +859,9 @@ pub struct TransferSpec<'a> {
 // (block_id, txn_id, [(uid, remember)])
 pub type CommittedTxn<'a> = (u64, u64, &'a mut [(u64, bool)]);
 // a never expired target
-pub const UNEXPIRED_VALID_UNTIL: u64 = 2u64.pow(jf_aap::constants::MAX_TIMESTAMP_LEN as u32) - 1;
+pub const UNEXPIRED_VALID_UNTIL: u64 = 2u64.pow(jf_cap::constants::MAX_TIMESTAMP_LEN as u32) - 1;
 
-#[ser_test(arbitrary, types(aap::Ledger), ark(false))]
+#[ser_test(arbitrary, types(cap::Ledger), ark(false))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct TransactionState<L: Ledger> {
@@ -1305,7 +1305,7 @@ impl<L: Ledger> TransactionState<L> {
             .map(|r| ReceiverMemo::from_ro(rng, r, &[]))
             .collect::<Result<Vec<_>, _>>()
             .unwrap();
-        let (note, sig_keypair) = jf_aap::mint::MintNote::generate(
+        let (note, sig_keypair) = jf_cap::mint::MintNote::generate(
             rng,
             mint_record.clone(),
             *seed,

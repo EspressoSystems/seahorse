@@ -11,7 +11,7 @@ use atomic_store::{
     load_store::{BincodeLoadStore, LoadStore},
     AppendLog, AtomicStore, AtomicStoreLoader, RollingLog,
 };
-use jf_aap::structs::{AssetCodeSeed, AssetDefinition};
+use jf_cap::structs::{AssetCodeSeed, AssetDefinition};
 use key_set::{OrderByOutputs, ProverKeySet};
 use rand_chacha::{rand_core::SeedableRng, ChaChaRng};
 use reef::*;
@@ -61,7 +61,7 @@ mod serde_ark_unchecked {
 }
 
 // Serialization intermediate for the dynamic part of a WalletState.
-#[ser_test(arbitrary, types(aap::Ledger), ark(false))]
+#[ser_test(arbitrary, types(cap::Ledger), ark(false))]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(bound = "")]
 struct WalletSnapshot<L: Ledger> {
@@ -511,7 +511,7 @@ mod tests {
     };
     use chrono::Local;
     use commit::Commitment;
-    use jf_aap::{
+    use jf_cap::{
         keys::{AuditorKeyPair, FreezerKeyPair, UserKeyPair},
         sign_receiver_memos,
         structs::{AssetCode, FreezeFlag, ReceiverMemo, RecordCommitment, RecordOpening},
@@ -529,9 +529,9 @@ mod tests {
     use tempdir::TempDir;
 
     lazy_static! {
-        static ref UNIVERSAL_PARAM: jf_aap::proof::UniversalParam = universal_param::get(
+        static ref UNIVERSAL_PARAM: jf_cap::proof::UniversalParam = universal_param::get(
             &mut ChaChaRng::from_seed([0x8au8; 32]),
-            aap::Ledger::merkle_height()
+            cap::Ledger::merkle_height()
         );
     }
 
@@ -582,10 +582,10 @@ mod tests {
         (memos, sig)
     }
 
-    fn random_txn_hash(rng: &mut ChaChaRng) -> Commitment<aap::Transaction> {
+    fn random_txn_hash(rng: &mut ChaChaRng) -> Commitment<cap::Transaction> {
         let mut hash = [0; 64];
         rng.fill_bytes(&mut hash);
-        commit::RawCommitmentBuilder::<aap::Transaction>::new("random_txn_hash")
+        commit::RawCommitmentBuilder::<cap::Transaction>::new("random_txn_hash")
             .fixed_size_bytes(&hash)
             .finalize()
     }
@@ -593,7 +593,7 @@ mod tests {
     async fn get_test_state(
         name: &str,
     ) -> (
-        WalletState<'static, aap::Ledger>,
+        WalletState<'static, cap::Ledger>,
         MockWalletLoader,
         ChaChaRng,
     ) {
@@ -606,24 +606,24 @@ mod tests {
         let mut xfr_prove_keys = vec![];
         let mut xfr_verif_keys = vec![];
         for (num_inputs, num_outputs) in xfr_sizes {
-            let (xfr_prove_key, xfr_verif_key, _) = jf_aap::proof::transfer::preprocess(
+            let (xfr_prove_key, xfr_verif_key, _) = jf_cap::proof::transfer::preprocess(
                 &*UNIVERSAL_PARAM,
                 num_inputs,
                 num_outputs,
-                aap::Ledger::merkle_height(),
+                cap::Ledger::merkle_height(),
             )
             .unwrap();
             xfr_prove_keys.push(xfr_prove_key);
             xfr_verif_keys.push(TransactionVerifyingKey::Transfer(xfr_verif_key));
         }
         let (mint_prove_key, _, _) =
-            jf_aap::proof::mint::preprocess(&*UNIVERSAL_PARAM, aap::Ledger::merkle_height())
+            jf_cap::proof::mint::preprocess(&*UNIVERSAL_PARAM, cap::Ledger::merkle_height())
                 .unwrap();
         let (freeze_prove_key, _, _) =
-            jf_aap::proof::freeze::preprocess(&*UNIVERSAL_PARAM, 2, aap::Ledger::merkle_height())
+            jf_cap::proof::freeze::preprocess(&*UNIVERSAL_PARAM, 2, cap::Ledger::merkle_height())
                 .unwrap();
-        let record_merkle_tree = MerkleTree::new(aap::Ledger::merkle_height()).unwrap();
-        let validator = aap::Validator::default();
+        let record_merkle_tree = MerkleTree::new(cap::Ledger::merkle_height()).unwrap();
+        let validator = cap::Validator::default();
 
         let state = WalletState {
             proving_keys: Arc::new(ProverKeySet {
@@ -735,7 +735,7 @@ mod tests {
             .insert(user_key.address(), user_key.clone());
         {
             let mut storage =
-                AtomicWalletStorage::<aap::Ledger, _>::new(&mut loader, 1024).unwrap();
+                AtomicWalletStorage::<cap::Ledger, _>::new(&mut loader, 1024).unwrap();
             storage.store_auditable_asset(&asset).await.unwrap();
             storage
                 .store_key(&RoleKeyPair::Auditor(audit_key))
@@ -764,7 +764,7 @@ mod tests {
             .insert(asset.code, (asset.clone(), seed, vec![]));
         {
             let mut storage =
-                AtomicWalletStorage::<aap::Ledger, _>::new(&mut loader, 1024).unwrap();
+                AtomicWalletStorage::<cap::Ledger, _>::new(&mut loader, 1024).unwrap();
             storage
                 .store_defined_asset(&asset, seed, &[])
                 .await
@@ -835,7 +835,7 @@ mod tests {
                 .store_transaction(TransactionHistoryEntry {
                     time: Local::now(),
                     asset: asset.code,
-                    kind: TransactionKind::<aap::Ledger>::send(),
+                    kind: TransactionKind::<cap::Ledger>::send(),
                     sender: Some(user_key.address()),
                     receivers: vec![],
                     receipt: None,
