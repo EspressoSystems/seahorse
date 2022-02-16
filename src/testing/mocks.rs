@@ -415,8 +415,9 @@ impl<'a> WalletBackend<'a, cap::Ledger> for MockBackend<'a> {
 
     async fn register_user_key(
         &mut self,
-        pub_key: &UserPubKey,
+        key_pair: &UserKeyPair,
     ) -> Result<(), WalletError<cap::Ledger>> {
+        let pub_key = key_pair.pub_key();
         let mut ledger = self.ledger.lock().await;
         ledger
             .network()

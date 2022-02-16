@@ -1441,11 +1441,7 @@ pub mod generic_wallet_tests {
                 .key_stream()
                 .derive_sub_tree("user".as_bytes())
                 .derive_user_keypair(&state.key_state.user.to_le_bytes());
-            session
-                .backend
-                .register_user_key(&key.pub_key())
-                .await
-                .unwrap();
+            session.backend.register_user_key(&key).await.unwrap();
             key
         };
 
