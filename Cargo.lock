@@ -123,7 +123,7 @@ dependencies = [
  "arbitrary",
  "ark-std",
  "itertools",
- "jf-cap 0.0.1 (git+ssh://git@github.com/SpectrumXYZ/cap.git?rev=cba0b2fc682606b0a118b320d41f718c525b4192)",
+ "jf-cap",
  "rand_chacha 0.3.1",
  "serde",
  "zerok-macros",
@@ -1827,42 +1827,6 @@ checksum = "1aab8fc367588b89dcee83ab0fd66b72b50b72fa1904d7095045ace2b0c81c35"
 [[package]]
 name = "jf-cap"
 version = "0.0.1"
-source = "git+ssh://git@github.com/SpectrumXYZ/cap.git?rev=5d9f71ea796a3107700809bd0cd343ad48bb5166#5d9f71ea796a3107700809bd0cd343ad48bb5166"
-dependencies = [
- "anyhow",
- "ark-bn254",
- "ark-ec",
- "ark-ed-on-bn254",
- "ark-ff",
- "ark-serialize",
- "ark-std",
- "bincode",
- "commit",
- "csv",
- "derivative",
- "displaydoc",
- "hex-literal",
- "itertools",
- "jf-plonk",
- "jf-primitives",
- "jf-rescue",
- "jf-utils",
- "num_cpus",
- "percentage",
- "rand 0.8.4",
- "rand_chacha 0.3.1",
- "rayon",
- "serde",
- "serde_derive",
- "serde_json",
- "sha2 0.9.9",
- "sha3 0.10.0",
- "structopt",
-]
-
-[[package]]
-name = "jf-cap"
-version = "0.0.1"
 source = "git+ssh://git@github.com/SpectrumXYZ/cap.git?rev=cba0b2fc682606b0a118b320d41f718c525b4192#cba0b2fc682606b0a118b320d41f718c525b4192"
 dependencies = [
  "anyhow",
@@ -1899,7 +1863,7 @@ dependencies = [
 [[package]]
 name = "jf-plonk"
 version = "0.1.0"
-source = "git+ssh://git@github.com/SpectrumXYZ/jellyfish.git#567e166786d05038e8731eb3ceabbc5a3fd8c932"
+source = "git+ssh://git@github.com/SpectrumXYZ/jellyfish.git#7c089b0e00e06cf179700494436817629e399873"
 dependencies = [
  "ark-bls12-377",
  "ark-bls12-381",
@@ -1928,7 +1892,7 @@ dependencies = [
 [[package]]
 name = "jf-primitives"
 version = "0.1.0"
-source = "git+ssh://git@github.com/SpectrumXYZ/jellyfish.git#567e166786d05038e8731eb3ceabbc5a3fd8c932"
+source = "git+ssh://git@github.com/SpectrumXYZ/jellyfish.git#7c089b0e00e06cf179700494436817629e399873"
 dependencies = [
  "ark-ec",
  "ark-ff",
@@ -1950,7 +1914,7 @@ dependencies = [
 [[package]]
 name = "jf-rescue"
 version = "0.1.0"
-source = "git+ssh://git@github.com/SpectrumXYZ/jellyfish.git#567e166786d05038e8731eb3ceabbc5a3fd8c932"
+source = "git+ssh://git@github.com/SpectrumXYZ/jellyfish.git#7c089b0e00e06cf179700494436817629e399873"
 dependencies = [
  "ark-bls12-377",
  "ark-bls12-381",
@@ -1975,7 +1939,7 @@ dependencies = [
 [[package]]
 name = "jf-utils"
 version = "0.1.0"
-source = "git+ssh://git@github.com/SpectrumXYZ/jellyfish.git#567e166786d05038e8731eb3ceabbc5a3fd8c932"
+source = "git+ssh://git@github.com/SpectrumXYZ/jellyfish.git#7c089b0e00e06cf179700494436817629e399873"
 dependencies = [
  "anyhow",
  "ark-ec",
@@ -1992,7 +1956,7 @@ dependencies = [
 [[package]]
 name = "jf-utils-derive"
 version = "0.1.0"
-source = "git+ssh://git@github.com/SpectrumXYZ/jellyfish.git#567e166786d05038e8731eb3ceabbc5a3fd8c932"
+source = "git+ssh://git@github.com/SpectrumXYZ/jellyfish.git#7c089b0e00e06cf179700494436817629e399873"
 dependencies = [
  "ark-std",
  "quote",
@@ -2023,7 +1987,7 @@ dependencies = [
  "bincode",
  "commit",
  "itertools",
- "jf-cap 0.0.1 (git+ssh://git@github.com/SpectrumXYZ/cap.git?rev=cba0b2fc682606b0a118b320d41f718c525b4192)",
+ "jf-cap",
  "serde",
  "serde_with",
  "snafu",
@@ -2169,7 +2133,7 @@ dependencies = [
 [[package]]
 name = "net"
 version = "0.1.0"
-source = "git+ssh://git@github.com/SpectrumXYZ/net.git#2e3246a6280565f8a50b78e977e4c98442040b5a"
+source = "git+ssh://git@github.com/SpectrumXYZ/net.git#27269c9f13aa3817a38f744f23d4fbe4fd46d6bb"
 dependencies = [
  "ark-serialize",
  "ark-std",
@@ -2178,7 +2142,7 @@ dependencies = [
  "futures",
  "generic-array",
  "itertools",
- "jf-cap 0.0.1 (git+ssh://git@github.com/SpectrumXYZ/cap.git?rev=5d9f71ea796a3107700809bd0cd343ad48bb5166)",
+ "jf-cap",
  "jf-utils",
  "serde",
  "serde_json",
@@ -2754,7 +2718,7 @@ dependencies = [
  "commit",
  "funty",
  "itertools",
- "jf-cap 0.0.1 (git+ssh://git@github.com/SpectrumXYZ/cap.git?rev=cba0b2fc682606b0a118b320d41f718c525b4192)",
+ "jf-cap",
  "serde",
  "snafu",
  "strum_macros",
@@ -2952,7 +2916,7 @@ dependencies = [
  "generic-array",
  "hmac 0.11.0",
  "itertools",
- "jf-cap 0.0.1 (git+ssh://git@github.com/SpectrumXYZ/cap.git?rev=cba0b2fc682606b0a118b320d41f718c525b4192)",
+ "jf-cap",
  "jf-utils",
  "key-set",
  "lazy_static",
@@ -3703,7 +3667,7 @@ dependencies = [
  "ark-serialize",
  "ark-std",
  "itertools",
- "jf-cap 0.0.1 (git+ssh://git@github.com/SpectrumXYZ/cap.git?rev=cba0b2fc682606b0a118b320d41f718c525b4192)",
+ "jf-cap",
  "rand_chacha 0.3.1",
 ]
 
