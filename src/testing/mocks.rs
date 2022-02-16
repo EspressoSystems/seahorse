@@ -12,7 +12,7 @@ use async_trait::async_trait;
 use futures::stream::Stream;
 use itertools::izip;
 use jf_cap::{
-    keys::{UserAddress, UserPubKey},
+    keys::{UserAddress, UserKeyPair, UserPubKey},
     proof::UniversalParam,
     structs::{
         AssetCodeSeed, AssetDefinition, Nullifier, ReceiverMemo, RecordCommitment, RecordOpening,
