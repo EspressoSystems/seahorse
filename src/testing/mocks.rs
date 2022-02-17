@@ -12,7 +12,7 @@ use async_trait::async_trait;
 use futures::stream::Stream;
 use itertools::izip;
 use jf_cap::{
-    keys::{UserAddress, UserPubKey},
+    keys::{UserAddress, UserKeyPair, UserPubKey},
     proof::UniversalParam,
     structs::{
         AssetCodeSeed, AssetDefinition, Nullifier, ReceiverMemo, RecordCommitment, RecordOpening,
@@ -415,8 +415,9 @@ impl<'a> WalletBackend<'a, cap::Ledger> for MockBackend<'a> {
 
     async fn register_user_key(
         &mut self,
-        pub_key: &UserPubKey,
+        key_pair: &UserKeyPair,
     ) -> Result<(), WalletError<cap::Ledger>> {
+        let pub_key = key_pair.pub_key();
         let mut ledger = self.ledger.lock().await;
         ledger
             .network()

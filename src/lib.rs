@@ -625,7 +625,7 @@ pub trait WalletBackend<'a, L: Ledger>: Send {
         block_id: u64,
         txn_id: u64,
     ) -> Result<Transaction<L>, WalletError<L>>;
-    async fn register_user_key(&mut self, pub_key: &UserPubKey) -> Result<(), WalletError<L>>;
+    async fn register_user_key(&mut self, pub_key: &UserKeyPair) -> Result<(), WalletError<L>>;
 
     // Submit a transaction to a validator.
     async fn submit(&mut self, txn: Transaction<L>) -> Result<(), WalletError<L>>;
@@ -1555,7 +1555,7 @@ impl<'a, L: Ledger> WalletState<'a, L> {
 
                 // If we successfully updated our data structures, register the key with the
                 // network. The storage transaction will revert if this fails.
-                t.backend.register_user_key(&user_key.pub_key()).await?;
+                t.backend.register_user_key(&user_key).await?;
                 Ok(t)
             })
             .await
