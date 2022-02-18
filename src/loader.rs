@@ -9,6 +9,7 @@ use reader::Reader;
 use reef::Ledger;
 use serde::{Deserialize, Serialize};
 use snafu::ResultExt;
+use std::convert::TryInto;
 use std::path::PathBuf;
 
 pub trait WalletLoader<L: Ledger> {
@@ -18,21 +19,15 @@ pub trait WalletLoader<L: Ledger> {
     fn load(&mut self, meta: &Self::Meta) -> Result<KeyTree, WalletError<L>>;
 }
 
-pub enum LoadMethod {
-    Password,
-    Mnemonic,
-}
-
 // Metadata about a wallet which is always stored unencrypted, so we can report some basic
 // information about the wallet without decrypting. This also aids in the key derivation process.
 //
 // DO NOT put secrets in here.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LoaderMetadata {
-    encrypted: bool,
     salt: Salt,
-    // Encrypted random bytes. This will only decrypt successfully if we have the correct
-    // password/mnemonic, so we can use it as a quick check that the user entered the right thing.
+    // Encrypted random bytes from a mnemonic. This will only decrypt successfully if we have the
+    // correct mnemonic, so we can use it as a quick check that the user entered the right thing.
     check_data: CipherText,
 }
 
@@ -68,7 +63,7 @@ impl LoaderInput {
     fn create_mnemonic<L: Ledger>(
         &mut self,
         rng: &mut ChaChaRng,
-    ) -> Result<KeyTree, WalletError<L>> {
+    ) -> Result<String, WalletError<L>> {
         match self {
             Self::User(reader) => {
                 println!(
@@ -78,7 +73,7 @@ impl LoaderInput {
                      safe, private place."
                 );
                 'outer: loop {
-                    let (key, mnemonic) = KeyTree::random(rng).context(KeyError)?;
+                    let (_, mnemonic) = KeyTree::random(rng).context(KeyError)?;
                     println!("Your mnemonic phrase will be:");
                     println!("{}", mnemonic);
                     'inner: loop {
@@ -89,13 +84,10 @@ impl LoaderInput {
                         );
                         match reader.read_line() {
                             Some(line) => match line.as_str().trim() {
-                                "1" => return Ok(key),
+                                "1" => return Ok(mnemonic),
                                 "2" => continue 'outer,
                                 "3" => {
-                                    let mnemonic =
-                                        reader.read_password("Enter mnemonic phrase: ")?;
-                                    return KeyTree::from_mnemonic(mnemonic.as_bytes())
-                                        .context(KeyError);
+                                    return reader.read_password("Enter mnemonic phrase: ");
                                 }
                                 _ => continue 'inner,
                             },
@@ -109,14 +101,7 @@ impl LoaderInput {
                 }
             }
 
-            Self::Literal(s) => KeyTree::from_mnemonic(s.as_bytes()).context(KeyError),
-        }
-    }
-
-    fn read_mnemonic<L: Ledger>(&mut self) -> Result<String, WalletError<L>> {
-        match self {
-            Self::User(reader) => reader.read_password("Enter mnemonic phrase: "),
-            Self::Literal(s) => Ok(s.clone()),
+            Self::Literal(s) => Ok(s.to_string()),
         }
     }
 
@@ -129,28 +114,22 @@ impl LoaderInput {
 }
 
 pub struct Loader {
-    method: LoadMethod,
-    encrypted: bool,
     dir: PathBuf,
     pub rng: ChaChaRng,
     input: LoaderInput,
 }
 
 impl Loader {
-    pub fn new(method: LoadMethod, encrypted: bool, dir: PathBuf, reader: Reader) -> Self {
+    pub fn new(dir: PathBuf, reader: Reader) -> Self {
         Self {
-            method,
-            encrypted,
             dir,
             input: LoaderInput::User(reader),
             rng: ChaChaRng::from_entropy(),
         }
     }
 
-    pub fn from_mnemonic(mnemonic: String, encrypted: bool, dir: PathBuf) -> Self {
+    pub fn from_mnemonic(mnemonic: String, dir: PathBuf) -> Self {
         Self {
-            method: LoadMethod::Mnemonic,
-            encrypted,
             dir,
             input: LoaderInput::Literal(mnemonic),
             rng: ChaChaRng::from_entropy(),
@@ -165,11 +144,7 @@ impl Loader {
     }
 
     fn create_from_password<L: Ledger>(&mut self) -> Result<(KeyTree, Salt), WalletError<L>> {
-        let password = if self.encrypted {
-            self.input.create_password()?
-        } else {
-            self.dummy_password()
-        };
+        let password = self.input.create_password()?;
         KeyTree::from_password(&mut self.rng, password.as_bytes()).context(KeyError)
     }
 
@@ -177,40 +152,16 @@ impl Loader {
         &mut self,
         meta: &LoaderMetadata,
     ) -> Result<KeyTree, WalletError<L>> {
-        let password = if meta.encrypted {
-            self.input.read_password()?
-        } else {
-            self.dummy_password()
-        };
+        let password = self.input.read_password()?;
         KeyTree::from_password_and_salt(password.as_bytes(), &meta.salt).context(KeyError)
     }
 
-    fn dummy_password(&self) -> String {
-        String::new()
-    }
-
-    fn create_from_mnemonic<L: Ledger>(&mut self) -> Result<KeyTree, WalletError<L>> {
-        if self.encrypted {
-            self.input.create_mnemonic(&mut self.rng)
-        } else {
-            KeyTree::from_mnemonic(self.dummy_mnemonic().as_bytes()).context(KeyError)
-        }
-    }
-
-    fn load_from_mnemonic<L: Ledger>(
+    fn create_from_mnemonic<L: Ledger>(
         &mut self,
-        meta: &LoaderMetadata,
-    ) -> Result<KeyTree, WalletError<L>> {
-        let mnemonic = if meta.encrypted {
-            self.input.read_mnemonic()?
-        } else {
-            self.dummy_mnemonic()
-        };
-        KeyTree::from_mnemonic(mnemonic.as_bytes()).context(KeyError)
-    }
-
-    fn dummy_mnemonic(&self) -> String {
-        mnemonic::to_string(&[0u8; 32])
+    ) -> Result<(String, KeyTree, Salt), WalletError<L>> {
+        let mnemonic = self.input.create_mnemonic(&mut self.rng)?;
+        let (key, salt) = self.create_from_password()?;
+        Ok((mnemonic, key, salt))
     }
 }
 
@@ -224,13 +175,11 @@ impl<L: Ledger> WalletLoader<L> for Loader {
     }
 
     fn create(&mut self) -> Result<(LoaderMetadata, KeyTree), WalletError<L>> {
-        let (key, salt) = match self.method {
-            LoadMethod::Password => self.create_from_password()?,
-            LoadMethod::Mnemonic => (self.create_from_mnemonic()?, Salt::default()),
-        };
+        let (mnemonic, key, salt) = self.create_from_mnemonic()?;
 
-        // Encrypt some random data, which we can decrypt on load to check the derived key.
-        let mut check_data = [0; 32];
+        // Encrypt the mnemonic phrase, which we can decrypt on load to check the derived key.
+        let check_data_bytes: Result<[u8; 32], _> = mnemonic.as_bytes().try_into();
+        let mut check_data = check_data_bytes.unwrap();
         self.rng.fill_bytes(&mut check_data);
         let check_data = Cipher::new(
             key.derive_sub_tree(KEY_CHECK_SUB_TREE.as_bytes()),
@@ -239,30 +188,15 @@ impl<L: Ledger> WalletLoader<L> for Loader {
         .encrypt(&check_data)
         .context(EncryptionError)?;
 
-        let meta = LoaderMetadata {
-            encrypted: self.encrypted,
-            salt,
-            check_data,
-        };
+        let meta = LoaderMetadata { salt, check_data };
         Ok((meta, key))
     }
 
     fn load(&mut self, meta: &Self::Meta) -> Result<KeyTree, WalletError<L>> {
-        if !self.encrypted {
-            return Err(WalletError::Failed {
-                msg: String::from(
-                    "option --unencrypted is not allowed when loading an existing wallet",
-                ),
-            });
-        }
-
         let key = loop {
             // Generate the key and check that we can use it to decrypt `check_data`. If we can't,
             // the key is wrong.
-            let key = match self.method {
-                LoadMethod::Password => self.load_from_password(meta)?,
-                LoadMethod::Mnemonic => self.load_from_mnemonic(meta)?,
-            };
+            let key = self.load_from_password(meta)?;
             if Cipher::new(
                 key.derive_sub_tree(KEY_CHECK_SUB_TREE.as_bytes()),
                 ChaChaRng::from_rng(&mut self.rng).unwrap(),
@@ -271,14 +205,6 @@ impl<L: Ledger> WalletLoader<L> for Loader {
             .is_ok()
             {
                 break key;
-            } else if !meta.encrypted {
-                // If the default password doesn't work, then the password_check data must be
-                // corrupted or encrypted with a non-default password. If the metadata claims it is
-                // unencrypted, than the metadata is corrupt (either in the `encrypted` field, the
-                // `password_check` field, or both).
-                return Err(WalletError::Failed {
-                    msg: String::from("wallet metadata is corrupt"),
-                });
             } else if self.input.interactive() {
                 println!("Sorry, that's incorrect.");
             } else {
