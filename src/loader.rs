@@ -1,15 +1,11 @@
 use super::{encryption, hd, reader, EncryptionError, KeyError, WalletError};
 use encryption::{Cipher, CipherText, Salt};
 use hd::KeyTree;
-use rand_chacha::{
-    rand_core::{RngCore, SeedableRng},
-    ChaChaRng,
-};
+use rand_chacha::{rand_core::SeedableRng, ChaChaRng};
 use reader::Reader;
 use reef::Ledger;
 use serde::{Deserialize, Serialize};
 use snafu::ResultExt;
-use std::convert::TryInto;
 use std::path::PathBuf;
 
 pub trait WalletLoader<L: Ledger> {
@@ -26,8 +22,8 @@ pub trait WalletLoader<L: Ledger> {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LoaderMetadata {
     salt: Salt,
-    // Encrypted random bytes from a mnemonic. This will only decrypt successfully if we have the
-    // correct mnemonic, so we can use it as a quick check that the user entered the right thing.
+    // Encrypted bytes from a mnemonic. This will only decrypt successfully if we have the
+    // correct password, so we can use it as a quick check that the user entered the right thing.
     check_data: CipherText,
 }
 
@@ -178,14 +174,11 @@ impl<L: Ledger> WalletLoader<L> for Loader {
         let (mnemonic, key, salt) = self.create_from_mnemonic()?;
 
         // Encrypt the mnemonic phrase, which we can decrypt on load to check the derived key.
-        let check_data_bytes: Result<[u8; 32], _> = mnemonic.as_bytes().try_into();
-        let mut check_data = check_data_bytes.unwrap();
-        self.rng.fill_bytes(&mut check_data);
         let check_data = Cipher::new(
             key.derive_sub_tree(KEY_CHECK_SUB_TREE.as_bytes()),
             ChaChaRng::from_rng(&mut self.rng).unwrap(),
         )
-        .encrypt(&check_data)
+        .encrypt(&mnemonic.as_bytes())
         .context(EncryptionError)?;
 
         let meta = LoaderMetadata { salt, check_data };
