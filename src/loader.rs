@@ -100,11 +100,9 @@ impl LoaderInput {
 
             Self::MnemonicPasswordLiteral(s) => match &s.0 {
                 Some(mnemonic) => Ok(mnemonic.to_string()),
-                None => {
-                    return Err(WalletError::Failed {
-                        msg: String::from("missing mnemonic phrase"),
-                    })
-                }
+                None => Err(WalletError::Failed {
+                    msg: String::from("missing mnemonic phrase"),
+                }),
             },
         }
     }
