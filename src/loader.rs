@@ -111,10 +111,7 @@ impl LoaderInput {
     }
 
     fn interactive(&self) -> bool {
-        match self {
-            Self::User(..) => true,
-            _ => false,
-        }
+        matches!(self, Self::User(..))
     }
 }
 
