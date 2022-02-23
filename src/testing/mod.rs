@@ -31,6 +31,11 @@ pub trait MockNetwork<'a, L: Ledger> {
     ) -> Result<(), WalletError<L>>;
     fn memos_source(&self) -> EventSource;
     fn generate_event(&mut self, event: LedgerEvent<L>);
+    fn event(
+        &self,
+        index: EventIndex,
+        source: EventSource,
+    ) -> Result<LedgerEvent<L>, WalletError<L>>;
 }
 
 pub struct MockLedger<'a, L: Ledger, N: MockNetwork<'a, L>, S: WalletStorage<'a, L>> {
@@ -42,6 +47,7 @@ pub struct MockLedger<'a, L: Ledger, N: MockNetwork<'a, L>, S: WalletStorage<'a,
     mangled: bool,
     storage: Vec<Arc<Mutex<S>>>,
     missing_memos: usize,
+    sync_index: EventIndex,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
 
@@ -56,6 +62,7 @@ impl<'a, L: Ledger, N: MockNetwork<'a, L>, S: WalletStorage<'a, L>> MockLedger<'
             mangled: false,
             storage: Default::default(),
             missing_memos: 0,
+            sync_index: Default::default(),
             _phantom: Default::default(),
         }
     }
@@ -139,8 +146,6 @@ impl<'a, L: Ledger, N: MockNetwork<'a, L>, S: WalletStorage<'a, L>> MockLedger<'
         sig: Signature,
     ) -> Result<(), WalletError<L>> {
         self.network.post_memos(block_id, txn_id, memos, sig)?;
-        assert!(self.missing_memos >= 1);
-        self.missing_memos -= 1;
         Ok(())
     }
 
@@ -343,14 +348,51 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         ledger: &Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork, Self::MockStorage>>>,
         wallets: &[(Wallet<'a, Self::MockBackend, Self::Ledger>, UserAddress)],
     ) {
-        let t = {
+        let memos_source = {
             let mut ledger = ledger.lock().await;
             ledger.flush().unwrap();
-            // Wait for all of the wallets to process all of the events which have already been
-            // generated, plus any memos events that we expect to be published shortly.
-            ledger
-                .now()
-                .add_from_source(ledger.network.memos_source(), ledger.missing_memos)
+            ledger.network.memos_source()
+        };
+
+        // Scan events starting from the last processed event (`ledger.sync_index`) until we have
+        // found all of the memos corresponding to the transactions that we are syncing with.
+        loop {
+            // Advance the current event index by the number of missing memos and sync with that
+            // index.
+            let t = {
+                let ledger = ledger.lock().await;
+                if ledger.missing_memos == 0 {
+                    // If there are no missing memos, we're done.
+                    break;
+                }
+                ledger.sync_index + EventIndex::from_source(memos_source, ledger.missing_memos)
+            };
+            self.sync_with(wallets, t).await;
+
+            // Count how many memos events we got while incrementing `sync_index`. Note that even
+            // though we waited for `missing_memos` events from the memos event source, we may have
+            // actually gotten fewer than `missing_memos` Memos events, because the memos event
+            // source is not guaranteed to be distinct from other event sources.
+            let mut ledger = ledger.lock().await;
+            for _ in 0..ledger.missing_memos {
+                if matches!(
+                    ledger
+                        .network
+                        .event(ledger.sync_index, memos_source)
+                        .unwrap(),
+                    LedgerEvent::Memos { .. }
+                ) {
+                    ledger.missing_memos -= 1;
+                }
+                ledger.sync_index += EventIndex::from_source(memos_source, 1);
+            }
+        }
+
+        // Sync with the current time.
+        let t = {
+            let mut ledger = ledger.lock().await;
+            ledger.sync_index = ledger.now();
+            ledger.sync_index
         };
         self.sync_with(wallets, t).await;
 
@@ -479,6 +521,15 @@ impl<L: Ledger + 'static> MockEventSource<L> {
         // Save the event so we can feed it to later subscribers who want to start from some time in
         // the past.
         self.events.push(event);
+    }
+
+    pub fn get(&self, index: EventIndex) -> Result<LedgerEvent<L>, WalletError<L>> {
+        self.events
+            .get(index.index(self.source))
+            .cloned()
+            .ok_or_else(|| WalletError::Failed {
+                msg: String::from("invalid event index"),
+            })
     }
 }
 
