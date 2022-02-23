@@ -1,7 +1,6 @@
 use super::{encryption, hd, reader, EncryptionError, KeyError, WalletError};
 use encryption::{Cipher, CipherText, Salt};
 use hd::KeyTree;
-use mnemonic::{decode, encode};
 use rand_chacha::{rand_core::SeedableRng, ChaChaRng};
 use reader::Reader;
 use reef::Ledger;
@@ -183,17 +182,11 @@ impl<L: Ledger> WalletLoader<L> for Loader {
         let password = self.input.create_password()?;
         let (encryption_key, salt) =
             KeyTree::from_password(&mut self.rng, password.as_bytes()).context(KeyError)?;
-        let mut mnemonic_bytes = Vec::<u8>::new();
-        if decode(mnemonic, &mut mnemonic_bytes).is_err() || mnemonic_bytes.len() != 32 {
-            return Err(WalletError::Failed {
-                msg: String::from("invalid mnemonic phrase"),
-            });
-        }
         let encrypted_mnemonic = Cipher::new(
             encryption_key.derive_sub_tree(KEY_CHECK_SUB_TREE.as_bytes()),
             ChaChaRng::from_rng(&mut self.rng).unwrap(),
         )
-        .encrypt(&mnemonic_bytes)
+        .encrypt(mnemonic.as_bytes())
         .context(EncryptionError)?;
 
         let meta = LoaderMetadata {
@@ -214,13 +207,7 @@ impl<L: Ledger> WalletLoader<L> for Loader {
             )
             .decrypt(&meta.encrypted_mnemonic)
             {
-                let mut mnemonic = Vec::<u8>::new();
-                if mnemonic_bytes.len() != 32 || encode(mnemonic_bytes, &mut mnemonic).is_err() {
-                    return Err(WalletError::Failed {
-                        msg: String::from("invalid password"),
-                    });
-                }
-                break KeyTree::from_mnemonic(&mnemonic).context(KeyError)?;
+                break KeyTree::from_mnemonic(&mnemonic_bytes).context(KeyError)?;
             } else if self.input.interactive() {
                 println!("Sorry, that's incorrect.");
             } else {
