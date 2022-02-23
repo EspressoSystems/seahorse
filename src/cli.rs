@@ -8,7 +8,7 @@
 use crate::{
     events::EventIndex,
     io::SharedIO,
-    loader::{LoadMethod, Loader, LoaderMetadata, WalletLoader},
+    loader::{Loader, LoaderMetadata, WalletLoader},
     reader::Reader,
     AssetInfo, BincodeError, IoError, MintInfo, TransactionReceipt, TransactionStatus,
     WalletBackend, WalletError,
@@ -68,8 +68,6 @@ pub trait CLIArgs {
     /// and stdout, with interactive line editing and password hiding.
     fn io(&self) -> Option<SharedIO>;
 
-    fn encrypted(&self) -> bool;
-    fn load_method(&self) -> LoadMethod;
     fn use_tmp_storage(&self) -> bool;
 }
 
@@ -964,7 +962,7 @@ async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
     );
     cli_writeln!(io, "(c) 2021 Translucence Research, Inc.");
 
-    let mut loader = Loader::new(args.load_method(), args.encrypted(), storage, reader);
+    let mut loader = Loader::new(storage, reader);
     let universal_param = Box::leak(Box::new(universal_param::get(
         &mut loader.rng,
         L::merkle_height(),
@@ -1055,14 +1053,6 @@ mod test {
 
         fn io(&self) -> Option<SharedIO> {
             Some(self.io.clone())
-        }
-
-        fn encrypted(&self) -> bool {
-            true
-        }
-
-        fn load_method(&self) -> LoadMethod {
-            LoadMethod::Mnemonic
         }
 
         fn use_tmp_storage(&self) -> bool {
