@@ -135,10 +135,8 @@ impl KeyTree {
             .chain(&self.depth.to_le_bytes())
             .chain(id)
             .finalize();
-        // The try_into will always succeed, because the hash output size is a slice of 64 bytes.
-        // There just isn't an `as_mut() -> &[u8; 64]` method for GenericArrays as large as 64.
         Self {
-            state: Secret::new(digest.as_mut().try_into().unwrap()),
+            state: Secret::new(digest.as_mut()),
             depth: self.depth + 1,
         }
     }
