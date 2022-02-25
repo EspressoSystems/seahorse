@@ -4,7 +4,7 @@ use crate::{
     events::{EventIndex, EventSource, LedgerEvent},
     hd,
     testing::{MockEventSource, MockNetwork as _},
-    txn_builder::{TransactionHistoryEntry, TransactionState},
+    txn_builder::{TransactionHistoryEntry, TransactionState, TransactionUID},
     CryptoError, RoleKeyPair, WalletBackend, WalletError, WalletState, WalletStorage,
 };
 use async_std::sync::{Arc, Mutex, MutexGuard};
@@ -271,6 +271,20 @@ impl<'a> super::MockNetwork<'a, cap::Ledger> for MockNetwork<'a> {
         );
         self.events.publish(e);
     }
+
+    fn event(
+        &self,
+        index: EventIndex,
+        source: EventSource,
+    ) -> Result<LedgerEvent<cap::Ledger>, WalletError<cap::Ledger>> {
+        if source == EventSource::QueryService {
+            self.events.get(index)
+        } else {
+            Err(WalletError::Failed {
+                msg: String::from("invalid event source"),
+            })
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -278,6 +292,7 @@ pub struct MockBackend<'a> {
     storage: Arc<Mutex<MockStorage<'a>>>,
     ledger: Arc<Mutex<MockLedger<'a, cap::Ledger, MockNetwork<'a>, MockStorage<'a>>>>,
     key_stream: hd::KeyTree,
+    pending_memos: HashMap<TransactionUID<cap::Ledger>, (Vec<ReceiverMemo>, Signature)>,
 }
 
 impl<'a> MockBackend<'a> {
@@ -285,11 +300,12 @@ impl<'a> MockBackend<'a> {
         ledger: Arc<Mutex<MockLedger<'a, cap::Ledger, MockNetwork<'a>, MockStorage<'a>>>>,
         storage: Arc<Mutex<MockStorage<'a>>>,
         key_stream: hd::KeyTree,
-    ) -> Self {
+    ) -> MockBackend<'a> {
         Self {
             ledger,
             storage,
             key_stream,
+            pending_memos: Default::default(),
         }
     }
 }
@@ -426,21 +442,31 @@ impl<'a> WalletBackend<'a, cap::Ledger> for MockBackend<'a> {
         Ok(())
     }
 
-    async fn submit(&mut self, txn: cap::Transaction) -> Result<(), WalletError<cap::Ledger>> {
-        self.ledger.lock().await.submit(txn)
-    }
-
-    async fn post_memos(
+    async fn submit(
         &mut self,
-        block_id: u64,
-        txn_id: u64,
+        txn: cap::Transaction,
+        uid: TransactionUID<cap::Ledger>,
         memos: Vec<ReceiverMemo>,
         sig: Signature,
     ) -> Result<(), WalletError<cap::Ledger>> {
-        self.ledger
-            .lock()
-            .await
-            .post_memos(block_id, txn_id, memos, sig)
+        match self.ledger.lock().await.submit(txn) {
+            Ok(()) => {
+                self.pending_memos.insert(uid, (memos, sig));
+                Ok(())
+            }
+            Err(err) => Err(err),
+        }
+    }
+
+    async fn finalize(&mut self, uid: TransactionUID<cap::Ledger>, txn_id: Option<(u64, u64)>) {
+        let (memos, sig) = self.pending_memos.remove(&uid).unwrap();
+        if let Some((block_id, txn_id)) = txn_id {
+            self.ledger
+                .lock()
+                .await
+                .post_memos(block_id, txn_id, memos, sig)
+                .unwrap();
+        }
     }
 }
 

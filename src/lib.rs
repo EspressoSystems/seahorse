@@ -628,14 +628,24 @@ pub trait WalletBackend<'a, L: Ledger>: Send {
     async fn register_user_key(&mut self, pub_key: &UserKeyPair) -> Result<(), WalletError<L>>;
 
     // Submit a transaction to a validator.
-    async fn submit(&mut self, txn: Transaction<L>) -> Result<(), WalletError<L>>;
-    async fn post_memos(
+    async fn submit(
         &mut self,
-        block_id: u64,
-        txn_id: u64,
+        txn: Transaction<L>,
+        uid: TransactionUID<L>,
         memos: Vec<ReceiverMemo>,
         sig: Signature,
     ) -> Result<(), WalletError<L>>;
+
+    /// Record a finalized transaction.
+    ///
+    /// If successful, `txn_id` contains the block ID and index of the committed transaction.
+    async fn finalize(&mut self, _uid: TransactionUID<L>, _txn_id: Option<(u64, u64)>)
+    where
+        L: 'static,
+    {
+        // This function is optional and does nothing by default. The backend can override it to
+        // perform cleanup or post-processing on completed transactions.
+    }
 }
 
 pub struct WalletSession<'a, L: Ledger, Backend: WalletBackend<'a, L>> {
@@ -675,7 +685,7 @@ impl<L: Ledger> Default for EventSummary<L> {
     }
 }
 
-impl<'a, L: Ledger> WalletState<'a, L> {
+impl<'a, L: 'static + Ledger> WalletState<'a, L> {
     pub fn pub_keys(&self) -> Vec<UserPubKey> {
         self.user_keys.values().map(|key| key.pub_key()).collect()
     }
@@ -854,7 +864,6 @@ impl<'a, L: Ledger> WalletState<'a, L> {
                     let mut self_published = false;
                     if let Some(pending) = self
                         .clear_pending_transaction(
-                            session,
                             &txn,
                             Some((block_id, txn_id as u64, &mut this_txn_uids)),
                         )
@@ -866,6 +875,13 @@ impl<'a, L: Ledger> WalletState<'a, L> {
                             TransactionStatus::AwaitingMemos
                         };
                         summary.updated_txns.push((pending.uid(), status));
+                        session
+                            .backend
+                            .finalize(pending.uid(), Some((block_id, txn_id as u64)))
+                            .await;
+                        self.txn_state
+                            .transactions
+                            .await_memos(pending.uid(), this_txn_uids.iter().map(|(uid, _)| *uid));
                         self_published = true;
                     }
 
@@ -903,7 +919,8 @@ impl<'a, L: Ledger> WalletState<'a, L> {
                 for txn_uid in self.txn_state.clear_expired_transactions() {
                     summary
                         .updated_txns
-                        .push((txn_uid, TransactionStatus::Rejected));
+                        .push((txn_uid.clone(), TransactionStatus::Rejected));
+                    session.backend.finalize(txn_uid, None).await;
                 }
             }
 
@@ -939,8 +956,7 @@ impl<'a, L: Ledger> WalletState<'a, L> {
                     summary
                         .rejected_nullifiers
                         .append(&mut txn.input_nullifiers());
-                    if let Some(pending) = self.clear_pending_transaction(session, &txn, None).await
-                    {
+                    if let Some(pending) = self.clear_pending_transaction(&txn, None).await {
                         // Try to resubmit if the error is recoverable.
                         let uid = pending.uid();
                         if error.is_bad_nullifier_proof() {
@@ -960,12 +976,14 @@ impl<'a, L: Ledger> WalletState<'a, L> {
                                 // If we failed to resubmit, then the rejection is final.
                                 summary
                                     .updated_txns
-                                    .push((uid, TransactionStatus::Rejected));
+                                    .push((uid.clone(), TransactionStatus::Rejected));
+                                session.backend.finalize(uid, None).await;
                             }
                         } else {
                             summary
                                 .updated_txns
-                                .push((uid, TransactionStatus::Rejected));
+                                .push((uid.clone(), TransactionStatus::Rejected));
+                            session.backend.finalize(uid, None).await;
                         }
                     }
                 }
@@ -1248,37 +1266,15 @@ impl<'a, L: Ledger> WalletState<'a, L> {
 
     async fn clear_pending_transaction<'t>(
         &mut self,
-        session: &mut WalletSession<'a, L, impl WalletBackend<'a, L>>,
         txn: &Transaction<L>,
         res: Option<CommittedTxn<'t>>,
     ) -> Option<PendingTransaction<L>> {
         let pending = self.txn_state.clear_pending_transaction(txn, &res);
 
-        // If this was a successful transaction, post its receiver memos and add all of its
-        // frozen/unfrozen outputs to our freezable database (for freeze/unfreeze transactions).
-        if let Some((block_id, txn_id, uids)) = res {
+        // If this was a successful transaction, add all of its frozen/unfrozen outputs to our
+        // freezable database (for freeze/unfreeze transactions).
+        if let Some((_, _, uids)) = res {
             if let Some(pending) = &pending {
-                // Post receiver memos.
-                if let Err(err) = session
-                    .backend
-                    .post_memos(
-                        block_id,
-                        txn_id,
-                        pending.info.memos.clone(),
-                        pending.info.sig.clone(),
-                    )
-                    .await
-                {
-                    println!(
-                        "Error: failed to post receiver memos for transaction ({}:{}): {:?}",
-                        block_id, txn_id, err
-                    );
-                } else {
-                    self.txn_state
-                        .transactions
-                        .await_memos(pending.uid(), uids.iter().map(|(uid, _)| *uid));
-                }
-
                 // the first uid corresponds to the fee change output, which is not one of the
                 // `freeze_outputs`, so we skip that one
                 for ((uid, remember), ro) in
@@ -1771,6 +1767,7 @@ impl<'a, L: Ledger> WalletState<'a, L> {
             let receipt = self.txn_state.add_pending_transaction(&txn, info.clone());
 
             // Persist the pending transaction.
+            let history = info.history;
             if let Err(err) = session
                 .backend
                 .store(|mut t| async {
@@ -1778,7 +1775,7 @@ impl<'a, L: Ledger> WalletState<'a, L> {
 
                     // If we're submitting this transaction for the first time (as opposed to
                     // updating and resubmitting a failed transaction) add it to the history.
-                    if let Some(mut history) = info.history {
+                    if let Some(mut history) = history {
                         history.receipt = Some(receipt.clone());
                         t.store_transaction(history).await?;
                     }
@@ -1792,14 +1789,18 @@ impl<'a, L: Ledger> WalletState<'a, L> {
                 // transaction which is not accounted for in our pending transaction data
                 // structures. Instead, we remove the pending transaction from our in-memory data
                 // structures and return the error.
-                self.clear_pending_transaction(session, &txn, None).await;
+                self.clear_pending_transaction(&txn, None).await;
                 return Err(err);
             }
 
             // If we succeeded in creating and persisting the pending transaction, submit it to the
             // validators.
-            if let Err(err) = session.backend.submit(txn.clone()).await {
-                self.clear_pending_transaction(session, &txn, None).await;
+            if let Err(err) = session
+                .backend
+                .submit(txn.clone(), receipt.uid.clone(), info.memos, info.sig)
+                .await
+            {
+                self.clear_pending_transaction(&txn, None).await;
                 return Err(err);
             }
 
