@@ -38,6 +38,9 @@ use sha3::{Digest, Sha3_256, Sha3_512};
 use std::convert::TryInto;
 use zeroize::Zeroize;
 
+// We use 16-byte seeds, or, equivalently, 12-word mnemonic phrases.
+const SEED_LENGTH: usize = 16;
+
 // Salt used when deriving keys from passwords.
 pub type Salt = [u8; 32];
 
@@ -71,7 +74,7 @@ impl KeyTree {
     /// Build a new KeyTree from prng; also returns a 24-word mnemonic
     /// that can be used to recover this KeyTree
     pub fn random(rng: &mut (impl CryptoRng + RngCore)) -> Result<(Self, String), argon2::Error> {
-        let mut seed = [0u8; 32];
+        let mut seed = [0u8; SEED_LENGTH];
         rng.fill_bytes(&mut seed);
         let mnemonic = mnemonic::to_string(seed.as_ref());
         let key_tree = Self::from_mnemonic(mnemonic.as_bytes())?;
@@ -107,14 +110,14 @@ impl KeyTree {
     /// i.e., "digital-apollo-aroma--rival-artist-rebel"
     /// initializing a key tree.
     ///
-    /// We require that the input mnemonic phrase is 24 words
-    /// (equivalently, 32 bytes of seed), return a decoding error
+    /// We require that the input mnemonic phrase is 12 words
+    /// (equivalently, 16 bytes of seed), return a decoding error
     /// if the mnemonic is not decoded successfully; or if the
     /// input length is incorrect.
     pub fn from_mnemonic(mnemonic: &[u8]) -> Result<Self, argon2::Error> {
         let mut decoded_seed = Vec::<u8>::new();
         decode(mnemonic, &mut decoded_seed).map_err(|_| argon2::Error::DecodingFail)?;
-        if decoded_seed.len() != 32 {
+        if decoded_seed.len() != SEED_LENGTH {
             return Err(argon2::Error::DecodingFail);
         }
         // 32 bytes of salt
