@@ -71,7 +71,7 @@ macro_rules! derive_keypair {
 }
 
 impl KeyTree {
-    /// Build a new KeyTree from prng; also returns a 24-word mnemonic
+    /// Build a new KeyTree from prng; also returns a 12-word mnemonic
     /// that can be used to recover this KeyTree
     pub fn random(rng: &mut (impl CryptoRng + RngCore)) -> Result<(Self, String), argon2::Error> {
         let mut seed = [0u8; SEED_LENGTH];
