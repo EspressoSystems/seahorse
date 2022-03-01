@@ -4,8 +4,11 @@ use jf_cap::{
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
+use std::fmt::{self, Display, Formatter};
 use std::iter::FromIterator;
 use std::ops::Index;
+use std::str::FromStr;
+use tagged_base64::TaggedBase64;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct AssetInfo {
@@ -49,6 +52,77 @@ impl From<AssetDefinition> for AssetInfo {
     }
 }
 
+impl Display for AssetInfo {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "definition:{}", self.definition)?;
+        if let Some(mint_info) = &self.mint_info {
+            write!(
+                f,
+                ",seed:{},description:{}",
+                mint_info.seed,
+                mint_info.fmt_description()
+            )?;
+        }
+        Ok(())
+    }
+}
+
+impl FromStr for AssetInfo {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        // This parse method is meant for a friendly, discoverable CLI interface. It parses a comma-
+        // separated list of key-value pairs, like `description:my_asset`. This allows the fields to
+        // be specified in any order, or not at all. Recognized fields are "description", "seed",
+        // and "definition".
+        let mut definition = None;
+        let mut seed = None;
+        let mut description = None;
+        for kv in s.split(',') {
+            let (key, value) = match kv.split_once(':') {
+                Some(split) => split,
+                None => return Err(format!("expected key:value pair, got {}", kv)),
+            };
+            match key {
+                "definition" => {
+                    definition = Some(
+                        value
+                            .parse()
+                            .map_err(|_| format!("expected AssetDefinition, got {}", value))?,
+                    )
+                }
+                "seed" => {
+                    seed = Some(
+                        value
+                            .parse()
+                            .map_err(|_| format!("expected AssetCodeSeed, got {}", value))?,
+                    )
+                }
+                "description" => description = Some(MintInfo::parse_description(value)),
+                _ => return Err(format!("unrecognized key {}", key)),
+            }
+        }
+
+        let definition = match definition {
+            Some(definition) => definition,
+            None => return Err(String::from("must specify definition")),
+        };
+        let mint_info = match (seed, description) {
+            (Some(seed), Some(description)) => Some(MintInfo { seed, description }),
+            (None, None) => None,
+            _ => {
+                return Err(String::from(
+                    "seed and description must be specified together or not at all",
+                ))
+            }
+        };
+        Ok(AssetInfo {
+            definition,
+            mint_info,
+        })
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct MintInfo {
     pub seed: AssetCodeSeed,
@@ -58,6 +132,29 @@ pub struct MintInfo {
 impl MintInfo {
     pub fn new(seed: AssetCodeSeed, description: Vec<u8>) -> Self {
         Self { seed, description }
+    }
+
+    /// Try to format the asset description as human-readable as possible.
+    pub fn fmt_description(&self) -> String {
+        // If it looks like it came from a string, interpret as a string. Otherwise, encode the
+        // binary blob as tagged base64.
+        match std::str::from_utf8(&self.description) {
+            Ok(s) => String::from(s),
+            Err(_) => TaggedBase64::new("DESC", &self.description)
+                .unwrap()
+                .to_string(),
+        }
+    }
+
+    /// Inverse of `fmt_description()`.
+    pub fn parse_description(description: &str) -> Vec<u8> {
+        if let Ok(tb64) = TaggedBase64::parse(description) {
+            // If the description was serialized as TaggedBase64, get the binary data.
+            tb64.value()
+        } else {
+            // Otherwise, the description is just a utf-8 string.
+            description.as_bytes().to_vec()
+        }
     }
 }
 
