@@ -101,6 +101,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ansi_term"
+version = "0.12.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d52a9bb7ec0cf484c551830a7ce27bd20d67eac647e1befb56b0be4ee39a55d2"
+dependencies = [
+ "winapi",
+]
+
+[[package]]
 name = "anyhow"
 version = "1.0.55"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -118,7 +127,21 @@ dependencies = [
 [[package]]
 name = "arbitrary-wrappers"
 version = "0.1.0"
-source = "git+ssh://git@github.com/SpectrumXYZ/arbitrary-wrappers.git#b24ab56c80575141f75766c24930924e3f9d1a27"
+source = "git+ssh://git@github.com/EspressoSystems/arbitrary-wrappers.git?rev=91a396e46283d6cae2c3d390d5d116087bdcc9eb#91a396e46283d6cae2c3d390d5d116087bdcc9eb"
+dependencies = [
+ "arbitrary",
+ "ark-std",
+ "itertools",
+ "jf-cap",
+ "rand_chacha 0.3.1",
+ "serde",
+ "zerok-macros",
+]
+
+[[package]]
+name = "arbitrary-wrappers"
+version = "0.1.0"
+source = "git+ssh://git@github.com/EspressoSystems/arbitrary-wrappers.git#91a396e46283d6cae2c3d390d5d116087bdcc9eb"
 dependencies = [
  "arbitrary",
  "ark-std",
@@ -585,14 +608,25 @@ checksum = "065374052e7df7ee4047b1160cca5e1467a12351a40b3da123c870ba0b8eda2a"
 [[package]]
 name = "atomic_store"
 version = "0.0.2"
-source = "git+ssh://git@github.com/SpectrumXYZ/atomicstore.git#9d832334d3839e16550c0bd1c59ca9535306fced"
+source = "git+ssh://git@github.com/EspressoSystems/atomicstore.git#9d832334d3839e16550c0bd1c59ca9535306fced"
 dependencies = [
  "ark-serialize",
  "bincode",
  "chrono",
  "glob",
  "serde",
- "snafu",
+ "snafu 0.6.10",
+]
+
+[[package]]
+name = "atty"
+version = "0.2.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d9b39be18770d11421cdb1b9947a45dd3f37e93092cbf377614828a319d5fee8"
+dependencies = [
+ "hermit-abi",
+ "libc",
+ "winapi",
 ]
 
 [[package]]
@@ -864,9 +898,13 @@ version = "2.34.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a0610544180c38b88101fecf2dd634b174a62eef6946f84dfc6a7127512b381c"
 dependencies = [
+ "ansi_term",
+ "atty",
  "bitflags",
+ "strsim 0.8.0",
  "textwrap",
  "unicode-width",
+ "vec_map",
 ]
 
 [[package]]
@@ -892,7 +930,7 @@ dependencies = [
 [[package]]
 name = "commit"
 version = "0.1.0"
-source = "git+ssh://git@github.com/SpectrumXYZ/commit.git?rev=f48cd52c59755eade0605111826eef3df6abdcf8#f48cd52c59755eade0605111826eef3df6abdcf8"
+source = "git+ssh://git@github.com/EspressoSystems/commit.git?rev=f48cd52c59755eade0605111826eef3df6abdcf8#f48cd52c59755eade0605111826eef3df6abdcf8"
 dependencies = [
  "arbitrary",
  "ark-serialize",
@@ -1180,7 +1218,7 @@ dependencies = [
  "ident_case",
  "proc-macro2",
  "quote",
- "strsim",
+ "strsim 0.10.0",
  "syn",
 ]
 
@@ -1824,7 +1862,7 @@ checksum = "1aab8fc367588b89dcee83ab0fd66b72b50b72fa1904d7095045ace2b0c81c35"
 [[package]]
 name = "jf-cap"
 version = "0.0.1"
-source = "git+ssh://git@github.com/SpectrumXYZ/cap.git?rev=cba0b2fc682606b0a118b320d41f718c525b4192#cba0b2fc682606b0a118b320d41f718c525b4192"
+source = "git+ssh://git@github.com/EspressoSystems/cap.git?rev=16ad157f96d2102d59206df0106fb341302180d3#16ad157f96d2102d59206df0106fb341302180d3"
 dependencies = [
  "anyhow",
  "ark-bn254",
@@ -1860,7 +1898,7 @@ dependencies = [
 [[package]]
 name = "jf-plonk"
 version = "0.1.0"
-source = "git+ssh://git@github.com/SpectrumXYZ/jellyfish.git#9c438ec0f1c4add898dcaa52088a4342aeaed31a"
+source = "git+ssh://git@github.com/EspressoSystems/jellyfish.git#f8782d9837d5f65e91af50e810872a6a5bdd34f4"
 dependencies = [
  "ark-bls12-377",
  "ark-bls12-381",
@@ -1889,7 +1927,7 @@ dependencies = [
 [[package]]
 name = "jf-primitives"
 version = "0.1.0"
-source = "git+ssh://git@github.com/SpectrumXYZ/jellyfish.git#9c438ec0f1c4add898dcaa52088a4342aeaed31a"
+source = "git+ssh://git@github.com/EspressoSystems/jellyfish.git#f8782d9837d5f65e91af50e810872a6a5bdd34f4"
 dependencies = [
  "ark-ec",
  "ark-ff",
@@ -1911,7 +1949,7 @@ dependencies = [
 [[package]]
 name = "jf-rescue"
 version = "0.1.0"
-source = "git+ssh://git@github.com/SpectrumXYZ/jellyfish.git#9c438ec0f1c4add898dcaa52088a4342aeaed31a"
+source = "git+ssh://git@github.com/EspressoSystems/jellyfish.git#f8782d9837d5f65e91af50e810872a6a5bdd34f4"
 dependencies = [
  "ark-bls12-377",
  "ark-bls12-381",
@@ -1936,7 +1974,7 @@ dependencies = [
 [[package]]
 name = "jf-utils"
 version = "0.1.0"
-source = "git+ssh://git@github.com/SpectrumXYZ/jellyfish.git#9c438ec0f1c4add898dcaa52088a4342aeaed31a"
+source = "git+ssh://git@github.com/EspressoSystems/jellyfish.git#f8782d9837d5f65e91af50e810872a6a5bdd34f4"
 dependencies = [
  "anyhow",
  "ark-ec",
@@ -1947,13 +1985,14 @@ dependencies = [
  "jf-utils-derive",
  "serde",
  "sha2 0.10.2",
- "tagged-base64 0.1.0 (git+https://github.com/SpectrumXYZ/tagged-base64?branch=main)",
+ "snafu 0.7.0",
+ "tagged-base64 0.1.0 (git+https://github.com/EspressoSystems/tagged-base64?branch=main)",
 ]
 
 [[package]]
 name = "jf-utils-derive"
 version = "0.1.0"
-source = "git+ssh://git@github.com/SpectrumXYZ/jellyfish.git#9c438ec0f1c4add898dcaa52088a4342aeaed31a"
+source = "git+ssh://git@github.com/EspressoSystems/jellyfish.git#f8782d9837d5f65e91af50e810872a6a5bdd34f4"
 dependencies = [
  "ark-std",
  "quote",
@@ -1978,7 +2017,7 @@ checksum = "67c21572b4949434e4fc1e1978b99c5f77064153c59d998bf13ecd96fb5ecba7"
 [[package]]
 name = "key-set"
 version = "0.1.0"
-source = "git+ssh://git@github.com/SpectrumXYZ/key-set.git#6edb6e674e67c5b45e5506f1a6e0d561a46d6dbe"
+source = "git+ssh://git@github.com/EspressoSystems/key-set.git#45f278f0c094bd452a4c26525e21bbf1539ec55d"
 dependencies = [
  "ark-serialize",
  "bincode",
@@ -1987,7 +2026,7 @@ dependencies = [
  "jf-cap",
  "serde",
  "serde_with",
- "snafu",
+ "snafu 0.6.10",
 ]
 
 [[package]]
@@ -2130,7 +2169,7 @@ dependencies = [
 [[package]]
 name = "net"
 version = "0.1.0"
-source = "git+ssh://git@github.com/SpectrumXYZ/net.git#27269c9f13aa3817a38f744f23d4fbe4fd46d6bb"
+source = "git+ssh://git@github.com/EspressoSystems/net.git#a0d226cae70f4068343b2b8ab049bbb8f23b75ec"
 dependencies = [
  "ark-serialize",
  "ark-std",
@@ -2143,9 +2182,9 @@ dependencies = [
  "jf-utils",
  "serde",
  "serde_json",
- "snafu",
+ "snafu 0.6.10",
  "surf",
- "tagged-base64 0.1.0 (git+ssh://git@github.com/SpectrumXYZ/tagged-base64.git?branch=main)",
+ "tagged-base64 0.1.0 (git+ssh://git@github.com/EspressoSystems/tagged-base64.git?branch=main)",
  "tide",
  "tracing",
 ]
@@ -2321,6 +2360,33 @@ name = "paste"
 version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0744126afe1a6dd7f394cb50a716dbe086cb06e255e53d8d0185d82828358fb5"
+
+[[package]]
+name = "paw"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "09c0fc9b564dbc3dc2ed7c92c0c144f4de340aa94514ce2b446065417c4084e9"
+dependencies = [
+ "paw-attributes",
+ "paw-raw",
+]
+
+[[package]]
+name = "paw-attributes"
+version = "1.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0f35583365be5d148e959284f42526841917b7bfa09e2d1a7ad5dde2cf0eaa39"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "paw-raw"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7f0b59668fe80c5afe998f0c0bf93322bf2cd66cafeeb80581f291716f3467f2"
 
 [[package]]
 name = "percent-encoding"
@@ -2677,9 +2743,9 @@ dependencies = [
 
 [[package]]
 name = "redox_syscall"
-version = "0.2.10"
+version = "0.2.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8383f39639269cde97d255a32bdb68c047337295414940c68bdd30c2e13203ff"
+checksum = "8380fe0152551244f0747b1bf41737e0f8a74f97a14ccefd1148187271634f3c"
 dependencies = [
  "bitflags",
 ]
@@ -2697,17 +2763,17 @@ dependencies = [
 [[package]]
 name = "reef"
 version = "0.1.0"
-source = "git+ssh://git@github.com/SpectrumXYZ/reef.git#277cb2317379238f3f6bdf083e05d00cb95be7a3"
+source = "git+ssh://git@github.com/EspressoSystems/reef.git#5f90af86b6f5bc0961c1b1421ef9db1dbfd458a6"
 dependencies = [
  "arbitrary",
- "arbitrary-wrappers",
+ "arbitrary-wrappers 0.1.0 (git+ssh://git@github.com/EspressoSystems/arbitrary-wrappers.git?rev=91a396e46283d6cae2c3d390d5d116087bdcc9eb)",
  "ark-serialize",
  "commit",
  "funty",
  "itertools",
  "jf-cap",
  "serde",
- "snafu",
+ "snafu 0.6.10",
  "strum_macros",
 ]
 
@@ -2888,7 +2954,7 @@ name = "seahorse"
 version = "0.1.0"
 dependencies = [
  "arbitrary",
- "arbitrary-wrappers",
+ "arbitrary-wrappers 0.1.0 (git+ssh://git@github.com/EspressoSystems/arbitrary-wrappers.git)",
  "ark-serialize",
  "ark-std",
  "async-scoped",
@@ -2919,11 +2985,11 @@ dependencies = [
  "rustyline",
  "serde",
  "sha3 0.9.1",
- "snafu",
+ "snafu 0.6.10",
  "strum",
  "strum_macros",
  "surf",
- "tagged-base64 0.1.0 (git+ssh://git@github.com/SpectrumXYZ/tagged-base64.git?branch=main)",
+ "tagged-base64 0.1.0 (git+ssh://git@github.com/EspressoSystems/tagged-base64.git?branch=main)",
  "tempdir",
  "universal-param",
  "zeroize",
@@ -3160,7 +3226,18 @@ checksum = "eab12d3c261b2308b0d80c26fffb58d17eba81a4be97890101f416b478c79ca7"
 dependencies = [
  "backtrace",
  "doc-comment",
- "snafu-derive",
+ "snafu-derive 0.6.10",
+]
+
+[[package]]
+name = "snafu"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2eba135d2c579aa65364522eb78590cdf703176ef71ad4c32b00f58f7afb2df5"
+dependencies = [
+ "backtrace",
+ "doc-comment",
+ "snafu-derive 0.7.0",
 ]
 
 [[package]]
@@ -3169,6 +3246,18 @@ version = "0.6.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1508efa03c362e23817f96cde18abed596a25219a8b2c66e8db33c03543d315b"
 dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "snafu-derive"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7a7fe9b0669ef117c5cabc5549638528f36771f058ff977d7689deb517833a75"
+dependencies = [
+ "heck",
  "proc-macro2",
  "quote",
  "syn",
@@ -3259,6 +3348,12 @@ checksum = "d44a3643b4ff9caf57abcee9c2c621d6c03d9135e0d8b589bd9afb5992cb176a"
 
 [[package]]
 name = "strsim"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8ea5119cdb4c55b55d432abb513a0429384878c15dde60cc77b1c99de1a95a6a"
+
+[[package]]
+name = "strsim"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "73473c0e59e6d5812c5dfe2a064a6444949f089e20eec9a2e5506596494e4623"
@@ -3271,6 +3366,7 @@ checksum = "0c6b5c64445ba8094a6ab0c3cd2ad323e07171012d9c98b0b15651daf1787a10"
 dependencies = [
  "clap",
  "lazy_static",
+ "paw",
  "structopt-derive",
 ]
 
@@ -3366,13 +3462,14 @@ dependencies = [
 [[package]]
 name = "tagged-base64"
 version = "0.1.0"
-source = "git+ssh://git@github.com/SpectrumXYZ/tagged-base64.git?branch=main#0159640927e5e1bfeac431f121362c70f0ca7e94"
+source = "git+ssh://git@github.com/EspressoSystems/tagged-base64.git?branch=main#5295fafb4068c67e271b831a00cd80846a2fd512"
 dependencies = [
  "base64 0.13.0",
  "console_error_panic_hook",
  "crc-any",
  "futures-channel",
  "js-sys",
+ "structopt",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
@@ -3381,13 +3478,14 @@ dependencies = [
 [[package]]
 name = "tagged-base64"
 version = "0.1.0"
-source = "git+https://github.com/SpectrumXYZ/tagged-base64?branch=main#0159640927e5e1bfeac431f121362c70f0ca7e94"
+source = "git+https://github.com/EspressoSystems/tagged-base64?branch=main#5295fafb4068c67e271b831a00cd80846a2fd512"
 dependencies = [
  "base64 0.13.0",
  "console_error_panic_hook",
  "crc-any",
  "futures-channel",
  "js-sys",
+ "structopt",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
@@ -3649,7 +3747,7 @@ dependencies = [
 [[package]]
 name = "universal-param"
 version = "0.1.0"
-source = "git+ssh://git@github.com/SpectrumXYZ/universal-param.git#c4a2060480f15fad523ff784f513a27002935ab7"
+source = "git+ssh://git@github.com/EspressoSystems/universal-param.git#bdf5ccfea1d5f143546576599a5b9820a979a91a"
 dependencies = [
  "ark-serialize",
  "ark-std",
@@ -3693,6 +3791,12 @@ name = "vcpkg"
 version = "0.2.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
+
+[[package]]
+name = "vec_map"
+version = "0.8.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f1bddf1187be692e79c5ffeab891132dfb0f236ed36a43c7ed39f1165ee20191"
 
 [[package]]
 name = "version_check"
@@ -3934,7 +4038,7 @@ dependencies = [
 [[package]]
 name = "zerok-macros"
 version = "0.1.0"
-source = "git+ssh://git@github.com/SpectrumXYZ/zerok-macros.git#0a9e9ca4ef8870bcd9a2373c00c4a697f704453a"
+source = "git+ssh://git@github.com/EspressoSystems/zerok-macros.git#0a9e9ca4ef8870bcd9a2373c00c4a697f704453a"
 dependencies = [
  "proc-macro2",
  "quote",
