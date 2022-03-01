@@ -20,9 +20,7 @@ use futures::future::BoxFuture;
 use jf_cap::{
     keys::{AuditorKeyPair, AuditorPubKey, FreezerKeyPair, FreezerPubKey, UserKeyPair},
     proof::UniversalParam,
-    structs::{
-        AssetCode, AssetDefinition, AssetPolicy, FreezeFlag, ReceiverMemo, RecordCommitment,
-    },
+    structs::{AssetCode, AssetPolicy, FreezeFlag, ReceiverMemo, RecordCommitment},
 };
 use net::{MerklePath, UserAddress};
 use reef::Ledger;
@@ -32,7 +30,6 @@ use std::collections::HashMap;
 use std::fmt;
 use std::fs::File;
 use std::io::{Read, Write};
-use std::iter::once;
 use std::path::PathBuf;
 use std::str::FromStr;
 use tagged_base64::TaggedBase64;
@@ -298,32 +295,15 @@ impl<'a, C: CLI<'a>, T: Listable<'a, C> + CLIInput<'a, C>> CLIInput<'a, C> for L
 #[async_trait]
 impl<'a, C: CLI<'a>> Listable<'a, C> for AssetCode {
     async fn list(wallet: &mut Wallet<'a, C>) -> Vec<ListItem<Self>> {
-        // Get all assets known to the wallet, except the native asset, which we will add to the
-        // results manually to make sure that it is always present and always first.
-        let mut assets = wallet
-            .assets()
-            .await
-            .into_iter()
-            .filter_map(|(code, asset)| {
-                if code == AssetCode::native() {
-                    None
-                } else {
-                    Some(asset)
-                }
-            })
-            .collect::<Vec<_>>();
-        // Sort alphabetically for consistent ordering as long as the set of known assets remains
-        // stable.
-        assets.sort_by_key(|info| info.asset.code.to_string());
-
         // Get our auditor and freezer keys so we can check if the asset types are
         // auditable/freezable.
         let audit_keys = wallet.auditor_pub_keys().await;
         let freeze_keys = wallet.freezer_pub_keys().await;
 
-        // Convert to ListItems and prepend the native asset code.
-        once(AssetInfo::from(AssetDefinition::native()))
-            .chain(assets)
+        // Get the wallet's asset library and convert to ListItems.
+        wallet
+            .assets()
+            .await
             .into_iter()
             .enumerate()
             .map(|(index, info)| ListItem {
@@ -395,18 +375,11 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             "print information about an asset",
             C,
             |io, wallet, asset: ListItem<AssetCode>| {
-                let assets = wallet.assets().await;
-                let info = if asset.item == AssetCode::native() {
-                    // We always recognize the native asset type in the CLI, even if it's not
-                    // included in the wallet's assets yet.
-                    AssetInfo::from(AssetDefinition::native())
-                } else {
-                    match assets.get(&asset.item) {
-                        Some(info) => info.clone(),
-                        None => {
-                            cli_writeln!(io, "No such asset {}", asset.item);
-                            return;
-                        }
+                let info = match wallet.asset(asset.item).await {
+                    Some(info) => info.clone(),
+                    None => {
+                        cli_writeln!(io, "No such asset {}", asset.item);
+                        return;
                     }
                 };
 
@@ -598,7 +571,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                             } else if let Some(AssetInfo {
                                 mint_info: Some(mint_info),
                                 ..
-                            }) = wallet.assets().await.get(&txn.asset)
+                            }) = wallet.asset(txn.asset).await
                             {
                                 // If the description looks like it came from a string, interpret as
                                 // a string. Otherwise, encode the binary blob as tagged base64.
