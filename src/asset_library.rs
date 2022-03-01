@@ -9,31 +9,31 @@ use std::ops::Index;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct AssetInfo {
-    pub asset: AssetDefinition,
+    pub definition: AssetDefinition,
     pub mint_info: Option<MintInfo>,
 }
 
 impl AssetInfo {
-    pub fn new(asset: AssetDefinition, mint_info: MintInfo) -> Self {
+    pub fn new(definition: AssetDefinition, mint_info: MintInfo) -> Self {
         Self {
-            asset,
+            definition,
             mint_info: Some(mint_info),
         }
     }
 
     pub fn native() -> Self {
         Self {
-            asset: AssetDefinition::native(),
+            definition: AssetDefinition::native(),
             mint_info: None,
         }
     }
 
     /// Update this info by merging in information from `info`.
     ///
-    /// * `self.asset` is replaced with `info.asset`
+    /// * `self.definition` is replaced with `info.definition`
     /// * If `info.mint_info` exists, it replaces `self.mint_info`
     pub fn update(&mut self, info: AssetInfo) {
-        self.asset = info.asset;
+        self.definition = info.definition;
         if let Some(mint_info) = info.mint_info {
             self.mint_info = Some(mint_info);
         }
@@ -41,9 +41,9 @@ impl AssetInfo {
 }
 
 impl From<AssetDefinition> for AssetInfo {
-    fn from(asset: AssetDefinition) -> Self {
+    fn from(definition: AssetDefinition) -> Self {
         Self {
-            asset,
+            definition,
             mint_info: None,
         }
     }
@@ -52,12 +52,12 @@ impl From<AssetDefinition> for AssetInfo {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct MintInfo {
     pub seed: AssetCodeSeed,
-    pub desc: Vec<u8>,
+    pub description: Vec<u8>,
 }
 
 impl MintInfo {
-    pub fn new(seed: AssetCodeSeed, desc: Vec<u8>) -> Self {
-        Self { seed, desc }
+    pub fn new(seed: AssetCodeSeed, description: Vec<u8>) -> Self {
+        Self { seed, description }
     }
 }
 
@@ -94,15 +94,16 @@ impl AssetLibrary {
     /// If `asset` is already in the library it is updated (by `AssetInfo::update`). Otherwise, it
     /// is inserted at the end of the library.
     pub fn insert(&mut self, asset: AssetInfo) {
-        if let Some(i) = self.index.get(&asset.asset.code) {
+        if let Some(i) = self.index.get(&asset.definition.code) {
             self.assets[*i].update(asset);
         } else {
-            self.index.insert(asset.asset.code, self.assets.len());
+            self.index.insert(asset.definition.code, self.assets.len());
             if self
                 .audit_keys
-                .contains(asset.asset.policy_ref().auditor_pub_key())
+                .contains(asset.definition.policy_ref().auditor_pub_key())
             {
-                self.auditable.insert(asset.asset.code, asset.asset.clone());
+                self.auditable
+                    .insert(asset.definition.code, asset.definition.clone());
             }
             self.assets.push(asset);
         }
@@ -112,8 +113,9 @@ impl AssetLibrary {
         // Upon discovering a new audit key, we need to check if any existing assets have now become
         // auditable.
         for asset in &self.assets {
-            if asset.asset.policy_ref().auditor_pub_key() == &key {
-                self.auditable.insert(asset.asset.code, asset.asset.clone());
+            if asset.definition.policy_ref().auditor_pub_key() == &key {
+                self.auditable
+                    .insert(asset.definition.code, asset.definition.clone());
             }
         }
         self.audit_keys.insert(key);

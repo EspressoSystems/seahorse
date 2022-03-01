@@ -306,22 +306,22 @@ impl<'a, C: CLI<'a>> Listable<'a, C> for AssetCode {
             .await
             .into_iter()
             .enumerate()
-            .map(|(index, info)| ListItem {
+            .map(|(index, asset)| ListItem {
                 index,
-                annotation: if info.asset.code == AssetCode::native() {
+                annotation: if asset.definition.code == AssetCode::native() {
                     Some(String::from("native"))
                 } else {
                     // Annotate the listing with attributes indicating whether the asset is
                     // auditable, freezable, and mintable by us.
                     let mut attributes = String::new();
-                    let policy = info.asset.policy_ref();
+                    let policy = asset.definition.policy_ref();
                     if audit_keys.contains(policy.auditor_pub_key()) {
                         attributes.push('a');
                     }
                     if freeze_keys.contains(policy.freezer_pub_key()) {
                         attributes.push('f');
                     }
-                    if info.mint_info.is_some() {
+                    if asset.mint_info.is_some() {
                         attributes.push('m');
                     }
                     if attributes.is_empty() {
@@ -330,7 +330,7 @@ impl<'a, C: CLI<'a>> Listable<'a, C> for AssetCode {
                         Some(attributes)
                     }
                 },
-                item: info.asset.code,
+                item: asset.definition.code,
             })
             .collect()
     }
@@ -375,8 +375,8 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             "print information about an asset",
             C,
             |io, wallet, asset: ListItem<AssetCode>| {
-                let info = match wallet.asset(asset.item).await {
-                    Some(info) => info.clone(),
+                let asset = match wallet.asset(asset.item).await {
+                    Some(asset) => asset.clone(),
                     None => {
                         cli_writeln!(io, "No such asset {}", asset.item);
                         return;
@@ -384,22 +384,22 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                 };
 
                 // Try to format the asset description as human-readable as possible.
-                let desc = if let Some(MintInfo { desc, .. }) = &info.mint_info {
+                let desc = if let Some(MintInfo { description, .. }) = &asset.mint_info {
                     // If it looks like it came from a string, interpret as a string. Otherwise,
                     // encode the binary blob as tagged base64.
-                    match std::str::from_utf8(desc) {
+                    match std::str::from_utf8(description) {
                         Ok(s) => String::from(s),
-                        Err(_) => TaggedBase64::new("DESC", desc).unwrap().to_string(),
+                        Err(_) => TaggedBase64::new("DESC", description).unwrap().to_string(),
                     }
-                } else if info.asset.code == AssetCode::native() {
+                } else if asset.definition.code == AssetCode::native() {
                     String::from("Native")
                 } else {
                     String::from("Asset")
                 };
-                cli_writeln!(io, "{} {}", desc, info.asset.code);
+                cli_writeln!(io, "{} {}", desc, asset.definition.code);
 
                 // Print the auditor, noting if it is us.
-                let policy = info.asset.policy_ref();
+                let policy = asset.definition.policy_ref();
                 if policy.is_auditor_pub_key_set() {
                     let auditor_key = policy.auditor_pub_key();
                     if wallet.auditor_pub_keys().await.contains(auditor_key) {
@@ -424,9 +424,9 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                 }
 
                 // Print the minter, noting if it is us.
-                if info.mint_info.is_some() {
+                if asset.mint_info.is_some() {
                     cli_writeln!(io, "Minter: me");
-                } else if info.asset.code == AssetCode::native() {
+                } else if asset.definition.code == AssetCode::native() {
                     cli_writeln!(io, "Not mintable");
                 } else {
                     cli_writeln!(io, "Minter: unknown");
@@ -575,9 +575,9 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                             {
                                 // If the description looks like it came from a string, interpret as
                                 // a string. Otherwise, encode the binary blob as tagged base64.
-                                match std::str::from_utf8(&mint_info.desc) {
+                                match std::str::from_utf8(&mint_info.description) {
                                     Ok(s) => String::from(s),
-                                    Err(_) => TaggedBase64::new("DESC", &mint_info.desc)
+                                    Err(_) => TaggedBase64::new("DESC", &mint_info.description)
                                         .unwrap()
                                         .to_string(),
                                 }

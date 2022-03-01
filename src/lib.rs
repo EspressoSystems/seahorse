@@ -1345,13 +1345,15 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
         'a: 'b,
     {
         async move {
-            let (seed, asset_definition) =
+            let (seed, definition) =
                 self.txn_state
                     .define_asset(&mut session.rng, description, policy)?;
-            let desc = description.to_vec();
             let asset = AssetInfo {
-                asset: asset_definition,
-                mint_info: Some(MintInfo { seed, desc }),
+                definition,
+                mint_info: Some(MintInfo {
+                    seed,
+                    description: description.to_vec(),
+                }),
             };
 
             // Persist the change that we're about to make before updating our in-memory state. We
@@ -1368,7 +1370,7 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
 
             // Now we can add the asset definition to the in-memory state.
             self.assets.insert(asset.clone());
-            Ok(asset.asset)
+            Ok(asset.definition)
         }
     }
 
@@ -1377,7 +1379,7 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
         session: &mut WalletSession<'a, L, impl WalletBackend<'a, L>>,
         asset: AssetInfo,
     ) -> Result<(), WalletError<L>> {
-        if let Some(old) = self.assets.get(asset.asset.code) {
+        if let Some(old) = self.assets.get(asset.definition.code) {
             if old == &asset {
                 // If we already have this asset and it is up-to-date with the new info, there is no
                 // need to go to the trouble of updating storage.
@@ -1599,19 +1601,19 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
             .assets
             .get(*asset_code)
             .ok_or(WalletError::<L>::UndefinedAsset { asset: *asset_code })?;
-        let MintInfo { seed, desc } =
+        let MintInfo { seed, description } =
             asset
                 .mint_info
                 .clone()
                 .ok_or(WalletError::<L>::AssetNotMintable {
-                    asset: asset.asset.clone(),
+                    asset: asset.definition.clone(),
                 })?;
         self.txn_state
             .mint(
                 &self.account_keypair(account)?.clone(),
                 &self.proving_keys.mint,
                 fee,
-                &(asset.asset.clone(), seed, desc),
+                &(asset.definition.clone(), seed, description),
                 amount,
                 session.backend.get_public_key(&owner).await?,
                 &mut session.rng,
@@ -1651,7 +1653,7 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
         outputs_frozen: FreezeFlag,
     ) -> Result<(FreezeNote, TransactionInfo<L>), WalletError<L>> {
         let asset = match self.assets.get(*asset) {
-            Some(info) => info.asset.clone(),
+            Some(asset) => asset.definition.clone(),
             None => return Err(WalletError::<L>::UndefinedAsset { asset: *asset }),
         };
         let freeze_key = match self.freeze_keys.get(asset.policy_ref().freezer_pub_key()) {

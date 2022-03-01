@@ -678,15 +678,15 @@ mod tests {
         assert_wallet_states_eq(&stored, &loaded);
 
         // Append to monotonic state and then reload.
-        let asset =
+        let definition =
             AssetDefinition::new(AssetCode::random(&mut rng).0, Default::default()).unwrap();
         let audit_key = AuditorKeyPair::generate(&mut rng);
         let freeze_key = FreezerKeyPair::generate(&mut rng);
-        let info = AssetInfo {
-            asset: asset.clone(),
+        let asset = AssetInfo {
+            definition,
             mint_info: None,
         };
-        stored.assets.insert(info.clone());
+        stored.assets.insert(asset.clone());
         stored.assets.add_audit_key(audit_key.pub_key());
         stored
             .audit_keys
@@ -700,7 +700,7 @@ mod tests {
         {
             let mut storage =
                 AtomicWalletStorage::<cap::Ledger, _>::new(&mut loader, 1024).unwrap();
-            storage.store_asset(&info).await.unwrap();
+            storage.store_asset(&asset).await.unwrap();
             storage
                 .store_key(&RoleKeyPair::Auditor(audit_key))
                 .await

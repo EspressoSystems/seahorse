@@ -1629,7 +1629,10 @@ pub mod generic_wallet_tests {
             }
         };
         assert_eq!(get_asset(AssetCode::native()).await, AssetInfo::native());
-        assert_eq!(get_asset(defined_asset.code).await.asset, defined_asset);
+        assert_eq!(
+            get_asset(defined_asset.code).await.definition,
+            defined_asset
+        );
         assert!(get_asset(defined_asset.code).await.mint_info.is_some());
         assert_eq!(
             get_asset(minted_asset.code).await,
