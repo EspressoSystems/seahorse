@@ -2991,7 +2991,6 @@ dependencies = [
  "surf",
  "tagged-base64 0.1.0 (git+ssh://git@github.com/EspressoSystems/tagged-base64.git?branch=main)",
  "tempdir",
- "universal-param",
  "zeroize",
  "zerok-macros",
 ]
@@ -3742,18 +3741,6 @@ checksum = "9f214e8f697e925001e66ec2c6e37a4ef93f0f78c2eed7814394e10c62025b05"
 dependencies = [
  "generic-array",
  "subtle",
-]
-
-[[package]]
-name = "universal-param"
-version = "0.1.0"
-source = "git+ssh://git@github.com/EspressoSystems/universal-param.git#bdf5ccfea1d5f143546576599a5b9820a979a91a"
-dependencies = [
- "ark-serialize",
- "ark-std",
- "itertools",
- "jf-cap",
- "rand_chacha 0.3.1",
 ]
 
 [[package]]

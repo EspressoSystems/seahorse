@@ -504,6 +504,7 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> WalletStorage<'a,
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::testing::UNIVERSAL_PARAM;
     use crate::{
         events::{EventIndex, EventSource},
         testing::assert_wallet_states_eq,
@@ -518,7 +519,6 @@ mod tests {
         KeyPair, MerkleTree, Signature, TransactionVerifyingKey,
     };
     use key_set::KeySet;
-    use lazy_static::lazy_static;
     use rand_chacha::{
         rand_core::{RngCore, SeedableRng},
         ChaChaRng,
@@ -527,13 +527,6 @@ mod tests {
     use std::iter::repeat_with;
     use std::path::PathBuf;
     use tempdir::TempDir;
-
-    lazy_static! {
-        static ref UNIVERSAL_PARAM: jf_cap::proof::UniversalParam = universal_param::get(
-            &mut ChaChaRng::from_seed([0x8au8; 32]),
-            cap::Ledger::merkle_height()
-        );
-    }
 
     struct MockWalletLoader {
         dir: TempDir,
