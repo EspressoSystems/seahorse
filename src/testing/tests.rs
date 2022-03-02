@@ -121,7 +121,12 @@ pub mod generic_wallet_tests {
         // Construct a transaction to transfer some coins from Alice to Bob.
         wallets[0]
             .0
-            .transfer(&alice_address, &coin.code, &[(bob_address.clone(), 3)], 1)
+            .transfer(
+                Some(&alice_address),
+                &coin.code,
+                &[(bob_address.clone(), 3)],
+                1,
+            )
             .await
             .unwrap();
         t.sync(&ledger, &wallets).await;
@@ -177,7 +182,7 @@ pub mod generic_wallet_tests {
         // the sum of the outputs and fee of this transaction is only 2.
         wallets[1]
             .0
-            .transfer(&bob_address, &coin.code, &[(alice_address, 1)], 1)
+            .transfer(Some(&bob_address), &coin.code, &[(alice_address, 1)], 1)
             .await
             .unwrap();
         t.sync(&ledger, &wallets).await;
@@ -349,7 +354,7 @@ pub mod generic_wallet_tests {
         } else {
             wallets[0]
                 .0
-                .transfer(&sender, &asset.code, &[(receiver.clone(), 1)], 1)
+                .transfer(Some(&sender), &asset.code, &[(receiver.clone(), 1)], 1)
                 .await
                 .unwrap();
         }
@@ -393,7 +398,7 @@ pub mod generic_wallet_tests {
                 let sender = wallets[2].1.clone();
                 wallets[2]
                     .0
-                    .transfer(&sender, &asset.code, &[(receiver.clone(), 1)], 1)
+                    .transfer(Some(&sender), &asset.code, &[(receiver.clone(), 1)], 1)
                     .await
                     .unwrap();
                 t.sync(&ledger, &wallets).await;
@@ -474,7 +479,7 @@ pub mod generic_wallet_tests {
         } else {
             wallets[0]
                 .0
-                .transfer(&sender, &asset.code, &[(receiver, 1)], 1)
+                .transfer(Some(&sender), &asset.code, &[(receiver, 1)], 1)
                 .await
                 .unwrap();
         }
@@ -650,7 +655,7 @@ pub mod generic_wallet_tests {
         let dst = wallets[1].1.clone();
         match wallets[0]
             .0
-            .transfer(&src, &asset.code, &[(dst, 1)], 1)
+            .transfer(Some(&src), &asset.code, &[(dst, 1)], 1)
             .await
         {
             Err(WalletError::TransactionError {
@@ -693,9 +698,10 @@ pub mod generic_wallet_tests {
         let dst = wallets[1].1.clone();
         let xfr_receipt = wallets[0]
             .0
-            .transfer(&src, &asset.code, &[(dst, 1)], 1)
+            .transfer(Some(&src), &asset.code, &[(dst, 1)], 1)
             .await
-            .unwrap();
+            .unwrap()[0]
+            .clone();
         t.sync(&ledger, &wallets).await;
         assert_eq!(wallets[0].0.balance(&wallets[0].1, &asset.code).await, 0);
         assert_eq!(
@@ -1085,14 +1091,14 @@ pub mod generic_wallet_tests {
                 let sender = &mut wallets[sender_ix + 1].0;
                 let receipt = match sender
                     .transfer(
-                        &sender_address,
+                        Some(&sender_address),
                         &asset.code,
                         &[(receiver.clone(), amount)],
                         1,
                     )
                     .await
                 {
-                    Ok(receipt) => receipt,
+                    Ok(receipts) => receipts[0].clone(),
                     Err(WalletError::TransactionError {
                         source:
                             TransactionError::Fragmentation {
@@ -1117,13 +1123,14 @@ pub mod generic_wallet_tests {
                             amount = suggested_amount;
                             sender
                                 .transfer(
-                                    &sender_address,
+                                    Some(&sender_address),
                                     &asset.code,
                                     &[(receiver.clone(), amount)],
                                     1,
                                 )
                                 .await
-                                .unwrap()
+                                .unwrap()[0]
+                                .clone()
                         } else {
                             println!(
                                 "skipping transfer due to fragmentation: {}s",
@@ -1151,13 +1158,14 @@ pub mod generic_wallet_tests {
                         let sender = &mut wallets[sender_ix + 1].0;
                         sender
                             .transfer(
-                                &sender_address,
+                                Some(&sender_address),
                                 &asset.code,
                                 &[(receiver.clone(), amount)],
                                 1,
                             )
                             .await
-                            .unwrap()
+                            .unwrap()[0]
+                            .clone()
                     }
                     Err(err) => {
                         panic!("transaction failed: {:?}", err)
@@ -1451,7 +1459,12 @@ pub mod generic_wallet_tests {
         let send_addr = wallets[1].1.clone();
         wallets[1]
             .0
-            .transfer(&send_addr, &AssetCode::native(), &[(key.address(), 1)], 1)
+            .transfer(
+                Some(&send_addr),
+                &AssetCode::native(),
+                &[(key.address(), 1)],
+                1,
+            )
             .await
             .unwrap();
         t.sync(&ledger, &wallets).await;
@@ -1488,7 +1501,12 @@ pub mod generic_wallet_tests {
         //forwards.
         wallets[1]
             .0
-            .transfer(&send_addr, &AssetCode::native(), &[(key.address(), 1)], 1)
+            .transfer(
+                Some(&send_addr),
+                &AssetCode::native(),
+                &[(key.address(), 1)],
+                1,
+            )
             .await
             .unwrap();
         t.sync(&ledger, &wallets).await;
@@ -1516,9 +1534,15 @@ pub mod generic_wallet_tests {
 
         let (mut wallet1, address1) = wallets.remove(0);
         let receipt = wallet1
-            .transfer(&address1, &AssetCode::native(), &[(address1.clone(), 1)], 1)
+            .transfer(
+                Some(&address1),
+                &AssetCode::native(),
+                &[(address1.clone(), 1)],
+                1,
+            )
             .await
-            .unwrap();
+            .unwrap()[0]
+            .clone();
         await_transaction(&receipt, &wallet1, &[]).await;
         assert_eq!(
             wallet1.balance(&address1, &AssetCode::native()).await,
@@ -1542,9 +1566,15 @@ pub mod generic_wallet_tests {
 
         // Transfer to the late wallet.
         let receipt = wallet1
-            .transfer(&address1, &AssetCode::native(), &[(address2.clone(), 2)], 1)
+            .transfer(
+                Some(&address1),
+                &AssetCode::native(),
+                &[(address2.clone(), 2)],
+                1,
+            )
             .await
-            .unwrap();
+            .unwrap()[0]
+            .clone();
         await_transaction(&receipt, &wallet1, &[&wallet2]).await;
         assert_eq!(
             wallet1.balance(&address1, &AssetCode::native()).await,
@@ -1554,9 +1584,15 @@ pub mod generic_wallet_tests {
 
         // Transfer back.
         let receipt = wallet2
-            .transfer(&address2, &AssetCode::native(), &[(address1.clone(), 1)], 1)
+            .transfer(
+                Some(&address2),
+                &AssetCode::native(),
+                &[(address1.clone(), 1)],
+                1,
+            )
             .await
-            .unwrap();
+            .unwrap()[0]
+            .clone();
         await_transaction(&receipt, &wallet2, &[&wallet1]).await;
         assert_eq!(
             wallet1.balance(&address1, &AssetCode::native()).await,

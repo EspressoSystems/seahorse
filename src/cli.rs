@@ -1232,7 +1232,7 @@ mod test {
         // auditor nonetheless discovers the details of the transaction).
         writeln!(
             sender_input,
-            "transfer 1 {} {} 50 1",
+            "transfer_from 1 {} {} 50 1",
             sender_address, receiver_address
         )
         .unwrap();
@@ -1302,7 +1302,7 @@ mod test {
         // Transfers that need the frozen record as an input should now fail.
         writeln!(
             sender_input,
-            "transfer 1 {} {} 50 1",
+            "transfer_from 1 {} {} 50 1",
             sender_address, receiver_address
         )
         .unwrap();
