@@ -2,6 +2,13 @@ name: Build
 
 on:
   push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  schedule:
+    - cron: '0 0 * * 1'
   workflow_dispatch:
 
 jobs:
@@ -10,39 +17,36 @@ jobs:
     container:
       image: registry.gitlab.com/asuran-rs/containers/rust-sccache-docker:1.56
     steps:
-      - uses: styfle/cancel-workflow-action@0.9.1
-        name: Cancel Outdated Builds
+      - name: Cancel Outdated Builds
+        uses: styfle/cancel-workflow-action@0.9.1
         with:
           all_but_latest: true
           access_token: ${{ github.token }}
 
-      - uses: actions/checkout@v2
-        name: Checkout Repository
+      - name: Checkout Repository
+        uses: actions/checkout@v3
 
-      - name: Configure Git
-        run: |
-          git config --global url."https://ancient123:${{ secrets.ORG_GITHUB_PAT }}@github.com".insteadOf git://github.com
-          git config --global url."https://ancient123:${{ secrets.ORG_GITHUB_PAT }}@github.com".insteadOf ssh://git@github.com
-          git config --global url."https://dl.cloudsmith.io/${{ secrets.CLOUDSMITH_ENTITLEMENT }}/".insteadOf https://dl.cloudsmith.io/basic/
-
-      - uses: Swatinem/rust-cache@v1
-        name: Enable Rust Caching
+      - name: Enable Rust Caching
+        uses: Swatinem/rust-cache@v1
 
       - name: Format Check
         run: cargo fmt -- --check
 
-      - uses: actions-rs/clippy-check@v1
-        name: Clippy
+      - name: Clippy
+        uses: actions-rs/clippy-check@v1
         with:
           token: ${{ github.token }}
           args: --workspace -- -D warnings
 
       - name: Audit
-        run: cargo audit --ignore RUSTSEC-2020-0159 --ignore RUSTSEC-2020-0071 --ignore RUSTSEC-2022-0006
+        run: cargo audit --ignore RUSTSEC-2020-0159 --ignore RUSTSEC-2020-0071
+
+      - name: Build Tests
+        run: |
+          cargo test --workspace --release --no-run
 
       - name: Test
         run: |
-          cargo test --workspace --release --no-run
           cargo test --workspace --release --verbose -- -Zunstable-options --report-time --test-threads 2
         timeout-minutes: 30
 

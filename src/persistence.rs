@@ -22,13 +22,13 @@ use atomic_store::{
     load_store::{BincodeLoadStore, LoadStore},
     AppendLog, AtomicStore, AtomicStoreLoader, RollingLog,
 };
+use espresso_macros::ser_test;
 use key_set::{OrderByOutputs, ProverKeySet};
 use rand_chacha::{rand_core::SeedableRng, ChaChaRng};
 use reef::*;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use snafu::ResultExt;
 use std::collections::HashMap;
-use zerok_macros::ser_test;
 
 // Serialization intermediate for the static part of a WalletState.
 #[derive(Deserialize, Serialize)]

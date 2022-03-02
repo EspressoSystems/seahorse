@@ -6,6 +6,7 @@
 // You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use arbitrary::Arbitrary;
+use espresso_macros::ser_test;
 use jf_cap::{
     structs::{ReceiverMemo, RecordCommitment},
     MerklePath,
@@ -16,7 +17,6 @@ use std::cmp::Ordering;
 use std::fmt::{Display, Formatter};
 use std::ops::{Add, AddAssign};
 use std::str::FromStr;
-use zerok_macros::ser_test;
 
 #[derive(Clone, Debug, Serialize, Deserialize, strum_macros::AsStaticStr)]
 #[serde(bound = "")]

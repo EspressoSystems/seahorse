@@ -10,6 +10,7 @@ use arbitrary::{Arbitrary, Unstructured};
 use arbitrary_wrappers::*;
 use ark_serialize::*;
 use chrono::{DateTime, Local};
+use espresso_macros::ser_test;
 use jf_cap::{
     errors::TxnApiError,
     freeze::{FreezeNote, FreezeNoteInput},
@@ -41,7 +42,6 @@ use std::fmt::{Debug, Formatter};
 use std::hash::{Hash, Hasher};
 use std::iter::FromIterator;
 use std::ops::{Index, IndexMut};
-use zerok_macros::ser_test;
 
 #[derive(Debug, Snafu)]
 #[snafu(visibility = "pub")]
