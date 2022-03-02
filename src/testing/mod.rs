@@ -189,7 +189,7 @@ pub fn assert_wallet_states_eq<'a, L: Ledger>(w1: &WalletState<'a, L>, w2: &Wall
     assert_eq!(w1.proving_keys, w2.proving_keys);
     assert_eq!(w1.txn_state.records, w2.txn_state.records);
     assert_eq!(w1.key_state, w2.key_state);
-    assert_eq!(w1.auditable_assets, w2.auditable_assets);
+    assert_eq!(w1.assets, w2.assets);
     assert_eq!(
         w1.audit_keys.keys().collect::<Vec<_>>(),
         w2.audit_keys.keys().collect::<Vec<_>>()
@@ -203,7 +203,6 @@ pub fn assert_wallet_states_eq<'a, L: Ledger>(w1: &WalletState<'a, L>, w2: &Wall
         w1.txn_state.record_mt.commitment(),
         w2.txn_state.record_mt.commitment()
     );
-    assert_eq!(w1.defined_assets, w2.defined_assets);
     assert_eq!(w1.txn_state.transactions, w2.txn_state.transactions);
     assert_eq!(w1.key_scans, w2.key_scans);
 }
