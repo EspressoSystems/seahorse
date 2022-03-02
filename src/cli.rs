@@ -10,8 +10,8 @@ use crate::{
     io::SharedIO,
     loader::{Loader, LoaderMetadata, WalletLoader},
     reader::Reader,
-    AssetInfo, BincodeError, IoError, MintInfo, TransactionReceipt, TransactionStatus,
-    WalletBackend, WalletError,
+    AssetInfo, BincodeError, IoError, TransactionReceipt, TransactionStatus, WalletBackend,
+    WalletError,
 };
 use async_std::task::block_on;
 use async_trait::async_trait;
@@ -20,9 +20,7 @@ use futures::future::BoxFuture;
 use jf_cap::{
     keys::{AuditorKeyPair, AuditorPubKey, FreezerKeyPair, FreezerPubKey, UserKeyPair},
     proof::UniversalParam,
-    structs::{
-        AssetCode, AssetDefinition, AssetPolicy, FreezeFlag, ReceiverMemo, RecordCommitment,
-    },
+    structs::{AssetCode, AssetPolicy, FreezeFlag, ReceiverMemo, RecordCommitment},
 };
 use net::{MerklePath, UserAddress};
 use reef::Ledger;
@@ -32,7 +30,6 @@ use std::collections::HashMap;
 use std::fmt;
 use std::fs::File;
 use std::io::{Read, Write};
-use std::iter::once;
 use std::path::PathBuf;
 use std::str::FromStr;
 use tagged_base64::TaggedBase64;
@@ -131,8 +128,8 @@ macro_rules! cli_input_from_str {
 }
 
 cli_input_from_str! {
-    bool, u64, String, AssetCode, AuditorPubKey, FreezerPubKey, UserAddress, PathBuf, ReceiverMemo,
-    RecordCommitment, MerklePath, EventIndex
+    bool, u64, String, AssetCode, AssetInfo, AuditorPubKey, FreezerPubKey, UserAddress,
+    PathBuf, ReceiverMemo, RecordCommitment, MerklePath, EventIndex
 }
 
 impl<'a, C: CLI<'a>, L: Ledger> CLIInput<'a, C> for TransactionReceipt<L> {
@@ -298,50 +295,33 @@ impl<'a, C: CLI<'a>, T: Listable<'a, C> + CLIInput<'a, C>> CLIInput<'a, C> for L
 #[async_trait]
 impl<'a, C: CLI<'a>> Listable<'a, C> for AssetCode {
     async fn list(wallet: &mut Wallet<'a, C>) -> Vec<ListItem<Self>> {
-        // Get all assets known to the wallet, except the native asset, which we will add to the
-        // results manually to make sure that it is always present and always first.
-        let mut assets = wallet
-            .assets()
-            .await
-            .into_iter()
-            .filter_map(|(code, asset)| {
-                if code == AssetCode::native() {
-                    None
-                } else {
-                    Some(asset)
-                }
-            })
-            .collect::<Vec<_>>();
-        // Sort alphabetically for consistent ordering as long as the set of known assets remains
-        // stable.
-        assets.sort_by_key(|info| info.asset.code.to_string());
-
         // Get our auditor and freezer keys so we can check if the asset types are
         // auditable/freezable.
         let audit_keys = wallet.auditor_pub_keys().await;
         let freeze_keys = wallet.freezer_pub_keys().await;
 
-        // Convert to ListItems and prepend the native asset code.
-        once(AssetInfo::from(AssetDefinition::native()))
-            .chain(assets)
+        // Get the wallet's asset library and convert to ListItems.
+        wallet
+            .assets()
+            .await
             .into_iter()
             .enumerate()
-            .map(|(index, info)| ListItem {
+            .map(|(index, asset)| ListItem {
                 index,
-                annotation: if info.asset.code == AssetCode::native() {
+                annotation: if asset.definition.code == AssetCode::native() {
                     Some(String::from("native"))
                 } else {
                     // Annotate the listing with attributes indicating whether the asset is
                     // auditable, freezable, and mintable by us.
                     let mut attributes = String::new();
-                    let policy = info.asset.policy_ref();
+                    let policy = asset.definition.policy_ref();
                     if audit_keys.contains(policy.auditor_pub_key()) {
                         attributes.push('a');
                     }
                     if freeze_keys.contains(policy.freezer_pub_key()) {
                         attributes.push('f');
                     }
-                    if info.mint_info.is_some() {
+                    if asset.mint_info.is_some() {
                         attributes.push('m');
                     }
                     if attributes.is_empty() {
@@ -350,7 +330,7 @@ impl<'a, C: CLI<'a>> Listable<'a, C> for AssetCode {
                         Some(attributes)
                     }
                 },
-                item: info.asset.code,
+                item: asset.definition.code,
             })
             .collect()
     }
@@ -395,38 +375,26 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             "print information about an asset",
             C,
             |io, wallet, asset: ListItem<AssetCode>| {
-                let assets = wallet.assets().await;
-                let info = if asset.item == AssetCode::native() {
-                    // We always recognize the native asset type in the CLI, even if it's not
-                    // included in the wallet's assets yet.
-                    AssetInfo::from(AssetDefinition::native())
-                } else {
-                    match assets.get(&asset.item) {
-                        Some(info) => info.clone(),
-                        None => {
-                            cli_writeln!(io, "No such asset {}", asset.item);
-                            return;
-                        }
+                let asset = match wallet.asset(asset.item).await {
+                    Some(asset) => asset.clone(),
+                    None => {
+                        cli_writeln!(io, "No such asset {}", asset.item);
+                        return;
                     }
                 };
 
                 // Try to format the asset description as human-readable as possible.
-                let desc = if let Some(MintInfo { desc, .. }) = &info.mint_info {
-                    // If it looks like it came from a string, interpret as a string. Otherwise,
-                    // encode the binary blob as tagged base64.
-                    match std::str::from_utf8(desc) {
-                        Ok(s) => String::from(s),
-                        Err(_) => TaggedBase64::new("DESC", desc).unwrap().to_string(),
-                    }
-                } else if info.asset.code == AssetCode::native() {
+                let desc = if let Some(mint_info) = &asset.mint_info {
+                    mint_info.fmt_description()
+                } else if asset.definition.code == AssetCode::native() {
                     String::from("Native")
                 } else {
                     String::from("Asset")
                 };
-                cli_writeln!(io, "{} {}", desc, info.asset.code);
+                cli_writeln!(io, "{} {}", desc, asset.definition.code);
 
                 // Print the auditor, noting if it is us.
-                let policy = info.asset.policy_ref();
+                let policy = asset.definition.policy_ref();
                 if policy.is_auditor_pub_key_set() {
                     let auditor_key = policy.auditor_pub_key();
                     if wallet.auditor_pub_keys().await.contains(auditor_key) {
@@ -451,9 +419,9 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                 }
 
                 // Print the minter, noting if it is us.
-                if info.mint_info.is_some() {
+                if asset.mint_info.is_some() {
                     cli_writeln!(io, "Minter: me");
-                } else if info.asset.code == AssetCode::native() {
+                } else if asset.definition.code == AssetCode::native() {
                     cli_writeln!(io, "Not mintable");
                 } else {
                     cli_writeln!(io, "Minter: unknown");
@@ -598,13 +566,13 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                             } else if let Some(AssetInfo {
                                 mint_info: Some(mint_info),
                                 ..
-                            }) = wallet.assets().await.get(&txn.asset)
+                            }) = wallet.asset(txn.asset).await
                             {
                                 // If the description looks like it came from a string, interpret as
                                 // a string. Otherwise, encode the binary blob as tagged base64.
-                                match std::str::from_utf8(&mint_info.desc) {
+                                match std::str::from_utf8(&mint_info.description) {
                                     Ok(s) => String::from(s),
-                                    Err(_) => TaggedBase64::new("DESC", &mint_info.desc)
+                                    Err(_) => TaggedBase64::new("DESC", &mint_info.description)
                                         .unwrap()
                                         .to_string(),
                                 }
@@ -810,6 +778,16 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                         cli_write!(io, "\t{}", UserAddress::from(record.ro.pub_key.address()));
                     }
                     cli_writeln!(io);
+                }
+            }
+        ),
+        command!(
+            import_asset,
+            "import an asset type",
+            C,
+            |io, wallet, asset: AssetInfo| {
+                if let Err(err) = wallet.import_asset(asset).await {
+                    cli_writeln!(io, "Error: {}", err);
                 }
             }
         ),
@@ -1029,7 +1007,9 @@ mod test {
         task::spawn,
     };
     use futures::stream::{iter, StreamExt};
+    use jf_cap::structs::{AssetCodeSeed, AssetDefinition};
     use pipe::{PipeReader, PipeWriter};
+    use rand_chacha::{rand_core::SeedableRng, ChaChaRng};
     use reef::cap;
     use std::time::Instant;
 
@@ -1304,5 +1284,51 @@ mod test {
                 format!("^10\\s+950\\s+false\\s+{}$", sender_address).as_str(),
             ],
         );
+    }
+
+    #[async_std::test]
+    async fn test_import_asset() {
+        let mut rng = ChaChaRng::from_seed([38; 32]);
+        let seed = AssetCodeSeed::generate(&mut rng);
+        let code = AssetCode::new_domestic(seed, "my_asset".as_bytes());
+        let definition = AssetDefinition::new(code, AssetPolicy::default()).unwrap();
+
+        let mut t = MockSystem::default();
+        let (ledger, key_streams) = create_network(&mut t, &[0]).await;
+        let (mut input, mut output) = create_wallet(ledger.clone(), key_streams[0].clone());
+
+        // Load without mint info.
+        writeln!(input, "import_asset definition:{}", definition).unwrap();
+        wait_for_prompt(&mut output);
+        writeln!(input, "asset {}", definition.code).unwrap();
+        match_output(
+            &mut output,
+            &[
+                format!("Asset {}", definition.code).as_str(),
+                "Not auditable",
+                "Not freezeable",
+                "Minter: unknown",
+            ],
+        );
+
+        // Update later with mint info.
+        writeln!(
+            input,
+            "import_asset definition:{},seed:{},description:my_asset",
+            definition, seed
+        )
+        .unwrap();
+        wait_for_prompt(&mut output);
+        // Asset 0 is the native asset, ours is asset 1.
+        writeln!(input, "asset 1").unwrap();
+        match_output(
+            &mut output,
+            &["my_asset", "Not auditable", "Not freezeable", "Minter: me"],
+        );
+
+        // Make sure the asset was only loaded once (the second command should have updated the
+        // original instance).
+        writeln!(input, "asset 2").unwrap();
+        match_output(&mut output, &["invalid value for argument asset"]);
     }
 }

@@ -1564,4 +1564,83 @@ pub mod generic_wallet_tests {
         );
         assert_eq!(wallet2.balance(&address2, &AssetCode::native()).await, 0);
     }
+
+    #[async_std::test]
+    pub async fn test_asset_library<'a, T: SystemUnderTest<'a>>() {
+        let mut t = T::default();
+        let mut now = Instant::now();
+        let initial_grant = 10;
+        let (ledger, mut wallets) = t
+            .create_test_network(&[(2, 2)], vec![initial_grant, initial_grant], &mut now)
+            .await;
+
+        // Test various ways of discovering assets. We will have wallets[0] discover assets by
+        //  * defining one itself
+        //  * receiving one from wallets[1]
+        //  * importing one
+        // All of these asset types should end up in the asset library, as well as the native asset
+        // type which should always be present. The defined asset should also appear in the
+        // auditable subset if we use the right auditor key, which we will define now:
+        let audit_key0 = wallets[0].0.generate_audit_key().await.unwrap();
+
+        // Define an asset.
+        let defined_asset = wallets[0]
+            .0
+            .define_asset(&[], AssetPolicy::default().set_auditor_pub_key(audit_key0))
+            .await
+            .unwrap();
+
+        // Receive an asset. wallets[1] will define a new asset type (auditable by itself) and then
+        // mint some to wallets[0].
+        let audit_key1 = wallets[1].0.generate_audit_key().await.unwrap();
+        let minted_asset = wallets[1]
+            .0
+            .define_asset(&[], AssetPolicy::default().set_auditor_pub_key(audit_key1))
+            .await
+            .unwrap();
+        let minter_addr = wallets[1].1.clone();
+        let receiver_addr = wallets[0].1.clone();
+        wallets[1]
+            .0
+            .mint(&minter_addr, 1, &minted_asset.code, 1, receiver_addr)
+            .await
+            .unwrap();
+        t.sync(&ledger, &wallets).await;
+
+        // Import an asset (we'll use `wallets[1]` to define it).
+        let imported_asset = wallets[1]
+            .0
+            .define_asset(&[], AssetPolicy::default())
+            .await
+            .unwrap();
+        wallets[0]
+            .0
+            .import_asset(AssetInfo::from(imported_asset.clone()))
+            .await
+            .unwrap();
+
+        // Now check that all expected asset types appear in wallets[0]'s asset library.
+        let get_asset = |code| {
+            let wallet = &wallets[0].0;
+            async move {
+                let asset = wallet.asset(code).await.unwrap();
+                assert!(wallet.assets().await.contains(&asset));
+                asset
+            }
+        };
+        assert_eq!(get_asset(AssetCode::native()).await, AssetInfo::native());
+        assert_eq!(
+            get_asset(defined_asset.code).await.definition,
+            defined_asset
+        );
+        assert!(get_asset(defined_asset.code).await.mint_info.is_some());
+        assert_eq!(
+            get_asset(minted_asset.code).await,
+            AssetInfo::from(minted_asset.clone())
+        );
+        assert_eq!(
+            get_asset(imported_asset.code).await,
+            AssetInfo::from(imported_asset.clone())
+        );
+    }
 }

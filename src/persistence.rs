@@ -1,5 +1,9 @@
 use crate::{
-    encryption::Cipher, hd::KeyTree, loader::WalletLoader, txn_builder::TransactionState,
+    asset_library::{AssetInfo, AssetLibrary},
+    encryption::Cipher,
+    hd::KeyTree,
+    loader::WalletLoader,
+    txn_builder::TransactionState,
     BackgroundKeyScan, KeyPair, KeyStreamState, RoleKeyPair, TransactionHistoryEntry, WalletError,
     WalletState, WalletStorage,
 };
@@ -11,7 +15,6 @@ use atomic_store::{
     load_store::{BincodeLoadStore, LoadStore},
     AppendLog, AtomicStore, AtomicStoreLoader, RollingLog,
 };
-use jf_cap::structs::{AssetCodeSeed, AssetDefinition};
 use key_set::{OrderByOutputs, ProverKeySet};
 use rand_chacha::{rand_core::SeedableRng, ChaChaRng};
 use reef::*;
@@ -167,10 +170,8 @@ pub struct AtomicWalletStorage<'a, L: Ledger, Meta: Serialize + DeserializeOwned
     static_dirty: bool,
     dynamic_state: RollingLog<EncryptingResourceAdapter<WalletSnapshot<L>>>,
     dynamic_state_dirty: bool,
-    auditable_assets: AppendLog<EncryptingResourceAdapter<AssetDefinition>>,
-    auditable_assets_dirty: bool,
-    defined_assets: AppendLog<EncryptingResourceAdapter<(AssetDefinition, AssetCodeSeed, Vec<u8>)>>,
-    defined_assets_dirty: bool,
+    assets: AppendLog<EncryptingResourceAdapter<AssetInfo>>,
+    assets_dirty: bool,
     txn_history: AppendLog<EncryptingResourceAdapter<TransactionHistoryEntry<L>>>,
     txn_history_dirty: bool,
     keys: AppendLog<EncryptingResourceAdapter<RoleKeyPair>>,
@@ -222,17 +223,10 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicWalletStora
             file_fill_size,
         )
         .context(crate::PersistenceError)?;
-        let auditable_assets = AppendLog::load(
+        let assets = AppendLog::load(
             &mut atomic_loader,
             adaptor.cast(),
-            "wallet_aud",
-            file_fill_size,
-        )
-        .context(crate::PersistenceError)?;
-        let defined_assets = AppendLog::load(
-            &mut atomic_loader,
-            adaptor.cast(),
-            "wallet_def",
+            "wallet_assets",
             file_fill_size,
         )
         .context(crate::PersistenceError)?;
@@ -261,10 +255,8 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicWalletStora
             store,
             dynamic_state,
             dynamic_state_dirty: false,
-            auditable_assets,
-            auditable_assets_dirty: false,
-            defined_assets,
-            defined_assets_dirty: false,
+            assets,
+            assets_dirty: false,
             txn_history,
             txn_history_dirty: false,
             keys,
@@ -340,6 +332,8 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> WalletStorage<'a,
             .dynamic_state
             .load_latest()
             .context(crate::PersistenceError)?;
+        let assets = self.assets.iter().filter_map(|res| res.ok()).collect();
+        let audit_keys = self.load_keys();
 
         Ok(WalletState {
             // Static state
@@ -355,22 +349,10 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> WalletStorage<'a,
             key_state: dynamic_state.key_state,
 
             // Monotonic state
-            auditable_assets: self
-                .auditable_assets
-                .iter()
-                .filter_map(|res| res.map(|def| (def.code, def)).ok())
-                .collect(),
-            audit_keys: self.load_keys(),
+            assets: AssetLibrary::new(assets, audit_keys.keys().cloned().collect()),
+            audit_keys,
             freeze_keys: self.load_keys(),
             user_keys: self.load_keys(),
-            defined_assets: self
-                .defined_assets
-                .iter()
-                .filter_map(|res| {
-                    res.map(|(def, seed, desc)| (def.code, (def, seed, desc)))
-                        .ok()
-                })
-                .collect(),
         })
     }
 
@@ -382,14 +364,11 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> WalletStorage<'a,
         Ok(())
     }
 
-    async fn store_auditable_asset(
-        &mut self,
-        asset: &AssetDefinition,
-    ) -> Result<(), WalletError<L>> {
-        self.auditable_assets
+    async fn store_asset(&mut self, asset: &AssetInfo) -> Result<(), WalletError<L>> {
+        self.assets
             .store_resource(asset)
             .context(crate::PersistenceError)?;
-        self.auditable_assets_dirty = true;
+        self.assets_dirty = true;
         Ok(())
     }
 
@@ -398,19 +377,6 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> WalletStorage<'a,
             .store_resource(key)
             .context(crate::PersistenceError)?;
         self.keys_dirty = true;
-        Ok(())
-    }
-
-    async fn store_defined_asset(
-        &mut self,
-        asset: &AssetDefinition,
-        seed: AssetCodeSeed,
-        desc: &[u8],
-    ) -> Result<(), WalletError<L>> {
-        self.defined_assets
-            .store_resource(&(asset.clone(), seed, desc.to_vec()))
-            .context(crate::PersistenceError)?;
-        self.defined_assets_dirty = true;
         Ok(())
     }
 
@@ -454,16 +420,10 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> WalletStorage<'a,
                 self.dynamic_state.skip_version().unwrap();
             }
 
-            if self.auditable_assets_dirty {
-                self.auditable_assets.commit_version().unwrap();
+            if self.assets_dirty {
+                self.assets.commit_version().unwrap();
             } else {
-                self.auditable_assets.skip_version().unwrap();
-            }
-
-            if self.defined_assets_dirty {
-                self.defined_assets.commit_version().unwrap();
-            } else {
-                self.defined_assets.skip_version().unwrap();
+                self.assets.skip_version().unwrap();
             }
 
             if self.txn_history_dirty {
@@ -484,8 +444,7 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> WalletStorage<'a,
         self.meta_dirty = false;
         self.static_dirty = false;
         self.dynamic_state_dirty = false;
-        self.auditable_assets_dirty = false;
-        self.defined_assets_dirty = false;
+        self.assets_dirty = false;
         self.txn_history_dirty = false;
         self.keys_dirty = false;
     }
@@ -494,9 +453,8 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> WalletStorage<'a,
         self.persisted_meta.revert_version().unwrap();
         self.static_data.revert_version().unwrap();
         self.dynamic_state.revert_version().unwrap();
-        self.auditable_assets.revert_version().unwrap();
+        self.assets.revert_version().unwrap();
         self.keys.revert_version().unwrap();
-        self.defined_assets.revert_version().unwrap();
         self.txn_history.revert_version().unwrap();
     }
 }
@@ -514,7 +472,9 @@ mod tests {
     use jf_cap::{
         keys::{AuditorKeyPair, FreezerKeyPair, UserKeyPair},
         sign_receiver_memos,
-        structs::{AssetCode, FreezeFlag, ReceiverMemo, RecordCommitment, RecordOpening},
+        structs::{
+            AssetCode, AssetDefinition, FreezeFlag, ReceiverMemo, RecordCommitment, RecordOpening,
+        },
         KeyPair, MerkleTree, Signature, TransactionVerifyingKey,
     };
     use key_set::KeySet;
@@ -642,11 +602,10 @@ mod tests {
             },
             key_scans: Default::default(),
             key_state: Default::default(),
-            auditable_assets: Default::default(),
+            assets: Default::default(),
             audit_keys: Default::default(),
             freeze_keys: Default::default(),
             user_keys: Default::default(),
-            defined_assets: Default::default(),
         };
 
         let mut loader = MockWalletLoader {
@@ -719,11 +678,16 @@ mod tests {
         assert_wallet_states_eq(&stored, &loaded);
 
         // Append to monotonic state and then reload.
-        let asset =
+        let definition =
             AssetDefinition::new(AssetCode::random(&mut rng).0, Default::default()).unwrap();
         let audit_key = AuditorKeyPair::generate(&mut rng);
         let freeze_key = FreezerKeyPair::generate(&mut rng);
-        stored.auditable_assets.insert(asset.code, asset.clone());
+        let asset = AssetInfo {
+            definition,
+            mint_info: None,
+        };
+        stored.assets.insert(asset.clone());
+        stored.assets.add_audit_key(audit_key.pub_key());
         stored
             .audit_keys
             .insert(audit_key.pub_key(), audit_key.clone());
@@ -736,7 +700,7 @@ mod tests {
         {
             let mut storage =
                 AtomicWalletStorage::<cap::Ledger, _>::new(&mut loader, 1024).unwrap();
-            storage.store_auditable_asset(&asset).await.unwrap();
+            storage.store_asset(&asset).await.unwrap();
             storage
                 .store_key(&RoleKeyPair::Auditor(audit_key))
                 .await
@@ -757,26 +721,6 @@ mod tests {
         };
         assert_wallet_states_eq(&stored, &loaded);
 
-        let (code, seed) = AssetCode::random(&mut rng);
-        let asset = AssetDefinition::new(code, Default::default()).unwrap();
-        stored
-            .defined_assets
-            .insert(asset.code, (asset.clone(), seed, vec![]));
-        {
-            let mut storage =
-                AtomicWalletStorage::<cap::Ledger, _>::new(&mut loader, 1024).unwrap();
-            storage
-                .store_defined_asset(&asset, seed, &[])
-                .await
-                .unwrap();
-            storage.commit().await;
-        }
-        let loaded = {
-            let mut storage = AtomicWalletStorage::new(&mut loader, 1024).unwrap();
-            storage.load().await.unwrap()
-        };
-        assert_wallet_states_eq(&stored, &loaded);
-
         Ok(())
     }
 
@@ -787,10 +731,7 @@ mod tests {
         // Make a change to one of the data structures, but revert it.
         let loaded = {
             let mut storage = AtomicWalletStorage::new(&mut loader, 1024).unwrap();
-            storage
-                .store_auditable_asset(&AssetDefinition::native())
-                .await
-                .unwrap();
+            storage.store_asset(&AssetInfo::native()).await.unwrap();
             storage.revert().await;
             // Make sure committing after a revert does not commit the reverted changes.
             storage.commit().await;
@@ -802,8 +743,6 @@ mod tests {
         let loaded = {
             let mut storage = AtomicWalletStorage::new(&mut loader, 1024).unwrap();
 
-            let (code, seed) = AssetCode::random(&mut rng);
-            let asset = AssetDefinition::new(code, Default::default()).unwrap();
             let user_key = UserKeyPair::generate(&mut rng);
             let ro = random_ro(&mut rng, &user_key);
             let nullifier = user_key.nullify(
@@ -815,10 +754,7 @@ mod tests {
             // Store some data.
             stored.txn_state.records.insert(ro, 0, &user_key);
             storage.store_snapshot(&stored).await.unwrap();
-            storage
-                .store_defined_asset(&asset, seed, &[])
-                .await
-                .unwrap();
+            storage.store_asset(&AssetInfo::native()).await.unwrap();
             storage
                 .store_key(&RoleKeyPair::Auditor(AuditorKeyPair::generate(&mut rng)))
                 .await
@@ -834,7 +770,7 @@ mod tests {
             storage
                 .store_transaction(TransactionHistoryEntry {
                     time: Local::now(),
-                    asset: asset.code,
+                    asset: AssetCode::native(),
                     kind: TransactionKind::<cap::Ledger>::send(),
                     sender: Some(user_key.address()),
                     receivers: vec![],
