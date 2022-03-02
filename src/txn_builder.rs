@@ -1048,7 +1048,7 @@ impl<L: Ledger> TransactionState<L> {
         // find input records which account for at least the total amount, and possibly some change.
         let records = self.find_records(
             &AssetCode::native(),
-            &spec.owner_keypairs,
+            spec.owner_keypairs,
             FreezeFlag::Unfrozen,
             total_output_amount,
             None,
@@ -1169,7 +1169,7 @@ impl<L: Ledger> TransactionState<L> {
         // find input records of the asset type to spend (this does not include the fee input)
         let records = self.find_records(
             spec.asset,
-            &spec.owner_keypairs,
+            spec.owner_keypairs,
             FreezeFlag::Unfrozen,
             total_output_amount,
             None,
@@ -1558,7 +1558,7 @@ impl<L: Ledger> TransactionState<L> {
     fn find_records(
         &self,
         asset: &AssetCode,
-        owner_keypairs: &Vec<UserKeyPair>,
+        owner_keypairs: &[UserKeyPair],
         frozen: FreezeFlag,
         amount: u64,
         max_records: Option<usize>,

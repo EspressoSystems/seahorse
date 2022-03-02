@@ -2173,7 +2173,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
             Some(addr) => {
                 vec![state.account_keypair(addr)?.clone()]
             }
-            None => state.keypairs().clone(),
+            None => state.keypairs(),
         };
         let spec = TransferSpec {
             owner_keypairs: &owner_keypairs,
