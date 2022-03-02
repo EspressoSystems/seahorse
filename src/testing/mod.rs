@@ -215,14 +215,21 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
     ) -> Self::MockNetwork;
     async fn create_storage(&mut self) -> Self::MockStorage;
 
+    /// `two_addresses_per_wallet`
+    /// * If true, two keypairs/addresses will be created for each wallet.
+    /// * Otherwies, only one keypair/address per wallet.
     async fn create_test_network(
         &mut self,
         xfr_sizes: &[(usize, usize)],
         initial_grants: Vec<u64>,
+        two_addresses_per_wallet: bool,
         now: &mut Instant,
     ) -> (
         Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork, Self::MockStorage>>>,
-        Vec<(Wallet<'a, Self::MockBackend, Self::Ledger>, UserAddress)>,
+        Vec<(
+            Wallet<'a, Self::MockBackend, Self::Ledger>,
+            Vec<UserAddress>,
+        )>,
     ) {
         let mut rng = ChaChaRng::from_seed([42u8; 32]);
         let universal_param = self.universal_param();
@@ -235,24 +242,41 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         let mut initial_records = vec![];
         for amount in initial_grants {
             let key_stream = hd::KeyTree::random(&mut rng).unwrap().0;
-            let key = key_stream
-                .derive_sub_tree("user".as_bytes())
-                .derive_user_keypair(&0u64.to_le_bytes());
-            if amount > 0 {
-                let ro = RecordOpening::new(
-                    &mut rng,
-                    amount,
-                    AssetDefinition::native(),
-                    key.pub_key(),
-                    FreezeFlag::Unfrozen,
-                );
-                let comm = RecordCommitment::from(&ro);
-                let uid = record_merkle_tree.num_leaves();
-                record_merkle_tree.push(comm.to_field_element());
-                users.push((key_stream, key, vec![(ro.clone(), uid)]));
-                initial_records.push((ro, uid));
+            let sub_tree = key_stream.derive_sub_tree("user".as_bytes());
+            let keys;
+            let amount_per_wallet;
+            let num_addr;
+            if two_addresses_per_wallet {
+                keys = vec![
+                    sub_tree.derive_user_keypair(&0u64.to_le_bytes()),
+                    sub_tree.derive_user_keypair(&1u64.to_le_bytes()),
+                ];
+                amount_per_wallet = vec![amount / 2, amount - amount / 2];
+                num_addr = 2;
             } else {
-                users.push((key_stream, key, vec![]));
+                keys = vec![sub_tree.derive_user_keypair(&0u64.to_le_bytes())];
+                amount_per_wallet = vec![amount, 0];
+                num_addr = 1;
+            }
+            if amount > 0 {
+                let mut records = vec![];
+                for i in 0..num_addr {
+                    let ro = RecordOpening::new(
+                        &mut rng,
+                        amount_per_wallet[i],
+                        AssetDefinition::native(),
+                        keys[i].pub_key(),
+                        FreezeFlag::Unfrozen,
+                    );
+                    let comm = RecordCommitment::from(&ro);
+                    let uid = record_merkle_tree.num_leaves();
+                    record_merkle_tree.push(comm.to_field_element());
+                    records.push((ro.clone(), uid));
+                    initial_records.push((ro, uid));
+                }
+                users.push((key_stream, keys, records));
+            } else {
+                users.push((key_stream, keys, vec![]));
             }
         }
 
@@ -307,7 +331,7 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         // Create a wallet for each user based on the validator and the per-user information
         // computed above.
         let mut wallets = Vec::new();
-        for (key_stream, key_pair, initial_grants) in users {
+        for (key_stream, key_pairs, initial_grants) in users {
             let mut rng = ChaChaRng::from_rng(&mut rng).unwrap();
             let ledger = ledger.clone();
             let storage = Arc::new(Mutex::new(self.create_storage().await));
@@ -321,17 +345,22 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
             )
             .await
             .unwrap();
-            assert_eq!(
-                wallet
-                    .generate_user_key(Some(EventIndex::default()))
-                    .await
-                    .unwrap(),
-                key_pair.pub_key()
-            );
-            // Wait for the wallet to find any records already belonging to this key from the
-            // initial grants.
-            wallet.await_key_scan(&key_pair.address()).await.unwrap();
-            wallets.push((wallet, key_pair.address()));
+            let mut addresses = vec![];
+            for key_pair in key_pairs.clone() {
+                assert_eq!(
+                    wallet
+                        .generate_user_key(Some(EventIndex::default()))
+                        .await
+                        .unwrap(),
+                    key_pair.pub_key()
+                );
+
+                // Wait for the wallet to find any records already belonging to this key from the
+                // initial grants.
+                wallet.await_key_scan(&key_pair.address()).await.unwrap();
+                addresses.push(key_pair.address());
+            }
+            wallets.push((wallet, addresses));
         }
 
         println!("Wallets set up: {}s", now.elapsed().as_secs_f32());
@@ -346,7 +375,10 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
     async fn sync(
         &self,
         ledger: &Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork, Self::MockStorage>>>,
-        wallets: &[(Wallet<'a, Self::MockBackend, Self::Ledger>, UserAddress)],
+        wallets: &[(
+            Wallet<'a, Self::MockBackend, Self::Ledger>,
+            Vec<UserAddress>,
+        )],
     ) {
         let memos_source = {
             let mut ledger = ledger.lock().await;
@@ -404,7 +436,10 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
 
     async fn sync_with(
         &self,
-        wallets: &[(Wallet<'a, Self::MockBackend, Self::Ledger>, UserAddress)],
+        wallets: &[(
+            Wallet<'a, Self::MockBackend, Self::Ledger>,
+            Vec<UserAddress>,
+        )],
         t: EventIndex,
     ) {
         println!("waiting for sync point {}", t);
@@ -414,7 +449,10 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
     async fn check_storage(
         &self,
         ledger: &Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork, Self::MockStorage>>>,
-        wallets: &[(Wallet<'a, Self::MockBackend, Self::Ledger>, UserAddress)],
+        wallets: &[(
+            Wallet<'a, Self::MockBackend, Self::Ledger>,
+            Vec<UserAddress>,
+        )],
     ) {
         let ledger = ledger.lock().await;
         for ((wallet, _), storage) in wallets.iter().zip(&ledger.storage) {

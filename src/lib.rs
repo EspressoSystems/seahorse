@@ -694,7 +694,20 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
         self.user_keys.values().map(|key| key.pub_key()).collect()
     }
 
-    pub fn balance(&self, account: &UserAddress, asset: &AssetCode, frozen: FreezeFlag) -> u64 {
+    pub fn balance(&self, asset: &AssetCode, frozen: FreezeFlag) -> u64 {
+        let mut balance = 0;
+        for keypair in self.keypairs() {
+            balance += self.txn_state.balance(asset, &keypair.pub_key(), frozen);
+        }
+        balance
+    }
+
+    pub fn balance_with_address(
+        &self,
+        account: &UserAddress,
+        asset: &AssetCode,
+        frozen: FreezeFlag,
+    ) -> u64 {
         match self.user_keys.get(account) {
             Some(key) => self.txn_state.balance(asset, &key.pub_key(), frozen),
             None => 0,
@@ -2066,9 +2079,14 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
         state.freeze_keys.keys().cloned().collect()
     }
 
-    pub async fn balance(&self, account: &UserAddress, asset: &AssetCode) -> u64 {
+    pub async fn balance(&self, asset: &AssetCode) -> u64 {
         let WalletSharedState { state, .. } = &*self.mutex.lock().await;
-        state.balance(account, asset, FreezeFlag::Unfrozen)
+        state.balance(asset, FreezeFlag::Unfrozen)
+    }
+
+    pub async fn balance_with_address(&self, account: &UserAddress, asset: &AssetCode) -> u64 {
+        let WalletSharedState { state, .. } = &*self.mutex.lock().await;
+        state.balance_with_address(account, asset, FreezeFlag::Unfrozen)
     }
 
     pub async fn records(&self) -> impl Iterator<Item = RecordInfo> {
@@ -2084,7 +2102,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
 
     pub async fn frozen_balance(&self, account: &UserAddress, asset: &AssetCode) -> u64 {
         let WalletSharedState { state, .. } = &*self.mutex.lock().await;
-        state.balance(account, asset, FreezeFlag::Frozen)
+        state.balance_with_address(account, asset, FreezeFlag::Frozen)
     }
 
     pub async fn assets(&self) -> HashMap<AssetCode, AssetInfo> {

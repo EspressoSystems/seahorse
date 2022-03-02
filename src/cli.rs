@@ -471,7 +471,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                         io,
                         "{} {}",
                         UserAddress(pub_key.address()),
-                        wallet.balance(&pub_key.address(), &asset.item).await
+                        wallet.balance_with_address(&pub_key.address(), &asset.item).await
                     );
                 }
             }
@@ -1115,7 +1115,12 @@ mod test {
     ) -> (MockCapLedger<'a>, Vec<hd::KeyTree>) {
         // Use `create_test_network` to create a ledger with some initial records.
         let (ledger, wallets) = t
-            .create_test_network(&[(3, 3)], initial_grants.to_vec(), &mut Instant::now())
+            .create_test_network(
+                &[(3, 3)],
+                initial_grants.to_vec(),
+                false,
+                &mut Instant::now(),
+            )
             .await;
         // Set `block_size` to `1` so we don't have to explicitly flush the ledger after each
         // transaction submission.
