@@ -782,7 +782,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             }
         ),
         command!(
-            load_asset,
+            import_asset,
             "import an asset type",
             C,
             |io, wallet, asset: AssetInfo| {
@@ -1298,7 +1298,7 @@ mod test {
         let (mut input, mut output) = create_wallet(ledger.clone(), key_streams[0].clone());
 
         // Load without mint info.
-        writeln!(input, "load_asset definition:{}", definition).unwrap();
+        writeln!(input, "import_asset definition:{}", definition).unwrap();
         wait_for_prompt(&mut output);
         writeln!(input, "asset {}", definition.code).unwrap();
         match_output(
@@ -1314,7 +1314,7 @@ mod test {
         // Update later with mint info.
         writeln!(
             input,
-            "load_asset definition:{},seed:{},description:my_asset",
+            "import_asset definition:{},seed:{},description:my_asset",
             definition, seed
         )
         .unwrap();
