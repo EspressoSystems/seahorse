@@ -1,5 +1,6 @@
 pub use crate::testing::MockLedger;
 
+use super::UNIVERSAL_PARAM;
 use crate::{
     asset_library::AssetInfo,
     events::{EventIndex, EventSource, LedgerEvent},
@@ -19,9 +20,8 @@ use jf_cap::{
     MerkleTree, Signature,
 };
 use key_set::{OrderByOutputs, ProverKeySet, VerifierKeySet};
-use lazy_static::lazy_static;
 use rand_chacha::{rand_core::SeedableRng, ChaChaRng};
-use reef::{cap, traits::Ledger as _, traits::Transaction as _, traits::Validator as _};
+use reef::{cap, traits::Transaction as _, traits::Validator as _};
 use snafu::ResultExt;
 use std::collections::{HashMap, HashSet};
 use std::pin::Pin;
@@ -490,13 +490,6 @@ impl<'a> super::SystemUnderTest<'a> for MockSystem {
     fn universal_param(&self) -> &'a UniversalParam {
         &*UNIVERSAL_PARAM
     }
-}
-
-lazy_static! {
-    static ref UNIVERSAL_PARAM: UniversalParam = universal_param::get(
-        &mut ChaChaRng::from_seed([1u8; 32]),
-        cap::Ledger::merkle_height()
-    );
 }
 
 #[cfg(test)]

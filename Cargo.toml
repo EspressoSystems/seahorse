@@ -48,7 +48,6 @@ jf-utils = { features=["std"], git = "ssh://git@github.com/EspressoSystems/jelly
 arbitrary-wrappers = { git = "ssh://git@github.com/EspressoSystems/arbitrary-wrappers.git" }
 net = { git = "ssh://git@github.com/EspressoSystems/net.git" }
 reef = { git = "ssh://git@github.com/EspressoSystems/reef.git" }
-universal-param = { git = "ssh://git@github.com/EspressoSystems/universal-param.git" }
 tagged-base64 = { git = "ssh://git@github.com/EspressoSystems/tagged-base64.git", branch = "main" }
 
 [dev-dependencies]
