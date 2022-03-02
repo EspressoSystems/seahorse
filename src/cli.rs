@@ -490,8 +490,8 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             "transfer some assets from an owned address to another user",
             C,
             |io, wallet, asset: ListItem<AssetCode>, from: UserAddress, to: UserAddress, amount: u64, fee: u64; wait: Option<bool>| {
-                let res = wallet.transfer(Some(&from.0), &asset.item, &[(to.0, amount)], fee).await[0];
-                finish_transaction::<C>(io, wallet, res, wait, "transferred").await;
+                let res = wallet.transfer(Some(&from.0), &asset.item, &[(to.0, amount)], fee).await;
+                finish_transactions::<C>(io, wallet, res, wait, "transferred").await;
             }
         ),
         command!(
@@ -922,7 +922,8 @@ pub async fn finish_transactions<'a, C: CLI<'a>>(
     match results {
         Ok(receipts) => {
             for receipt in receipts {
-                finish_transaction(io, wallet, Ok(receipt), wait, success_state).await;
+                let result: Result<TransactionReceipt<C::Ledger>, _> = Ok(receipt);
+                finish_transaction::<C>(io, wallet, result, wait, success_state).await;
             }
         }
         Err(err) => {

@@ -1196,7 +1196,7 @@ impl<L: Ledger> TransactionState<L> {
             let mut outputs = vec![];
             for (pub_key, amount) in spec.receivers {
                 outputs.push(RecordOpening::new(
-                    rng,
+                    &mut rng.clone(),
                     *amount,
                     asset.clone(),
                     pub_key.clone(),
@@ -1223,7 +1223,7 @@ impl<L: Ledger> TransactionState<L> {
                 change > 0,
             )?;
             // pad with dummy inputs if necessary
-            let rng = rng;
+            let rng = &mut rng.clone();
             let dummy_inputs = (0..dummy_inputs)
                 .map(|_| RecordOpening::dummy(rng, FreezeFlag::Unfrozen))
                 .collect::<Vec<_>>();
@@ -1246,7 +1246,7 @@ impl<L: Ledger> TransactionState<L> {
                 fee_info,
                 UNEXPIRED_VALID_UNTIL,
                 proving_key,
-                spec.bound_data,
+                spec.bound_data.clone(),
             )
             .context(CryptoError)?;
 
@@ -1495,7 +1495,7 @@ impl<L: Ledger> TransactionState<L> {
         amount: u64,
         max_records: Option<usize>,
         allow_insufficient: bool,
-    ) -> Result<(Vec<(RecordOpening, u64)>, u64), TransactionError> {
+    ) -> Result<(Vec<(RecordOpening, u64)>, i64), TransactionError> {
         let now = self.validator.now();
 
         // If we have a record with the exact size required, use it to avoid fragmenting big records
@@ -1539,12 +1539,12 @@ impl<L: Ledger> TransactionState<L> {
             current_amount += record.ro.amount;
             result.push((record.ro.clone(), record.uid));
             if current_amount >= amount {
-                return Ok((result, current_amount - amount));
+                return Ok((result, (current_amount - amount) as i64));
             }
         }
 
         if allow_insufficient {
-            Ok((result, current_amount - amount))
+            Ok((result, (current_amount - amount) as i64))
         } else {
             Err(TransactionError::InsufficientBalance {
                 asset: *asset,
@@ -1563,9 +1563,7 @@ impl<L: Ledger> TransactionState<L> {
         amount: u64,
         max_records: Option<usize>,
     ) -> Result<Vec<(UserKeyPair, Vec<(RecordOpening, u64)>, u64)>, TransactionError> {
-        let now = self.validator.now();
         let mut records = Vec::new();
-        let mut records_size = 0;
         let mut target_amount = amount;
 
         for owner_keypair in owner_keypairs {
@@ -1577,11 +1575,12 @@ impl<L: Ledger> TransactionState<L> {
                 max_records,
                 true,
             )?;
-            records.push((*owner_keypair, input_records, change));
             if change >= 0 {
+                records.push((owner_keypair.clone(), input_records, change as u64));
                 return Ok(records);
             }
-            target_amount = change;
+            records.push((owner_keypair.clone(), input_records, 0));
+            target_amount = (0 - change) as u64;
         }
 
         Err(TransactionError::InsufficientBalance {
@@ -1599,12 +1598,13 @@ impl<L: Ledger> TransactionState<L> {
     ) -> Result<FeeInput<'l>, TransactionError> {
         let (ro, uid) = self.find_records(
             &AssetCode::native(),
-            &vec![*owner_keypair],
+            &vec![owner_keypair.clone()],
             FreezeFlag::Unfrozen,
             fee,
             Some(1),
         )?[0]
             .1
+            .clone()
             .into_iter()
             .next()
             .unwrap();
