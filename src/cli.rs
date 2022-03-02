@@ -480,8 +480,17 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             transfer,
             "transfer some owned assets to another user",
             C,
+            |io, wallet, asset: ListItem<AssetCode>, to: UserAddress, amount: u64, fee: u64; wait: Option<bool>| {
+                let res = wallet.transfer(None, &asset.item, &[(to.0, amount)], fee).await;
+                finish_transactions::<C>(io, wallet, res, wait, "transferred").await;
+            }
+        ),
+        command!(
+            transfer_from,
+            "transfer some assets from an owned address to another user",
+            C,
             |io, wallet, asset: ListItem<AssetCode>, from: UserAddress, to: UserAddress, amount: u64, fee: u64; wait: Option<bool>| {
-                let res = wallet.transfer(&from.0, &asset.item, &[(to.0, amount)], fee).await;
+                let res = wallet.transfer(Some(&from.0), &asset.item, &[(to.0, amount)], fee).await[0];
                 finish_transaction::<C>(io, wallet, res, wait, "transferred").await;
             }
         ),
@@ -895,6 +904,25 @@ pub async fn finish_transaction<'a, C: CLI<'a>>(
                 }
             } else {
                 cli_writeln!(io, "{}", receipt);
+            }
+        }
+        Err(err) => {
+            cli_writeln!(io, "{}\nAssets were not {}.", err, success_state);
+        }
+    }
+}
+
+pub async fn finish_transactions<'a, C: CLI<'a>>(
+    io: &mut SharedIO,
+    wallet: &Wallet<'a, C>,
+    results: Result<Vec<TransactionReceipt<C::Ledger>>, WalletError<C::Ledger>>,
+    wait: Option<bool>,
+    success_state: &str,
+) {
+    match results {
+        Ok(receipts) => {
+            for receipt in receipts {
+                finish_transaction(io, wallet, Ok(receipt), wait, success_state).await;
             }
         }
         Err(err) => {

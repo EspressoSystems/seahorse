@@ -848,7 +848,11 @@ pub struct TransferInfo<L: Ledger> {
 }
 
 pub struct TransferSpec<'a> {
-    pub owner_keypair: &'a UserKeyPair,
+    /// List of keypairs that will be used to find the records for the transfer.
+    ///
+    /// The list may contain multiple keypairs, or only one keypair in which case only the
+    /// associated records can be transferred.
+    pub owner_keypairs: &'a Vec<UserKeyPair>,
     pub asset: &'a AssetCode,
     pub receivers: &'a [(UserPubKey, u64)],
     pub fee: u64,
@@ -1021,7 +1025,7 @@ impl<L: Ledger> TransactionState<L> {
         spec: TransferSpec<'k>,
         proving_keys: &'k KeySet<TransferProvingKey<'a>, key_set::OrderByOutputs>,
         rng: &mut ChaChaRng,
-    ) -> Result<TransferInfo<L>, TransactionError> {
+    ) -> Result<Vec<TransferInfo<L>>, TransactionError> {
         if *spec.asset == AssetCode::native() {
             self.transfer_native(spec, proving_keys, rng)
         } else {
@@ -1034,7 +1038,7 @@ impl<L: Ledger> TransactionState<L> {
         spec: TransferSpec<'k>,
         proving_keys: &'k KeySet<TransferProvingKey<'a>, key_set::OrderByOutputs>,
         rng: &mut ChaChaRng,
-    ) -> Result<TransferInfo<L>, TransactionError> {
+    ) -> Result<Vec<TransferInfo<L>>, TransactionError> {
         let total_output_amount: u64 = spec
             .receivers
             .iter()
@@ -1042,101 +1046,108 @@ impl<L: Ledger> TransactionState<L> {
             + spec.fee;
 
         // find input records which account for at least the total amount, and possibly some change.
-        let (input_records, _change) = self.find_records(
+        let records = self.find_records(
             &AssetCode::native(),
-            &spec.owner_keypair.pub_key(),
+            &spec.owner_keypairs,
             FreezeFlag::Unfrozen,
             total_output_amount,
             None,
         )?;
 
-        // prepare inputs
-        let mut inputs = vec![];
-        for (ro, uid) in &input_records {
-            let acc_member_witness = self.get_merkle_proof(*uid);
-            inputs.push(TransferNoteInput {
-                ro: ro.clone(),
-                acc_member_witness,
-                owner_keypair: spec.owner_keypair,
-                cred: None,
+        let mut transfer_info = Vec::new();
+        for (owner_keypair, input_records, _) in records {
+            // prepare inputs
+            let mut inputs = vec![];
+            for (ro, uid) in &input_records {
+                let acc_member_witness = self.get_merkle_proof(*uid);
+                inputs.push(TransferNoteInput {
+                    ro: ro.clone(),
+                    acc_member_witness,
+                    owner_keypair: &owner_keypair,
+                    cred: None,
+                });
+            }
+
+            // prepare outputs, excluding fee change (which will be automatically generated)
+            let mut outputs = vec![];
+            for (pub_key, amount) in spec.receivers {
+                outputs.push(RecordOpening::new(
+                    rng,
+                    *amount,
+                    AssetDefinition::native(),
+                    pub_key.clone(),
+                    FreezeFlag::Unfrozen,
+                ));
+            }
+
+            // find a proving key which can handle this transaction size
+            let (proving_key, dummy_inputs) = Self::xfr_proving_key(
+                rng,
+                owner_keypair.pub_key(),
+                proving_keys,
+                &AssetDefinition::native(),
+                &mut inputs,
+                &mut outputs,
+                spec.xfr_size_requirement,
+                false,
+            )?;
+
+            // pad with dummy inputs if necessary
+            let dummy_inputs = (0..dummy_inputs)
+                .map(|_| RecordOpening::dummy(rng, FreezeFlag::Unfrozen))
+                .collect::<Vec<_>>();
+            for (ro, owner_keypair) in &dummy_inputs {
+                let dummy_input = TransferNoteInput {
+                    ro: ro.clone(),
+                    acc_member_witness: AccMemberWitness::dummy(L::merkle_height()),
+                    owner_keypair,
+                    cred: None,
+                };
+                inputs.push(dummy_input);
+            }
+
+            // generate transfer note and receiver memos
+            let (note, kp, fee_change_ro) = TransferNote::generate_native(
+                rng,
+                inputs,
+                &outputs,
+                spec.fee,
+                UNEXPIRED_VALID_UNTIL,
+                proving_key,
+            )
+            .context(CryptoError)?;
+
+            let outputs: Vec<_> = vec![fee_change_ro]
+                .into_iter()
+                .chain(outputs.into_iter())
+                .collect();
+
+            // Build auxiliary info.
+            let history = TransactionHistoryEntry {
+                time: Local::now(),
+                asset: AssetCode::native(),
+                kind: TransactionKind::<L>::send(),
+                sender: Some(owner_keypair.address()),
+                receivers: spec
+                    .receivers
+                    .iter()
+                    .map(|(pub_key, amount)| (pub_key.address(), *amount))
+                    .collect(),
+                receipt: None,
+            };
+
+            transfer_info.push(TransferInfo {
+                note,
+                owner_address: owner_keypair.address(),
+                sig_keypair: kp,
+                history,
+                inputs: input_records.into_iter().map(|(ro, _)| ro).collect(),
+                outputs,
+                fee_output: None,
             });
         }
 
-        // prepare outputs, excluding fee change (which will be automatically generated)
-        let mut outputs = vec![];
-        for (pub_key, amount) in spec.receivers {
-            outputs.push(RecordOpening::new(
-                rng,
-                *amount,
-                AssetDefinition::native(),
-                pub_key.clone(),
-                FreezeFlag::Unfrozen,
-            ));
-        }
-
-        // find a proving key which can handle this transaction size
-        let (proving_key, dummy_inputs) = Self::xfr_proving_key(
-            rng,
-            spec.owner_keypair.pub_key(),
-            proving_keys,
-            &AssetDefinition::native(),
-            &mut inputs,
-            &mut outputs,
-            spec.xfr_size_requirement,
-            false,
-        )?;
-        // pad with dummy inputs if necessary
-        let dummy_inputs = (0..dummy_inputs)
-            .map(|_| RecordOpening::dummy(rng, FreezeFlag::Unfrozen))
-            .collect::<Vec<_>>();
-        for (ro, owner_keypair) in &dummy_inputs {
-            let dummy_input = TransferNoteInput {
-                ro: ro.clone(),
-                acc_member_witness: AccMemberWitness::dummy(L::merkle_height()),
-                owner_keypair,
-                cred: None,
-            };
-            inputs.push(dummy_input);
-        }
-
-        // generate transfer note and receiver memos
-        let (note, kp, fee_change_ro) = TransferNote::generate_native(
-            rng,
-            inputs,
-            &outputs,
-            spec.fee,
-            UNEXPIRED_VALID_UNTIL,
-            proving_key,
-        )
-        .context(CryptoError)?;
-
-        let outputs: Vec<_> = vec![fee_change_ro]
-            .into_iter()
-            .chain(outputs.into_iter())
-            .collect();
-
-        // Build auxiliary info.
-        let history = TransactionHistoryEntry {
-            time: Local::now(),
-            asset: AssetCode::native(),
-            kind: TransactionKind::<L>::send(),
-            sender: Some(spec.owner_keypair.address()),
-            receivers: spec
-                .receivers
-                .iter()
-                .map(|(pub_key, amount)| (pub_key.address(), *amount))
-                .collect(),
-            receipt: None,
-        };
-        Ok(TransferInfo {
-            note,
-            owner_address: spec.owner_keypair.address(),
-            sig_keypair: kp,
-            history,
-            inputs: input_records.into_iter().map(|(ro, _)| ro).collect(),
-            outputs,
-            fee_output: None,
-        })
+        Ok(transfer_info)
     }
 
     fn transfer_non_native<'a, 'k>(
@@ -1144,7 +1155,7 @@ impl<L: Ledger> TransactionState<L> {
         spec: TransferSpec<'k>,
         proving_keys: &'k KeySet<TransferProvingKey<'a>, key_set::OrderByOutputs>,
         rng: &mut ChaChaRng,
-    ) -> Result<TransferInfo<L>, TransactionError> {
+    ) -> Result<Vec<TransferInfo<L>>, TransactionError> {
         assert_ne!(
             *spec.asset,
             AssetCode::native(),
@@ -1156,108 +1167,114 @@ impl<L: Ledger> TransactionState<L> {
             .fold(0, |sum, (_, amount)| sum + *amount);
 
         // find input records of the asset type to spend (this does not include the fee input)
-        let (input_records, change) = self.find_records(
+        let records = self.find_records(
             spec.asset,
-            &spec.owner_keypair.pub_key(),
+            &spec.owner_keypairs,
             FreezeFlag::Unfrozen,
             total_output_amount,
             None,
         )?;
-        let asset = input_records[0].0.asset_def.clone();
 
-        // prepare inputs
-        let mut inputs = vec![];
-        for (ro, uid) in input_records.iter() {
-            let witness = self.get_merkle_proof(*uid);
-            inputs.push(TransferNoteInput {
-                ro: ro.clone(),
-                acc_member_witness: witness,
-                owner_keypair: spec.owner_keypair,
-                cred: None, // TODO support credentials
-            })
-        }
-        let fee_input = self.find_fee_input(spec.owner_keypair, spec.fee)?;
+        let asset = records[0].1[0].0.asset_def.clone();
 
-        // prepare outputs, excluding fee change (which will be automatically generated)
-        let mut outputs = vec![];
-        for (pub_key, amount) in spec.receivers {
-            outputs.push(RecordOpening::new(
+        let mut transfer_info = Vec::new();
+        for (owner_keypair, input_records, change) in records {
+            // prepare inputs
+            let mut inputs = vec![];
+            for (ro, uid) in input_records.iter() {
+                let witness = self.get_merkle_proof(*uid);
+                inputs.push(TransferNoteInput {
+                    ro: ro.clone(),
+                    acc_member_witness: witness,
+                    owner_keypair: &owner_keypair,
+                    cred: None, // TODO support credentials
+                })
+            }
+            let fee_input = self.find_fee_input(&owner_keypair, spec.fee)?;
+
+            // prepare outputs, excluding fee change (which will be automatically generated)
+            let mut outputs = vec![];
+            for (pub_key, amount) in spec.receivers {
+                outputs.push(RecordOpening::new(
+                    rng,
+                    *amount,
+                    asset.clone(),
+                    pub_key.clone(),
+                    FreezeFlag::Unfrozen,
+                ));
+            }
+            // change in the asset type being transfered (not fee change)
+            if change > 0 {
+                let me = owner_keypair.pub_key();
+                let change_ro =
+                    RecordOpening::new(rng, change, asset.clone(), me, FreezeFlag::Unfrozen);
+                outputs.push(change_ro);
+            }
+
+            // find a proving key which can handle this transaction size
+            let (proving_key, dummy_inputs) = Self::xfr_proving_key(
                 rng,
-                *amount,
-                asset.clone(),
-                pub_key.clone(),
-                FreezeFlag::Unfrozen,
-            ));
-        }
-        // change in the asset type being transfered (not fee change)
-        if change > 0 {
-            let me = spec.owner_keypair.pub_key();
-            let change_ro =
-                RecordOpening::new(rng, change, asset.clone(), me, FreezeFlag::Unfrozen);
-            outputs.push(change_ro);
-        }
+                owner_keypair.pub_key(),
+                proving_keys,
+                &asset,
+                &mut inputs,
+                &mut outputs,
+                spec.xfr_size_requirement,
+                change > 0,
+            )?;
+            // pad with dummy inputs if necessary
+            let rng = rng;
+            let dummy_inputs = (0..dummy_inputs)
+                .map(|_| RecordOpening::dummy(rng, FreezeFlag::Unfrozen))
+                .collect::<Vec<_>>();
+            for (ro, owner_keypair) in &dummy_inputs {
+                let dummy_input = TransferNoteInput {
+                    ro: ro.clone(),
+                    acc_member_witness: AccMemberWitness::dummy(L::merkle_height()),
+                    owner_keypair,
+                    cred: None,
+                };
+                inputs.push(dummy_input);
+            }
 
-        // find a proving key which can handle this transaction size
-        let (proving_key, dummy_inputs) = Self::xfr_proving_key(
-            rng,
-            spec.owner_keypair.pub_key(),
-            proving_keys,
-            &asset,
-            &mut inputs,
-            &mut outputs,
-            spec.xfr_size_requirement,
-            change > 0,
-        )?;
-        // pad with dummy inputs if necessary
-        let rng = rng;
-        let dummy_inputs = (0..dummy_inputs)
-            .map(|_| RecordOpening::dummy(rng, FreezeFlag::Unfrozen))
-            .collect::<Vec<_>>();
-        for (ro, owner_keypair) in &dummy_inputs {
-            let dummy_input = TransferNoteInput {
-                ro: ro.clone(),
-                acc_member_witness: AccMemberWitness::dummy(L::merkle_height()),
-                owner_keypair,
-                cred: None,
+            // generate transfer note and receiver memos
+            let (fee_info, fee_out_rec) = TxnFeeInfo::new(rng, fee_input, spec.fee).unwrap();
+            let (note, sig_keypair) = TransferNote::generate_non_native(
+                rng,
+                inputs,
+                &outputs,
+                fee_info,
+                UNEXPIRED_VALID_UNTIL,
+                proving_key,
+                spec.bound_data,
+            )
+            .context(CryptoError)?;
+
+            // Build auxiliary info.
+            let history = TransactionHistoryEntry {
+                time: Local::now(),
+                asset: asset.code,
+                kind: TransactionKind::<L>::send(),
+                sender: Some(owner_keypair.address()),
+                receivers: spec
+                    .receivers
+                    .iter()
+                    .map(|(pub_key, amount)| (pub_key.address(), *amount))
+                    .collect(),
+                receipt: None,
             };
-            inputs.push(dummy_input);
+            transfer_info.push(TransferInfo {
+                note,
+                owner_address: owner_keypair.address(),
+                sig_keypair,
+                history,
+                inputs: input_records.into_iter().map(|(ro, _)| ro).collect(),
+                outputs,
+                fee_output: Some(fee_out_rec),
+            });
         }
 
-        // generate transfer note and receiver memos
-        let (fee_info, fee_out_rec) = TxnFeeInfo::new(rng, fee_input, spec.fee).unwrap();
-        let (note, sig_keypair) = TransferNote::generate_non_native(
-            rng,
-            inputs,
-            &outputs,
-            fee_info,
-            UNEXPIRED_VALID_UNTIL,
-            proving_key,
-            spec.bound_data,
-        )
-        .context(CryptoError)?;
-
-        // Build auxiliary info.
-        let history = TransactionHistoryEntry {
-            time: Local::now(),
-            asset: asset.code,
-            kind: TransactionKind::<L>::send(),
-            sender: Some(spec.owner_keypair.address()),
-            receivers: spec
-                .receivers
-                .iter()
-                .map(|(pub_key, amount)| (pub_key.address(), *amount))
-                .collect(),
-            receipt: None,
-        };
-        Ok(TransferInfo {
-            note,
-            owner_address: spec.owner_keypair.address(),
-            sig_keypair,
-            history,
-            inputs: input_records.into_iter().map(|(ro, _)| ro).collect(),
-            outputs,
-            fee_output: Some(fee_out_rec),
-        })
+        Ok(transfer_info)
     }
 
     pub fn generate_memos(
@@ -1358,8 +1375,14 @@ impl<L: Ledger> TransactionState<L> {
             FreezeFlag::Frozen => FreezeFlag::Unfrozen,
             FreezeFlag::Unfrozen => FreezeFlag::Frozen,
         };
-        let (input_records, _) =
-            self.find_records(&asset.code, &target, inputs_frozen, amount, None)?;
+        let (input_records, _) = self.find_records_with_pub_key(
+            &asset.code,
+            &target,
+            inputs_frozen,
+            amount,
+            None,
+            false,
+        )?;
 
         // prepare inputs
         let mut inputs = vec![];
@@ -1456,14 +1479,22 @@ impl<L: Ledger> TransactionState<L> {
         }
     }
 
+    /// Returns a list of record openings and UIDs, and the change amount.
+    ///
+    /// `allow_insufficient`
+    /// * If true, the change amount may be negative, meaning the address owned by the provided
+    /// public key doesn't have sufficient balance, which isn't necessarily an error since a total
+    /// balance can be aggragated by multiple addresses.
+    /// * Otherwise, the change amount must be nonnegative.
     #[allow(clippy::type_complexity)]
-    fn find_records(
+    fn find_records_with_pub_key(
         &self,
         asset: &AssetCode,
         owner: &UserPubKey,
         frozen: FreezeFlag,
         amount: u64,
         max_records: Option<usize>,
+        allow_insufficient: bool,
     ) -> Result<(Vec<(RecordOpening, u64)>, u64), TransactionError> {
         let now = self.validator.now();
 
@@ -1485,7 +1516,7 @@ impl<L: Ledger> TransactionState<L> {
         // make exact change using combinations of larger and smaller blocks. We can replace this
         // with something more sophisticated later.
         let mut result = vec![];
-        let mut current_amount = 0u64;
+        let mut current_amount = 0;
         for record in self.records.input_records(asset, owner, frozen, now) {
             if let Some(max_records) = max_records {
                 if result.len() >= max_records {
@@ -1512,10 +1543,51 @@ impl<L: Ledger> TransactionState<L> {
             }
         }
 
+        if allow_insufficient {
+            Ok((result, current_amount - amount))
+        } else {
+            Err(TransactionError::InsufficientBalance {
+                asset: *asset,
+                required: amount,
+                actual: current_amount,
+            })
+        }
+    }
+
+    #[allow(clippy::type_complexity)]
+    fn find_records(
+        &self,
+        asset: &AssetCode,
+        owner_keypairs: &Vec<UserKeyPair>,
+        frozen: FreezeFlag,
+        amount: u64,
+        max_records: Option<usize>,
+    ) -> Result<Vec<(UserKeyPair, Vec<(RecordOpening, u64)>, u64)>, TransactionError> {
+        let now = self.validator.now();
+        let mut records = Vec::new();
+        let mut records_size = 0;
+        let mut target_amount = amount;
+
+        for owner_keypair in owner_keypairs {
+            let (input_records, change) = self.find_records_with_pub_key(
+                asset,
+                &owner_keypair.pub_key(),
+                frozen,
+                target_amount,
+                max_records,
+                true,
+            )?;
+            records.push((*owner_keypair, input_records, change));
+            if change >= 0 {
+                return Ok(records);
+            }
+            target_amount = change;
+        }
+
         Err(TransactionError::InsufficientBalance {
             asset: *asset,
             required: amount,
-            actual: current_amount,
+            actual: amount - target_amount,
         })
     }
 
@@ -1525,15 +1597,17 @@ impl<L: Ledger> TransactionState<L> {
         owner_keypair: &'l UserKeyPair,
         fee: u64,
     ) -> Result<FeeInput<'l>, TransactionError> {
-        let (ro, uid) = self
-            .find_records(
-                &AssetCode::native(),
-                &owner_keypair.pub_key(),
-                FreezeFlag::Unfrozen,
-                fee,
-                Some(1),
-            )
-            .map(|(ros, _change)| ros.into_iter().next().unwrap())?;
+        let (ro, uid) = self.find_records(
+            &AssetCode::native(),
+            &vec![*owner_keypair],
+            FreezeFlag::Unfrozen,
+            fee,
+            Some(1),
+        )?[0]
+            .1
+            .into_iter()
+            .next()
+            .unwrap();
 
         Ok(FeeInput {
             ro,

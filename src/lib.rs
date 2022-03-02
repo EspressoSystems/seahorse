@@ -686,6 +686,10 @@ impl<L: Ledger> Default for EventSummary<L> {
 }
 
 impl<'a, L: 'static + Ledger> WalletState<'a, L> {
+    fn keypairs(&self) -> Vec<UserKeyPair> {
+        self.user_keys.values().cloned().collect::<Vec<_>>()
+    }
+
     pub fn pub_keys(&self) -> Vec<UserPubKey> {
         self.user_keys.values().map(|key| key.pub_key()).collect()
     }
@@ -1622,7 +1626,7 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
         &mut self,
         session: &mut WalletSession<'a, L, impl WalletBackend<'a, L>>,
         spec: TransferSpec<'k>,
-    ) -> Result<TransferInfo<L>, WalletError<L>> {
+    ) -> Result<Vec<TransferInfo<L>>, WalletError<L>> {
         self.txn_state
             .transfer(spec, &self.proving_keys.xfr, &mut session.rng)
             .context(TransactionError)
@@ -2100,50 +2104,58 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
     /// To add transfer size requirement, call `build_transfer` with a specified `xfr_size_requirement`.
     /// To skip an output when generating memos, call `genearte_memos` after removing the record from
     /// the list of outputs.
+    ///
+    /// `account`
+    /// * If provided, only this address will be used to transfer the asset.
+    /// * Otherwise, all the owned addresses can be used for the transfer.
     pub async fn transfer(
         &mut self,
-        account: &UserAddress,
+        account: Option<&UserAddress>,
         asset: &AssetCode,
         receivers: &[(UserAddress, u64)],
         fee: u64,
-    ) -> Result<TransactionReceipt<L>, WalletError<L>> {
+    ) -> Result<Vec<TransactionReceipt<L>>, WalletError<L>> {
         let xfr_info = self
             .build_transfer(account, asset, receivers, fee, vec![], None)
             .await?;
-        let memos_rec = match xfr_info.fee_output {
-            Some(ro) => {
-                let mut rec = vec![ro];
-                rec.append(&mut xfr_info.outputs.clone());
-                rec
-            }
-            None => xfr_info.outputs.clone(),
-        };
-        let (memos, sig) = self
-            .generate_memos(memos_rec, &xfr_info.sig_keypair)
-            .await?;
-        let txn_info = TransactionInfo {
-            account: xfr_info.owner_address,
-            memos,
-            sig,
-            freeze_outputs: vec![],
-            history: Some(xfr_info.history),
-            uid: None,
-            inputs: xfr_info.inputs,
-            outputs: xfr_info.outputs,
-        };
-        self.submit_cap(TransactionNote::Transfer(Box::new(xfr_info.note)), txn_info)
-            .await
+        let mut receipts = Vec::new();
+        for info in xfr_info {
+            let memos_rec = match info.fee_output {
+                Some(ro) => {
+                    let mut rec = vec![ro];
+                    rec.append(&mut info.outputs.clone());
+                    rec
+                }
+                None => info.outputs.clone(),
+            };
+            let (memos, sig) = self.generate_memos(memos_rec, &info.sig_keypair).await?;
+            let txn_info = TransactionInfo {
+                account: info.owner_address,
+                memos,
+                sig,
+                freeze_outputs: vec![],
+                history: Some(info.history),
+                uid: None,
+                inputs: info.inputs,
+                outputs: info.outputs,
+            };
+            receipts.push(
+                self.submit_cap(TransactionNote::Transfer(Box::new(info.note)), txn_info)
+                    .await?,
+            )
+        }
+        Ok(receipts)
     }
 
     pub async fn build_transfer(
         &mut self,
-        account: &UserAddress,
+        account: Option<&UserAddress>,
         asset: &AssetCode,
         receivers: &[(UserAddress, u64)],
         fee: u64,
         bound_data: Vec<u8>,
         xfr_size_requirement: Option<(usize, usize)>,
-    ) -> Result<TransferInfo<L>, WalletError<L>> {
+    ) -> Result<Vec<TransferInfo<L>>, WalletError<L>> {
         let WalletSharedState { state, session, .. } = &mut *self.mutex.lock().await;
         let receivers = iter(receivers)
             .then(|(addr, amt)| {
@@ -2157,8 +2169,14 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
             })
             .try_collect::<Vec<_>>()
             .await?;
+        let owner_keypairs = match account {
+            Some(addr) => {
+                vec![state.account_keypair(addr)?.clone()]
+            }
+            None => state.keypairs().clone(),
+        };
         let spec = TransferSpec {
-            owner_keypair: &state.account_keypair(account)?.clone(),
+            owner_keypairs: &owner_keypairs,
             asset,
             receivers: &receivers,
             fee,
