@@ -4,7 +4,7 @@ use crate::{
     events::{EventIndex, EventSource, LedgerEvent},
     hd,
     testing::{MockEventSource, MockNetwork as _},
-    txn_builder::{PendingTransaction, TransactionHistoryEntry, TransactionState, TransactionUID},
+    txn_builder::{PendingTransaction, TransactionHistoryEntry, TransactionInfo, TransactionState},
     CryptoError, RoleKeyPair, WalletBackend, WalletError, WalletState, WalletStorage,
 };
 use async_std::sync::{Arc, Mutex, MutexGuard};
@@ -443,9 +443,7 @@ impl<'a> WalletBackend<'a, cap::Ledger> for MockBackend<'a> {
     async fn submit(
         &mut self,
         txn: cap::Transaction,
-        _uid: TransactionUID<cap::Ledger>,
-        _memos: Vec<ReceiverMemo>,
-        _sig: Signature,
+        _info: TransactionInfo<cap::Ledger>,
     ) -> Result<(), WalletError<cap::Ledger>> {
         self.ledger.lock().await.submit(txn)
     }

@@ -630,10 +630,8 @@ pub trait WalletBackend<'a, L: Ledger>: Send {
     // Submit a transaction to a validator.
     async fn submit(
         &mut self,
-        txn: Transaction<L>,
-        uid: TransactionUID<L>,
-        memos: Vec<ReceiverMemo>,
-        sig: Signature,
+        note: Transaction<L>,
+        info: TransactionInfo<L>,
     ) -> Result<(), WalletError<L>>;
 
     /// Record a finalized transaction.
@@ -1771,7 +1769,7 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
             let receipt = self.txn_state.add_pending_transaction(&txn, info.clone());
 
             // Persist the pending transaction.
-            let history = info.history;
+            let history = info.history.clone();
             if let Err(err) = session
                 .backend
                 .store(|mut t| async {
@@ -1799,11 +1797,7 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
 
             // If we succeeded in creating and persisting the pending transaction, submit it to the
             // validators.
-            if let Err(err) = session
-                .backend
-                .submit(txn.clone(), receipt.uid.clone(), info.memos, info.sig)
-                .await
-            {
+            if let Err(err) = session.backend.submit(txn.clone(), info).await {
                 self.clear_pending_transaction(&txn, None).await;
                 return Err(err);
             }
