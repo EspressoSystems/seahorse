@@ -1,3 +1,4 @@
+mod asset_library;
 pub mod cli;
 pub mod encryption;
 pub mod events;
@@ -11,7 +12,10 @@ mod secret;
 pub mod testing;
 pub mod txn_builder;
 
+pub use crate::asset_library::{AssetInfo, MintInfo};
+
 use crate::{
+    asset_library::AssetLibrary,
     events::{EventIndex, EventSource, LedgerEvent},
     txn_builder::*,
 };
@@ -37,8 +41,8 @@ use jf_cap::{
     },
     mint::MintNote,
     structs::{
-        AssetCode, AssetCodeSeed, AssetDefinition, AssetPolicy, FreezeFlag, Nullifier,
-        ReceiverMemo, RecordCommitment, RecordOpening,
+        AssetCode, AssetDefinition, AssetPolicy, FreezeFlag, Nullifier, ReceiverMemo,
+        RecordCommitment, RecordOpening,
     },
     KeyPair as SigKeyPair, MerkleLeafProof, MerklePath, Signature, TransactionNote,
 };
@@ -72,6 +76,10 @@ pub enum WalletError<L: Ledger> {
     NullifierAlreadyPublished {
         nullifier: Nullifier,
     },
+    BadMerkleProof {
+        commitment: RecordCommitment,
+        uid: u64,
+    },
     TimedOut {},
     Cancelled {},
     CryptoError {
@@ -84,6 +92,9 @@ pub enum WalletError<L: Ledger> {
         asset: AssetDefinition,
     },
     AssetNotFreezable {
+        asset: AssetDefinition,
+    },
+    AssetNotMintable {
         asset: AssetDefinition,
     },
     ClientConfigError {
@@ -250,8 +261,8 @@ pub struct WalletState<'a, L: Ledger> {
     ////////////////////////////////////////////////////////////////////////////////////////////////
     // Monotonic data
     //
-    // asset definitions for which we are an auditor, indexed by code
-    pub auditable_assets: HashMap<AssetCode, AssetDefinition>,
+    // asset library
+    pub assets: AssetLibrary,
     // audit keys. This is guaranteed to contain the private key for every public key in an asset
     // policy contained in  auditable_assets`, but it may also contain additional keys that the user
     // has generated or imported but not yet attached to a particular asset type.
@@ -260,8 +271,6 @@ pub struct WalletState<'a, L: Ledger> {
     pub freeze_keys: HashMap<FreezerPubKey, FreezerKeyPair>,
     // user keys, for spending owned records
     pub user_keys: HashMap<UserAddress, UserKeyPair>,
-    // maps defined asset code to asset definition, seed and description of the asset
-    pub defined_assets: HashMap<AssetCode, (AssetDefinition, AssetCodeSeed, Vec<u8>)>,
 }
 
 // Type erasure for key pairs so that backend components like storage that don't care about the
@@ -395,22 +404,11 @@ pub trait WalletStorage<'a, L: Ledger> {
     /// Store a snapshot of the wallet's dynamic state.
     async fn store_snapshot(&mut self, state: &WalletState<'a, L>) -> Result<(), WalletError<L>>;
 
-    /// Append a new auditable asset to the growing set.
-    async fn store_auditable_asset(
-        &mut self,
-        asset: &AssetDefinition,
-    ) -> Result<(), WalletError<L>>;
+    /// Append a new asset to the growing asset library.
+    async fn store_asset(&mut self, asset: &AssetInfo) -> Result<(), WalletError<L>>;
 
     /// Add a key to the wallet's key set.
     async fn store_key(&mut self, key: &RoleKeyPair) -> Result<(), WalletError<L>>;
-
-    /// Append a new defined asset to the growing set.
-    async fn store_defined_asset(
-        &mut self,
-        asset: &AssetDefinition,
-        seed: AssetCodeSeed,
-        desc: &[u8],
-    ) -> Result<(), WalletError<L>>;
 
     async fn store_transaction(
         &mut self,
@@ -467,12 +465,9 @@ impl<'a, 'l, L: Ledger, Backend: WalletBackend<'a, L> + ?Sized>
         }
     }
 
-    async fn store_auditable_asset(
-        &mut self,
-        asset: &AssetDefinition,
-    ) -> Result<(), WalletError<L>> {
+    async fn store_asset(&mut self, asset: &AssetInfo) -> Result<(), WalletError<L>> {
         if !self.cancelled {
-            let res = self.storage().await.store_auditable_asset(asset).await;
+            let res = self.storage().await.store_asset(asset).await;
             if res.is_err() {
                 self.cancel().await;
             }
@@ -485,27 +480,6 @@ impl<'a, 'l, L: Ledger, Backend: WalletBackend<'a, L> + ?Sized>
     async fn store_key<K: KeyPair>(&mut self, key: &K) -> Result<(), WalletError<L>> {
         if !self.cancelled {
             let res = self.storage().await.store_key(&key.clone().into()).await;
-            if res.is_err() {
-                self.cancel().await;
-            }
-            res
-        } else {
-            Ok(())
-        }
-    }
-
-    async fn store_defined_asset(
-        &mut self,
-        asset: &AssetDefinition,
-        seed: AssetCodeSeed,
-        desc: &[u8],
-    ) -> Result<(), WalletError<L>> {
-        if !self.cancelled {
-            let res = self
-                .storage()
-                .await
-                .store_defined_asset(asset, seed, desc)
-                .await;
             if res.is_err() {
                 self.cancel().await;
             }
@@ -695,23 +669,6 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
         }
     }
 
-    pub fn assets(&self) -> HashMap<AssetCode, AssetInfo> {
-        // Get the asset definitions of each record we own.
-        let mut assets = self.txn_state.assets();
-        // Add any assets that we know about through auditing.
-        for (code, def) in &self.auditable_assets {
-            assets.insert(*code, AssetInfo::from(def.clone()));
-        }
-        // Add the minting information (seed and description) for each asset we've defined.
-        for (code, (def, seed, desc)) in &self.defined_assets {
-            assets.insert(
-                *code,
-                AssetInfo::new(def.clone(), MintInfo::new(*seed, desc.clone())),
-            );
-        }
-        assets
-    }
-
     pub async fn transaction_status(
         &mut self,
         session: &mut WalletSession<'a, L, impl WalletBackend<'a, L>>,
@@ -889,16 +846,23 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
 
                     // If this transaction has record openings attached, check if they are for us
                     // and add them immediately, without waiting for memos.
-                    self.receive_attached_records(
-                        session,
-                        block_id,
-                        txn_id as u64,
-                        &txn,
-                        &mut this_txn_uids,
-                        !self_published,
-                        // Only add to history if we didn't send this same transaction
-                    )
-                    .await;
+                    if let Err(err) = self
+                        .receive_attached_records(
+                            session,
+                            block_id,
+                            txn_id as u64,
+                            &txn,
+                            &mut this_txn_uids,
+                            !self_published,
+                            // Only add to history if we didn't send this same transaction
+                        )
+                        .await
+                    {
+                        println!(
+                            "Error saving records attached to transaction {}:{}: {}",
+                            block_id, txn_id, err
+                        );
+                    }
 
                     // Prune the record Merkle tree of records we don't care about.
                     for (uid, remember) in this_txn_uids {
@@ -945,7 +909,9 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
                     let records = self
                         .try_open_memos(session, &key_pair, &outputs, transaction, !self_published)
                         .await;
-                    self.add_records(&key_pair, records);
+                    if let Err(err) = self.add_records(session, &key_pair, records).await {
+                        println!("error saving received records: {}", err);
+                    }
                 }
             }
 
@@ -1120,40 +1086,42 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
         txn: &Transaction<L>,
         uids: &mut [(u64, bool)],
         add_to_history: bool,
-    ) {
-        let my_records = txn
-            .output_openings()
-            .into_iter()
-            .flatten()
-            .zip(uids)
-            .filter_map(|(ro, (uid, remember))| {
-                if let Some(key_pair) = self.user_keys.get(&ro.pub_key.address()) {
-                    // If this record is for us, add it to the wallet and include it in the
-                    // list of received records for created a received transaction history
-                    // entry.
-                    *remember = true;
-                    self.txn_state.records.insert(ro.clone(), *uid, key_pair);
-                    Some(ro)
-                } else if let Some(key_pair) = self
-                    .freeze_keys
-                    .get(ro.asset_def.policy_ref().freezer_pub_key())
-                {
-                    // If this record is not for us, but we can freeze it, then this
-                    // becomes like an audit. Add the record to our collection of freezable
-                    // records, but do not include it in the history entry.
-                    *remember = true;
-                    self.txn_state.records.insert_freezable(ro, *uid, key_pair);
-                    None
-                } else {
-                    None
-                }
-            })
-            .collect::<Vec<_>>();
+    ) -> Result<(), WalletError<L>> {
+        let records = txn.output_openings().into_iter().flatten().zip(uids);
+        let mut my_records = vec![];
+        for (ro, (uid, remember)) in records {
+            if let Some(key_pair) = self.user_keys.get(&ro.pub_key.address()).cloned() {
+                // If this record is for us, add it to the wallet and include it in the
+                // list of received records for created a received transaction history
+                // entry.
+                *remember = true;
+                // Add the asset type if it is not already in the asset library.
+                self.import_asset(session, AssetInfo::from(ro.asset_def.clone()))
+                    .await?;
+                self.txn_state.records.insert(ro.clone(), *uid, &key_pair);
+                my_records.push(ro);
+            } else if let Some(key_pair) = self
+                .freeze_keys
+                .get(ro.asset_def.policy_ref().freezer_pub_key())
+                .cloned()
+            {
+                // If this record is not for us, but we can freeze it, then this
+                // becomes like an audit. Add the record to our collection of freezable
+                // records, but do not include it in the history entry.
+                *remember = true;
+                // Add the asset type if it is not already in the asset library.
+                self.import_asset(session, AssetInfo::from(ro.asset_def.clone()))
+                    .await?;
+                self.txn_state.records.insert_freezable(ro, *uid, &key_pair);
+            }
+        }
 
         if add_to_history && !my_records.is_empty() {
             self.add_receive_history(session, block_id, txn_id, txn.kind(), &my_records)
                 .await;
         }
+
+        Ok(())
     }
 
     async fn add_receive_history(
@@ -1218,25 +1186,31 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
         }
     }
 
-    fn add_records(
+    async fn add_records(
         &mut self,
+        session: &mut WalletSession<'a, L, impl WalletBackend<'a, L>>,
         key_pair: &UserKeyPair,
         records: Vec<(RecordOpening, u64, MerklePath)>,
-    ) {
+    ) -> Result<(), WalletError<L>> {
         for (record, uid, proof) in records {
             let comm = RecordCommitment::from(&record);
             if !self
                 .txn_state
                 .remember_merkle_leaf(uid, &MerkleLeafProof::new(comm.to_field_element(), proof))
             {
-                println!(
-                    "error: got bad merkle proof from backend for commitment {:?}",
-                    comm
-                );
+                return Err(WalletError::BadMerkleProof {
+                    commitment: comm,
+                    uid,
+                });
             }
 
+            // Add the asset type if it is not already in the asset library.
+            self.import_asset(session, AssetInfo::from(record.asset_def.clone()))
+                .await?;
+            // Save the record.
             self.txn_state.records.insert(record, uid, key_pair);
         }
+        Ok(())
     }
 
     async fn import_memo(
@@ -1258,8 +1232,7 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
                 )
                 .await;
             if !records.is_empty() {
-                self.add_records(&key, records);
-                return Ok(());
+                return self.add_records(session, &key, records).await;
             }
         }
 
@@ -1302,7 +1275,7 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
         uids: &mut [(u64, bool)],
     ) {
         // Try to decrypt auditor memos.
-        if let Ok(memo) = txn.open_audit_memo(&self.auditable_assets, &self.audit_keys) {
+        if let Ok(memo) = txn.open_audit_memo(self.assets.auditable(), &self.audit_keys) {
             //todo !jeb.bearer eventually, we will probably want to save all the audit memos for
             // the whole transaction (inputs and outputs) regardless of whether any of the outputs
             // are freezeable, just for general auditing purposes.
@@ -1374,20 +1347,16 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
         'a: 'b,
     {
         async move {
-            let (seed, code, asset_definition) =
+            let (seed, definition) =
                 self.txn_state
                     .define_asset(&mut session.rng, description, policy)?;
-            let desc = description.to_vec();
-
-            // If the policy lists ourself as the auditor, we will automatically start auditing
-            // transactions involving this asset.
-            //
-            // TODO this check should be:
-            //   self.audit_keys.contains_key(asset_definition.policy_ref().auditor_pub_key());
-            // But Hash doesn't work for AuditorPubKey (github.com/SpectrumXYZ/jellyfish-apps/issues/88).
-            let audit = self
-                .audit_keys
-                .contains_key(asset_definition.policy_ref().auditor_pub_key());
+            let asset = AssetInfo {
+                definition,
+                mint_info: Some(MintInfo {
+                    seed,
+                    description: description.to_vec(),
+                }),
+            };
 
             // Persist the change that we're about to make before updating our in-memory state. We
             // can't report success until we know the new asset has been saved to disk (otherwise we
@@ -1396,62 +1365,40 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
             session
                 .backend
                 .store(|mut t| async {
-                    t.store_defined_asset(&asset_definition, seed, &desc)
-                        .await?;
-                    if audit {
-                        // If we are going to be an auditor of the new asset, we must also persist
-                        // that information to disk before doing anything to the in-memory state.
-                        t.store_auditable_asset(&asset_definition).await?;
-                    }
+                    t.store_asset(&asset).await?;
                     Ok(t)
                 })
                 .await?;
 
             // Now we can add the asset definition to the in-memory state.
-            self.defined_assets
-                .insert(code, (asset_definition.clone(), seed, desc));
-            if audit {
-                self.auditable_assets
-                    .insert(asset_definition.code, asset_definition.clone());
-            }
-            Ok(asset_definition)
+            self.assets.insert(asset.clone());
+            Ok(asset.definition)
         }
     }
 
-    /// Use `audit_asset` to start auditing transactions with a given asset type, when the asset
-    /// type was defined by someone else and sent to us out of band. The audit key for `asset` must
-    /// already be in this wallet's key set.
-    ///
-    /// Auditing of assets created by this user with an appropriate asset policy begins
-    /// automatically. Calling this function is unnecessary.
-    pub async fn audit_asset(
+    async fn import_asset(
         &mut self,
         session: &mut WalletSession<'a, L, impl WalletBackend<'a, L>>,
-        asset: &AssetDefinition,
+        asset: AssetInfo,
     ) -> Result<(), WalletError<L>> {
-        if self.auditable_assets.contains_key(&asset.code) {
-            // Don't add the same asset twice.
-            return Ok(());
-        }
-        if !self
-            .audit_keys
-            .contains_key(asset.policy_ref().auditor_pub_key())
-        {
-            return Err(WalletError::<L>::AssetNotAuditable {
-                asset: asset.clone(),
-            });
+        if let Some(old) = self.assets.get(asset.definition.code) {
+            if old == &asset {
+                // If we already have this asset and it is up-to-date with the new info, there is no
+                // need to go to the trouble of updating storage.
+                return Ok(());
+            }
         }
 
-        // Store the new asset on disk before adding it to our in-memory data structure. We don't
-        // want to update the in-memory structure if the persistent store fails.
+        // Persist the change before modifying in-memory data structures, in case persistence fails.
         session
             .backend
             .store(|mut t| async {
-                t.store_auditable_asset(asset).await?;
+                t.store_asset(&asset).await?;
                 Ok(t)
             })
             .await?;
-        self.auditable_assets.insert(asset.code, asset.clone());
+
+        self.assets.insert(asset);
         Ok(())
     }
 
@@ -1589,7 +1536,9 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
         session: &mut WalletSession<'a, L, impl WalletBackend<'a, L>>,
         audit_key: AuditorKeyPair,
     ) -> Result<(), WalletError<L>> {
-        Self::add_key(session, &mut self.audit_keys, audit_key).await
+        Self::add_key(session, &mut self.audit_keys, audit_key.clone()).await?;
+        self.assets.add_audit_key(audit_key.pub_key());
+        Ok(())
     }
 
     pub async fn add_freeze_key(
@@ -1651,15 +1600,22 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
         owner: UserAddress,
     ) -> Result<(MintNote, TransactionInfo<L>), WalletError<L>> {
         let asset = self
-            .defined_assets
-            .get(asset_code)
+            .assets
+            .get(*asset_code)
             .ok_or(WalletError::<L>::UndefinedAsset { asset: *asset_code })?;
+        let MintInfo { seed, description } =
+            asset
+                .mint_info
+                .clone()
+                .ok_or(WalletError::<L>::AssetNotMintable {
+                    asset: asset.definition.clone(),
+                })?;
         self.txn_state
             .mint(
                 &self.account_keypair(account)?.clone(),
                 &self.proving_keys.mint,
                 fee,
-                asset,
+                &(asset.definition.clone(), seed, description),
                 amount,
                 session.backend.get_public_key(&owner).await?,
                 &mut session.rng,
@@ -1698,8 +1654,8 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
         owner: UserAddress,
         outputs_frozen: FreezeFlag,
     ) -> Result<(FreezeNote, TransactionInfo<L>), WalletError<L>> {
-        let asset = match self.assets().get(asset) {
-            Some(info) => info.asset.clone(),
+        let asset = match self.assets.get(*asset) {
+            Some(asset) => asset.definition.clone(),
             None => return Err(WalletError::<L>::UndefinedAsset { asset: *asset }),
         };
         let freeze_key = match self.freeze_keys.get(asset.policy_ref().freezer_pub_key()) {
@@ -1895,7 +1851,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
         Box::pin(async move { Self::new_impl(backend).await })
     }
     async fn new_impl(mut backend: Backend) -> Result<Wallet<'a, Backend, L>, WalletError<L>> {
-        let state = backend.load().await?;
+        let mut state = backend.load().await?;
         let mut events = backend.subscribe(state.txn_state.now, None).await;
         let mut key_scans = vec![];
         for scan in state.key_scans.values() {
@@ -1913,7 +1869,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
             ));
         }
         let key_tree = backend.key_stream();
-        let session = WalletSession {
+        let mut session = WalletSession {
             backend,
             rng: ChaChaRng::from_entropy(),
             auditor_key_stream: key_tree.derive_sub_tree("auditor".as_bytes()),
@@ -1922,6 +1878,12 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
             _marker: Default::default(),
             _marker2: Default::default(),
         };
+
+        // Ensure the native asset type is always recognized.
+        state
+            .import_asset(&mut session, AssetInfo::native())
+            .await?;
+
         let sync_handles = Vec::new();
         let txn_subscribers = HashMap::new();
         let pending_foreign_txns = HashMap::new();
@@ -2081,9 +2043,14 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
         state.balance(account, asset, FreezeFlag::Frozen)
     }
 
-    pub async fn assets(&self) -> HashMap<AssetCode, AssetInfo> {
+    pub async fn assets(&self) -> Vec<AssetInfo> {
         let WalletSharedState { state, .. } = &*self.mutex.lock().await;
-        state.assets()
+        state.assets.iter().cloned().collect()
+    }
+
+    pub async fn asset(&self, code: AssetCode) -> Option<AssetInfo> {
+        let WalletSharedState { state, .. } = &*self.mutex.lock().await;
+        state.assets.get(code).cloned()
     }
 
     pub async fn transaction_history(
@@ -2205,10 +2172,9 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
         state.define_asset(session, description, policy).await
     }
 
-    /// start auditing transactions with a given asset type
-    pub async fn audit_asset(&mut self, asset: &AssetDefinition) -> Result<(), WalletError<L>> {
+    pub async fn import_asset(&mut self, asset: AssetInfo) -> Result<(), WalletError<L>> {
         let WalletSharedState { state, session, .. } = &mut *self.mutex.lock().await;
-        state.audit_asset(session, asset).await
+        state.import_asset(session, asset).await
     }
 
     /// add an auditor key to the wallet's key set
@@ -2569,7 +2535,16 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
                     ..
                 } = &mut *mutex.lock().await;
                 let scan = state.key_scans.remove(&key.address()).unwrap();
-                state.add_records(&key, scan.records.into_values().collect());
+                if let Err(err) = state
+                    .add_records(session, &key, scan.records.into_values().collect())
+                    .await
+                {
+                    println!(
+                        "Error saving records from key scan {}: {}",
+                        key.pub_key(),
+                        err
+                    );
+                }
                 session
                     .backend
                     .store(|mut t| async {

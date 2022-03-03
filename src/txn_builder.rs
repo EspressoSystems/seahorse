@@ -159,12 +159,6 @@ impl RecordDatabase {
         self.record_info.values()
     }
 
-    pub fn assets(&'_ self) -> impl '_ + Iterator<Item = AssetDefinition> {
-        self.record_info
-            .values()
-            .map(|rec| rec.ro.asset_def.clone())
-    }
-
     /// Find records which can be the input to a transaction, matching the given parameters.
     pub fn input_records<'a>(
         &'a self,
@@ -707,42 +701,6 @@ where
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct MintInfo {
-    pub seed: AssetCodeSeed,
-    pub desc: Vec<u8>,
-}
-
-impl MintInfo {
-    pub fn new(seed: AssetCodeSeed, desc: Vec<u8>) -> Self {
-        Self { seed, desc }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct AssetInfo {
-    pub asset: AssetDefinition,
-    pub mint_info: Option<MintInfo>,
-}
-
-impl AssetInfo {
-    pub fn new(asset: AssetDefinition, mint_info: MintInfo) -> Self {
-        Self {
-            asset,
-            mint_info: Some(mint_info),
-        }
-    }
-}
-
-impl From<AssetDefinition> for AssetInfo {
-    fn from(asset: AssetDefinition) -> Self {
-        Self {
-            asset,
-            mint_info: None,
-        }
-    }
-}
-
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct TransactionHistoryEntry<L: Ledger> {
@@ -922,13 +880,6 @@ impl<L: Ledger> TransactionState<L> {
             .sum()
     }
 
-    pub fn assets(&self) -> HashMap<AssetCode, AssetInfo> {
-        self.records
-            .assets()
-            .map(|def| (def.code, AssetInfo::from(def)))
-            .collect()
-    }
-
     pub fn clear_expired_transactions(&mut self) -> Vec<PendingTransaction<L>> {
         self.transactions
             .remove_expired(self.validator.now())
@@ -941,11 +892,11 @@ impl<L: Ledger> TransactionState<L> {
         rng: &mut ChaChaRng,
         description: &'b [u8],
         policy: AssetPolicy,
-    ) -> Result<(AssetCodeSeed, AssetCode, AssetDefinition), TransactionError> {
+    ) -> Result<(AssetCodeSeed, AssetDefinition), TransactionError> {
         let seed = AssetCodeSeed::generate(rng);
         let code = AssetCode::new_domestic(seed, description);
         let asset_definition = AssetDefinition::new(code, policy).context(CryptoError)?;
-        Ok((seed, code, asset_definition))
+        Ok((seed, asset_definition))
     }
 
     pub fn add_pending_transaction(

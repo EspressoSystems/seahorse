@@ -11,12 +11,30 @@
 use super::*;
 use async_std::sync::{Arc, Mutex};
 use futures::channel::mpsc;
+use jf_cap::structs::NoteType;
+use jf_cap::utils::compute_universal_param_size;
 use jf_cap::{proof::UniversalParam, MerkleTree, TransactionVerifyingKey};
 use key_set::{KeySet, OrderByOutputs, ProverKeySet, VerifierKeySet};
+use lazy_static::lazy_static;
 use rand_chacha::rand_core::RngCore;
 use std::collections::BTreeMap;
 use std::pin::Pin;
 use std::time::Instant;
+
+lazy_static! {
+    pub static ref UNIVERSAL_PARAM: UniversalParam = {
+        let max_degree =
+            compute_universal_param_size(NoteType::Transfer, 3, 3, cap::Ledger::merkle_height())
+                .unwrap_or_else(|err| {
+                    panic!(
+                        "Error while computing the universal parameter size for Transfer: {}",
+                        err
+                    )
+                });
+        jf_cap::proof::universal_setup(max_degree, &mut ChaChaRng::from_seed([0u8; 32]))
+            .unwrap_or_else(|err| panic!("Error while generating universal param: {}", err))
+    };
+}
 
 #[async_trait]
 pub trait MockNetwork<'a, L: Ledger> {
@@ -171,7 +189,7 @@ pub fn assert_wallet_states_eq<'a, L: Ledger>(w1: &WalletState<'a, L>, w2: &Wall
     assert_eq!(w1.proving_keys, w2.proving_keys);
     assert_eq!(w1.txn_state.records, w2.txn_state.records);
     assert_eq!(w1.key_state, w2.key_state);
-    assert_eq!(w1.auditable_assets, w2.auditable_assets);
+    assert_eq!(w1.assets, w2.assets);
     assert_eq!(
         w1.audit_keys.keys().collect::<Vec<_>>(),
         w2.audit_keys.keys().collect::<Vec<_>>()
@@ -185,7 +203,6 @@ pub fn assert_wallet_states_eq<'a, L: Ledger>(w1: &WalletState<'a, L>, w2: &Wall
         w1.txn_state.record_mt.commitment(),
         w2.txn_state.record_mt.commitment()
     );
-    assert_eq!(w1.defined_assets, w2.defined_assets);
     assert_eq!(w1.txn_state.transactions, w2.txn_state.transactions);
     assert_eq!(w1.key_scans, w2.key_scans);
 }

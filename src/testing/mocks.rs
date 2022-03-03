@@ -1,6 +1,8 @@
 pub use crate::testing::MockLedger;
 
+use super::UNIVERSAL_PARAM;
 use crate::{
+    asset_library::AssetInfo,
     events::{EventIndex, EventSource, LedgerEvent},
     hd,
     testing::{MockEventSource, MockNetwork as _},
@@ -14,15 +16,12 @@ use itertools::izip;
 use jf_cap::{
     keys::{UserAddress, UserKeyPair, UserPubKey},
     proof::UniversalParam,
-    structs::{
-        AssetCodeSeed, AssetDefinition, Nullifier, ReceiverMemo, RecordCommitment, RecordOpening,
-    },
+    structs::{Nullifier, ReceiverMemo, RecordCommitment, RecordOpening},
     MerkleTree, Signature,
 };
 use key_set::{OrderByOutputs, ProverKeySet, VerifierKeySet};
-use lazy_static::lazy_static;
 use rand_chacha::{rand_core::SeedableRng, ChaChaRng};
-use reef::{cap, traits::Ledger as _, traits::Transaction as _, traits::Validator as _};
+use reef::{cap, traits::Transaction as _, traits::Validator as _};
 use snafu::ResultExt;
 use std::collections::{HashMap, HashSet};
 use std::pin::Pin;
@@ -56,12 +55,9 @@ impl<'a> WalletStorage<'a, cap::Ledger> for MockStorage<'a> {
         Ok(())
     }
 
-    async fn store_auditable_asset(
-        &mut self,
-        asset: &AssetDefinition,
-    ) -> Result<(), WalletError<cap::Ledger>> {
+    async fn store_asset(&mut self, asset: &AssetInfo) -> Result<(), WalletError<cap::Ledger>> {
         if let Some(working) = &mut self.working {
-            working.auditable_assets.insert(asset.code, asset.clone());
+            working.assets.insert(asset.clone());
         }
         Ok(())
     }
@@ -71,6 +67,7 @@ impl<'a> WalletStorage<'a, cap::Ledger> for MockStorage<'a> {
             match key {
                 RoleKeyPair::Auditor(key) => {
                     working.audit_keys.insert(key.pub_key(), key.clone());
+                    working.assets.add_audit_key(key.pub_key());
                 }
                 RoleKeyPair::Freezer(key) => {
                     working.freeze_keys.insert(key.pub_key(), key.clone());
@@ -79,20 +76,6 @@ impl<'a> WalletStorage<'a, cap::Ledger> for MockStorage<'a> {
                     working.user_keys.insert(key.address(), key.clone());
                 }
             }
-        }
-        Ok(())
-    }
-
-    async fn store_defined_asset(
-        &mut self,
-        asset: &AssetDefinition,
-        seed: AssetCodeSeed,
-        desc: &[u8],
-    ) -> Result<(), WalletError<cap::Ledger>> {
-        if let Some(working) = &mut self.working {
-            working
-                .defined_assets
-                .insert(asset.code, (asset.clone(), seed, desc.to_vec()));
         }
         Ok(())
     }
@@ -348,11 +331,10 @@ impl<'a> WalletBackend<'a, cap::Ledger> for MockBackend<'a> {
                 },
                 key_state: Default::default(),
                 key_scans: Default::default(),
-                auditable_assets: Default::default(),
+                assets: Default::default(),
                 audit_keys: Default::default(),
                 freeze_keys: Default::default(),
                 user_keys: Default::default(),
-                defined_assets: HashMap::new(),
             }
         };
 
@@ -497,13 +479,6 @@ impl<'a> super::SystemUnderTest<'a> for MockSystem {
     fn universal_param(&self) -> &'a UniversalParam {
         &*UNIVERSAL_PARAM
     }
-}
-
-lazy_static! {
-    static ref UNIVERSAL_PARAM: UniversalParam = universal_param::get(
-        &mut ChaChaRng::from_seed([1u8; 32]),
-        cap::Ledger::merkle_height()
-    );
 }
 
 #[cfg(test)]
