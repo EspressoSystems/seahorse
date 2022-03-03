@@ -1,0 +1,1 @@
+initSidebarItems({"enum":[["Error",""]],"struct":[["Cipher","An authenticating stream cipher."],["CipherText",""]],"type":[["Nonce",""],["Result",""]]});

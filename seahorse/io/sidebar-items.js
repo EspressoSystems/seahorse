@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["SharedIO",""],["Tee","Adapter for an input or output stream which echoes all I/O passing through the stream to stdout."]]});
