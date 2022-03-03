@@ -6,7 +6,7 @@ use crate::{
     events::{EventIndex, EventSource, LedgerEvent},
     hd,
     testing::{MockEventSource, MockNetwork as _},
-    txn_builder::{TransactionHistoryEntry, TransactionState, TransactionUID},
+    txn_builder::{PendingTransaction, TransactionHistoryEntry, TransactionInfo, TransactionState},
     CryptoError, RoleKeyPair, WalletBackend, WalletError, WalletState, WalletStorage,
 };
 use async_std::sync::{Arc, Mutex, MutexGuard};
@@ -275,7 +275,6 @@ pub struct MockBackend<'a> {
     storage: Arc<Mutex<MockStorage<'a>>>,
     ledger: Arc<Mutex<MockLedger<'a, cap::Ledger, MockNetwork<'a>, MockStorage<'a>>>>,
     key_stream: hd::KeyTree,
-    pending_memos: HashMap<TransactionUID<cap::Ledger>, (Vec<ReceiverMemo>, Signature)>,
 }
 
 impl<'a> MockBackend<'a> {
@@ -288,7 +287,6 @@ impl<'a> MockBackend<'a> {
             ledger,
             storage,
             key_stream,
-            pending_memos: Default::default(),
         }
     }
 }
@@ -427,26 +425,17 @@ impl<'a> WalletBackend<'a, cap::Ledger> for MockBackend<'a> {
     async fn submit(
         &mut self,
         txn: cap::Transaction,
-        uid: TransactionUID<cap::Ledger>,
-        memos: Vec<ReceiverMemo>,
-        sig: Signature,
+        _info: TransactionInfo<cap::Ledger>,
     ) -> Result<(), WalletError<cap::Ledger>> {
-        match self.ledger.lock().await.submit(txn) {
-            Ok(()) => {
-                self.pending_memos.insert(uid, (memos, sig));
-                Ok(())
-            }
-            Err(err) => Err(err),
-        }
+        self.ledger.lock().await.submit(txn)
     }
 
-    async fn finalize(&mut self, uid: TransactionUID<cap::Ledger>, txn_id: Option<(u64, u64)>) {
-        let (memos, sig) = self.pending_memos.remove(&uid).unwrap();
+    async fn finalize(&mut self, txn: PendingTransaction<cap::Ledger>, txn_id: Option<(u64, u64)>) {
         if let Some((block_id, txn_id)) = txn_id {
             self.ledger
                 .lock()
                 .await
-                .post_memos(block_id, txn_id, memos, sig)
+                .post_memos(block_id, txn_id, txn.info.memos, txn.info.sig)
                 .unwrap();
         }
     }

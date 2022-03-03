@@ -880,11 +880,10 @@ impl<L: Ledger> TransactionState<L> {
             .sum()
     }
 
-    pub fn clear_expired_transactions(&mut self) -> Vec<TransactionUID<L>> {
+    pub fn clear_expired_transactions(&mut self) -> Vec<PendingTransaction<L>> {
         self.transactions
             .remove_expired(self.validator.now())
             .into_iter()
-            .map(|txn| txn.uid())
             .collect()
     }
 

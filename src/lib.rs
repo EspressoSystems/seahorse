@@ -604,16 +604,14 @@ pub trait WalletBackend<'a, L: Ledger>: Send {
     // Submit a transaction to a validator.
     async fn submit(
         &mut self,
-        txn: Transaction<L>,
-        uid: TransactionUID<L>,
-        memos: Vec<ReceiverMemo>,
-        sig: Signature,
+        note: Transaction<L>,
+        info: TransactionInfo<L>,
     ) -> Result<(), WalletError<L>>;
 
     /// Record a finalized transaction.
     ///
     /// If successful, `txn_id` contains the block ID and index of the committed transaction.
-    async fn finalize(&mut self, _uid: TransactionUID<L>, _txn_id: Option<(u64, u64)>)
+    async fn finalize(&mut self, _txn: PendingTransaction<L>, _txn_id: Option<(u64, u64)>)
     where
         L: 'static,
     {
@@ -832,13 +830,13 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
                             TransactionStatus::AwaitingMemos
                         };
                         summary.updated_txns.push((pending.uid(), status));
-                        session
-                            .backend
-                            .finalize(pending.uid(), Some((block_id, txn_id as u64)))
-                            .await;
                         self.txn_state
                             .transactions
                             .await_memos(pending.uid(), this_txn_uids.iter().map(|(uid, _)| *uid));
+                        session
+                            .backend
+                            .finalize(pending, Some((block_id, txn_id as u64)))
+                            .await;
                         self_published = true;
                     }
 
@@ -880,11 +878,11 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
                 // This maintains the invariant that everything in `pending_transactions` must
                 // correspond to an on-hold record, because everything which corresponds to a record
                 // whose hold just expired will be removed from the set now.
-                for txn_uid in self.txn_state.clear_expired_transactions() {
+                for txn in self.txn_state.clear_expired_transactions() {
                     summary
                         .updated_txns
-                        .push((txn_uid.clone(), TransactionStatus::Rejected));
-                    session.backend.finalize(txn_uid, None).await;
+                        .push((txn.uid(), TransactionStatus::Rejected));
+                    session.backend.finalize(txn, None).await;
                 }
             }
 
@@ -931,7 +929,11 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
                                 .await
                                 .is_ok()
                                 && self
-                                    .submit_elaborated_transaction(session, txn, pending.info)
+                                    .submit_elaborated_transaction(
+                                        session,
+                                        txn,
+                                        pending.info.clone(),
+                                    )
                                     .await
                                     .is_ok()
                             {
@@ -943,13 +945,13 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
                                 summary
                                     .updated_txns
                                     .push((uid.clone(), TransactionStatus::Rejected));
-                                session.backend.finalize(uid, None).await;
+                                session.backend.finalize(pending, None).await;
                             }
                         } else {
                             summary
                                 .updated_txns
                                 .push((uid.clone(), TransactionStatus::Rejected));
-                            session.backend.finalize(uid, None).await;
+                            session.backend.finalize(pending, None).await;
                         }
                     }
                 }
@@ -1723,7 +1725,7 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
             let receipt = self.txn_state.add_pending_transaction(&txn, info.clone());
 
             // Persist the pending transaction.
-            let history = info.history;
+            let history = info.history.clone();
             if let Err(err) = session
                 .backend
                 .store(|mut t| async {
@@ -1751,11 +1753,7 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
 
             // If we succeeded in creating and persisting the pending transaction, submit it to the
             // validators.
-            if let Err(err) = session
-                .backend
-                .submit(txn.clone(), receipt.uid.clone(), info.memos, info.sig)
-                .await
-            {
+            if let Err(err) = session.backend.submit(txn.clone(), info).await {
                 self.clear_pending_transaction(&txn, None).await;
                 return Err(err);
             }
