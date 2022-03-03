@@ -74,14 +74,14 @@ pub mod generic_wallet_tests {
         assert_eq!(
             wallets[0]
                 .0
-                .balance_with_address(&alice_address, &AssetCode::native())
+                .balance_breakdown(&alice_address, &AssetCode::native())
                 .await,
             alice_grant
         );
         assert_eq!(
             wallets[1]
                 .0
-                .balance_with_address(&bob_address, &AssetCode::native())
+                .balance_breakdown(&bob_address, &AssetCode::native())
                 .await,
             bob_grant
         );
@@ -107,14 +107,14 @@ pub mod generic_wallet_tests {
             assert_eq!(
                 wallets[0]
                     .0
-                    .balance_with_address(&alice_address, &coin.code)
+                    .balance_breakdown(&alice_address, &coin.code)
                     .await,
                 5
             );
             assert_eq!(
                 wallets[1]
                     .0
-                    .balance_with_address(&bob_address, &coin.code)
+                    .balance_breakdown(&bob_address, &coin.code)
                     .await,
                 0
             );
@@ -124,11 +124,11 @@ pub mod generic_wallet_tests {
 
         let alice_initial_native_balance = wallets[0]
             .0
-            .balance_with_address(&alice_address, &AssetCode::native())
+            .balance_breakdown(&alice_address, &AssetCode::native())
             .await;
         let bob_initial_native_balance = wallets[1]
             .0
-            .balance_with_address(&bob_address, &AssetCode::native())
+            .balance_breakdown(&bob_address, &AssetCode::native())
             .await;
 
         // Construct a transaction to transfer some coins from Alice to Bob.
@@ -164,7 +164,7 @@ pub mod generic_wallet_tests {
                 assert_eq!(
                     wallet
                         .0
-                        .balance_with_address(&wallet.1[0], &coin.code)
+                        .balance_breakdown(&wallet.1[0], &coin.code)
                         .await,
                     expected_coin_balance - fees_paid
                 );
@@ -172,14 +172,14 @@ pub mod generic_wallet_tests {
                 assert_eq!(
                     wallet
                         .0
-                        .balance_with_address(&wallet.1[0], &coin.code)
+                        .balance_breakdown(&wallet.1[0], &coin.code)
                         .await,
                     expected_coin_balance
                 );
                 assert_eq!(
                     wallet
                         .0
-                        .balance_with_address(&wallet.1[0], &AssetCode::native())
+                        .balance_breakdown(&wallet.1[0], &AssetCode::native())
                         .await,
                     starting_native_balance - fees_paid
                 );
@@ -388,7 +388,7 @@ pub mod generic_wallet_tests {
         assert_eq!(
             wallets[0]
                 .0
-                .balance_with_address(&wallets[0].1[0], &AssetCode::native())
+                .balance_breakdown(&wallets[0].1[0], &AssetCode::native())
                 .await,
             0
         );
@@ -396,7 +396,7 @@ pub mod generic_wallet_tests {
             assert_eq!(
                 wallets[0]
                     .0
-                    .balance_with_address(&wallets[0].1[0], &asset.code)
+                    .balance_breakdown(&wallets[0].1[0], &asset.code)
                     .await,
                 0
             );
@@ -416,7 +416,7 @@ pub mod generic_wallet_tests {
                 assert_eq!(
                     wallets[0]
                         .0
-                        .balance_with_address(&wallets[0].1[0], &AssetCode::native())
+                        .balance_breakdown(&wallets[0].1[0], &AssetCode::native())
                         .await,
                     0
                 );
@@ -424,7 +424,7 @@ pub mod generic_wallet_tests {
                     assert_eq!(
                         wallets[0]
                             .0
-                            .balance_with_address(&wallets[0].1[0], &asset.code)
+                            .balance_breakdown(&wallets[0].1[0], &asset.code)
                             .await,
                         0
                     );
@@ -467,7 +467,7 @@ pub mod generic_wallet_tests {
             assert_eq!(
                 wallets[0]
                     .0
-                    .balance_with_address(&wallets[0].1[0], &AssetCode::native())
+                    .balance_breakdown(&wallets[0].1[0], &AssetCode::native())
                     .await,
                 2
             );
@@ -475,7 +475,7 @@ pub mod generic_wallet_tests {
             assert_eq!(
                 wallets[0]
                     .0
-                    .balance_with_address(&wallets[0].1[0], &AssetCode::native())
+                    .balance_breakdown(&wallets[0].1[0], &AssetCode::native())
                     .await,
                 1
             );
@@ -484,7 +484,7 @@ pub mod generic_wallet_tests {
                 assert_eq!(
                     wallets[0]
                         .0
-                        .balance_with_address(&wallets[0].1[0], &asset.code)
+                        .balance_breakdown(&wallets[0].1[0], &asset.code)
                         .await,
                     1
                 );
@@ -493,7 +493,7 @@ pub mod generic_wallet_tests {
         assert_eq!(
             wallets[1]
                 .0
-                .balance_with_address(&wallets[1].1[0], &asset.code)
+                .balance_breakdown(&wallets[1].1[0], &asset.code)
                 .await,
             (if timeout {
                 T::Ledger::record_root_history() as u64
@@ -531,21 +531,21 @@ pub mod generic_wallet_tests {
         assert_eq!(
             wallets[0]
                 .0
-                .balance_with_address(&wallets[0].1[0], &AssetCode::native())
+                .balance_breakdown(&wallets[0].1[0], &AssetCode::native())
                 .await,
             0
         );
         assert_eq!(
             wallets[0]
                 .0
-                .balance_with_address(&wallets[0].1[0], &asset.code)
+                .balance_breakdown(&wallets[0].1[0], &asset.code)
                 .await,
             0
         );
         assert_eq!(
             wallets[1]
                 .0
-                .balance_with_address(&wallets[1].1[0], &asset.code)
+                .balance_breakdown(&wallets[1].1[0], &asset.code)
                 .await,
             (if timeout {
                 T::Ledger::record_root_history() as u64
@@ -659,7 +659,7 @@ pub mod generic_wallet_tests {
         assert_eq!(
             wallets[0]
                 .0
-                .balance_with_address(&wallets[0].1[0], &asset.code)
+                .balance_breakdown(&wallets[0].1[0], &asset.code)
                 .await,
             1
         );
@@ -701,7 +701,7 @@ pub mod generic_wallet_tests {
         assert_eq!(
             wallets[0]
                 .0
-                .balance_with_address(&wallets[0].1[0], &asset.code)
+                .balance_breakdown(&wallets[0].1[0], &asset.code)
                 .await,
             0
         );
@@ -752,7 +752,7 @@ pub mod generic_wallet_tests {
         assert_eq!(
             wallets[0]
                 .0
-                .balance_with_address(&wallets[0].1[0], &asset.code)
+                .balance_breakdown(&wallets[0].1[0], &asset.code)
                 .await,
             1
         );
@@ -777,7 +777,7 @@ pub mod generic_wallet_tests {
         assert_eq!(
             wallets[0]
                 .0
-                .balance_with_address(&wallets[0].1[0], &asset.code)
+                .balance_breakdown(&wallets[0].1[0], &asset.code)
                 .await,
             0
         );
@@ -791,7 +791,7 @@ pub mod generic_wallet_tests {
         assert_eq!(
             wallets[1]
                 .0
-                .balance_with_address(&wallets[1].1[0], &asset.code)
+                .balance_breakdown(&wallets[1].1[0], &asset.code)
                 .await,
             1
         );
@@ -1031,14 +1031,14 @@ pub mod generic_wallet_tests {
                 // Check native asset balance.
                 assert_eq!(
                     wallet
-                        .balance_with_address(&addresses[0], &AssetCode::native())
+                        .balance_breakdown(&addresses[0], &AssetCode::native())
                         .await,
                     balance[0]
                 );
                 for (j, asset) in assets.iter().enumerate() {
                     assert_eq!(
                         wallet
-                            .balance_with_address(&addresses[0], &asset.code)
+                            .balance_breakdown(&addresses[0], &asset.code)
                             .await,
                         balance[j + 1]
                     );
@@ -1542,7 +1542,7 @@ pub mod generic_wallet_tests {
                 .backend
                 .key_stream()
                 .derive_sub_tree("user".as_bytes())
-                .derive_user_keypair(&state.key_state.user.to_le_bytes());
+                .derive_user_key_pair(&state.key_state.user.to_le_bytes());
             session.backend.register_user_key(&key).await.unwrap();
             key
         };
@@ -1567,7 +1567,7 @@ pub mod generic_wallet_tests {
         assert_eq!(
             wallets[0]
                 .0
-                .balance_with_address(&key.address(), &AssetCode::native())
+                .balance_breakdown(&key.address(), &AssetCode::native())
                 .await,
             0
         );
@@ -1586,7 +1586,7 @@ pub mod generic_wallet_tests {
         assert_eq!(
             wallets[0]
                 .0
-                .balance_with_address(&key.address(), &AssetCode::native())
+                .balance_breakdown(&key.address(), &AssetCode::native())
                 .await,
             1
         );
@@ -1607,7 +1607,7 @@ pub mod generic_wallet_tests {
         assert_eq!(
             wallets[0]
                 .0
-                .balance_with_address(&key.address(), &AssetCode::native())
+                .balance_breakdown(&key.address(), &AssetCode::native())
                 .await,
             2
         );
@@ -1640,7 +1640,7 @@ pub mod generic_wallet_tests {
         await_transaction(&receipt, &wallet1, &[]).await;
         assert_eq!(
             wallet1
-                .balance_with_address(&addresses1[0], &AssetCode::native())
+                .balance_breakdown(&addresses1[0], &AssetCode::native())
                 .await,
             initial_grant - 1
         );
@@ -1674,13 +1674,13 @@ pub mod generic_wallet_tests {
         await_transaction(&receipt, &wallet1, &[&wallet2]).await;
         assert_eq!(
             wallet1
-                .balance_with_address(&addresses1[0], &AssetCode::native())
+                .balance_breakdown(&addresses1[0], &AssetCode::native())
                 .await,
             initial_grant - 4
         );
         assert_eq!(
             wallet2
-                .balance_with_address(&address2, &AssetCode::native())
+                .balance_breakdown(&address2, &AssetCode::native())
                 .await,
             2
         );
@@ -1699,13 +1699,13 @@ pub mod generic_wallet_tests {
         await_transaction(&receipt, &wallet2, &[&wallet1]).await;
         assert_eq!(
             wallet1
-                .balance_with_address(&addresses1[0], &AssetCode::native())
+                .balance_breakdown(&addresses1[0], &AssetCode::native())
                 .await,
             initial_grant - 3
         );
         assert_eq!(
             wallet2
-                .balance_with_address(&address2, &AssetCode::native())
+                .balance_breakdown(&address2, &AssetCode::native())
                 .await,
             0
         );
@@ -1742,14 +1742,14 @@ pub mod generic_wallet_tests {
         assert_eq!(
             wallets[0]
                 .0
-                .balance_with_address(&alice_addresses[0], &AssetCode::native())
+                .balance_breakdown(&alice_addresses[0], &AssetCode::native())
                 .await,
             alice_grant / 2
         );
         assert_eq!(
             wallets[0]
                 .0
-                .balance_with_address(&alice_addresses[1], &AssetCode::native())
+                .balance_breakdown(&alice_addresses[1], &AssetCode::native())
                 .await,
             alice_grant - alice_grant / 2
         );
@@ -1757,14 +1757,14 @@ pub mod generic_wallet_tests {
         assert_eq!(
             wallets[1]
                 .0
-                .balance_with_address(&bob_addresses[0], &AssetCode::native())
+                .balance_breakdown(&bob_addresses[0], &AssetCode::native())
                 .await,
             bob_grant / 2
         );
         assert_eq!(
             wallets[1]
                 .0
-                .balance_with_address(&bob_addresses[1], &AssetCode::native())
+                .balance_breakdown(&bob_addresses[1], &AssetCode::native())
                 .await,
             bob_grant - bob_grant / 2
         );
@@ -1796,14 +1796,14 @@ pub mod generic_wallet_tests {
         assert_eq!(
             wallets[0]
                 .0
-                .balance_with_address(&alice_addresses[0], &coin.code)
+                .balance_breakdown(&alice_addresses[0], &coin.code)
                 .await,
             amount
         );
         assert_eq!(
             wallets[0]
                 .0
-                .balance_with_address(&alice_addresses[1], &coin.code)
+                .balance_breakdown(&alice_addresses[1], &coin.code)
                 .await,
             0
         );

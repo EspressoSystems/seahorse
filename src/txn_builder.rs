@@ -840,7 +840,7 @@ where
 pub struct TransferInfo<L: Ledger> {
     pub note: TransferNote,
     pub owner_address: UserAddress,
-    pub sig_keypair: KeyPair,
+    pub sig_key_pair: KeyPair,
     pub history: TransactionHistoryEntry<L>,
     pub inputs: Vec<RecordOpening>,
     pub outputs: Vec<RecordOpening>,
@@ -848,11 +848,11 @@ pub struct TransferInfo<L: Ledger> {
 }
 
 pub struct TransferSpec<'a> {
-    /// List of keypairs that will be used to find the records for the transfer.
+    /// List of key_pairs that will be used to find the records for the transfer.
     ///
-    /// The list may contain multiple keypairs, or only one keypair in which case only the
+    /// The list may contain multiple key_pairs, or only one key_pair in which case only the
     /// associated records can be transferred.
-    pub owner_keypairs: &'a Vec<UserKeyPair>,
+    pub owner_key_pairs: &'a Vec<UserKeyPair>,
     pub asset: &'a AssetCode,
     pub receivers: &'a [(UserPubKey, u64)],
     pub fee: u64,
@@ -1048,14 +1048,14 @@ impl<L: Ledger> TransactionState<L> {
         // find input records which account for at least the total amount, and possibly some change.
         let records = self.find_records(
             &AssetCode::native(),
-            spec.owner_keypairs,
+            spec.owner_key_pairs,
             FreezeFlag::Unfrozen,
             total_output_amount,
             None,
         )?;
 
         let mut transfer_info = Vec::new();
-        for (owner_keypair, input_records, _) in records {
+        for (owner_key_pair, input_records, _) in records {
             // prepare inputs
             let mut inputs = vec![];
             for (ro, uid) in &input_records {
@@ -1063,7 +1063,7 @@ impl<L: Ledger> TransactionState<L> {
                 inputs.push(TransferNoteInput {
                     ro: ro.clone(),
                     acc_member_witness,
-                    owner_keypair: &owner_keypair,
+                    owner_keypair: &owner_key_pair,
                     cred: None,
                 });
             }
@@ -1083,7 +1083,7 @@ impl<L: Ledger> TransactionState<L> {
             // find a proving key which can handle this transaction size
             let (proving_key, dummy_inputs) = Self::xfr_proving_key(
                 rng,
-                owner_keypair.pub_key(),
+                owner_key_pair.pub_key(),
                 proving_keys,
                 &AssetDefinition::native(),
                 &mut inputs,
@@ -1096,11 +1096,11 @@ impl<L: Ledger> TransactionState<L> {
             let dummy_inputs = (0..dummy_inputs)
                 .map(|_| RecordOpening::dummy(rng, FreezeFlag::Unfrozen))
                 .collect::<Vec<_>>();
-            for (ro, owner_keypair) in &dummy_inputs {
+            for (ro, owner_key_pair) in &dummy_inputs {
                 let dummy_input = TransferNoteInput {
                     ro: ro.clone(),
                     acc_member_witness: AccMemberWitness::dummy(L::merkle_height()),
-                    owner_keypair,
+                    owner_keypair: owner_key_pair,
                     cred: None,
                 };
                 inputs.push(dummy_input);
@@ -1127,7 +1127,7 @@ impl<L: Ledger> TransactionState<L> {
                 time: Local::now(),
                 asset: AssetCode::native(),
                 kind: TransactionKind::<L>::send(),
-                sender: Some(owner_keypair.address()),
+                sender: Some(owner_key_pair.address()),
                 receivers: spec
                     .receivers
                     .iter()
@@ -1138,8 +1138,8 @@ impl<L: Ledger> TransactionState<L> {
 
             transfer_info.push(TransferInfo {
                 note,
-                owner_address: owner_keypair.address(),
-                sig_keypair: kp,
+                owner_address: owner_key_pair.address(),
+                sig_key_pair: kp,
                 history,
                 inputs: input_records.into_iter().map(|(ro, _)| ro).collect(),
                 outputs,
@@ -1169,7 +1169,7 @@ impl<L: Ledger> TransactionState<L> {
         // find input records of the asset type to spend (this does not include the fee input)
         let records = self.find_records(
             spec.asset,
-            spec.owner_keypairs,
+            spec.owner_key_pairs,
             FreezeFlag::Unfrozen,
             total_output_amount,
             None,
@@ -1178,7 +1178,7 @@ impl<L: Ledger> TransactionState<L> {
         let asset = records[0].1[0].0.asset_def.clone();
 
         let mut transfer_info = Vec::new();
-        for (owner_keypair, input_records, change) in records {
+        for (owner_key_pair, input_records, change) in records {
             // prepare inputs
             let mut inputs = vec![];
             for (ro, uid) in input_records.iter() {
@@ -1186,11 +1186,11 @@ impl<L: Ledger> TransactionState<L> {
                 inputs.push(TransferNoteInput {
                     ro: ro.clone(),
                     acc_member_witness: witness,
-                    owner_keypair: &owner_keypair,
+                    owner_keypair: &owner_key_pair,
                     cred: None, // TODO support credentials
                 })
             }
-            let fee_input = self.find_fee_input(&owner_keypair, spec.fee)?;
+            let fee_input = self.find_fee_input(&owner_key_pair, spec.fee)?;
 
             // prepare outputs, excluding fee change (which will be automatically generated)
             let mut outputs = vec![];
@@ -1205,7 +1205,7 @@ impl<L: Ledger> TransactionState<L> {
             }
             // change in the asset type being transfered (not fee change)
             if change > 0 {
-                let me = owner_keypair.pub_key();
+                let me = owner_key_pair.pub_key();
                 let change_ro =
                     RecordOpening::new(rng, change, asset.clone(), me, FreezeFlag::Unfrozen);
                 outputs.push(change_ro);
@@ -1214,7 +1214,7 @@ impl<L: Ledger> TransactionState<L> {
             // find a proving key which can handle this transaction size
             let (proving_key, dummy_inputs) = Self::xfr_proving_key(
                 rng,
-                owner_keypair.pub_key(),
+                owner_key_pair.pub_key(),
                 proving_keys,
                 &asset,
                 &mut inputs,
@@ -1227,11 +1227,11 @@ impl<L: Ledger> TransactionState<L> {
             let dummy_inputs = (0..dummy_inputs)
                 .map(|_| RecordOpening::dummy(rng, FreezeFlag::Unfrozen))
                 .collect::<Vec<_>>();
-            for (ro, owner_keypair) in &dummy_inputs {
+            for (ro, owner_key_pair) in &dummy_inputs {
                 let dummy_input = TransferNoteInput {
                     ro: ro.clone(),
                     acc_member_witness: AccMemberWitness::dummy(L::merkle_height()),
-                    owner_keypair,
+                    owner_keypair: owner_key_pair,
                     cred: None,
                 };
                 inputs.push(dummy_input);
@@ -1239,7 +1239,7 @@ impl<L: Ledger> TransactionState<L> {
 
             // generate transfer note and receiver memos
             let (fee_info, fee_out_rec) = TxnFeeInfo::new(rng, fee_input, spec.fee).unwrap();
-            let (note, sig_keypair) = TransferNote::generate_non_native(
+            let (note, sig_key_pair) = TransferNote::generate_non_native(
                 rng,
                 inputs,
                 &outputs,
@@ -1255,7 +1255,7 @@ impl<L: Ledger> TransactionState<L> {
                 time: Local::now(),
                 asset: asset.code,
                 kind: TransactionKind::<L>::send(),
-                sender: Some(owner_keypair.address()),
+                sender: Some(owner_key_pair.address()),
                 receivers: spec
                     .receivers
                     .iter()
@@ -1265,8 +1265,8 @@ impl<L: Ledger> TransactionState<L> {
             };
             transfer_info.push(TransferInfo {
                 note,
-                owner_address: owner_keypair.address(),
-                sig_keypair,
+                owner_address: owner_key_pair.address(),
+                sig_key_pair,
                 history,
                 inputs: input_records.into_iter().map(|(ro, _)| ro).collect(),
                 outputs,
@@ -1281,14 +1281,14 @@ impl<L: Ledger> TransactionState<L> {
         &mut self,
         records: Vec<RecordOpening>,
         rng: &mut ChaChaRng,
-        sig_keypair: &KeyPair,
+        sig_key_pair: &KeyPair,
     ) -> Result<(Vec<ReceiverMemo>, Signature), TransactionError> {
         let memos: Vec<_> = records
             .iter()
             .map(|ro| ReceiverMemo::from_ro(rng, ro, &[]))
             .collect::<Result<Vec<_>, _>>()
             .unwrap();
-        let sig = sign_receiver_memos(sig_keypair, &memos).context(CryptoError)?;
+        let sig = sign_receiver_memos(sig_key_pair, &memos).context(CryptoError)?;
 
         Ok((memos, sig))
     }
@@ -1296,7 +1296,7 @@ impl<L: Ledger> TransactionState<L> {
     #[allow(clippy::too_many_arguments)]
     pub fn mint<'a>(
         &mut self,
-        owner_keypair: &UserKeyPair,
+        owner_key_pair: &UserKeyPair,
         proving_key: &MintProvingKey<'a>,
         fee: u64,
         asset: &(AssetDefinition, AssetCodeSeed, Vec<u8>),
@@ -1313,7 +1313,7 @@ impl<L: Ledger> TransactionState<L> {
             blind: BlindFactor::rand(rng),
         };
 
-        let fee_input = self.find_fee_input(owner_keypair, fee)?;
+        let fee_input = self.find_fee_input(owner_key_pair, fee)?;
         let fee_rec = fee_input.ro.clone();
         let (fee_info, fee_out_rec) = TxnFeeInfo::new(rng, fee_input, fee).unwrap();
         let rng = rng;
@@ -1322,7 +1322,7 @@ impl<L: Ledger> TransactionState<L> {
             .map(|r| ReceiverMemo::from_ro(rng, r, &[]))
             .collect::<Result<Vec<_>, _>>()
             .unwrap();
-        let (note, sig_keypair) = jf_cap::mint::MintNote::generate(
+        let (note, sig_key_pair) = jf_cap::mint::MintNote::generate(
             rng,
             mint_record.clone(),
             *seed,
@@ -1331,21 +1331,21 @@ impl<L: Ledger> TransactionState<L> {
             proving_key,
         )
         .context(CryptoError)?;
-        let sig = sign_receiver_memos(&sig_keypair, &memos).unwrap();
+        let sig = sign_receiver_memos(&sig_key_pair, &memos).unwrap();
 
         // Build auxiliary info.
         let history = TransactionHistoryEntry {
             time: Local::now(),
             asset: asset_def.code,
             kind: TransactionKind::<L>::mint(),
-            sender: Some(owner_keypair.address()),
+            sender: Some(owner_key_pair.address()),
             receivers: vec![(receiver.address(), amount)],
             receipt: None,
         };
         Ok((
             note,
             TransactionInfo {
-                account: owner_keypair.address(),
+                account: owner_key_pair.address(),
                 memos,
                 sig,
                 freeze_outputs: vec![],
@@ -1360,8 +1360,8 @@ impl<L: Ledger> TransactionState<L> {
     #[allow(clippy::too_many_arguments)]
     pub fn freeze_or_unfreeze<'a>(
         &mut self,
-        fee_keypair: &UserKeyPair,
-        freezer_keypair: &FreezerKeyPair,
+        fee_key_pair: &UserKeyPair,
+        freezer_key_pair: &FreezerKeyPair,
         proving_keys: &KeySet<FreezeProvingKey<'a>, key_set::OrderByOutputs>,
         fee: u64,
         asset: &AssetDefinition,
@@ -1391,18 +1391,18 @@ impl<L: Ledger> TransactionState<L> {
             inputs.push(FreezeNoteInput {
                 ro: ro.clone(),
                 acc_member_witness: witness,
-                keypair: freezer_keypair,
+                keypair: freezer_key_pair,
             })
         }
-        let fee_input = self.find_fee_input(fee_keypair, fee)?;
+        let fee_input = self.find_fee_input(fee_key_pair, fee)?;
 
         // find a proving key which can handle this transaction size
         let proving_key =
-            Self::freeze_proving_key(rng, proving_keys, asset, &mut inputs, freezer_keypair)?;
+            Self::freeze_proving_key(rng, proving_keys, asset, &mut inputs, freezer_key_pair)?;
 
         // generate transfer note and receiver memos
         let (fee_info, fee_out_rec) = TxnFeeInfo::new(rng, fee_input, fee).unwrap();
-        let (note, sig_keypair, outputs) =
+        let (note, sig_key_pair, outputs) =
             FreezeNote::generate(rng, inputs, fee_info, proving_key).context(CryptoError)?;
         let memos = vec![&fee_out_rec]
             .into_iter()
@@ -1410,7 +1410,7 @@ impl<L: Ledger> TransactionState<L> {
             .map(|r| ReceiverMemo::from_ro(rng, r, &[]))
             .collect::<Result<Vec<_>, _>>()
             .unwrap();
-        let sig = sign_receiver_memos(&sig_keypair, &memos).unwrap();
+        let sig = sign_receiver_memos(&sig_key_pair, &memos).unwrap();
 
         // Build auxiliary info.
         let history = TransactionHistoryEntry {
@@ -1420,14 +1420,14 @@ impl<L: Ledger> TransactionState<L> {
                 FreezeFlag::Frozen => TransactionKind::<L>::freeze(),
                 FreezeFlag::Unfrozen => TransactionKind::<L>::unfreeze(),
             },
-            sender: Some(fee_keypair.address()),
+            sender: Some(fee_key_pair.address()),
             receivers: vec![(target.address(), amount)],
             receipt: None,
         };
         Ok((
             note,
             TransactionInfo {
-                account: fee_keypair.address(),
+                account: fee_key_pair.address(),
                 memos,
                 sig,
                 freeze_outputs: outputs.clone(),
@@ -1558,7 +1558,7 @@ impl<L: Ledger> TransactionState<L> {
     fn find_records(
         &self,
         asset: &AssetCode,
-        owner_keypairs: &[UserKeyPair],
+        owner_key_pairs: &[UserKeyPair],
         frozen: FreezeFlag,
         amount: u64,
         max_records: Option<usize>,
@@ -1566,20 +1566,20 @@ impl<L: Ledger> TransactionState<L> {
         let mut records = Vec::new();
         let mut target_amount = amount;
 
-        for owner_keypair in owner_keypairs {
+        for owner_key_pair in owner_key_pairs {
             let (input_records, change) = self.find_records_with_pub_key(
                 asset,
-                &owner_keypair.pub_key(),
+                &owner_key_pair.pub_key(),
                 frozen,
                 target_amount,
                 max_records,
                 true,
             )?;
             if change >= 0 {
-                records.push((owner_keypair.clone(), input_records, change as u64));
+                records.push((owner_key_pair.clone(), input_records, change as u64));
                 return Ok(records);
             }
-            records.push((owner_keypair.clone(), input_records, 0));
+            records.push((owner_key_pair.clone(), input_records, 0));
             target_amount = (0 - change) as u64;
         }
 
@@ -1593,12 +1593,12 @@ impl<L: Ledger> TransactionState<L> {
     /// find a record of the native asset type with enough funds to pay a transaction fee
     fn find_fee_input<'l>(
         &self,
-        owner_keypair: &'l UserKeyPair,
+        owner_key_pair: &'l UserKeyPair,
         fee: u64,
     ) -> Result<FeeInput<'l>, TransactionError> {
         let (ro, uid) = self.find_records(
             &AssetCode::native(),
-            &vec![owner_keypair.clone()],
+            &vec![owner_key_pair.clone()],
             FreezeFlag::Unfrozen,
             fee,
             Some(1),
@@ -1612,7 +1612,7 @@ impl<L: Ledger> TransactionState<L> {
         Ok(FeeInput {
             ro,
             acc_member_witness: self.get_merkle_proof(uid),
-            owner_keypair,
+            owner_keypair: owner_key_pair,
         })
     }
 
@@ -1737,7 +1737,7 @@ impl<L: Ledger> TransactionState<L> {
         proving_keys: &'k KeySet<FreezeProvingKey<'a>, key_set::OrderByOutputs>,
         asset: &AssetDefinition,
         inputs: &mut Vec<FreezeNoteInput<'k>>,
-        keypair: &'k FreezerKeyPair,
+        key_pair: &'k FreezerKeyPair,
     ) -> Result<&'k FreezeProvingKey<'a>, TransactionError> {
         let total_output_amount = inputs.iter().map(|input| input.ro.amount).sum();
 
@@ -1768,7 +1768,7 @@ impl<L: Ledger> TransactionState<L> {
                 inputs.push(FreezeNoteInput {
                     ro,
                     acc_member_witness: AccMemberWitness::dummy(L::merkle_height()),
-                    keypair,
+                    keypair: key_pair,
                 });
                 if inputs.len() >= key_inputs - 1 {
                     break;

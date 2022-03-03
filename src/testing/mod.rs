@@ -216,8 +216,8 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
     async fn create_storage(&mut self) -> Self::MockStorage;
 
     /// `two_addresses_per_wallet`
-    /// * If true, two keypairs/addresses will be created for each wallet.
-    /// * Otherwies, only one keypair/address per wallet.
+    /// * If true, two key pairs/addresses will be created for each wallet.
+    /// * Otherwise, only one key pair/address per wallet.
     async fn create_test_network(
         &mut self,
         xfr_sizes: &[(usize, usize)],
@@ -243,29 +243,34 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         for amount in initial_grants {
             let key_stream = hd::KeyTree::random(&mut rng).unwrap().0;
             let sub_tree = key_stream.derive_sub_tree("user".as_bytes());
-            let keys;
-            let amount_per_wallet;
-            let num_addr;
+            let keys_amounts;
             if two_addresses_per_wallet {
-                keys = vec![
-                    sub_tree.derive_user_keypair(&0u64.to_le_bytes()),
-                    sub_tree.derive_user_keypair(&1u64.to_le_bytes()),
+                keys_amounts = vec![
+                    (
+                        sub_tree.derive_user_key_pair(&0u64.to_le_bytes()),
+                        amount / 2,
+                    ),
+                    (
+                        sub_tree.derive_user_key_pair(&1u64.to_le_bytes()),
+                        amount - amount / 2,
+                    ),
                 ];
-                amount_per_wallet = vec![amount / 2, amount - amount / 2];
-                num_addr = 2;
             } else {
-                keys = vec![sub_tree.derive_user_keypair(&0u64.to_le_bytes())];
-                amount_per_wallet = vec![amount, 0];
-                num_addr = 1;
+                keys_amounts = vec![(sub_tree.derive_user_key_pair(&0u64.to_le_bytes()), amount)];
             }
+            let keys = keys_amounts
+                .clone()
+                .into_iter()
+                .map(|(key, _)| key)
+                .collect::<Vec<UserKeyPair>>();
             if amount > 0 {
                 let mut records = vec![];
-                for i in 0..num_addr {
+                for (key, amount) in keys_amounts {
                     let ro = RecordOpening::new(
                         &mut rng,
-                        amount_per_wallet[i],
+                        amount,
                         AssetDefinition::native(),
-                        keys[i].pub_key(),
+                        key.pub_key(),
                         FreezeFlag::Unfrozen,
                     );
                     let comm = RecordCommitment::from(&ro);

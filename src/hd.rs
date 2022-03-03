@@ -61,7 +61,7 @@ pub struct KeyTree {
     depth: usize,
 }
 
-macro_rules! derive_keypair {
+macro_rules! derive_key_pair {
     ($self: expr, $label:expr, $id: expr, $tar:ident) => {{
         let id = [$label.as_bytes(), $id].concat();
         let derived_seed = $self.derive_key_internal(&id);
@@ -166,18 +166,18 @@ impl KeyTree {
     }
 
     /// derive a user key pair from the KeyTree with certain id
-    pub fn derive_user_keypair(&self, id: &[u8]) -> UserKeyPair {
-        derive_keypair!(self, "user keypair", id, UserKeyPair)
+    pub fn derive_user_key_pair(&self, id: &[u8]) -> UserKeyPair {
+        derive_key_pair!(self, "user key pair", id, UserKeyPair)
     }
 
     /// derive an auditor key pair from the KeyTree with certain id
-    pub fn derive_auditor_keypair(&self, id: &[u8]) -> AuditorKeyPair {
-        derive_keypair!(self, "auditor keypair", id, AuditorKeyPair)
+    pub fn derive_auditor_key_pair(&self, id: &[u8]) -> AuditorKeyPair {
+        derive_key_pair!(self, "auditor key pair", id, AuditorKeyPair)
     }
 
     /// derive a freezer key pair from the KeyTree with certain id
-    pub fn derive_freezer_keypair(&self, id: &[u8]) -> FreezerKeyPair {
-        derive_keypair!(self, "freezer keypair", id, FreezerKeyPair)
+    pub fn derive_freezer_key_pair(&self, id: &[u8]) -> FreezerKeyPair {
+        derive_key_pair!(self, "freezer key pair", id, FreezerKeyPair)
     }
 }
 
@@ -239,12 +239,12 @@ mod tests {
 
         let (key_tree, _) = KeyTree::random(&mut rng).unwrap();
         let all_keys = vec![
-            bincode::serialize(&key_tree.derive_auditor_keypair(&id1)).unwrap(),
-            bincode::serialize(&key_tree.derive_auditor_keypair(&id2)).unwrap(),
-            bincode::serialize(&key_tree.derive_freezer_keypair(&id1)).unwrap(),
-            bincode::serialize(&key_tree.derive_freezer_keypair(&id2)).unwrap(),
-            bincode::serialize(&key_tree.derive_user_keypair(&id1)).unwrap(),
-            bincode::serialize(&key_tree.derive_user_keypair(&id2)).unwrap(),
+            bincode::serialize(&key_tree.derive_auditor_key_pair(&id1)).unwrap(),
+            bincode::serialize(&key_tree.derive_auditor_key_pair(&id2)).unwrap(),
+            bincode::serialize(&key_tree.derive_freezer_key_pair(&id1)).unwrap(),
+            bincode::serialize(&key_tree.derive_freezer_key_pair(&id2)).unwrap(),
+            bincode::serialize(&key_tree.derive_user_key_pair(&id1)).unwrap(),
+            bincode::serialize(&key_tree.derive_user_key_pair(&id2)).unwrap(),
             key_tree.derive_key(&id1).as_bytes().open_secret().to_vec(),
             key_tree.derive_key(&id2).as_bytes().open_secret().to_vec(),
             key_tree.derive_sub_tree(&id1).state.open_secret().to_vec(),

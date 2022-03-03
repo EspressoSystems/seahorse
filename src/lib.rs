@@ -686,7 +686,7 @@ impl<L: Ledger> Default for EventSummary<L> {
 }
 
 impl<'a, L: 'static + Ledger> WalletState<'a, L> {
-    fn keypairs(&self) -> Vec<UserKeyPair> {
+    fn key_pairs(&self) -> Vec<UserKeyPair> {
         self.user_keys.values().cloned().collect::<Vec<_>>()
     }
 
@@ -696,13 +696,13 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
 
     pub fn balance(&self, asset: &AssetCode, frozen: FreezeFlag) -> u64 {
         let mut balance = 0;
-        for keypair in self.keypairs() {
-            balance += self.txn_state.balance(asset, &keypair.pub_key(), frozen);
+        for pub_key in self.pub_keys() {
+            balance += self.txn_state.balance(asset, &pub_key, frozen);
         }
         balance
     }
 
-    pub fn balance_with_address(
+    pub fn balance_breakdown(
         &self,
         account: &UserAddress,
         asset: &AssetCode,
@@ -1519,7 +1519,7 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
                 let user_key = loop {
                     let user_key = session
                         .user_key_stream
-                        .derive_user_keypair(&self.key_state.user.to_le_bytes());
+                        .derive_user_key_pair(&self.key_state.user.to_le_bytes());
                     self.key_state.user += 1;
                     if !self.user_keys.contains_key(&user_key.address()) {
                         break user_key;
@@ -1649,10 +1649,10 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
         &mut self,
         session: &mut WalletSession<'a, L, impl WalletBackend<'a, L>>,
         records: Vec<RecordOpening>,
-        sig_keypair: &SigKeyPair,
+        sig_key_pair: &SigKeyPair,
     ) -> Result<(Vec<ReceiverMemo>, Signature), WalletError<L>> {
         self.txn_state
-            .generate_memos(records, &mut session.rng, sig_keypair)
+            .generate_memos(records, &mut session.rng, sig_key_pair)
             .context(TransactionError)
     }
 
@@ -1671,7 +1671,7 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
             .ok_or(WalletError::<L>::UndefinedAsset { asset: *asset_code })?;
         self.txn_state
             .mint(
-                &self.account_keypair(account)?.clone(),
+                &self.account_key_pair(account)?.clone(),
                 &self.proving_keys.mint,
                 fee,
                 asset,
@@ -1724,7 +1724,7 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
 
         self.txn_state
             .freeze_or_unfreeze(
-                &self.account_keypair(account)?.clone(),
+                &self.account_key_pair(account)?.clone(),
                 freeze_key,
                 &self.proving_keys.freeze,
                 fee,
@@ -1825,7 +1825,10 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
         }
     }
 
-    fn account_keypair(&'_ self, account: &UserAddress) -> Result<&'_ UserKeyPair, WalletError<L>> {
+    fn account_key_pair(
+        &'_ self,
+        account: &UserAddress,
+    ) -> Result<&'_ UserKeyPair, WalletError<L>> {
         match self.user_keys.get(account) {
             Some(key_pair) => Ok(key_pair),
             None => Err(WalletError::<L>::NoSuchAccount {
@@ -2084,9 +2087,9 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
         state.balance(asset, FreezeFlag::Unfrozen)
     }
 
-    pub async fn balance_with_address(&self, account: &UserAddress, asset: &AssetCode) -> u64 {
+    pub async fn balance_breakdown(&self, account: &UserAddress, asset: &AssetCode) -> u64 {
         let WalletSharedState { state, .. } = &*self.mutex.lock().await;
-        state.balance_with_address(account, asset, FreezeFlag::Unfrozen)
+        state.balance_breakdown(account, asset, FreezeFlag::Unfrozen)
     }
 
     pub async fn records(&self) -> impl Iterator<Item = RecordInfo> {
@@ -2102,7 +2105,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
 
     pub async fn frozen_balance(&self, account: &UserAddress, asset: &AssetCode) -> u64 {
         let WalletSharedState { state, .. } = &*self.mutex.lock().await;
-        state.balance_with_address(account, asset, FreezeFlag::Frozen)
+        state.balance_breakdown(account, asset, FreezeFlag::Frozen)
     }
 
     pub async fn assets(&self) -> HashMap<AssetCode, AssetInfo> {
@@ -2146,7 +2149,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
                 }
                 None => info.outputs.clone(),
             };
-            let (memos, sig) = self.generate_memos(memos_rec, &info.sig_keypair).await?;
+            let (memos, sig) = self.generate_memos(memos_rec, &info.sig_key_pair).await?;
             let txn_info = TransactionInfo {
                 account: info.owner_address,
                 memos,
@@ -2187,14 +2190,14 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
             })
             .try_collect::<Vec<_>>()
             .await?;
-        let owner_keypairs = match account {
+        let owner_key_pairs = match account {
             Some(addr) => {
-                vec![state.account_keypair(addr)?.clone()]
+                vec![state.account_key_pair(addr)?.clone()]
             }
-            None => state.keypairs(),
+            None => state.key_pairs(),
         };
         let spec = TransferSpec {
-            owner_keypairs: &owner_keypairs,
+            owner_key_pairs: &owner_key_pairs,
             asset,
             receivers: &receivers,
             fee,
@@ -2207,10 +2210,10 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
     pub async fn generate_memos(
         &mut self,
         records: Vec<RecordOpening>,
-        sig_keypair: &SigKeyPair,
+        sig_key_pair: &SigKeyPair,
     ) -> Result<(Vec<ReceiverMemo>, Signature), WalletError<L>> {
         let WalletSharedState { state, session, .. } = &mut *self.mutex.lock().await;
-        state.generate_memos(session, records, sig_keypair)
+        state.generate_memos(session, records, sig_key_pair)
     }
 
     pub async fn submit(
@@ -2274,7 +2277,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
             let WalletSharedState { state, session, .. } = &mut *self.mutex.lock().await;
             let audit_key = session
                 .auditor_key_stream
-                .derive_auditor_keypair(&state.key_state.auditor.to_le_bytes());
+                .derive_auditor_key_pair(&state.key_state.auditor.to_le_bytes());
             state.key_state.auditor += 1;
             state.add_audit_key(session, audit_key.clone()).await?;
             Ok(audit_key.pub_key())
@@ -2306,7 +2309,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
             let WalletSharedState { state, session, .. } = &mut *self.mutex.lock().await;
             let freeze_key = session
                 .freezer_key_stream
-                .derive_freezer_keypair(&state.key_state.freezer.to_le_bytes());
+                .derive_freezer_key_pair(&state.key_state.freezer.to_le_bytes());
             state.key_state.freezer += 1;
             state.add_freeze_key(session, freeze_key.clone()).await?;
             Ok(freeze_key.pub_key())

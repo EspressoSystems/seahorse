@@ -471,7 +471,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                         io,
                         "{} {}",
                         UserAddress(pub_key.address()),
-                        wallet.balance_with_address(&pub_key.address(), &asset.item).await
+                        wallet.balance_breakdown(&pub_key.address(), &asset.item).await
                     );
                 }
             }
