@@ -559,7 +559,7 @@ pub mod generic_wallet_tests {
         let mut now = Instant::now();
 
         // The sender wallet (wallets[0]) gets an initial grant of 1 for a transfer fee. wallets[1]
-        // will act as the receiver, and wallets[2] will be a third party which issues and freezes
+        // will act as the receiver, and wallets[2] will be a third party which creates and freezes
         // some of wallets[0]'s assets. It gets a grant of 3, for a mint fee, a freeze fee and an
         // unfreeze fee.
         //
@@ -798,7 +798,7 @@ pub mod generic_wallet_tests {
         // that were validated in the same block can be recorded by the wallets in any order.
         let mut histories = vec![vec![vec![]]; nkeys as usize];
         let grants =
-            // The issuer (wallet 0) gets 1 coin per initial record, to pay transaction fees while
+            // The minter (wallet 0) gets 1 coin per initial record, to pay transaction fees while
             // it mints and distributes the records, and 1 coin per transaction, to pay transaction
             // fees while minting additional records if test wallets run out of balance during the
             // test.
