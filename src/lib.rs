@@ -587,7 +587,7 @@ impl<'a, 'l, L: Ledger, Backend: WalletBackend<'a, L> + ?Sized> Drop
     }
 }
 
-/// The interface required by the wallet from the persistence layer.
+/// The interface required by the wallet from a specific network/ledger implementation.
 ///
 /// This trait is the adaptor for ledger-specific plugins into the ledger-agnostic [Wallet]
 /// implementation. It provides an interface for the ledger-agnostic wallet to communicate with

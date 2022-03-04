@@ -13,18 +13,19 @@
 //!   instructions designed to accelerate this algorithm.
 //!
 //! Now, the reasons why we prefer ChaCha20:
+//!
 //! * AES-GCM-SIV uses a polynomial hash function which is subject to sharding attacks that reduce
 //!   the security of the cipher to about 90 bits. This figure is extrapolated from table 1 of
 //!   [https://eprint.iacr.org/2017/708.pdf](https://eprint.iacr.org/2017/708.pdf) (page 14). Note
-//!   that the 90 bits figure is based _specifically_ on CPA distinguishing attacks, and potentially
-//!   _greatly_ overestimates the security based on that table. In particular, the length of the
+//!   that the 90 bits figure is based _specifically_ on chosen plaintext attacks, and potentially
+//!   underestimates the security, since CPA attacks are milder than other attacks (like key
+//!   recovery) and are usually easiest to carry out anyways. In particular, the length of the
 //!   longest encrypted plaintext (`k` in the table indicates the longest message is `~2^k` AES
 //!   blocks long) significantly reduces the additional amount of work required to carry out the
-//!   attack.
+//!   attack, but the wallet only encrypts relativey small amounts of data with any one key.
+//!   Nevertheless, we can avoid this attack entirely by using a hash-based MAC instead of a
+//!   polynomial MAC.
 //!
-//!   Using encrypt-then-MAC allows us to choose our own stream cipher and MAC function, so we can
-//!   use an HMAC to avoid sharding attacks. This does not require the use of any particular stream
-//!   cipher, but the most obvious choice aside from ChaCha20 fails because...
 //! * AES-CTR has security against a plaintext-distinguishing attack which decreases with the length
 //!   of the message being encrypted, and so it is recommended to rekey after encrypting a certain
 //!   number of blocks. Detailed recommendations vary from [every 1024 blocks
@@ -34,12 +35,12 @@
 //!   conservative recommendation makes this a less attractive choice than ChaCha20.
 //!   
 //!   The root of AES-CTR's plaintext distinguishing vulnerability is the fact that it is based on a
-//!   pseudo-random permutation. ChaCha20 is based on a pseudo-random function which is
-//!   purpose-built _not_ to be invertible, and so it is immune to the particular attack that
-//!   succeeds against AES-CTR. Moreover, even if ChaCha20's PRF turned out to be invertible, its
-//!   security parameters (specifically the 512-bit block size) are much better than AES to begin
-//!   with, and it would take a message of 2^128 blocks being encrypted with the same key to have a
-//!   2^-256 probability of distinguishing plaintexts.
+//!   pseudo-random permutation. ChaCha20 is based on a pseudo-random function which is not
+//!   invertible, and so it is immune to the particular attack that succeeds against AES-CTR.
+//!   Moreover, even if ChaCha20's PRF turned out to be invertible, its security parameters
+//!   (specifically the 512-bit block size) are much better than AES to begin with, and it would
+//!   take a message of 2^128 blocks being encrypted with the same key to have a 2^-256 probability
+//!   of distinguishing plaintexts.
 //!
 //! The wallet uses this library to encrypt data at a small granularity. For the log-structured
 //! data, each log entry is encrypted separately. Matching the encryption granularity to the

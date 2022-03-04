@@ -132,11 +132,11 @@ impl KeyTree {
 
     /// Derive a sub-tree of this [KeyTree].
     ///
-    /// The sub-tree can be used to derive keys, or even further sub-trees. It is cryptographically
-    /// isolated from its parents and from other sub-trees, meaning that it is infeasible to compute
-    /// from the sub-tree the state of the parent tree or any other sub-tree not derived from this
-    /// sub-tree. This makes sub-trees useful for representing different accounts, or different
-    /// domains like encryption keys vs. protocol keys.
+    /// The sub-tree can be used to derive keys, or even further sub-trees. This is a one-way
+    /// function: it is infeasible to compute from the sub-tree the state of the parent tree or any
+    /// other sub-tree not derived from this sub-tree. This irreversibility makes sub-trees useful
+    /// for representing different accounts, or different domains like encryption keys vs. protocol
+    /// keys.
     pub fn derive_sub_tree(&self, id: &[u8]) -> KeyTree {
         // Note that the hash for deriving a new sub-tree does not need to include a commitment to
         // the role of the key (sub-tree vs key) because sub-trees and keys are different sizes and
