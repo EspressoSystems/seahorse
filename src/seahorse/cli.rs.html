@@ -1811,7 +1811,7 @@
             }
         ),
         <span class="macro">command!</span>(
-            <span class="ident">issue</span>,
+            <span class="ident">create_asset</span>,
             <span class="string">&quot;create a new asset&quot;</span>,
             <span class="ident">C</span>,
             <span class="op">|</span><span class="ident">io</span>, <span class="ident">wallet</span>, <span class="ident">desc</span>: <span class="ident">String</span>; <span class="ident">auditor</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">AuditorPubKey</span><span class="op">&gt;</span>, <span class="ident">freezer</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">FreezerPubKey</span><span class="op">&gt;</span>,
@@ -2534,7 +2534,7 @@
         <span class="comment">// Define an auditable asset.</span>
         <span class="macro">writeln!</span>(
             <span class="ident">auditor_input</span>,
-            <span class="string">&quot;issue my_asset auditor={} freezer={} trace_amount=true trace_address=true trace_blind=true&quot;</span>,
+            <span class="string">&quot;create_asset my_asset auditor={} freezer={} trace_amount=true trace_address=true trace_blind=true&quot;</span>,
             <span class="ident">audkey</span>, <span class="ident">freezekey</span>
         )
         .<span class="ident">unwrap</span>();
