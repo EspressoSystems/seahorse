@@ -1716,13 +1716,17 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
         &'b mut self,
         session: &'b mut WalletSession<'a, L, impl WalletBackend<'a, L>>,
         txn: Transaction<L>,
-        info: TransactionInfo<L>,
+        mut info: TransactionInfo<L>,
     ) -> impl 'b + Captures<'a> + Future<Output = Result<TransactionReceipt<L>, WalletError<L>>> + Send
     where
         'a: 'b,
     {
         async move {
             let receipt = self.txn_state.add_pending_transaction(&txn, info.clone());
+
+            // Ensure `info.uid` is set, in the case where `add_pending_transaction` established a
+            // new UID.
+            info.uid = Some(receipt.uid.clone());
 
             // Persist the pending transaction.
             let history = info.history.clone();
