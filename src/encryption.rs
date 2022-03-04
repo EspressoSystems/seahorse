@@ -22,7 +22,7 @@
 //!   recovery) and are usually easiest to carry out anyways. In particular, the length of the
 //!   longest encrypted plaintext (`k` in the table indicates the longest message is `~2^k` AES
 //!   blocks long) significantly reduces the additional amount of work required to carry out the
-//!   attack, but the wallet only encrypts relativey small amounts of data with any one key.
+//!   attack, but the wallet only encrypts relatively small amounts of data with any one key.
 //!   Nevertheless, we can avoid this attack entirely by using a hash-based MAC instead of a
 //!   polynomial MAC.
 //!
