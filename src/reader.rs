@@ -1,3 +1,9 @@
+//! Interactive input.
+//!
+//! This module defines a [Reader] which can be used to read interactive input using [rustyline] for
+//! line editing and [rpassword] for hiding sensitive inputs like passwords and mnemonics. It also
+//! has an automated mode to circumvent the interactive features when scripting for the CLI.
+
 use crate::{io::SharedIO, WalletError};
 use reef::Ledger;
 use rpassword::prompt_password_stdout;

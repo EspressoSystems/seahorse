@@ -1,3 +1,5 @@
+//! Event definitions for ledger state changes.
+
 use arbitrary::Arbitrary;
 use jf_cap::{
     structs::{ReceiverMemo, RecordCommitment},
@@ -11,6 +13,7 @@ use std::ops::{Add, AddAssign};
 use std::str::FromStr;
 use zerok_macros::ser_test;
 
+/// A ledger state change.
 #[derive(Clone, Debug, Serialize, Deserialize, strum_macros::AsStaticStr)]
 #[serde(bound = "")]
 pub enum LedgerEvent<L: Ledger> {
@@ -38,7 +41,7 @@ pub enum LedgerEvent<L: Ledger> {
     /// the unique identifier for the record, and a proof that the record commitment exists in the
     /// current UTXO set.
     ///
-    /// If these memos correspond to a committed transaction, the (block_id, transaction_id) are
+    /// If these memos correspond to a committed transaction, the `(block_id, transaction_id)` are
     /// included in `transaction`.
     Memos {
         outputs: Vec<(ReceiverMemo, RecordCommitment, u64, MerklePath)>,
@@ -46,16 +49,16 @@ pub enum LedgerEvent<L: Ledger> {
     },
 }
 
-// An index into the LedgerEvent stream.
-//
-// Wallets subscribe to events; this is how they keep in sync with the outside world. They need to
-// track their index into the event stream in case they get disconnected or closed, so that they can
-// resubscribe starting at the appropriate event when they reconnect.
-//
-// However, "the" event stream is a conceptual thing, representing multiple actual streams which
-// come from different sources and are not ordered or indexed with respect to one another. In other
-// words, "the" event stream is multi-dimensional, and indexes into it are vectors of indexes into
-// each of the individual streams.
+/// An index into the [LedgerEvent] stream.
+///
+/// Wallets subscribe to events; this is how they keep in sync with the outside world. They need to
+/// track their index into the event stream in case they get disconnected or closed, so that they
+/// can resubscribe starting at the appropriate event when they reconnect.
+///
+/// However, "the" event stream is a conceptual thing, representing multiple actual streams which
+/// come from different sources and are not ordered or indexed with respect to one another. In other
+/// words, "the" event stream is multi-dimensional, and indexes into it are vectors of indexes into
+/// each of the individual streams.
 #[ser_test(arbitrary, ark(false))]
 #[derive(Arbitrary, Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EventIndex {
@@ -66,10 +69,12 @@ pub struct EventIndex {
 }
 
 impl EventIndex {
+    /// An [EventIndex] with the given index into the given event source, and 0 for other indices.
     pub fn from_source(source: EventSource, index: usize) -> Self {
         Self::default().add_from_source(source, index)
     }
 
+    /// An [EventIndex] with the given indices.
     pub fn new(query_service: usize, bulletin_board: usize) -> Self {
         Self {
             query_service,
@@ -77,6 +82,7 @@ impl EventIndex {
         }
     }
 
+    /// Get the index into a particular event stream.
     pub fn index(&self, source: EventSource) -> usize {
         match source {
             EventSource::QueryService => self.query_service,
@@ -84,6 +90,9 @@ impl EventIndex {
         }
     }
 
+    /// Add to the index into a particular event stream, leaving other indices unchanged.
+    ///
+    /// Returns a new [EventIndex], the original index is unmodified.
     #[must_use]
     pub fn add_from_source(mut self, source: EventSource, amount: usize) -> Self {
         match source {
@@ -177,6 +186,7 @@ impl FromStr for EventIndex {
     }
 }
 
+/// The event streams that the wallet can subscribe to.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum EventSource {
     QueryService,

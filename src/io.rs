@@ -1,8 +1,20 @@
+//! I/O interface for the CLI.
+//!
+//! Having an interface for I/O which can be implemented with any underlying I/O primitive makes it
+//! easy to swap out the actual I/O implementation used by the CLI for testing and automation
+//! purposes.
+
 use pipe::{pipe, PipeReader, PipeWriter};
 use std::io;
 use std::io::{stdin, stdout, BufRead, Read, Write};
 use std::sync::{Arc, Mutex};
 
+/// Wrapper around an input stream and an output stream
+///
+/// Both the input and output are trait objects, so any types implementing [Read] and [Write] can be
+/// used here.
+///
+/// [SharedIO] also has an internal buffer so that it can implement [BufRead].
 #[derive(Clone)]
 pub struct SharedIO {
     input: Arc<Mutex<dyn Read + Send>>,
@@ -11,6 +23,7 @@ pub struct SharedIO {
 }
 
 impl SharedIO {
+    /// Construct a new I/O object with particular [Read] and [Write] implementations.
     pub fn new(input: impl Read + Send + 'static, output: impl Write + Send + 'static) -> Self {
         Self {
             input: Arc::new(Mutex::new(input)),
@@ -19,10 +32,11 @@ impl SharedIO {
         }
     }
 
-    /// Create a SharedIO instance using a bidirectional pipe.
+    /// Create a [SharedIO] instance using a bidirectional pipe.
     ///
     /// Returns an IO instance, plus a pair of pipe ends to communicate with the SharedIO. The
-    /// PipeWriter can be used to send input to the SharedIO, and the PipeReader to read its output.
+    /// [PipeWriter] can be used to send input to the [SharedIO], and the [PipeReader] to read its
+    /// output.
     pub fn pipe() -> (Self, PipeWriter, PipeReader) {
         let (read_input, write_input) = pipe();
         let (read_output, write_output) = pipe();
@@ -33,7 +47,7 @@ impl SharedIO {
         )
     }
 
-    /// Create a SharedIO instance that uses the standard I/O streams Stdin and Stdout.
+    /// Create a [SharedIO] instance that uses the standard I/O streams [stdin] and [stdout].
     pub fn std() -> Self {
         Self::new(stdin(), stdout())
     }
