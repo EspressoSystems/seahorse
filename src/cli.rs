@@ -296,10 +296,10 @@ impl<'a, C: CLI<'a>, T: Listable<'a, C> + CLIInput<'a, C>> CLIInput<'a, C> for L
 #[async_trait]
 impl<'a, C: CLI<'a>> Listable<'a, C> for AssetCode {
     async fn list(wallet: &mut Wallet<'a, C>) -> Vec<ListItem<Self>> {
-        // Get our auditor and freezer keys so we can check if the asset types are
-        // auditable/freezable.
-        let audit_keys = wallet.auditor_pub_keys().await;
-        let freeze_keys = wallet.freezer_pub_keys().await;
+        // Get our viewing and freezing keys so we can check if the asset types are
+        // viewable/freezable.
+        let viewing_keys = wallet.auditor_pub_keys().await;
+        let freezing_keys = wallet.freezer_pub_keys().await;
 
         // Get the wallet's asset library and convert to ListItems.
         wallet
@@ -313,13 +313,13 @@ impl<'a, C: CLI<'a>> Listable<'a, C> for AssetCode {
                     Some(String::from("native"))
                 } else {
                     // Annotate the listing with attributes indicating whether the asset is
-                    // auditable, freezable, and mintable by us.
+                    // viewable, freezable, and mintable by us.
                     let mut attributes = String::new();
                     let policy = asset.definition.policy_ref();
-                    if audit_keys.contains(policy.auditor_pub_key()) {
-                        attributes.push('a');
+                    if viewing_keys.contains(policy.auditor_pub_key()) {
+                        attributes.push('v');
                     }
-                    if freeze_keys.contains(policy.freezer_pub_key()) {
+                    if freezing_keys.contains(policy.freezer_pub_key()) {
                         attributes.push('f');
                     }
                     if asset.mint_info.is_some() {
@@ -368,7 +368,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                 for item in <AssetCode as Listable<C>>::list(wallet).await {
                     cli_writeln!(io, "{}", item);
                 }
-                cli_writeln!(io, "(a=auditable, f=freezeable, m=mintable)");
+                cli_writeln!(io, "(v=viewable, f=freezeable, m=mintable)");
             }
         ),
         command!(
@@ -394,17 +394,17 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                 };
                 cli_writeln!(io, "{} {}", desc, asset.definition.code);
 
-                // Print the auditor, noting if it is us.
+                // Print the viewer, noting if it is us.
                 let policy = asset.definition.policy_ref();
                 if policy.is_auditor_pub_key_set() {
-                    let auditor_key = policy.auditor_pub_key();
-                    if wallet.auditor_pub_keys().await.contains(auditor_key) {
-                        cli_writeln!(io, "Auditor: me");
+                    let viewing_key = policy.auditor_pub_key();
+                    if wallet.auditor_pub_keys().await.contains(viewing_key) {
+                        cli_writeln!(io, "Viewer: me");
                     } else {
-                        cli_writeln!(io, "Auditor: {}", *auditor_key);
+                        cli_writeln!(io, "Viewer: {}", *viewing_key);
                     }
                 } else {
-                    cli_writeln!(io, "Not auditable");
+                    cli_writeln!(io, "Not viewable");
                 }
 
                 // Print the freezer, noting if it is us.
@@ -458,18 +458,18 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             create_asset,
             "create a new asset",
             C,
-            |io, wallet, desc: String; auditor: Option<AuditorPubKey>, freezer: Option<FreezerPubKey>,
-             trace_amount: Option<bool>, trace_address: Option<bool>, trace_blind: Option<bool>,
-             reveal_threshold: Option<u64>|
+            |io, wallet, desc: String; viewing_key: Option<AuditorPubKey>,
+             freezing_key: Option<FreezerPubKey>, view_amount: Option<bool>,
+             view_address: Option<bool>, view_blind: Option<bool>, viewing_threshold: Option<u64>|
             {
                 let mut policy = AssetPolicy::default();
-                if let Some(auditor) = auditor {
-                    policy = policy.set_auditor_pub_key(auditor);
+                if let Some(viewing_key) = viewing_key {
+                    policy = policy.set_auditor_pub_key(viewing_key);
                 }
-                if let Some(freezer) = freezer {
-                    policy = policy.set_freezer_pub_key(freezer);
+                if let Some(freezing_key) = freezing_key {
+                    policy = policy.set_freezer_pub_key(freezing_key);
                 }
-                if Some(true) == trace_amount {
+                if Some(true) == view_amount {
                     policy = match policy.reveal_amount() {
                         Ok(policy) => policy,
                         Err(err) => {
@@ -478,7 +478,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                         }
                     }
                 }
-                if Some(true) == trace_address {
+                if Some(true) == view_address {
                     policy = match policy.reveal_user_address() {
                         Ok(policy) => policy,
                         Err(err) => {
@@ -487,7 +487,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                         }
                     }
                 }
-                if Some(true) == trace_blind {
+                if Some(true) == view_blind {
                     policy = match policy.reveal_blinding_factor() {
                         Ok(policy) => policy,
                         Err(err) => {
@@ -496,8 +496,8 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                         }
                     }
                 }
-                if let Some(reveal_threshold) = reveal_threshold {
-                    policy = policy.set_reveal_threshold(reveal_threshold);
+                if let Some(viewing_threshold) = viewing_threshold {
+                    policy = policy.set_reveal_threshold(viewing_threshold);
                 }
                 match wallet.define_asset(desc.as_bytes(), policy).await {
                     Ok(def) => {
@@ -637,15 +637,15 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             C,
             |io, wallet, key_type: KeyType; scan_from: Option<EventIndex>, wait: Option<bool>| {
                 match key_type {
-                    KeyType::Audit => match wallet.generate_audit_key().await {
+                    KeyType::Viewing => match wallet.generate_audit_key().await {
                         Ok(pub_key) => cli_writeln!(io, "{}", pub_key),
-                        Err(err) => cli_writeln!(io, "Error generating audit key: {}", err),
+                        Err(err) => cli_writeln!(io, "Error generating viewing key: {}", err),
                     },
-                    KeyType::Freeze => match wallet.generate_freeze_key().await {
+                    KeyType::Freezing => match wallet.generate_freeze_key().await {
                         Ok(pub_key) => cli_writeln!(io, "{}", pub_key),
-                        Err(err) => cli_writeln!(io, "Error generating freeze key: {}", err),
+                        Err(err) => cli_writeln!(io, "Error generating freezing key: {}", err),
                     },
-                    KeyType::Spend => match wallet.generate_user_key(scan_from).await {
+                    KeyType::Spending => match wallet.generate_user_key(scan_from).await {
                         Ok(pub_key) => {
                             if wait == Some(true) {
                                 if let Err(err) = wallet.await_key_scan(&pub_key.address()).await {
@@ -678,25 +678,25 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                 }
 
                 match key_type {
-                    KeyType::Audit => match bincode::deserialize::<AuditorKeyPair>(&bytes) {
+                    KeyType::Viewing => match bincode::deserialize::<AuditorKeyPair>(&bytes) {
                         Ok(key) => match wallet.add_audit_key(key.clone()).await {
                             Ok(()) => cli_writeln!(io, "{}", key.pub_key()),
-                            Err(err) => cli_writeln!(io, "Error saving audit key: {}", err),
+                            Err(err) => cli_writeln!(io, "Error saving viewing key: {}", err),
                         },
                         Err(err) => {
-                            cli_writeln!(io, "Error loading audit key: {}", err);
+                            cli_writeln!(io, "Error loading viewing key: {}", err);
                         }
                     },
-                    KeyType::Freeze => match bincode::deserialize::<FreezerKeyPair>(&bytes) {
+                    KeyType::Freezing => match bincode::deserialize::<FreezerKeyPair>(&bytes) {
                         Ok(key) => match wallet.add_freeze_key(key.clone()).await {
                             Ok(()) => cli_writeln!(io, "{}", key.pub_key()),
-                            Err(err) => cli_writeln!(io, "Error saving freeze key: {}", err),
+                            Err(err) => cli_writeln!(io, "Error saving freezing key: {}", err),
                         },
                         Err(err) => {
-                            cli_writeln!(io, "Error loading freeze key: {}", err);
+                            cli_writeln!(io, "Error loading freezing key: {}", err);
                         }
                     },
-                    KeyType::Spend => match bincode::deserialize::<UserKeyPair>(&bytes) {
+                    KeyType::Spending => match bincode::deserialize::<UserKeyPair>(&bytes) {
                         Ok(key) => match wallet.add_user_key(
                             key.clone(),
                             scan_from.unwrap_or_default(),
@@ -752,8 +752,8 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             }
         ),
         command!(
-            audit,
-            "list unspent records of auditable asset types",
+            view,
+            "list unspent records of viewable asset types",
             C,
             |io, wallet, asset: ListItem<AssetCode>; account: Option<UserAddress>| {
                 let records = wallet
@@ -820,32 +820,32 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
 }
 
 async fn print_keys<'a, C: CLI<'a>>(io: &mut SharedIO, wallet: &Wallet<'a, C>) {
-    cli_writeln!(io, "Public keys:");
+    cli_writeln!(io, "Spending keys:");
     for key in wallet.pub_keys().await {
         cli_writeln!(io, "  {}", key);
     }
-    cli_writeln!(io, "Audit keys:");
+    cli_writeln!(io, "Viewing keys:");
     for key in wallet.auditor_pub_keys().await {
         cli_writeln!(io, "  {}", key);
     }
-    cli_writeln!(io, "Freeze keys:");
+    cli_writeln!(io, "Freezing keys:");
     for key in wallet.freezer_pub_keys().await {
         cli_writeln!(io, "  {}", key);
     }
 }
 
 pub enum KeyType {
-    Audit,
-    Freeze,
-    Spend,
+    Viewing,
+    Freezing,
+    Spending,
 }
 
 impl<'a, C: CLI<'a>> CLIInput<'a, C> for KeyType {
     fn parse_for_wallet(_wallet: &mut Wallet<'a, C>, s: &str) -> Option<Self> {
         match s {
-            "audit" => Some(Self::Audit),
-            "freeze" => Some(Self::Freeze),
-            "spend" => Some(Self::Spend),
+            "view" | "viewing" => Some(Self::Viewing),
+            "freeze" | "freezing" => Some(Self::Freezing),
+            "spend" | "spending" => Some(Self::Spending),
             _ => None,
         }
     }
@@ -1134,32 +1134,32 @@ mod test {
     }
 
     #[async_std::test]
-    async fn test_audit_freeze() {
+    async fn test_view_freeze() {
         let mut t = MockSystem::default();
         let (ledger, key_streams) = create_network(&mut t, &[1000, 1000, 0]).await;
 
-        // Create three wallet clients: one to mint and audit an asset, one to make an anonymous
-        // transfer, and one to receive an anonymous transfer. We will see if the auditor can
+        // Create three wallet clients: one to mint and view an asset, one to make an anonymous
+        // transfer, and one to receive an anonymous transfer. We will see if the viewer can
         // discover the output record of the anonymous transfer, in which it is not a participant.
-        let (mut auditor_input, mut auditor_output) =
+        let (mut viewer_input, mut viewer_output) =
             create_wallet(ledger.clone(), key_streams[0].clone());
         let (mut sender_input, mut sender_output) =
             create_wallet(ledger.clone(), key_streams[1].clone());
         let (mut receiver_input, mut receiver_output) =
             create_wallet(ledger, key_streams[2].clone());
 
-        // Get the auditor's funded address.
-        writeln!(auditor_input, "gen_key spend scan_from=start wait=true").unwrap();
-        let matches = match_output(&mut auditor_output, &["(?P<addr>ADDR~.*)"]);
-        let auditor_address = matches.get("addr");
-        writeln!(auditor_input, "balance 0").unwrap();
+        // Get the viewer's funded address.
+        writeln!(viewer_input, "gen_key spending scan_from=start wait=true").unwrap();
+        let matches = match_output(&mut viewer_output, &["(?P<addr>ADDR~.*)"]);
+        let viewer_address = matches.get("addr");
+        writeln!(viewer_input, "balance 0").unwrap();
         match_output(
-            &mut auditor_output,
-            &[format!("{} {}", auditor_address, 1000)],
+            &mut viewer_output,
+            &[format!("{} {}", viewer_address, 1000)],
         );
 
         // Get the sender's funded address.
-        writeln!(sender_input, "gen_key spend scan_from=start wait=true").unwrap();
+        writeln!(sender_input, "gen_key spending scan_from=start wait=true").unwrap();
         let matches = match_output(&mut sender_output, &["(?P<addr>ADDR~.*)"]);
         let sender_address = matches.get("addr");
         writeln!(sender_input, "balance 0").unwrap();
@@ -1169,46 +1169,46 @@ mod test {
         );
 
         // Get the receiver's (unfunded) address.
-        writeln!(receiver_input, "gen_key spend").unwrap();
+        writeln!(receiver_input, "gen_key spending").unwrap();
         let matches = match_output(&mut receiver_output, &["(?P<addr>ADDR~.*)"]);
         let receiver_address = matches.get("addr");
 
-        // Generate an audit key.
-        writeln!(auditor_input, "gen_key audit").unwrap();
-        let matches = match_output(&mut auditor_output, &["(?P<audkey>AUDPUBKEY~.*)"]);
-        let audkey = matches.get("audkey");
-        // Currently we only audit assets that we can freeze, so we need a freeze key.
-        writeln!(auditor_input, "gen_key freeze").unwrap();
-        let matches = match_output(&mut auditor_output, &["(?P<freezekey>FREEZEPUBKEY~.*)"]);
-        let freezekey = matches.get("freezekey");
+        // Generate a viewing key.
+        writeln!(viewer_input, "gen_key viewing").unwrap();
+        let matches = match_output(&mut viewer_output, &["(?P<view_key>AUDPUBKEY~.*)"]);
+        let view_key = matches.get("view_key");
+        // Currently we only view assets that we can freeze, so we need a freeze key.
+        writeln!(viewer_input, "gen_key freezing").unwrap();
+        let matches = match_output(&mut viewer_output, &["(?P<freeze_key>FREEZEPUBKEY~.*)"]);
+        let freeze_key = matches.get("freeze_key");
         // Define an auditable asset.
         writeln!(
-            auditor_input,
-            "create_asset my_asset auditor={} freezer={} trace_amount=true trace_address=true trace_blind=true",
-            audkey, freezekey
+            viewer_input,
+            "create_asset my_asset viewing_key={} freezing_key={} view_amount=true view_address=true view_blind=true",
+            view_key, freeze_key
         )
         .unwrap();
-        wait_for_prompt(&mut auditor_output);
+        wait_for_prompt(&mut viewer_output);
         // Mint some of the asset on behalf of `sender` (the asset has numeric code 1, since the
         // native asset is always 0).
         writeln!(
-            auditor_input,
+            viewer_input,
             "mint 1 {} {} 1000 1",
-            auditor_address, sender_address
+            viewer_address, sender_address
         )
         .unwrap();
-        let matches = match_output(&mut auditor_output, &["(?P<txn>TXN~.*)"]);
+        let matches = match_output(&mut viewer_output, &["(?P<txn>TXN~.*)"]);
         let receipt = matches.get("txn");
         await_transaction(
             &receipt,
-            (&mut auditor_input, &mut auditor_output),
+            (&mut viewer_input, &mut viewer_output),
             &mut [(&mut sender_input, &mut sender_output)],
         );
         writeln!(sender_input, "balance 1").unwrap();
         match_output(&mut sender_output, &[format!("{} 1000", sender_address)]);
 
-        // Make an anonymous transfer that doesn't involve the auditor (so we can check that the
-        // auditor nonetheless discovers the details of the transaction).
+        // Make an anonymous transfer that doesn't involve the viewer (so we can check that the
+        // viewer nonetheless discovers the details of the transaction).
         writeln!(
             sender_input,
             "transfer 1 {} {} 50 1",
@@ -1222,17 +1222,16 @@ mod test {
             (&mut sender_input, &mut sender_output),
             &mut [
                 (&mut receiver_input, &mut receiver_output),
-                (&mut auditor_input, &mut auditor_output),
+                (&mut viewer_input, &mut viewer_output),
             ],
         );
 
-        // Audit the transaction. We should find two unspent records: first the amount-50
-        // transaction output, and second the amount-950 change output. These records have UIDs 5
-        // and 6, because we already have 5 records: 3 initial grants, a mint output, and a mint fee
-        // change record.
-        writeln!(auditor_input, "audit 1").unwrap();
+        // View the transaction. We should find two unspent records: first the amount-50 transaction
+        // output, and second the amount-950 change output. These records have UIDs 5 and 6, because
+        // we already have 5 records: 3 initial grants, a mint output, and a mint fee change record.
+        writeln!(viewer_input, "view 1").unwrap();
         match_output(
-            &mut auditor_output,
+            &mut viewer_output,
             &[
                 "^UID\\s+AMOUNT\\s+FROZEN\\s+OWNER$",
                 format!("^5\\s+50\\s+false\\s+{}$", receiver_address).as_str(),
@@ -1240,37 +1239,37 @@ mod test {
             ],
         );
         // Filter by account.
-        writeln!(auditor_input, "audit 1 account={}", receiver_address).unwrap();
+        writeln!(viewer_input, "view 1 account={}", receiver_address).unwrap();
         match_output(
-            &mut auditor_output,
+            &mut viewer_output,
             &["^UID\\s+AMOUNT\\s+FROZEN$", "^5\\s+50\\s+false$"],
         );
-        writeln!(auditor_input, "audit 1 account={}", sender_address).unwrap();
+        writeln!(viewer_input, "view 1 account={}", sender_address).unwrap();
         match_output(
-            &mut auditor_output,
+            &mut viewer_output,
             &["^UID\\s+AMOUNT\\s+FROZEN$", "^6\\s+950\\s+false$"],
         );
 
         // If we can see the record openings and we hold the freezer key, we should be able to
         // freeze them.
         writeln!(
-            auditor_input,
+            viewer_input,
             "freeze 1 {} {} 950 1",
-            auditor_address, sender_address
+            viewer_address, sender_address
         )
         .unwrap();
-        let matches = match_output(&mut auditor_output, &["(?P<txn>TXN~.*)"]);
+        let matches = match_output(&mut viewer_output, &["(?P<txn>TXN~.*)"]);
         let receipt = matches.get("txn");
         await_transaction(
             &receipt,
-            (&mut auditor_input, &mut auditor_output),
+            (&mut viewer_input, &mut viewer_output),
             &mut [(&mut sender_input, &mut sender_output)],
         );
-        writeln!(auditor_input, "audit 1").unwrap();
+        writeln!(viewer_input, "view 1").unwrap();
         // Note that the UID changes after freezing, because the freeze consume the unfrozen record
         // and creates a new frozen one.
         match_output(
-            &mut auditor_output,
+            &mut viewer_output,
             &[
                 "^UID\\s+AMOUNT\\s+FROZEN\\s+OWNER$",
                 format!("^5\\s+50\\s+false\\s+{}$", receiver_address).as_str(),
@@ -1291,21 +1290,21 @@ mod test {
 
         // Unfreezing the record makes it available again.
         writeln!(
-            auditor_input,
+            viewer_input,
             "unfreeze 1 {} {} 950 1",
-            auditor_address, sender_address
+            viewer_address, sender_address
         )
         .unwrap();
-        let matches = match_output(&mut auditor_output, &["(?P<txn>TXN~.*)"]);
+        let matches = match_output(&mut viewer_output, &["(?P<txn>TXN~.*)"]);
         let receipt = matches.get("txn");
         await_transaction(
             &receipt,
-            (&mut auditor_input, &mut auditor_output),
+            (&mut viewer_input, &mut viewer_output),
             &mut [(&mut sender_input, &mut sender_output)],
         );
-        writeln!(auditor_input, "audit 1").unwrap();
+        writeln!(viewer_input, "view 1").unwrap();
         match_output(
-            &mut auditor_output,
+            &mut viewer_output,
             &[
                 "^UID\\s+AMOUNT\\s+FROZEN\\s+OWNER$",
                 format!("^5\\s+50\\s+false\\s+{}$", receiver_address).as_str(),
@@ -1333,7 +1332,7 @@ mod test {
             &mut output,
             &[
                 format!("Asset {}", definition.code).as_str(),
-                "Not auditable",
+                "Not viewable",
                 "Not freezeable",
                 "Minter: unknown",
             ],
@@ -1351,7 +1350,7 @@ mod test {
         writeln!(input, "asset 1").unwrap();
         match_output(
             &mut output,
-            &["my_asset", "Not auditable", "Not freezeable", "Minter: me"],
+            &["my_asset", "Not viewable", "Not freezeable", "Minter: me"],
         );
 
         // Make sure the asset was only loaded once (the second command should have updated the
