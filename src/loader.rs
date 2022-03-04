@@ -1,10 +1,16 @@
+// Copyright (c) 2022 Espresso Systems (espressosys.com)
+// This file is part of the Seahorse library.
+
+// This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+// You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
+
 //! Traits and types for creating and loading wallets.
 //!
 //! This module defines the [WalletLoader] interface, which allows various implementations as
 //! plugins to the persistence layer. It also provides a generally useful implementation [Loader],
 //! which loads an encrypted wallet from the file system using a mnemonic phrase to generate keys
 //! and a password to provide a more convenient login interface.
-
 use super::{encryption, hd, reader, EncryptionError, KeyError, WalletError};
 use encryption::{Cipher, CipherText, Salt};
 use hd::KeyTree;

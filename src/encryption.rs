@@ -1,3 +1,10 @@
+// Copyright (c) 2022 Espresso Systems (espressosys.com)
+// This file is part of the Seahorse library.
+
+// This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+// You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
+
 //! Symmetric encryption for locally persistent wallet data.
 //!
 //! All secret data that the wallet stores on the file system is encrypted using this module. The
@@ -53,7 +60,6 @@
 //! [hd::KeyTree] and uses the tree to deterministically generate a new key for each message it
 //! encrypts. This reduces are vulnerability to nonce reuse misuse bugs and increases our defense in
 //! depth.
-
 use super::hd;
 use ark_serialize::*;
 use chacha20::{cipher, ChaCha20};

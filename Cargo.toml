@@ -1,9 +1,10 @@
 [package]
 name = "seahorse"
 description = "A generic cap-style cryptocurrency wallet."
-authors = ["Jeb Bearer <jeb.bearer@translucence.net>"]
+authors = ["Espresso Systems <hello@espressosys.com>"]
 version = "0.1.0"
 edition = "2018"
+license = "GPL-3.0-or-later"
 
 [dependencies]
 arbitrary = { version="1.0", features=["derive"] }
