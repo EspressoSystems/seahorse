@@ -920,7 +920,13 @@ async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
                 ),
             })?;
             let mut dir = PathBuf::from(home);
-            dir.push(".translucence/wallet");
+            dir.push(format!(
+                ".espresso/{}/wallet",
+                L::name()
+                    .to_lowercase()
+                    .replace('/', "_")
+                    .replace('\\', "_")
+            ));
             (dir, None)
         }
         None => {
@@ -939,7 +945,7 @@ async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
         C::Ledger::name(),
         env!("CARGO_PKG_VERSION")
     );
-    cli_writeln!(io, "(c) 2021 Translucence Research, Inc.");
+    cli_writeln!(io, "(c) 2021 Espresso Systems, Inc.");
 
     let mut loader = Loader::new(storage, reader);
 
