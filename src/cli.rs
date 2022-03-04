@@ -455,7 +455,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             }
         ),
         command!(
-            issue,
+            create_asset,
             "create a new asset",
             C,
             |io, wallet, desc: String; auditor: Option<AuditorPubKey>, freezer: Option<FreezerPubKey>,
@@ -1178,7 +1178,7 @@ mod test {
         // Define an auditable asset.
         writeln!(
             auditor_input,
-            "issue my_asset auditor={} freezer={} trace_amount=true trace_address=true trace_blind=true",
+            "create_asset my_asset auditor={} freezer={} trace_amount=true trace_address=true trace_blind=true",
             audkey, freezekey
         )
         .unwrap();
