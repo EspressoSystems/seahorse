@@ -132,7 +132,21 @@
 <span id="132">132</span>
 <span id="133">133</span>
 <span id="134">134</span>
-</pre><pre class="rust"><code><span class="kw">use</span> <span class="ident">pipe</span>::{<span class="ident">pipe</span>, <span class="ident">PipeReader</span>, <span class="ident">PipeWriter</span>};
+<span id="135">135</span>
+<span id="136">136</span>
+<span id="137">137</span>
+<span id="138">138</span>
+<span id="139">139</span>
+<span id="140">140</span>
+<span id="141">141</span>
+</pre><pre class="rust"><code><span class="comment">// Copyright (c) 2022 Espresso Systems (espressosys.com)</span>
+<span class="comment">// This file is part of the Seahorse library.</span>
+
+<span class="comment">// This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.</span>
+<span class="comment">// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.</span>
+<span class="comment">// You should have received a copy of the GNU General Public License along with this program. If not, see &lt;https://www.gnu.org/licenses/&gt;.</span>
+
+<span class="kw">use</span> <span class="ident">pipe</span>::{<span class="ident">pipe</span>, <span class="ident">PipeReader</span>, <span class="ident">PipeWriter</span>};
 <span class="kw">use</span> <span class="ident">std::io</span>;
 <span class="kw">use</span> <span class="ident">std::io</span>::{<span class="ident">stdin</span>, <span class="ident">stdout</span>, <span class="ident">BufRead</span>, <span class="ident">Read</span>, <span class="ident">Write</span>};
 <span class="kw">use</span> <span class="ident">std::sync</span>::{<span class="ident">Arc</span>, <span class="ident">Mutex</span>};

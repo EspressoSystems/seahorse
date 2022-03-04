@@ -220,7 +220,21 @@
 <span id="220">220</span>
 <span id="221">221</span>
 <span id="222">222</span>
-</pre><pre class="rust"><code><span class="kw">use</span> <span class="kw">super</span>::{<span class="ident">encryption</span>, <span class="ident">hd</span>, <span class="ident">reader</span>, <span class="ident">EncryptionError</span>, <span class="ident">KeyError</span>, <span class="ident">WalletError</span>};
+<span id="223">223</span>
+<span id="224">224</span>
+<span id="225">225</span>
+<span id="226">226</span>
+<span id="227">227</span>
+<span id="228">228</span>
+<span id="229">229</span>
+</pre><pre class="rust"><code><span class="comment">// Copyright (c) 2022 Espresso Systems (espressosys.com)</span>
+<span class="comment">// This file is part of the Seahorse library.</span>
+
+<span class="comment">// This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.</span>
+<span class="comment">// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.</span>
+<span class="comment">// You should have received a copy of the GNU General Public License along with this program. If not, see &lt;https://www.gnu.org/licenses/&gt;.</span>
+
+<span class="kw">use</span> <span class="kw">super</span>::{<span class="ident">encryption</span>, <span class="ident">hd</span>, <span class="ident">reader</span>, <span class="ident">EncryptionError</span>, <span class="ident">KeyError</span>, <span class="ident">WalletError</span>};
 <span class="kw">use</span> <span class="ident">encryption</span>::{<span class="ident">Cipher</span>, <span class="ident">CipherText</span>, <span class="ident">Salt</span>};
 <span class="kw">use</span> <span class="ident">hd::KeyTree</span>;
 <span class="kw">use</span> <span class="ident">rand_chacha</span>::{<span class="ident">rand_core::SeedableRng</span>, <span class="ident">ChaChaRng</span>};
