@@ -455,7 +455,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             }
         ),
         command!(
-            issue,
+            create_asset,
             "create a new asset",
             C,
             |io, wallet, desc: String; viewing_key: Option<AuditorPubKey>,
@@ -1178,7 +1178,7 @@ mod test {
         // Define an auditable asset.
         writeln!(
             viewer_input,
-            "issue my_asset viewing_key={} freezing_key={} view_amount=true view_address=true view_blind=true",
+            "create_asset my_asset viewing_key={} freezing_key={} view_amount=true view_address=true view_blind=true",
             view_key, freeze_key
         )
         .unwrap();
