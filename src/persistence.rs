@@ -1,3 +1,5 @@
+//! Ledger-agnostic implementation of [WalletStorage].
+
 use crate::{
     asset_library::{AssetInfo, AssetLibrary},
     encryption::Cipher,

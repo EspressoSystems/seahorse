@@ -1,8 +1,8 @@
 # Seahorse
 
-A ledger-agnostic wallet toolkit for the [CAP](https://github.com/EspressoSystems/cap) protocol.
+A ledger-agnostic wallet toolkit for the [CAP](https://cap.docs.espressosys.com) protocol.
 
-Documentation is in progress at seahorse.docs.espressosys.com.
+[Documentation](https://seahorse.docs.espressosys.com) is in progress.
 
 ## Usage
 
