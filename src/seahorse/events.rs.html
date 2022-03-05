@@ -235,6 +235,7 @@
 
 <span class="doccomment">//! Event definitions for ledger state changes.</span>
 <span class="kw">use</span> <span class="ident">arbitrary::Arbitrary</span>;
+<span class="kw">use</span> <span class="ident">espresso_macros::ser_test</span>;
 <span class="kw">use</span> <span class="ident">jf_cap</span>::{
     <span class="ident">structs</span>::{<span class="ident">ReceiverMemo</span>, <span class="ident">RecordCommitment</span>},
     <span class="ident">MerklePath</span>,
@@ -245,7 +246,6 @@
 <span class="kw">use</span> <span class="ident">std::fmt</span>::{<span class="ident">Display</span>, <span class="ident">Formatter</span>};
 <span class="kw">use</span> <span class="ident">std::ops</span>::{<span class="ident">Add</span>, <span class="ident">AddAssign</span>};
 <span class="kw">use</span> <span class="ident">std::str::FromStr</span>;
-<span class="kw">use</span> <span class="ident">zerok_macros::ser_test</span>;
 
 <span class="doccomment">/// A ledger state change.</span>
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Clone</span>, <span class="ident">Debug</span>, <span class="ident">Serialize</span>, <span class="ident">Deserialize</span>, <span class="ident">strum_macros::AsStaticStr</span>)]</span>

@@ -2432,7 +2432,7 @@
                 <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">args</span> <span class="op">=</span> <span class="ident">Vec::new</span>();
                 <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">kwargs</span> <span class="op">=</span> <span class="ident">HashMap::new</span>();
                 <span class="kw">for</span> <span class="ident">tok</span> <span class="kw">in</span> <span class="ident">tokens</span>.<span class="ident">into_iter</span>().<span class="ident">skip</span>(<span class="number">1</span>) {
-                    <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>((<span class="ident">key</span>, <span class="ident">value</span>)) <span class="op">=</span> <span class="ident">tok</span>.<span class="ident">split_once</span>(<span class="string">&quot;=&quot;</span>) {
+                    <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>((<span class="ident">key</span>, <span class="ident">value</span>)) <span class="op">=</span> <span class="ident">tok</span>.<span class="ident">split_once</span>(<span class="string">&#39;=&#39;</span>) {
                         <span class="ident">kwargs</span>.<span class="ident">insert</span>(<span class="ident">String::from</span>(<span class="ident">key</span>), <span class="ident">String::from</span>(<span class="ident">value</span>));
                     } <span class="kw">else</span> {
                         <span class="ident">args</span>.<span class="ident">push</span>(<span class="ident">String::from</span>(<span class="ident">tok</span>));

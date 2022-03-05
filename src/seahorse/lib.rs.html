@@ -2798,6 +2798,7 @@
 <span class="kw">use</span> <span class="ident">async_trait::async_trait</span>;
 <span class="kw">use</span> <span class="ident">chrono::Local</span>;
 <span class="kw">use</span> <span class="ident">core::fmt::Debug</span>;
+<span class="kw">use</span> <span class="ident">espresso_macros::ser_test</span>;
 <span class="kw">use</span> <span class="ident">futures</span>::{
     <span class="ident">channel::oneshot</span>,
     <span class="ident">prelude</span>::<span class="kw-2">*</span>,
@@ -2833,7 +2834,6 @@
 <span class="kw">use</span> <span class="ident">std::convert::TryFrom</span>;
 <span class="kw">use</span> <span class="ident">std::iter::repeat</span>;
 <span class="kw">use</span> <span class="ident">std::sync::Arc</span>;
-<span class="kw">use</span> <span class="ident">zerok_macros::ser_test</span>;
 
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Debug</span>, <span class="ident">Snafu</span>)]</span>
 <span class="attribute">#[<span class="ident">snafu</span>(<span class="ident">visibility</span> <span class="op">=</span> <span class="string">&quot;pub&quot;</span>)]</span>

@@ -821,13 +821,13 @@
     <span class="ident">load_store</span>::{<span class="ident">BincodeLoadStore</span>, <span class="ident">LoadStore</span>},
     <span class="ident">AppendLog</span>, <span class="ident">AtomicStore</span>, <span class="ident">AtomicStoreLoader</span>, <span class="ident">RollingLog</span>,
 };
+<span class="kw">use</span> <span class="ident">espresso_macros::ser_test</span>;
 <span class="kw">use</span> <span class="ident">key_set</span>::{<span class="ident">OrderByOutputs</span>, <span class="ident">ProverKeySet</span>};
 <span class="kw">use</span> <span class="ident">rand_chacha</span>::{<span class="ident">rand_core::SeedableRng</span>, <span class="ident">ChaChaRng</span>};
 <span class="kw">use</span> <span class="ident">reef</span>::<span class="kw-2">*</span>;
 <span class="kw">use</span> <span class="ident">serde</span>::{<span class="ident">de::DeserializeOwned</span>, <span class="ident">Deserialize</span>, <span class="ident">Serialize</span>};
 <span class="kw">use</span> <span class="ident">snafu::ResultExt</span>;
 <span class="kw">use</span> <span class="ident">std::collections::HashMap</span>;
-<span class="kw">use</span> <span class="ident">zerok_macros::ser_test</span>;
 
 <span class="comment">// Serialization intermediate for the static part of a WalletState.</span>
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Deserialize</span>, <span class="ident">Serialize</span>)]</span>
