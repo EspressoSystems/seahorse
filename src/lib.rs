@@ -33,6 +33,8 @@ pub mod testing;
 pub mod txn_builder;
 
 pub use crate::asset_library::{AssetInfo, MintInfo};
+pub use jf_cap;
+pub use reef;
 
 use crate::{
     asset_library::AssetLibrary,
