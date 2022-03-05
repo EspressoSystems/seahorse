@@ -5,13 +5,17 @@
 // This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 // You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-////////////////////////////////////////////////////////////////////////////////
-// The generic cap Wallet Frontend
-//
-// For now, this "frontend" is simply a comand-line read-eval-print loop which
-// allows the user to enter commands for a wallet interactively.
-//
-
+//! The generic CAP Wallet frontend
+//!
+//! This module "frontend" provides a framework for implementing command line interfaces for
+//! ledger-specific instantiations of the [Wallet] type. Similar to the [Wallet] framework itself,
+//! there is are traits which must be implemented to adapt this framework to a particular ledger
+//! type, after which the implementor gains access to the full Seahorse CLI implementation.
+//!
+//! The [CLI] trait must be implemented for a particular ledger type and [WalletBackend]
+//! implementation. In addition, the [CLIArgs] trait must be implemented to map your command line
+//! arguments to the options and flags required by the general CLI implementation. After that,
+//! [cli_main] can be used to run the CLI interactively.
 use crate::{
     events::EventIndex,
     io::SharedIO,
@@ -43,17 +47,27 @@ use std::str::FromStr;
 use tagged_base64::TaggedBase64;
 use tempdir::TempDir;
 
+/// The interface required of a particular ledger-specific instantiation.
 pub trait CLI<'a> {
+    /// The ledger for which we want to instantiate this CLI.
     type Ledger: 'static + Ledger;
+    /// The [WalletBackend] implementation to use for the wallet.
     type Backend: 'a + WalletBackend<'a, Self::Ledger> + Send + Sync;
+    /// The type of command line options for use when configuring the CLI.
     type Args: CLIArgs;
 
+    /// Create a backend for the wallet which is being controlled by the CLI.
     fn init_backend(
         universal_param: &'a UniversalParam,
         args: Self::Args,
         loader: &mut impl WalletLoader<Self::Ledger, Meta = LoaderMetadata>,
     ) -> Result<Self::Backend, WalletError<Self::Ledger>>;
 
+    /// Add extra, ledger-specific commands to the generic CLI interface.
+    ///
+    /// This method is optional. By default it returns an empty list, in which case the CLI
+    /// instantiation will still provide commands for all of the basic, ledger-agnostic wallet
+    /// functionality.
     fn extra_commands() -> Vec<Command<'a, Self>>
     where
         Self: Sized,
@@ -62,35 +76,46 @@ pub trait CLI<'a> {
     }
 }
 
+/// CLI command line arguments.
 pub trait CLIArgs {
+    /// If specified, do not run the REPl, only generate a key pair in the given file.
     fn key_gen_path(&self) -> Option<PathBuf>;
+
+    /// Path to use for the wallet's persistent storage.
+    ///
+    /// If not provided, the default path, `~/.espresso/<ledger-name>/wallet`, will be used.
     fn storage_path(&self) -> Option<PathBuf>;
 
     /// Override the default, terminal-based IO.
     ///
-    /// If io() returns Some, the CLI will use the provided IO adapters, without interactive line
-    /// editing or password input hiding. Otherwise, it will use stdin (which must be a terminal)
-    /// and stdout, with interactive line editing and password hiding.
+    /// If this method returns [Some], the CLI will use the provided IO adapters, without
+    /// interactive line editing or password input hiding. Otherwise, it will use stdin (which must
+    /// be a terminal) and stdout, with interactive line editing and password hiding.
     fn io(&self) -> Option<SharedIO>;
 
+    /// If `true`, create a temporary directory for storage instead of using [CLIArgs::storage_path].
     fn use_tmp_storage(&self) -> bool;
 }
 
 pub type Wallet<'a, C> = crate::Wallet<'a, <C as CLI<'a>>::Backend, <C as CLI<'a>>::Ledger>;
 
-// A REPL command.
+/// A REPL command.
+///
+/// This struct can be created manually, but it is easier to use the [command!] macro, which
+/// automatically parses a function specification to create the documentation for command
+/// parameters.
 pub struct Command<'a, C: CLI<'a>> {
-    // The name of the command, for display and lookup.
+    /// The name of the command, for display and lookup.
     pub name: String,
-    // The parameters of the command and their types, as strings, for display purposes in the 'help'
-    // command.
+    /// The parameters of the command and their types, as strings, for display purposes in the
+    /// `help` command.
     pub params: Vec<(String, String)>,
-    // The keyword parameters of the command and their types, as strings, for display purposes in
-    // the 'help' command.
+    /// The keyword parameters of the command and their types, as strings, for display purposes in
+    /// the `help` command.
     pub kwargs: Vec<(String, String)>,
-    // A brief description of what the command does.
+    /// A brief description of what the command does.
     pub help: String,
-    // Run the command with a list of arguments.
+    /// Run the command with a list of arguments.
     pub run: CommandFunc<'a, C>,
 }
 
@@ -119,6 +144,7 @@ impl<'a, C: CLI<'a>> Display for Command<'a, C> {
     }
 }
 
+/// Types which can be parsed from a string relative to a particular [Wallet].Stream
 pub trait CLIInput<'a, C: CLI<'a>>: Sized {
     fn parse_for_wallet(wallet: &mut Wallet<'a, C>, s: &str) -> Option<Self>;
 }
@@ -146,16 +172,18 @@ impl<'a, C: CLI<'a>, L: Ledger> CLIInput<'a, C> for TransactionReceipt<L> {
     }
 }
 
-// Convenience macros for panicking if output fails.
+/// Convenience macro for panicking if output fails.
 #[macro_export]
 macro_rules! cli_writeln {
     ($($arg:expr),+ $(,)?) => { writeln!($($arg),+).expect("failed to write CLI output") };
 }
+/// Convenience macro for panicking if output fails.
 #[macro_export]
 macro_rules! cli_write {
     ($($arg:expr),+ $(,)?) => { write!($($arg),+).expect("failed to write CLI output") };
 }
 
+/// Create a [Command] from a help string and a function.
 #[macro_export]
 macro_rules! command {
     ($name:ident,
@@ -252,7 +280,7 @@ pub use crate::cli_writeln;
 pub use crate::command;
 pub use crate::count;
 
-// Types which can be listed in terminal output and parsed from a list index.
+/// Types which can be listed in terminal output and parsed from a list index.
 #[async_trait]
 pub trait Listable<'a, C: CLI<'a>>: Sized {
     async fn list(wallet: &mut Wallet<'a, C>) -> Vec<ListItem<Self>>;
@@ -889,6 +917,7 @@ pub async fn finish_transaction<'a, C: CLI<'a>>(
     }
 }
 
+/// Run the CLI based in the provided command line arguments.
 pub async fn cli_main<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
     args: C::Args,
 ) -> Result<(), WalletError<L>> {

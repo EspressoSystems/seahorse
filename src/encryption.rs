@@ -5,6 +5,61 @@
 // This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 // You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+//! Symmetric encryption for locally persistent wallet data.
+//!
+//! All secret data that the wallet stores on the file system is encrypted using this module. The
+//! encryption scheme is an encrypt-then-MAC implementation using ChaCha20 as a stream cipher and
+//! SHA3-256 as an HMAC.
+//!
+//! The choice of stream cipher merits some discussion. Other stream ciphers which were considered
+//! include AES-GCM-SIV and AES-CTR. Briefly, the advantages of each:
+//! * AES-GCM-SIV is natively authenticating and would not require the use of a separate MAC
+//!   function. It is also somewhat resistant to nonce reuse, a common class of security bugs in
+//!   cryptography implementations.
+//! * AES-CTR is widely used and thoroughly analyzed, and common consumer hardware includes
+//!   instructions designed to accelerate this algorithm.
+//!
+//! Now, the reasons why we prefer ChaCha20:
+//!
+//! * AES-GCM-SIV uses a polynomial hash function which is subject to sharding attacks that reduce
+//!   the security of the cipher to about 90 bits. This figure is extrapolated from table 1 of
+//!   [https://eprint.iacr.org/2017/708.pdf](https://eprint.iacr.org/2017/708.pdf) (page 14). Note
+//!   that the 90 bits figure is based _specifically_ on chosen plaintext attacks, and potentially
+//!   underestimates the security, since CPA attacks are milder than other attacks (like key
+//!   recovery) and are usually easiest to carry out anyways. In particular, the length of the
+//!   longest encrypted plaintext (`k` in the table indicates the longest message is `~2^k` AES
+//!   blocks long) significantly reduces the additional amount of work required to carry out the
+//!   attack, but the wallet only encrypts relatively small amounts of data with any one key.
+//!   Nevertheless, we can avoid this attack entirely by using a hash-based MAC instead of a
+//!   polynomial MAC.
+//!
+//! * AES-CTR has security against a plaintext-distinguishing attack which decreases with the length
+//!   of the message being encrypted, and so it is recommended to rekey after encrypting a certain
+//!   number of blocks. Detailed recommendations vary from [every 1024 blocks
+//!   (16kb)](https://support.xilinx.com/s/article/65528?language=en_US) to every [2^32 blocks
+//!   (69gb)](https://datatracker.ietf.org/doc/html/rfc4344#page-3). The lack of a consistent,
+//!   standardized recommendation coupled with the performance implications of adopting the more
+//!   conservative recommendation makes this a less attractive choice than ChaCha20.
+//!   
+//!   The root of AES-CTR's plaintext distinguishing vulnerability is the fact that it is based on a
+//!   pseudo-random permutation. ChaCha20 is based on a pseudo-random function which is not
+//!   invertible, and so it is immune to the particular attack that succeeds against AES-CTR.
+//!   Moreover, even if ChaCha20's PRF turned out to be invertible, its security parameters
+//!   (specifically the 512-bit block size) are much better than AES to begin with, and it would
+//!   take a message of 2^128 blocks being encrypted with the same key to have a 2^-256 probability
+//!   of distinguishing plaintexts.
+//!
+//! The wallet uses this library to encrypt data at a small granularity. For the log-structured
+//! data, each log entry is encrypted separately. Matching the encryption granularity to the
+//! structure of the data is advantageous for a few reasons. First, it allows us to recover most of
+//! the data if a single entry becomes corrupted on disk. More relevantly for this module, it allows
+//! us to use a different key for each encrypted message, which is an easy way to avoid nonce reuse
+//! misuse vulnerabilities, and works well with procedural key generation.
+//!
+//! This module uses the [hd] module for procedural key generation. A [Cipher] wraps an entire
+//! [hd::KeyTree] and uses the tree to deterministically generate a new key for each message it
+//! encrypts. This reduces are vulnerability to nonce reuse misuse bugs and increases our defense in
+//! depth.
 use super::hd;
 use ark_serialize::*;
 use chacha20::{cipher, ChaCha20};
@@ -123,13 +178,7 @@ impl<Rng: RngCore + CryptoRng> Cipher<Rng> {
     }
 }
 
-// We serialize the ciphertext-and-metadata structure using a custom ark_serialize implementation in
-// order to derive an unstructured, byte-oriented serialization format that does not look like a
-// struct. This provides a few nice properties:
-//  * the serialized byte stream should truly be indistinguishable from random data, since it is
-//    just a concatenation of pseudo-random fields
-//  * the deserialization process is extremely simple, and allows us to access and verify the MAC
-//    before doing anything more than read in the encrypted file
+/// Encrypted and authenticated data.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(from = "CanonicalBytes", into = "CanonicalBytes")]
 pub struct CipherText {
@@ -139,6 +188,13 @@ pub struct CipherText {
 }
 deserialize_canonical_bytes!(CipherText);
 
+// We serialize the ciphertext-and-metadata structure using a custom ark_serialize implementation in
+// order to derive an unstructured, byte-oriented serialization format that does not look like a
+// struct. This provides a few nice properties:
+//  * the serialized byte stream should truly be indistinguishable from random data, since it is
+//    just a concatenation of pseudo-random fields
+//  * the deserialization process is extremely simple, and allows us to access and verify the MAC
+//    before doing anything more than read in the encrypted file
 impl CanonicalSerialize for CipherText {
     fn serialize<W: Write>(&self, mut w: W) -> std::result::Result<(), SerializationError> {
         w.write_all(&self.hmac).map_err(SerializationError::from)?;

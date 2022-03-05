@@ -5,6 +5,10 @@
 // This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 // You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+//! Transaction building.
+//!
+//! This module defines the subset of ledger state required by a wallet to build transactions, and
+//! provides an interface for building them.
 use crate::events::EventIndex;
 use arbitrary::{Arbitrary, Unstructured};
 use arbitrary_wrappers::*;

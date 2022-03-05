@@ -17,6 +17,7 @@ use std::ops::Index;
 use std::str::FromStr;
 use tagged_base64::TaggedBase64;
 
+/// Details about an asset type.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct AssetInfo {
     pub definition: AssetDefinition,
@@ -31,6 +32,7 @@ impl AssetInfo {
         }
     }
 
+    /// Details about the native asset type.
     pub fn native() -> Self {
         Self {
             definition: AssetDefinition::native(),
@@ -130,6 +132,7 @@ impl FromStr for AssetInfo {
     }
 }
 
+/// Information required to mint an asset.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct MintInfo {
     pub seed: AssetCodeSeed,
@@ -165,6 +168,7 @@ impl MintInfo {
     }
 }
 
+/// Indexable collection of asset types.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct AssetLibrary {
     assets: Vec<AssetInfo>,
