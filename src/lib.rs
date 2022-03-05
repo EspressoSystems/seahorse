@@ -296,7 +296,7 @@ pub struct WalletState<'a, L: Ledger> {
     /// numbers of input and output records). The supported transaction types must match the
     /// transaction types supported by the verifying keys maintained by validators.
     ///
-    /// These keys are constructed when the wallet is created, and they never change afterwords.
+    /// These keys are constructed when the wallet is created, and they never change afterwards.
     pub proving_keys: Arc<ProverKeySet<'a, key_set::OrderByOutputs>>,
 
     ////////////////////////////////////////////////////////////////////////////////////////////////
