@@ -1,1 +1,1 @@
-initSidebarItems({"enum":[["Error",""]],"struct":[["Cipher","An authenticating stream cipher."],["CipherText",""]],"type":[["Nonce",""],["Result",""]]});
+initSidebarItems({"enum":[["Error",""]],"struct":[["Cipher","An authenticating stream cipher."],["CipherText","Encrypted and authenticated data."]],"type":[["Nonce",""],["Result",""]]});

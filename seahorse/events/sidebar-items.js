@@ -1,1 +1,1 @@
-initSidebarItems({"enum":[["EventSource",""],["LedgerEvent",""]],"struct":[["EventIndex",""]]});
+initSidebarItems({"enum":[["EventSource","The event streams that the wallet can subscribe to."],["LedgerEvent","A ledger state change."]],"struct":[["EventIndex","An index into the [LedgerEvent] stream."]]});

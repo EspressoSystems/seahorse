@@ -267,6 +267,10 @@
 <span id="267">267</span>
 <span id="268">268</span>
 <span id="269">269</span>
+<span id="270">270</span>
+<span id="271">271</span>
+<span id="272">272</span>
+<span id="273">273</span>
 </pre><pre class="rust"><code><span class="comment">// Copyright (c) 2022 Espresso Systems (espressosys.com)</span>
 <span class="comment">// This file is part of the Seahorse library.</span>
 
@@ -286,6 +290,7 @@
 <span class="kw">use</span> <span class="ident">std::str::FromStr</span>;
 <span class="kw">use</span> <span class="ident">tagged_base64::TaggedBase64</span>;
 
+<span class="doccomment">/// Details about an asset type.</span>
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Clone</span>, <span class="ident">Debug</span>, <span class="ident">PartialEq</span>, <span class="ident">Serialize</span>, <span class="ident">Deserialize</span>)]</span>
 <span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">AssetInfo</span> {
     <span class="kw">pub</span> <span class="ident">definition</span>: <span class="ident">AssetDefinition</span>,
@@ -300,6 +305,7 @@
         }
     }
 
+    <span class="doccomment">/// Details about the native asset type.</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">native</span>() <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span> {
         <span class="self">Self</span> {
             <span class="ident">definition</span>: <span class="ident">AssetDefinition::native</span>(),
@@ -399,6 +405,7 @@
     }
 }
 
+<span class="doccomment">/// Information required to mint an asset.</span>
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Clone</span>, <span class="ident">Debug</span>, <span class="ident">PartialEq</span>, <span class="ident">Serialize</span>, <span class="ident">Deserialize</span>)]</span>
 <span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">MintInfo</span> {
     <span class="kw">pub</span> <span class="ident">seed</span>: <span class="ident">AssetCodeSeed</span>,
@@ -434,6 +441,7 @@
     }
 }
 
+<span class="doccomment">/// Indexable collection of asset types.</span>
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Clone</span>, <span class="ident">Debug</span>, <span class="ident">Default</span>, <span class="ident">PartialEq</span>)]</span>
 <span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">AssetLibrary</span> {
     <span class="ident">assets</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">AssetInfo</span><span class="op">&gt;</span>,

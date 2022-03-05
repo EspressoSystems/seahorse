@@ -227,6 +227,12 @@
 <span id="227">227</span>
 <span id="228">228</span>
 <span id="229">229</span>
+<span id="230">230</span>
+<span id="231">231</span>
+<span id="232">232</span>
+<span id="233">233</span>
+<span id="234">234</span>
+<span id="235">235</span>
 </pre><pre class="rust"><code><span class="comment">// Copyright (c) 2022 Espresso Systems (espressosys.com)</span>
 <span class="comment">// This file is part of the Seahorse library.</span>
 
@@ -234,6 +240,12 @@
 <span class="comment">// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.</span>
 <span class="comment">// You should have received a copy of the GNU General Public License along with this program. If not, see &lt;https://www.gnu.org/licenses/&gt;.</span>
 
+<span class="doccomment">//! Traits and types for creating and loading wallets.</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! This module defines the [WalletLoader] interface, which allows various implementations as</span>
+<span class="doccomment">//! plugins to the persistence layer. It also provides a generally useful implementation [Loader],</span>
+<span class="doccomment">//! which loads an encrypted wallet from the file system using a mnemonic phrase to generate keys</span>
+<span class="doccomment">//! and a password to provide a more convenient login interface.</span>
 <span class="kw">use</span> <span class="kw">super</span>::{<span class="ident">encryption</span>, <span class="ident">hd</span>, <span class="ident">reader</span>, <span class="ident">EncryptionError</span>, <span class="ident">KeyError</span>, <span class="ident">WalletError</span>};
 <span class="kw">use</span> <span class="ident">encryption</span>::{<span class="ident">Cipher</span>, <span class="ident">CipherText</span>, <span class="ident">Salt</span>};
 <span class="kw">use</span> <span class="ident">hd::KeyTree</span>;

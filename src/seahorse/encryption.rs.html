@@ -253,6 +253,62 @@
 <span id="253">253</span>
 <span id="254">254</span>
 <span id="255">255</span>
+<span id="256">256</span>
+<span id="257">257</span>
+<span id="258">258</span>
+<span id="259">259</span>
+<span id="260">260</span>
+<span id="261">261</span>
+<span id="262">262</span>
+<span id="263">263</span>
+<span id="264">264</span>
+<span id="265">265</span>
+<span id="266">266</span>
+<span id="267">267</span>
+<span id="268">268</span>
+<span id="269">269</span>
+<span id="270">270</span>
+<span id="271">271</span>
+<span id="272">272</span>
+<span id="273">273</span>
+<span id="274">274</span>
+<span id="275">275</span>
+<span id="276">276</span>
+<span id="277">277</span>
+<span id="278">278</span>
+<span id="279">279</span>
+<span id="280">280</span>
+<span id="281">281</span>
+<span id="282">282</span>
+<span id="283">283</span>
+<span id="284">284</span>
+<span id="285">285</span>
+<span id="286">286</span>
+<span id="287">287</span>
+<span id="288">288</span>
+<span id="289">289</span>
+<span id="290">290</span>
+<span id="291">291</span>
+<span id="292">292</span>
+<span id="293">293</span>
+<span id="294">294</span>
+<span id="295">295</span>
+<span id="296">296</span>
+<span id="297">297</span>
+<span id="298">298</span>
+<span id="299">299</span>
+<span id="300">300</span>
+<span id="301">301</span>
+<span id="302">302</span>
+<span id="303">303</span>
+<span id="304">304</span>
+<span id="305">305</span>
+<span id="306">306</span>
+<span id="307">307</span>
+<span id="308">308</span>
+<span id="309">309</span>
+<span id="310">310</span>
+<span id="311">311</span>
 </pre><pre class="rust"><code><span class="comment">// Copyright (c) 2022 Espresso Systems (espressosys.com)</span>
 <span class="comment">// This file is part of the Seahorse library.</span>
 
@@ -260,6 +316,61 @@
 <span class="comment">// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.</span>
 <span class="comment">// You should have received a copy of the GNU General Public License along with this program. If not, see &lt;https://www.gnu.org/licenses/&gt;.</span>
 
+<span class="doccomment">//! Symmetric encryption for locally persistent wallet data.</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! All secret data that the wallet stores on the file system is encrypted using this module. The</span>
+<span class="doccomment">//! encryption scheme is an encrypt-then-MAC implementation using ChaCha20 as a stream cipher and</span>
+<span class="doccomment">//! SHA3-256 as an HMAC.</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! The choice of stream cipher merits some discussion. Other stream ciphers which were considered</span>
+<span class="doccomment">//! include AES-GCM-SIV and AES-CTR. Briefly, the advantages of each:</span>
+<span class="doccomment">//! * AES-GCM-SIV is natively authenticating and would not require the use of a separate MAC</span>
+<span class="doccomment">//!   function. It is also somewhat resistant to nonce reuse, a common class of security bugs in</span>
+<span class="doccomment">//!   cryptography implementations.</span>
+<span class="doccomment">//! * AES-CTR is widely used and thoroughly analyzed, and common consumer hardware includes</span>
+<span class="doccomment">//!   instructions designed to accelerate this algorithm.</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! Now, the reasons why we prefer ChaCha20:</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! * AES-GCM-SIV uses a polynomial hash function which is subject to sharding attacks that reduce</span>
+<span class="doccomment">//!   the security of the cipher to about 90 bits. This figure is extrapolated from table 1 of</span>
+<span class="doccomment">//!   [https://eprint.iacr.org/2017/708.pdf](https://eprint.iacr.org/2017/708.pdf) (page 14). Note</span>
+<span class="doccomment">//!   that the 90 bits figure is based _specifically_ on chosen plaintext attacks, and potentially</span>
+<span class="doccomment">//!   underestimates the security, since CPA attacks are milder than other attacks (like key</span>
+<span class="doccomment">//!   recovery) and are usually easiest to carry out anyways. In particular, the length of the</span>
+<span class="doccomment">//!   longest encrypted plaintext (`k` in the table indicates the longest message is `~2^k` AES</span>
+<span class="doccomment">//!   blocks long) significantly reduces the additional amount of work required to carry out the</span>
+<span class="doccomment">//!   attack, but the wallet only encrypts relatively small amounts of data with any one key.</span>
+<span class="doccomment">//!   Nevertheless, we can avoid this attack entirely by using a hash-based MAC instead of a</span>
+<span class="doccomment">//!   polynomial MAC.</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! * AES-CTR has security against a plaintext-distinguishing attack which decreases with the length</span>
+<span class="doccomment">//!   of the message being encrypted, and so it is recommended to rekey after encrypting a certain</span>
+<span class="doccomment">//!   number of blocks. Detailed recommendations vary from [every 1024 blocks</span>
+<span class="doccomment">//!   (16kb)](https://support.xilinx.com/s/article/65528?language=en_US) to every [2^32 blocks</span>
+<span class="doccomment">//!   (69gb)](https://datatracker.ietf.org/doc/html/rfc4344#page-3). The lack of a consistent,</span>
+<span class="doccomment">//!   standardized recommendation coupled with the performance implications of adopting the more</span>
+<span class="doccomment">//!   conservative recommendation makes this a less attractive choice than ChaCha20.</span>
+<span class="doccomment">//!   </span>
+<span class="doccomment">//!   The root of AES-CTR&#39;s plaintext distinguishing vulnerability is the fact that it is based on a</span>
+<span class="doccomment">//!   pseudo-random permutation. ChaCha20 is based on a pseudo-random function which is not</span>
+<span class="doccomment">//!   invertible, and so it is immune to the particular attack that succeeds against AES-CTR.</span>
+<span class="doccomment">//!   Moreover, even if ChaCha20&#39;s PRF turned out to be invertible, its security parameters</span>
+<span class="doccomment">//!   (specifically the 512-bit block size) are much better than AES to begin with, and it would</span>
+<span class="doccomment">//!   take a message of 2^128 blocks being encrypted with the same key to have a 2^-256 probability</span>
+<span class="doccomment">//!   of distinguishing plaintexts.</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! The wallet uses this library to encrypt data at a small granularity. For the log-structured</span>
+<span class="doccomment">//! data, each log entry is encrypted separately. Matching the encryption granularity to the</span>
+<span class="doccomment">//! structure of the data is advantageous for a few reasons. First, it allows us to recover most of</span>
+<span class="doccomment">//! the data if a single entry becomes corrupted on disk. More relevantly for this module, it allows</span>
+<span class="doccomment">//! us to use a different key for each encrypted message, which is an easy way to avoid nonce reuse</span>
+<span class="doccomment">//! misuse vulnerabilities, and works well with procedural key generation.</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! This module uses the [hd] module for procedural key generation. A [Cipher] wraps an entire</span>
+<span class="doccomment">//! [hd::KeyTree] and uses the tree to deterministically generate a new key for each message it</span>
+<span class="doccomment">//! encrypts. This reduces are vulnerability to nonce reuse misuse bugs and increases our defense in</span>
+<span class="doccomment">//! depth.</span>
 <span class="kw">use</span> <span class="ident"><span class="kw">super</span>::hd</span>;
 <span class="kw">use</span> <span class="ident">ark_serialize</span>::<span class="kw-2">*</span>;
 <span class="kw">use</span> <span class="ident">chacha20</span>::{<span class="ident">cipher</span>, <span class="ident">ChaCha20</span>};
@@ -378,13 +489,7 @@
     }
 }
 
-<span class="comment">// We serialize the ciphertext-and-metadata structure using a custom ark_serialize implementation in</span>
-<span class="comment">// order to derive an unstructured, byte-oriented serialization format that does not look like a</span>
-<span class="comment">// struct. This provides a few nice properties:</span>
-<span class="comment">//  * the serialized byte stream should truly be indistinguishable from random data, since it is</span>
-<span class="comment">//    just a concatenation of pseudo-random fields</span>
-<span class="comment">//  * the deserialization process is extremely simple, and allows us to access and verify the MAC</span>
-<span class="comment">//    before doing anything more than read in the encrypted file</span>
+<span class="doccomment">/// Encrypted and authenticated data.</span>
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Clone</span>, <span class="ident">Debug</span>, <span class="ident">Serialize</span>, <span class="ident">Deserialize</span>)]</span>
 <span class="attribute">#[<span class="ident">serde</span>(<span class="ident">from</span> <span class="op">=</span> <span class="string">&quot;CanonicalBytes&quot;</span>, <span class="ident">into</span> <span class="op">=</span> <span class="string">&quot;CanonicalBytes&quot;</span>)]</span>
 <span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">CipherText</span> {
@@ -394,6 +499,13 @@
 }
 <span class="macro">deserialize_canonical_bytes!</span>(<span class="ident">CipherText</span>);
 
+<span class="comment">// We serialize the ciphertext-and-metadata structure using a custom ark_serialize implementation in</span>
+<span class="comment">// order to derive an unstructured, byte-oriented serialization format that does not look like a</span>
+<span class="comment">// struct. This provides a few nice properties:</span>
+<span class="comment">//  * the serialized byte stream should truly be indistinguishable from random data, since it is</span>
+<span class="comment">//    just a concatenation of pseudo-random fields</span>
+<span class="comment">//  * the deserialization process is extremely simple, and allows us to access and verify the MAC</span>
+<span class="comment">//    before doing anything more than read in the encrypted file</span>
 <span class="kw">impl</span> <span class="ident">CanonicalSerialize</span> <span class="kw">for</span> <span class="ident">CipherText</span> {
     <span class="kw">fn</span> <span class="ident">serialize</span><span class="op">&lt;</span><span class="ident">W</span>: <span class="ident">Write</span><span class="op">&gt;</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="kw-2">mut</span> <span class="ident">w</span>: <span class="ident">W</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">std::result::Result</span><span class="op">&lt;</span>(), <span class="ident">SerializationError</span><span class="op">&gt;</span> {
         <span class="ident">w</span>.<span class="ident">write_all</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">hmac</span>).<span class="ident">map_err</span>(<span class="ident">SerializationError::from</span>)<span class="question-mark">?</span>;

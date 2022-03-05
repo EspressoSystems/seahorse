@@ -1366,6 +1366,35 @@
 <span id="1366">1366</span>
 <span id="1367">1367</span>
 <span id="1368">1368</span>
+<span id="1369">1369</span>
+<span id="1370">1370</span>
+<span id="1371">1371</span>
+<span id="1372">1372</span>
+<span id="1373">1373</span>
+<span id="1374">1374</span>
+<span id="1375">1375</span>
+<span id="1376">1376</span>
+<span id="1377">1377</span>
+<span id="1378">1378</span>
+<span id="1379">1379</span>
+<span id="1380">1380</span>
+<span id="1381">1381</span>
+<span id="1382">1382</span>
+<span id="1383">1383</span>
+<span id="1384">1384</span>
+<span id="1385">1385</span>
+<span id="1386">1386</span>
+<span id="1387">1387</span>
+<span id="1388">1388</span>
+<span id="1389">1389</span>
+<span id="1390">1390</span>
+<span id="1391">1391</span>
+<span id="1392">1392</span>
+<span id="1393">1393</span>
+<span id="1394">1394</span>
+<span id="1395">1395</span>
+<span id="1396">1396</span>
+<span id="1397">1397</span>
 </pre><pre class="rust"><code><span class="comment">// Copyright (c) 2022 Espresso Systems (espressosys.com)</span>
 <span class="comment">// This file is part of the Seahorse library.</span>
 
@@ -1373,13 +1402,17 @@
 <span class="comment">// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.</span>
 <span class="comment">// You should have received a copy of the GNU General Public License along with this program. If not, see &lt;https://www.gnu.org/licenses/&gt;.</span>
 
-<span class="comment">////////////////////////////////////////////////////////////////////////////////</span>
-<span class="comment">// The generic cap Wallet Frontend</span>
-<span class="comment">//</span>
-<span class="comment">// For now, this &quot;frontend&quot; is simply a comand-line read-eval-print loop which</span>
-<span class="comment">// allows the user to enter commands for a wallet interactively.</span>
-<span class="comment">//</span>
-
+<span class="doccomment">//! The generic CAP Wallet frontend</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! This module &quot;frontend&quot; provides a framework for implementing command line interfaces for</span>
+<span class="doccomment">//! ledger-specific instantiations of the [Wallet] type. Similar to the [Wallet] framework itself,</span>
+<span class="doccomment">//! there is are traits which must be implemented to adapt this framework to a particular ledger</span>
+<span class="doccomment">//! type, after which the implementor gains access to the full Seahorse CLI implementation.</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! The [CLI] trait must be implemented for a particular ledger type and [WalletBackend]</span>
+<span class="doccomment">//! implementation. In addition, the [CLIArgs] trait must be implemented to map your command line</span>
+<span class="doccomment">//! arguments to the options and flags required by the general CLI implementation. After that,</span>
+<span class="doccomment">//! [cli_main] can be used to run the CLI interactively.</span>
 <span class="kw">use</span> <span class="kw">crate</span>::{
     <span class="ident">events::EventIndex</span>,
     <span class="ident">io::SharedIO</span>,
@@ -1411,17 +1444,27 @@
 <span class="kw">use</span> <span class="ident">tagged_base64::TaggedBase64</span>;
 <span class="kw">use</span> <span class="ident">tempdir::TempDir</span>;
 
+<span class="doccomment">/// The interface required of a particular ledger-specific instantiation.</span>
 <span class="kw">pub</span> <span class="kw">trait</span> <span class="ident">CLI</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span><span class="op">&gt;</span> {
+    <span class="doccomment">/// The ledger for which we want to instantiate this CLI.</span>
     <span class="kw">type</span> <span class="ident">Ledger</span>: <span class="lifetime">&#39;static</span> <span class="op">+</span> <span class="ident">Ledger</span>;
+    <span class="doccomment">/// The [WalletBackend] implementation to use for the wallet.</span>
     <span class="kw">type</span> <span class="ident">Backend</span>: <span class="lifetime">&#39;a</span> <span class="op">+</span> <span class="ident">WalletBackend</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident"><span class="self">Self</span>::Ledger</span><span class="op">&gt;</span> <span class="op">+</span> <span class="ident">Send</span> <span class="op">+</span> <span class="ident">Sync</span>;
+    <span class="doccomment">/// The type of command line options for use when configuring the CLI.</span>
     <span class="kw">type</span> <span class="ident">Args</span>: <span class="ident">CLIArgs</span>;
 
+    <span class="doccomment">/// Create a backend for the wallet which is being controlled by the CLI.</span>
     <span class="kw">fn</span> <span class="ident">init_backend</span>(
         <span class="ident">universal_param</span>: <span class="kw-2">&amp;</span><span class="lifetime">&#39;a</span> <span class="ident">UniversalParam</span>,
         <span class="ident">args</span>: <span class="ident"><span class="self">Self</span>::Args</span>,
         <span class="ident">loader</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="kw">impl</span> <span class="ident">WalletLoader</span><span class="op">&lt;</span><span class="ident"><span class="self">Self</span>::Ledger</span>, <span class="ident">Meta</span> <span class="op">=</span> <span class="ident">LoaderMetadata</span><span class="op">&gt;</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident"><span class="self">Self</span>::Backend</span>, <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident"><span class="self">Self</span>::Ledger</span><span class="op">&gt;</span><span class="op">&gt;</span>;
 
+    <span class="doccomment">/// Add extra, ledger-specific commands to the generic CLI interface.</span>
+    <span class="doccomment">///</span>
+    <span class="doccomment">/// This method is optional. By default it returns an empty list, in which case the CLI</span>
+    <span class="doccomment">/// instantiation will still provide commands for all of the basic, ledger-agnostic wallet</span>
+    <span class="doccomment">/// functionality.</span>
     <span class="kw">fn</span> <span class="ident">extra_commands</span>() <span class="op">-</span><span class="op">&gt;</span> <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">Command</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="self">Self</span><span class="op">&gt;</span><span class="op">&gt;</span>
     <span class="kw">where</span>
         <span class="self">Self</span>: <span class="ident">Sized</span>,
@@ -1430,35 +1473,46 @@
     }
 }
 
+<span class="doccomment">/// CLI command line arguments.</span>
 <span class="kw">pub</span> <span class="kw">trait</span> <span class="ident">CLIArgs</span> {
+    <span class="doccomment">/// If specified, do not run the REPl, only generate a key pair in the given file.</span>
     <span class="kw">fn</span> <span class="ident">key_gen_path</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">PathBuf</span><span class="op">&gt;</span>;
+
+    <span class="doccomment">/// Path to use for the wallet&#39;s persistent storage.</span>
+    <span class="doccomment">///</span>
+    <span class="doccomment">/// If not provided, the default path, `~/.espresso/&lt;ledger-name&gt;/wallet`, will be used.</span>
     <span class="kw">fn</span> <span class="ident">storage_path</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">PathBuf</span><span class="op">&gt;</span>;
 
     <span class="doccomment">/// Override the default, terminal-based IO.</span>
     <span class="doccomment">///</span>
-    <span class="doccomment">/// If io() returns Some, the CLI will use the provided IO adapters, without interactive line</span>
-    <span class="doccomment">/// editing or password input hiding. Otherwise, it will use stdin (which must be a terminal)</span>
-    <span class="doccomment">/// and stdout, with interactive line editing and password hiding.</span>
+    <span class="doccomment">/// If this method returns [Some], the CLI will use the provided IO adapters, without</span>
+    <span class="doccomment">/// interactive line editing or password input hiding. Otherwise, it will use stdin (which must</span>
+    <span class="doccomment">/// be a terminal) and stdout, with interactive line editing and password hiding.</span>
     <span class="kw">fn</span> <span class="ident">io</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">SharedIO</span><span class="op">&gt;</span>;
 
+    <span class="doccomment">/// If `true`, create a temporary directory for storage instead of using [CLIArgs::storage_path].</span>
     <span class="kw">fn</span> <span class="ident">use_tmp_storage</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">bool</span>;
 }
 
 <span class="kw">pub</span> <span class="kw">type</span> <span class="ident">Wallet</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">C</span><span class="op">&gt;</span> <span class="op">=</span> <span class="ident"><span class="kw">crate</span>::Wallet</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="op">&lt;</span><span class="ident">C</span> <span class="kw">as</span> <span class="ident">CLI</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span><span class="op">&gt;</span><span class="op">&gt;</span><span class="ident">::Backend</span>, <span class="op">&lt;</span><span class="ident">C</span> <span class="kw">as</span> <span class="ident">CLI</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span><span class="op">&gt;</span><span class="op">&gt;</span><span class="ident">::Ledger</span><span class="op">&gt;</span>;
 
-<span class="comment">// A REPL command.</span>
+<span class="doccomment">/// A REPL command.</span>
+<span class="doccomment">///</span>
+<span class="doccomment">/// This struct can be created manually, but it is easier to use the [command!] macro, which</span>
+<span class="doccomment">/// automatically parses a function specification to create the documentation for command</span>
+<span class="doccomment">/// parameters.</span>
 <span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">Command</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">C</span>: <span class="ident">CLI</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span><span class="op">&gt;</span><span class="op">&gt;</span> {
-    <span class="comment">// The name of the command, for display and lookup.</span>
+    <span class="doccomment">/// The name of the command, for display and lookup.</span>
     <span class="kw">pub</span> <span class="ident">name</span>: <span class="ident">String</span>,
-    <span class="comment">// The parameters of the command and their types, as strings, for display purposes in the &#39;help&#39;</span>
-    <span class="comment">// command.</span>
+    <span class="doccomment">/// The parameters of the command and their types, as strings, for display purposes in the</span>
+    <span class="doccomment">/// `help` command.</span>
     <span class="kw">pub</span> <span class="ident">params</span>: <span class="ident">Vec</span><span class="op">&lt;</span>(<span class="ident">String</span>, <span class="ident">String</span>)<span class="op">&gt;</span>,
-    <span class="comment">// The keyword parameters of the command and their types, as strings, for display purposes in</span>
-    <span class="comment">// the &#39;help&#39; command.</span>
+    <span class="doccomment">/// The keyword parameters of the command and their types, as strings, for display purposes in</span>
+    <span class="doccomment">/// the `help` command.</span>
     <span class="kw">pub</span> <span class="ident">kwargs</span>: <span class="ident">Vec</span><span class="op">&lt;</span>(<span class="ident">String</span>, <span class="ident">String</span>)<span class="op">&gt;</span>,
-    <span class="comment">// A brief description of what the command does.</span>
+    <span class="doccomment">/// A brief description of what the command does.</span>
     <span class="kw">pub</span> <span class="ident">help</span>: <span class="ident">String</span>,
-    <span class="comment">// Run the command with a list of arguments.</span>
+    <span class="doccomment">/// Run the command with a list of arguments.</span>
     <span class="kw">pub</span> <span class="ident">run</span>: <span class="ident">CommandFunc</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">C</span><span class="op">&gt;</span>,
 }
 
@@ -1487,6 +1541,7 @@
     }
 }
 
+<span class="doccomment">/// Types which can be parsed from a string relative to a particular [Wallet].Stream</span>
 <span class="kw">pub</span> <span class="kw">trait</span> <span class="ident">CLIInput</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">C</span>: <span class="ident">CLI</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span><span class="op">&gt;</span><span class="op">&gt;</span>: <span class="ident">Sized</span> {
     <span class="kw">fn</span> <span class="ident">parse_for_wallet</span>(<span class="ident">wallet</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">Wallet</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">C</span><span class="op">&gt;</span>, <span class="ident">s</span>: <span class="kw-2">&amp;</span><span class="ident">str</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="self">Self</span><span class="op">&gt;</span>;
 }
@@ -1514,16 +1569,18 @@
     }
 }
 
-<span class="comment">// Convenience macros for panicking if output fails.</span>
+<span class="doccomment">/// Convenience macro for panicking if output fails.</span>
 <span class="attribute">#[<span class="ident">macro_export</span>]</span>
 <span class="macro">macro_rules!</span> <span class="ident">cli_writeln</span> {
     ($(<span class="macro-nonterminal">$</span><span class="macro-nonterminal">arg</span>:<span class="ident">expr</span>),<span class="op">+</span> $(,)<span class="question-mark">?</span>) <span class="op">=</span><span class="op">&gt;</span> { <span class="macro">writeln!</span>($(<span class="macro-nonterminal">$</span><span class="macro-nonterminal">arg</span>),<span class="op">+</span>).<span class="ident">expect</span>(<span class="string">&quot;failed to write CLI output&quot;</span>) };
 }
+<span class="doccomment">/// Convenience macro for panicking if output fails.</span>
 <span class="attribute">#[<span class="ident">macro_export</span>]</span>
 <span class="macro">macro_rules!</span> <span class="ident">cli_write</span> {
     ($(<span class="macro-nonterminal">$</span><span class="macro-nonterminal">arg</span>:<span class="ident">expr</span>),<span class="op">+</span> $(,)<span class="question-mark">?</span>) <span class="op">=</span><span class="op">&gt;</span> { <span class="macro">write!</span>($(<span class="macro-nonterminal">$</span><span class="macro-nonterminal">arg</span>),<span class="op">+</span>).<span class="ident">expect</span>(<span class="string">&quot;failed to write CLI output&quot;</span>) };
 }
 
+<span class="doccomment">/// Create a [Command] from a help string and a function.</span>
 <span class="attribute">#[<span class="ident">macro_export</span>]</span>
 <span class="macro">macro_rules!</span> <span class="ident">command</span> {
     (<span class="macro-nonterminal">$</span><span class="macro-nonterminal">name</span>:<span class="ident">ident</span>,
@@ -1620,7 +1677,7 @@
 <span class="kw">pub</span> <span class="kw">use</span> <span class="ident"><span class="kw">crate</span>::command</span>;
 <span class="kw">pub</span> <span class="kw">use</span> <span class="ident"><span class="kw">crate</span>::count</span>;
 
-<span class="comment">// Types which can be listed in terminal output and parsed from a list index.</span>
+<span class="doccomment">/// Types which can be listed in terminal output and parsed from a list index.</span>
 <span class="attribute">#[<span class="ident">async_trait</span>]</span>
 <span class="kw">pub</span> <span class="kw">trait</span> <span class="ident">Listable</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">C</span>: <span class="ident">CLI</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span><span class="op">&gt;</span><span class="op">&gt;</span>: <span class="ident">Sized</span> {
     <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">list</span>(<span class="ident">wallet</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">Wallet</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">C</span><span class="op">&gt;</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">ListItem</span><span class="op">&lt;</span><span class="self">Self</span><span class="op">&gt;</span><span class="op">&gt;</span>;
@@ -2257,6 +2314,7 @@
     }
 }
 
+<span class="doccomment">/// Run the CLI based in the provided command line arguments.</span>
 <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">cli_main</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span>: <span class="lifetime">&#39;static</span> <span class="op">+</span> <span class="ident">Ledger</span>, <span class="ident">C</span>: <span class="ident">CLI</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">Ledger</span> <span class="op">=</span> <span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span>(
     <span class="ident">args</span>: <span class="ident">C::Args</span>,
 ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(), <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {

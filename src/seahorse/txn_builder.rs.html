@@ -1662,6 +1662,10 @@
 <span id="1662">1662</span>
 <span id="1663">1663</span>
 <span id="1664">1664</span>
+<span id="1665">1665</span>
+<span id="1666">1666</span>
+<span id="1667">1667</span>
+<span id="1668">1668</span>
 </pre><pre class="rust"><code><span class="comment">// Copyright (c) 2022 Espresso Systems (espressosys.com)</span>
 <span class="comment">// This file is part of the Seahorse library.</span>
 
@@ -1669,6 +1673,10 @@
 <span class="comment">// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.</span>
 <span class="comment">// You should have received a copy of the GNU General Public License along with this program. If not, see &lt;https://www.gnu.org/licenses/&gt;.</span>
 
+<span class="doccomment">//! Transaction building.</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! This module defines the subset of ledger state required by a wallet to build transactions, and</span>
+<span class="doccomment">//! provides an interface for building them.</span>
 <span class="kw">use</span> <span class="ident"><span class="kw">crate</span>::events::EventIndex</span>;
 <span class="kw">use</span> <span class="ident">arbitrary</span>::{<span class="ident">Arbitrary</span>, <span class="ident">Unstructured</span>};
 <span class="kw">use</span> <span class="ident">arbitrary_wrappers</span>::<span class="kw-2">*</span>;
