@@ -7,6 +7,7 @@
 
 //! Event definitions for ledger state changes.
 use arbitrary::Arbitrary;
+use espresso_macros::ser_test;
 use jf_cap::{
     structs::{ReceiverMemo, RecordCommitment},
     MerklePath,
@@ -17,7 +18,6 @@ use std::cmp::Ordering;
 use std::fmt::{Display, Formatter};
 use std::ops::{Add, AddAssign};
 use std::str::FromStr;
-use zerok_macros::ser_test;
 
 /// A ledger state change.
 #[derive(Clone, Debug, Serialize, Deserialize, strum_macros::AsStaticStr)]

@@ -7,7 +7,7 @@
 
 use super::*;
 use chrono::Duration;
-use zerok_macros::generic_tests;
+use espresso_macros::generic_tests;
 
 #[derive(Clone, Debug)]
 pub struct TxnHistoryWithTimeTolerantEq<L: Ledger>(pub TransactionHistoryEntry<L>);

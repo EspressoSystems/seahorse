@@ -1035,7 +1035,7 @@ async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
                 let mut args = Vec::new();
                 let mut kwargs = HashMap::new();
                 for tok in tokens.into_iter().skip(1) {
-                    if let Some((key, value)) = tok.split_once("=") {
+                    if let Some((key, value)) = tok.split_once('=') {
                         kwargs.insert(String::from(key), String::from(value));
                     } else {
                         args.push(String::from(tok));
