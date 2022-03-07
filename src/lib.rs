@@ -134,6 +134,9 @@ pub enum WalletError<L: Ledger> {
     EncryptionError {
         source: encryption::Error,
     },
+    MnemonicError {
+        source: bip39::Error,
+    },
     KeyError {
         source: argon2::Error,
     },
@@ -156,6 +159,12 @@ pub enum WalletError<L: Ledger> {
 impl<L: Ledger> From<crate::txn_builder::TransactionError> for WalletError<L> {
     fn from(source: crate::txn_builder::TransactionError) -> Self {
         Self::TransactionError { source }
+    }
+}
+
+impl<L: Ledger> From<bincode::Error> for WalletError<L> {
+    fn from(source: bincode::Error) -> Self {
+        Self::BincodeError { source }
     }
 }
 

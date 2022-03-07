@@ -258,7 +258,7 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         let mut users = vec![];
         let mut initial_records = vec![];
         for amount in initial_grants {
-            let key_stream = hd::KeyTree::random(&mut rng).unwrap().0;
+            let key_stream = hd::KeyTree::random(&mut rng).0;
             let key = key_stream
                 .derive_sub_tree("user".as_bytes())
                 .derive_user_keypair(&0u64.to_le_bytes());

@@ -1534,7 +1534,7 @@ pub mod generic_wallet_tests {
 
         // A new wallet joins the system after there are already some transactions on the ledger.
         let storage = t.create_storage().await;
-        let key_stream = hd::KeyTree::random(&mut rng).unwrap().0;
+        let key_stream = hd::KeyTree::random(&mut rng).0;
         let backend = t
             .create_backend(
                 ledger.clone(),
