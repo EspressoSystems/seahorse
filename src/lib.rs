@@ -135,7 +135,7 @@ pub enum WalletError<L: Ledger> {
         source: encryption::Error,
     },
     MnemonicError {
-        source: bip39::Error,
+        source: bip0039::Error,
     },
     KeyError {
         source: argon2::Error,
