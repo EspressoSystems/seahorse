@@ -2,7 +2,7 @@
 name = "seahorse"
 description = "A generic cap-style cryptocurrency wallet."
 authors = ["Espresso Systems <hello@espressosys.com>"]
-version = "0.1.0"
+version = "0.2.0"
 edition = "2018"
 license = "GPL-3.0-or-later"
 
@@ -43,7 +43,7 @@ atomic_store = { git = "https://github.com/EspressoSystems/atomicstore.git" }
 commit = { git = "https://github.com/EspressoSystems/commit.git", tag = "0.1.0" }
 key-set = { git = "https://github.com/EspressoSystems/key-set.git" }
 espresso-macros = { git = "https://github.com/EspressoSystems/espresso-macros.git" }
-jf-cap = { features=["std"], git = "https://github.com/EspressoSystems/cap.git", tag = "0.0.1" }
+jf-cap = { features=["std"], git = "https://github.com/EspressoSystems/cap.git" }
 jf-utils = { features=["std"], git = "https://github.com/EspressoSystems/jellyfish.git" }
 arbitrary-wrappers = { git = "https://github.com/EspressoSystems/arbitrary-wrappers.git" }
 net = { git = "https://github.com/EspressoSystems/net.git" }
