@@ -32,8 +32,9 @@
 //! parent key with the same `id`.
 pub use crate::secret::Secret;
 
+pub use bip39::Mnemonic;
+
 use jf_cap::keys::{AuditorKeyPair, FreezerKeyPair, UserKeyPair};
-use mnemonic::decode;
 use rand_chacha::rand_core::SeedableRng;
 use rand_chacha::rand_core::{CryptoRng, RngCore};
 use rand_chacha::ChaChaRng;
@@ -78,13 +79,22 @@ impl KeyTree {
     /// Build a new [KeyTree] from a prng.
     ///
     /// Returns a 12-word mnemonic that can be used to recover this [KeyTree] using
-    /// [KeyTree::from_mnemonic].
-    pub fn random(rng: &mut (impl CryptoRng + RngCore)) -> Result<(Self, String), argon2::Error> {
-        let mut seed = [0u8; SEED_LENGTH];
-        rng.fill_bytes(&mut seed);
-        let mnemonic = mnemonic::to_string(seed.as_ref());
-        let key_tree = Self::from_mnemonic(mnemonic.as_bytes())?;
-        Ok((key_tree, mnemonic))
+    /// [KeyTree::from_mnemonic]. The generated mnemonic conforms to
+    /// [BIP-39](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki) and includes a
+    /// 4-bit checksum for error detection at recovery time.
+    pub fn random(rng: &mut (impl CryptoRng + RngCore)) -> (Self, Mnemonic) {
+        // Sample some entropy.
+        let mut entropy = [0u8; SEED_LENGTH];
+        rng.fill_bytes(&mut entropy);
+
+        // Convert entropy to a mnemonic phrase as specified in BIP-39. Note that `from_entropy` can
+        // only fail if `entropy` is not a multiple of 4 bytes in 128..256; `SEED_LENGTH` ensures
+        // this cannot happen, so it is safe to `unwrap`.
+        let mnemonic = Mnemonic::from_entropy(&entropy).unwrap();
+
+        // Use the entropy to construct a KeyTree.
+        let key_tree = Self::from_mnemonic(&mnemonic);
+        (key_tree, mnemonic)
     }
 
     /// Build a new [KeyTree] from a password using the [argon2] KDF.
@@ -117,23 +127,20 @@ impl KeyTree {
         })
     }
 
-    /// Recover a [KeyTree] for its mnemonic seed phrase.
+    /// Recover a [KeyTree] from its mnemonic seed phrase.
     ///
-    /// Input a mnemonic phrase, in the form of bytes, i.e.,
-    /// "digital-apollo-aroma--rival-artist-rebel" initializing a key tree.
-    ///
-    /// We require that the input mnemonic phrase is 12 words (equivalently, 16 bytes of seed), and
-    /// return a decoding error if the mnemonic is not decoded successfully or if the input length
-    /// is incorrect.
-    pub fn from_mnemonic(mnemonic: &[u8]) -> Result<Self, argon2::Error> {
-        let mut decoded_seed = Vec::<u8>::new();
-        decode(mnemonic, &mut decoded_seed).map_err(|_| argon2::Error::DecodingFail)?;
-        if decoded_seed.len() != SEED_LENGTH {
-            return Err(argon2::Error::DecodingFail);
+    /// See [BIP-39](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki) for more
+    /// details on deterministically recovering entropy from a mnemonic.
+    pub fn from_mnemonic(mnemonic: &Mnemonic) -> Self {
+        Self {
+            // BIP39 allows mnemonics to be password-protected, so `to_seed` takes a password. We
+            // use a different form of password protection, where the mnemonic for a wallet is
+            // encrypted using a password, allowing for more user-friendly login. This is handled at
+            // a higher level, and we use the empty password here, following the reccomendation of
+            // BIP-39 for the case when there is no password associated with the mnemonic.
+            state: Secret::new(&mut mnemonic.to_seed("")),
+            depth: 0,
         }
-        // 32 bytes of salt
-        let salt = "This is a salt to seed a KeyTree";
-        Self::from_password_and_salt(decoded_seed.as_ref(), salt.as_bytes())
     }
 
     /// Derive a sub-tree of this [KeyTree].
@@ -222,8 +229,13 @@ mod tests {
         use ark_std::rand::thread_rng;
 
         let mut rng = thread_rng();
-        let (key_tree, mnemonic) = KeyTree::random(&mut rng).unwrap();
-        let key_tree_recovered = KeyTree::from_mnemonic(mnemonic.as_bytes()).unwrap();
+        let (key_tree, mnemonic) = KeyTree::random(&mut rng);
+
+        // The mnemonic should be 12 words.
+        assert_eq!(12, mnemonic.to_string().split_whitespace().count());
+
+        // Check that we can recover the same key tree from the mnemonic phrase.
+        let key_tree_recovered = KeyTree::from_mnemonic(&mnemonic);
 
         assert_eq!(
             key_tree.state.open_secret(),
@@ -259,7 +271,7 @@ mod tests {
         rng.fill_bytes(&mut id2);
         assert_ne!(id1, id2);
 
-        let (key_tree, _) = KeyTree::random(&mut rng).unwrap();
+        let (key_tree, _) = KeyTree::random(&mut rng);
         let all_keys = vec![
             bincode::serialize(&key_tree.derive_auditor_keypair(&id1)).unwrap(),
             bincode::serialize(&key_tree.derive_auditor_keypair(&id2)).unwrap(),

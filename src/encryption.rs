@@ -238,10 +238,7 @@ mod tests {
     };
 
     fn random_cipher(rng: &mut ChaChaRng) -> Cipher {
-        Cipher::new(
-            KeyTree::random(rng).unwrap().0,
-            ChaChaRng::from_rng(rng).unwrap(),
-        )
+        Cipher::new(KeyTree::random(rng).0, ChaChaRng::from_rng(rng).unwrap())
     }
 
     fn corrupt(rng: &mut ChaChaRng, data: &mut [u8]) {
