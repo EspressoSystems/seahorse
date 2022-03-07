@@ -276,6 +276,18 @@
 <span id="276">276</span>
 <span id="277">277</span>
 <span id="278">278</span>
+<span id="279">279</span>
+<span id="280">280</span>
+<span id="281">281</span>
+<span id="282">282</span>
+<span id="283">283</span>
+<span id="284">284</span>
+<span id="285">285</span>
+<span id="286">286</span>
+<span id="287">287</span>
+<span id="288">288</span>
+<span id="289">289</span>
+<span id="290">290</span>
 </pre><pre class="rust"><code><span class="comment">// Copyright (c) 2022 Espresso Systems (espressosys.com)</span>
 <span class="comment">// This file is part of the Seahorse library.</span>
 
@@ -310,8 +322,9 @@
 <span class="doccomment">//! parent key with the same `id`.</span>
 <span class="kw">pub</span> <span class="kw">use</span> <span class="ident"><span class="kw">crate</span>::secret::Secret</span>;
 
+<span class="kw">pub</span> <span class="kw">use</span> <span class="ident">bip39::Mnemonic</span>;
+
 <span class="kw">use</span> <span class="ident">jf_cap::keys</span>::{<span class="ident">AuditorKeyPair</span>, <span class="ident">FreezerKeyPair</span>, <span class="ident">UserKeyPair</span>};
-<span class="kw">use</span> <span class="ident">mnemonic::decode</span>;
 <span class="kw">use</span> <span class="ident">rand_chacha::rand_core::SeedableRng</span>;
 <span class="kw">use</span> <span class="ident">rand_chacha::rand_core</span>::{<span class="ident">CryptoRng</span>, <span class="ident">RngCore</span>};
 <span class="kw">use</span> <span class="ident">rand_chacha::ChaChaRng</span>;
@@ -356,13 +369,22 @@
     <span class="doccomment">/// Build a new [KeyTree] from a prng.</span>
     <span class="doccomment">///</span>
     <span class="doccomment">/// Returns a 12-word mnemonic that can be used to recover this [KeyTree] using</span>
-    <span class="doccomment">/// [KeyTree::from_mnemonic].</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">random</span>(<span class="ident">rng</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> (<span class="kw">impl</span> <span class="ident">CryptoRng</span> <span class="op">+</span> <span class="ident">RngCore</span>)) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(<span class="self">Self</span>, <span class="ident">String</span>), <span class="ident">argon2::Error</span><span class="op">&gt;</span> {
-        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">seed</span> <span class="op">=</span> [<span class="number">0u8</span>; <span class="ident">SEED_LENGTH</span>];
-        <span class="ident">rng</span>.<span class="ident">fill_bytes</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">seed</span>);
-        <span class="kw">let</span> <span class="ident">mnemonic</span> <span class="op">=</span> <span class="ident">mnemonic::to_string</span>(<span class="ident">seed</span>.<span class="ident">as_ref</span>());
-        <span class="kw">let</span> <span class="ident">key_tree</span> <span class="op">=</span> <span class="ident"><span class="self">Self</span>::from_mnemonic</span>(<span class="ident">mnemonic</span>.<span class="ident">as_bytes</span>())<span class="question-mark">?</span>;
-        <span class="prelude-val">Ok</span>((<span class="ident">key_tree</span>, <span class="ident">mnemonic</span>))
+    <span class="doccomment">/// [KeyTree::from_mnemonic]. The generated mnemonic conforms to</span>
+    <span class="doccomment">/// [BIP-39](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki) and includes a</span>
+    <span class="doccomment">/// 4-bit checksum for error detection at recovery time.</span>
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">random</span>(<span class="ident">rng</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> (<span class="kw">impl</span> <span class="ident">CryptoRng</span> <span class="op">+</span> <span class="ident">RngCore</span>)) <span class="op">-</span><span class="op">&gt;</span> (<span class="self">Self</span>, <span class="ident">Mnemonic</span>) {
+        <span class="comment">// Sample some entropy.</span>
+        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">entropy</span> <span class="op">=</span> [<span class="number">0u8</span>; <span class="ident">SEED_LENGTH</span>];
+        <span class="ident">rng</span>.<span class="ident">fill_bytes</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">entropy</span>);
+
+        <span class="comment">// Convert entropy to a mnemonic phrase as specified in BIP-39. Note that `from_entropy` can</span>
+        <span class="comment">// only fail if `entropy` is not a multiple of 4 bytes in 128..256; `SEED_LENGTH` ensures</span>
+        <span class="comment">// this cannot happen, so it is safe to `unwrap`.</span>
+        <span class="kw">let</span> <span class="ident">mnemonic</span> <span class="op">=</span> <span class="ident">Mnemonic::from_entropy</span>(<span class="kw-2">&amp;</span><span class="ident">entropy</span>).<span class="ident">unwrap</span>();
+
+        <span class="comment">// Use the entropy to construct a KeyTree.</span>
+        <span class="kw">let</span> <span class="ident">key_tree</span> <span class="op">=</span> <span class="ident"><span class="self">Self</span>::from_mnemonic</span>(<span class="kw-2">&amp;</span><span class="ident">mnemonic</span>);
+        (<span class="ident">key_tree</span>, <span class="ident">mnemonic</span>)
     }
 
     <span class="doccomment">/// Build a new [KeyTree] from a password using the [argon2] KDF.</span>
@@ -395,23 +417,20 @@
         })
     }
 
-    <span class="doccomment">/// Recover a [KeyTree] for its mnemonic seed phrase.</span>
+    <span class="doccomment">/// Recover a [KeyTree] from its mnemonic seed phrase.</span>
     <span class="doccomment">///</span>
-    <span class="doccomment">/// Input a mnemonic phrase, in the form of bytes, i.e.,</span>
-    <span class="doccomment">/// &quot;digital-apollo-aroma--rival-artist-rebel&quot; initializing a key tree.</span>
-    <span class="doccomment">///</span>
-    <span class="doccomment">/// We require that the input mnemonic phrase is 12 words (equivalently, 16 bytes of seed), and</span>
-    <span class="doccomment">/// return a decoding error if the mnemonic is not decoded successfully or if the input length</span>
-    <span class="doccomment">/// is incorrect.</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">from_mnemonic</span>(<span class="ident">mnemonic</span>: <span class="kw-2">&amp;</span>[<span class="ident">u8</span>]) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="self">Self</span>, <span class="ident">argon2::Error</span><span class="op">&gt;</span> {
-        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">decoded_seed</span> <span class="op">=</span> <span class="ident">Vec</span>::<span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span><span class="ident">::new</span>();
-        <span class="ident">decode</span>(<span class="ident">mnemonic</span>, <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">decoded_seed</span>).<span class="ident">map_err</span>(<span class="op">|</span><span class="kw">_</span><span class="op">|</span> <span class="ident">argon2::Error::DecodingFail</span>)<span class="question-mark">?</span>;
-        <span class="kw">if</span> <span class="ident">decoded_seed</span>.<span class="ident">len</span>() <span class="op">!</span><span class="op">=</span> <span class="ident">SEED_LENGTH</span> {
-            <span class="kw">return</span> <span class="prelude-val">Err</span>(<span class="ident">argon2::Error::DecodingFail</span>);
+    <span class="doccomment">/// See [BIP-39](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki) for more</span>
+    <span class="doccomment">/// details on deterministically recovering entropy from a mnemonic.</span>
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">from_mnemonic</span>(<span class="ident">mnemonic</span>: <span class="kw-2">&amp;</span><span class="ident">Mnemonic</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span> {
+        <span class="self">Self</span> {
+            <span class="comment">// BIP39 allows mnemonics to be password-protected, so `to_seed` takes a password. We</span>
+            <span class="comment">// use a different form of password protection, where the mnemonic for a wallet is</span>
+            <span class="comment">// encrypted using a password, allowing for more user-friendly login. This is handled at</span>
+            <span class="comment">// a higher level, and we use the empty password here, following the reccomendation of</span>
+            <span class="comment">// BIP-39 for the case when there is no password associated with the mnemonic.</span>
+            <span class="ident">state</span>: <span class="ident">Secret::new</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">mnemonic</span>.<span class="ident">to_seed</span>(<span class="string">&quot;&quot;</span>)),
+            <span class="ident">depth</span>: <span class="number">0</span>,
         }
-        <span class="comment">// 32 bytes of salt</span>
-        <span class="kw">let</span> <span class="ident">salt</span> <span class="op">=</span> <span class="string">&quot;This is a salt to seed a KeyTree&quot;</span>;
-        <span class="ident"><span class="self">Self</span>::from_password_and_salt</span>(<span class="ident">decoded_seed</span>.<span class="ident">as_ref</span>(), <span class="ident">salt</span>.<span class="ident">as_bytes</span>())
     }
 
     <span class="doccomment">/// Derive a sub-tree of this [KeyTree].</span>
@@ -500,8 +519,13 @@
         <span class="kw">use</span> <span class="ident">ark_std::rand::thread_rng</span>;
 
         <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">rng</span> <span class="op">=</span> <span class="ident">thread_rng</span>();
-        <span class="kw">let</span> (<span class="ident">key_tree</span>, <span class="ident">mnemonic</span>) <span class="op">=</span> <span class="ident">KeyTree::random</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">rng</span>).<span class="ident">unwrap</span>();
-        <span class="kw">let</span> <span class="ident">key_tree_recovered</span> <span class="op">=</span> <span class="ident">KeyTree::from_mnemonic</span>(<span class="ident">mnemonic</span>.<span class="ident">as_bytes</span>()).<span class="ident">unwrap</span>();
+        <span class="kw">let</span> (<span class="ident">key_tree</span>, <span class="ident">mnemonic</span>) <span class="op">=</span> <span class="ident">KeyTree::random</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">rng</span>);
+
+        <span class="comment">// The mnemonic should be 12 words.</span>
+        <span class="macro">assert_eq!</span>(<span class="number">12</span>, <span class="ident">mnemonic</span>.<span class="ident">to_string</span>().<span class="ident">split_whitespace</span>().<span class="ident">count</span>());
+
+        <span class="comment">// Check that we can recover the same key tree from the mnemonic phrase.</span>
+        <span class="kw">let</span> <span class="ident">key_tree_recovered</span> <span class="op">=</span> <span class="ident">KeyTree::from_mnemonic</span>(<span class="kw-2">&amp;</span><span class="ident">mnemonic</span>);
 
         <span class="macro">assert_eq!</span>(
             <span class="ident">key_tree</span>.<span class="ident">state</span>.<span class="ident">open_secret</span>(),
@@ -537,7 +561,7 @@
         <span class="ident">rng</span>.<span class="ident">fill_bytes</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">id2</span>);
         <span class="macro">assert_ne!</span>(<span class="ident">id1</span>, <span class="ident">id2</span>);
 
-        <span class="kw">let</span> (<span class="ident">key_tree</span>, <span class="kw">_</span>) <span class="op">=</span> <span class="ident">KeyTree::random</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">rng</span>).<span class="ident">unwrap</span>();
+        <span class="kw">let</span> (<span class="ident">key_tree</span>, <span class="kw">_</span>) <span class="op">=</span> <span class="ident">KeyTree::random</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">rng</span>);
         <span class="kw">let</span> <span class="ident">all_keys</span> <span class="op">=</span> <span class="macro">vec!</span>[
             <span class="ident">bincode::serialize</span>(<span class="kw-2">&amp;</span><span class="ident">key_tree</span>.<span class="ident">derive_auditor_keypair</span>(<span class="kw-2">&amp;</span><span class="ident">id1</span>)).<span class="ident">unwrap</span>(),
             <span class="ident">bincode::serialize</span>(<span class="kw-2">&amp;</span><span class="ident">key_tree</span>.<span class="ident">derive_auditor_keypair</span>(<span class="kw-2">&amp;</span><span class="ident">id2</span>)).<span class="ident">unwrap</span>(),

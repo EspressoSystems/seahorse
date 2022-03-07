@@ -233,6 +233,18 @@
 <span id="233">233</span>
 <span id="234">234</span>
 <span id="235">235</span>
+<span id="236">236</span>
+<span id="237">237</span>
+<span id="238">238</span>
+<span id="239">239</span>
+<span id="240">240</span>
+<span id="241">241</span>
+<span id="242">242</span>
+<span id="243">243</span>
+<span id="244">244</span>
+<span id="245">245</span>
+<span id="246">246</span>
+<span id="247">247</span>
 </pre><pre class="rust"><code><span class="comment">// Copyright (c) 2022 Espresso Systems (espressosys.com)</span>
 <span class="comment">// This file is part of the Seahorse library.</span>
 
@@ -246,9 +258,9 @@
 <span class="doccomment">//! plugins to the persistence layer. It also provides a generally useful implementation [Loader],</span>
 <span class="doccomment">//! which loads an encrypted wallet from the file system using a mnemonic phrase to generate keys</span>
 <span class="doccomment">//! and a password to provide a more convenient login interface.</span>
-<span class="kw">use</span> <span class="kw">super</span>::{<span class="ident">encryption</span>, <span class="ident">hd</span>, <span class="ident">reader</span>, <span class="ident">EncryptionError</span>, <span class="ident">KeyError</span>, <span class="ident">WalletError</span>};
+<span class="kw">use</span> <span class="kw">super</span>::{<span class="ident">encryption</span>, <span class="ident">hd</span>, <span class="ident">reader</span>, <span class="ident">EncryptionError</span>, <span class="ident">KeyError</span>, <span class="ident">MnemonicError</span>, <span class="ident">WalletError</span>};
 <span class="kw">use</span> <span class="ident">encryption</span>::{<span class="ident">Cipher</span>, <span class="ident">CipherText</span>, <span class="ident">Salt</span>};
-<span class="kw">use</span> <span class="ident">hd::KeyTree</span>;
+<span class="kw">use</span> <span class="ident">hd</span>::{<span class="ident">KeyTree</span>, <span class="ident">Mnemonic</span>};
 <span class="kw">use</span> <span class="ident">rand_chacha</span>::{<span class="ident">rand_core::SeedableRng</span>, <span class="ident">ChaChaRng</span>};
 <span class="kw">use</span> <span class="ident">reader::Reader</span>;
 <span class="kw">use</span> <span class="ident">reef::Ledger</span>;
@@ -311,7 +323,7 @@
     <span class="kw">fn</span> <span class="ident">create_mnemonic</span><span class="op">&lt;</span><span class="ident">L</span>: <span class="ident">Ledger</span><span class="op">&gt;</span>(
         <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>,
         <span class="ident">rng</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">ChaChaRng</span>,
-    ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">String</span>, <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
+    ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">Mnemonic</span>, <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
         <span class="kw">match</span> <span class="self">self</span> {
             <span class="ident"><span class="self">Self</span>::User</span>(<span class="ident">reader</span>) <span class="op">=</span><span class="op">&gt;</span> {
                 <span class="macro">println!</span>(
@@ -321,7 +333,7 @@
                      safe, private place.&quot;</span>
                 );
                 <span class="lifetime">&#39;outer</span>: <span class="kw">loop</span> {
-                    <span class="kw">let</span> (<span class="kw">_</span>, <span class="ident">mnemonic</span>) <span class="op">=</span> <span class="ident">KeyTree::random</span>(<span class="ident">rng</span>).<span class="ident">context</span>(<span class="ident">KeyError</span>)<span class="question-mark">?</span>;
+                    <span class="kw">let</span> (<span class="kw">_</span>, <span class="ident">mnemonic</span>) <span class="op">=</span> <span class="ident">KeyTree::random</span>(<span class="ident">rng</span>);
                     <span class="macro">println!</span>(<span class="string">&quot;Your mnemonic phrase will be:&quot;</span>);
                     <span class="macro">println!</span>(<span class="string">&quot;{}&quot;</span>, <span class="ident">mnemonic</span>);
                     <span class="lifetime">&#39;inner</span>: <span class="kw">loop</span> {
@@ -335,7 +347,17 @@
                                 <span class="string">&quot;1&quot;</span> <span class="op">=</span><span class="op">&gt;</span> <span class="kw">return</span> <span class="prelude-val">Ok</span>(<span class="ident">mnemonic</span>),
                                 <span class="string">&quot;2&quot;</span> <span class="op">=</span><span class="op">&gt;</span> <span class="kw">continue</span> <span class="lifetime">&#39;outer</span>,
                                 <span class="string">&quot;3&quot;</span> <span class="op">=</span><span class="op">&gt;</span> {
-                                    <span class="kw">return</span> <span class="ident">reader</span>.<span class="ident">read_password</span>(<span class="string">&quot;Enter mnemonic phrase: &quot;</span>);
+                                    <span class="kw">let</span> <span class="ident">phrase</span> <span class="op">=</span> <span class="ident">reader</span>.<span class="ident">read_password</span>(<span class="string">&quot;Enter mnemonic phrase: &quot;</span>)<span class="question-mark">?</span>;
+                                    <span class="kw">match</span> <span class="ident">Mnemonic::parse</span>(<span class="kw-2">&amp;</span><span class="ident">phrase</span>) {
+                                        <span class="prelude-val">Ok</span>(<span class="ident">mnemonic</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="kw">return</span> <span class="prelude-val">Ok</span>(<span class="ident">mnemonic</span>),
+                                        <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span><span class="op">&gt;</span> {
+                                            <span class="macro">println!</span>(
+                                                <span class="string">&quot;That&#39;s not a valid mnemonic phrase ({})&quot;</span>,
+                                                <span class="ident">err</span>
+                                            );
+                                            <span class="kw">continue</span> <span class="lifetime">&#39;inner</span>;
+                                        }
+                                    }
                                 }
                                 <span class="kw">_</span> <span class="op">=</span><span class="op">&gt;</span> <span class="kw">continue</span> <span class="lifetime">&#39;inner</span>,
                             },
@@ -353,7 +375,9 @@
                 <span class="ident">msg</span>: <span class="ident">String::from</span>(<span class="string">&quot;missing mnemonic phrase&quot;</span>),
             }),
 
-            <span class="ident"><span class="self">Self</span>::MnemonicPasswordLiteral</span>(<span class="ident">mnemonic</span>, <span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Ok</span>(<span class="ident">mnemonic</span>.<span class="ident">to_string</span>()),
+            <span class="ident"><span class="self">Self</span>::MnemonicPasswordLiteral</span>(<span class="ident">mnemonic</span>, <span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> {
+                <span class="ident">Mnemonic::parse</span>(<span class="ident">mnemonic</span>.<span class="ident">as_str</span>()).<span class="ident">context</span>(<span class="ident">MnemonicError</span>)
+            }
         }
     }
 
@@ -407,9 +431,9 @@
         <span class="ident">KeyTree::from_password_and_salt</span>(<span class="ident">password</span>.<span class="ident">as_bytes</span>(), <span class="kw-2">&amp;</span><span class="ident">meta</span>.<span class="ident">salt</span>).<span class="ident">context</span>(<span class="ident">KeyError</span>)
     }
 
-    <span class="kw">fn</span> <span class="ident">create_from_mnemonic</span><span class="op">&lt;</span><span class="ident">L</span>: <span class="ident">Ledger</span><span class="op">&gt;</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(<span class="ident">String</span>, <span class="ident">KeyTree</span>), <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
+    <span class="kw">fn</span> <span class="ident">create_from_mnemonic</span><span class="op">&lt;</span><span class="ident">L</span>: <span class="ident">Ledger</span><span class="op">&gt;</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(<span class="ident">Mnemonic</span>, <span class="ident">KeyTree</span>), <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
         <span class="kw">let</span> <span class="ident">mnemonic</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">input</span>.<span class="ident">create_mnemonic</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>.<span class="ident">rng</span>)<span class="question-mark">?</span>;
-        <span class="kw">let</span> <span class="ident">key</span> <span class="op">=</span> <span class="ident">KeyTree::from_mnemonic</span>(<span class="ident">mnemonic</span>.<span class="ident">as_bytes</span>()).<span class="ident">context</span>(<span class="ident">KeyError</span>)<span class="question-mark">?</span>;
+        <span class="kw">let</span> <span class="ident">key</span> <span class="op">=</span> <span class="ident">KeyTree::from_mnemonic</span>(<span class="kw-2">&amp;</span><span class="ident">mnemonic</span>);
         <span class="prelude-val">Ok</span>((<span class="ident">mnemonic</span>, <span class="ident">key</span>))
     }
 }
@@ -434,7 +458,7 @@
             <span class="ident">encryption_key</span>.<span class="ident">derive_sub_tree</span>(<span class="ident">KEY_CHECK_SUB_TREE</span>.<span class="ident">as_bytes</span>()),
             <span class="ident">ChaChaRng::from_rng</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>.<span class="ident">rng</span>).<span class="ident">unwrap</span>(),
         )
-        .<span class="ident">encrypt</span>(<span class="ident">mnemonic</span>.<span class="ident">as_bytes</span>())
+        .<span class="ident">encrypt</span>(<span class="kw-2">&amp;</span><span class="ident">bincode::serialize</span>(<span class="kw-2">&amp;</span><span class="ident">mnemonic</span>)<span class="question-mark">?</span>)
         .<span class="ident">context</span>(<span class="ident">EncryptionError</span>)<span class="question-mark">?</span>;
 
         <span class="kw">let</span> <span class="ident">meta</span> <span class="op">=</span> <span class="ident">LoaderMetadata</span> {
@@ -455,7 +479,7 @@
             )
             .<span class="ident">decrypt</span>(<span class="kw-2">&amp;</span><span class="ident">meta</span>.<span class="ident">encrypted_mnemonic</span>)
             {
-                <span class="kw">break</span> <span class="ident">KeyTree::from_mnemonic</span>(<span class="kw-2">&amp;</span><span class="ident">mnemonic_bytes</span>).<span class="ident">context</span>(<span class="ident">KeyError</span>)<span class="question-mark">?</span>;
+                <span class="kw">break</span> <span class="ident">KeyTree::from_mnemonic</span>(<span class="kw-2">&amp;</span><span class="ident">bincode::deserialize</span>(<span class="kw-2">&amp;</span><span class="ident">mnemonic_bytes</span>)<span class="question-mark">?</span>);
             } <span class="kw">else</span> <span class="kw">if</span> <span class="self">self</span>.<span class="ident">input</span>.<span class="ident">interactive</span>() {
                 <span class="macro">println!</span>(<span class="string">&quot;Sorry, that&#39;s incorrect.&quot;</span>);
             } <span class="kw">else</span> {

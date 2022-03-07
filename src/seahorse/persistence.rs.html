@@ -1409,7 +1409,7 @@
 
         <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">loader</span> <span class="op">=</span> <span class="ident">MockWalletLoader</span> {
             <span class="ident">dir</span>: <span class="ident">TempDir::new</span>(<span class="ident">name</span>).<span class="ident">unwrap</span>(),
-            <span class="ident">key</span>: <span class="ident">KeyTree::random</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">rng</span>).<span class="ident">unwrap</span>().<span class="number">0</span>,
+            <span class="ident">key</span>: <span class="ident">KeyTree::random</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">rng</span>).<span class="number">0</span>,
         };
         {
             <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">storage</span> <span class="op">=</span> <span class="ident">AtomicWalletStorage::new</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">loader</span>, <span class="number">1024</span>).<span class="ident">unwrap</span>();

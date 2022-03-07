@@ -2751,6 +2751,15 @@
 <span id="2751">2751</span>
 <span id="2752">2752</span>
 <span id="2753">2753</span>
+<span id="2754">2754</span>
+<span id="2755">2755</span>
+<span id="2756">2756</span>
+<span id="2757">2757</span>
+<span id="2758">2758</span>
+<span id="2759">2759</span>
+<span id="2760">2760</span>
+<span id="2761">2761</span>
+<span id="2762">2762</span>
 </pre><pre class="rust"><code><span class="comment">// Copyright (c) 2022 Espresso Systems (espressosys.com)</span>
 <span class="comment">// This file is part of the Seahorse library.</span>
 
@@ -2887,6 +2896,9 @@
     <span class="ident">EncryptionError</span> {
         <span class="ident">source</span>: <span class="ident">encryption::Error</span>,
     },
+    <span class="ident">MnemonicError</span> {
+        <span class="ident">source</span>: <span class="ident">bip39::Error</span>,
+    },
     <span class="ident">KeyError</span> {
         <span class="ident">source</span>: <span class="ident">argon2::Error</span>,
     },
@@ -2909,6 +2921,12 @@
 <span class="kw">impl</span><span class="op">&lt;</span><span class="ident">L</span>: <span class="ident">Ledger</span><span class="op">&gt;</span> <span class="ident">From</span><span class="op">&lt;</span><span class="ident"><span class="kw">crate</span>::txn_builder::TransactionError</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span> {
     <span class="kw">fn</span> <span class="ident">from</span>(<span class="ident">source</span>: <span class="ident"><span class="kw">crate</span>::txn_builder::TransactionError</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span> {
         <span class="ident"><span class="self">Self</span>::TransactionError</span> { <span class="ident">source</span> }
+    }
+}
+
+<span class="kw">impl</span><span class="op">&lt;</span><span class="ident">L</span>: <span class="ident">Ledger</span><span class="op">&gt;</span> <span class="ident">From</span><span class="op">&lt;</span><span class="ident">bincode::Error</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span> {
+    <span class="kw">fn</span> <span class="ident">from</span>(<span class="ident">source</span>: <span class="ident">bincode::Error</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span> {
+        <span class="ident"><span class="self">Self</span>::BincodeError</span> { <span class="ident">source</span> }
     }
 }
 
