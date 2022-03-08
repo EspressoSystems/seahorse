@@ -280,7 +280,7 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
                     ),
                 ];
             } else {
-                keys_amounts = vec![(sub_tree.derive_user_key_pair(&0u64.to_le_bytes()), amount)];
+                keys_amounts = vec![(sub_tree.derive_user_keypair(&0u64.to_le_bytes()), amount)];
             }
             let keys = keys_amounts
                 .clone()

@@ -1541,7 +1541,7 @@ pub mod generic_wallet_tests {
                 .backend
                 .key_stream()
                 .derive_sub_tree("user".as_bytes())
-                .derive_user_key_pair(&state.key_state.user.to_le_bytes());
+                .derive_user_keypair(&state.key_state.user.to_le_bytes());
             session.backend.register_user_key(&key).await.unwrap();
             key
         };
@@ -1881,7 +1881,12 @@ pub mod generic_wallet_tests {
         let mut now = Instant::now();
         let initial_grant = 10;
         let (ledger, mut wallets) = t
-            .create_test_network(&[(2, 2)], vec![initial_grant, initial_grant], &mut now)
+            .create_test_network(
+                &[(2, 2)],
+                vec![initial_grant, initial_grant],
+                false,
+                &mut now,
+            )
             .await;
 
         // Test various ways of discovering assets. We will have wallets[0] discover assets by
@@ -1908,8 +1913,8 @@ pub mod generic_wallet_tests {
             .define_asset(&[], AssetPolicy::default().set_auditor_pub_key(audit_key1))
             .await
             .unwrap();
-        let minter_addr = wallets[1].1.clone();
-        let receiver_addr = wallets[0].1.clone();
+        let minter_addr = wallets[1].1[0].clone();
+        let receiver_addr = wallets[0].1[0].clone();
         wallets[1]
             .0
             .mint(&minter_addr, 1, &minted_asset.code, 1, receiver_addr)

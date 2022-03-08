@@ -1020,10 +1020,8 @@ impl<L: Ledger> TransactionState<L> {
             total_output_amount,
             None,
         )?;
-
         let mut inputs = Vec::new();
         let mut input_ros = Vec::new();
-        let mut outputs = Vec::new();
         for (owner_key_pair, input_records, _) in &records {
             // prepare inputs
             for (ro, uid) in input_records {
@@ -1036,18 +1034,18 @@ impl<L: Ledger> TransactionState<L> {
                 });
                 input_ros.push(ro.clone());
             }
+        }
 
-            // prepare outputs, excluding fee change (which will be automatically generated)
-            let mut outputs = vec![];
-            for (pub_key, amount) in spec.receivers {
-                outputs.push(RecordOpening::new(
-                    rng,
-                    *amount,
-                    AssetDefinition::native(),
-                    pub_key.clone(),
-                    FreezeFlag::Unfrozen,
-                ));
-            }
+        // prepare outputs, excluding fee change (which will be automatically generated)
+        let mut outputs = Vec::new();
+        for (pub_key, amount) in spec.receivers {
+            outputs.push(RecordOpening::new(
+                rng,
+                *amount,
+                AssetDefinition::native(),
+                pub_key.clone(),
+                FreezeFlag::Unfrozen,
+            ));
         }
 
         // find a proving key which can handle this transaction size
@@ -1151,12 +1149,10 @@ impl<L: Ledger> TransactionState<L> {
 
         let mut inputs = Vec::new();
         let mut input_ros = Vec::new();
-        let mut outputs = Vec::new();
         let mut fee_input = None;
-        let mut change_record = false;
+        let mut change_ro = None;
         for (owner_key_pair, input_records, change) in &records {
             // prepare inputs
-            let mut inputs = vec![];
             for (ro, uid) in input_records.iter() {
                 let witness = self.get_merkle_proof(*uid);
                 inputs.push(TransferNoteInput {
@@ -1176,25 +1172,32 @@ impl<L: Ledger> TransactionState<L> {
                 }
             }
 
-            // prepare outputs, excluding fee change (which will be automatically generated)
-            let mut outputs = vec![];
-            for (pub_key, amount) in spec.receivers {
-                outputs.push(RecordOpening::new(
-                    &mut rng.clone(),
-                    *amount,
-                    asset.clone(),
-                    pub_key.clone(),
-                    FreezeFlag::Unfrozen,
-                ));
-            }
             // change in the asset type being transfered (not fee change)
             if *change > 0 {
                 let me = owner_key_pair.pub_key();
-                let change_ro =
-                    RecordOpening::new(rng, *change, asset.clone(), me, FreezeFlag::Unfrozen);
-                outputs.push(change_ro);
-                change_record = true;
+                change_ro = Some(RecordOpening::new(
+                    rng,
+                    *change,
+                    asset.clone(),
+                    me,
+                    FreezeFlag::Unfrozen,
+                ));
             }
+        }
+
+        // prepare outputs, excluding fee change (which will be automatically generated)
+        let mut outputs = Vec::new();
+        for (pub_key, amount) in spec.receivers {
+            outputs.push(RecordOpening::new(
+                &mut rng.clone(),
+                *amount,
+                asset.clone(),
+                pub_key.clone(),
+                FreezeFlag::Unfrozen,
+            ));
+        }
+        if let Some(ro) = change_ro.clone() {
+            outputs.push(ro);
         }
 
         let fee_input = match fee_input {
@@ -1217,7 +1220,7 @@ impl<L: Ledger> TransactionState<L> {
             &mut inputs,
             &mut outputs,
             spec.xfr_size_requirement,
-            change_record,
+            change_ro.is_some(),
         )?;
 
         // pad with dummy inputs if necessary
