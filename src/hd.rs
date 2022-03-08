@@ -32,7 +32,7 @@
 //! parent key with the same `id`.
 pub use crate::secret::Secret;
 
-pub use bip39::Mnemonic;
+pub use bip0039::Mnemonic;
 
 use jf_cap::keys::{AuditorKeyPair, FreezerKeyPair, UserKeyPair};
 use rand_chacha::rand_core::SeedableRng;
@@ -90,7 +90,7 @@ impl KeyTree {
         // Convert entropy to a mnemonic phrase as specified in BIP-39. Note that `from_entropy` can
         // only fail if `entropy` is not a multiple of 4 bytes in 128..256; `SEED_LENGTH` ensures
         // this cannot happen, so it is safe to `unwrap`.
-        let mnemonic = Mnemonic::from_entropy(&entropy).unwrap();
+        let mnemonic = Mnemonic::from_entropy(entropy.to_vec()).unwrap();
 
         // Use the entropy to construct a KeyTree.
         let key_tree = Self::from_mnemonic(&mnemonic);

@@ -101,7 +101,7 @@ impl LoaderInput {
                                 "2" => continue 'outer,
                                 "3" => {
                                     let phrase = reader.read_password("Enter mnemonic phrase: ")?;
-                                    match Mnemonic::parse(&phrase) {
+                                    match Mnemonic::from_phrase(&phrase) {
                                         Ok(mnemonic) => return Ok(mnemonic),
                                         Err(err) => {
                                             println!(
@@ -129,7 +129,7 @@ impl LoaderInput {
             }),
 
             Self::MnemonicPasswordLiteral(mnemonic, _) => {
-                Mnemonic::parse(mnemonic.as_str()).context(MnemonicError)
+                Mnemonic::from_phrase(mnemonic.as_str()).context(MnemonicError)
             }
         }
     }
@@ -211,7 +211,7 @@ impl<L: Ledger> WalletLoader<L> for Loader {
             encryption_key.derive_sub_tree(KEY_CHECK_SUB_TREE.as_bytes()),
             ChaChaRng::from_rng(&mut self.rng).unwrap(),
         )
-        .encrypt(&bincode::serialize(&mnemonic)?)
+        .encrypt(mnemonic.into_phrase().as_str().as_bytes())
         .context(EncryptionError)?;
 
         let meta = LoaderMetadata {
@@ -232,7 +232,11 @@ impl<L: Ledger> WalletLoader<L> for Loader {
             )
             .decrypt(&meta.encrypted_mnemonic)
             {
-                break KeyTree::from_mnemonic(&bincode::deserialize(&mnemonic_bytes)?);
+                // If the data decrypts successfully, then `mnemonic_bytes` is authenticated, so we
+                // can safely unwrap when deserializing it.
+                break KeyTree::from_mnemonic(
+                    &Mnemonic::from_phrase(std::str::from_utf8(&mnemonic_bytes).unwrap()).unwrap(),
+                );
             } else if self.input.interactive() {
                 println!("Sorry, that's incorrect.");
             } else {
