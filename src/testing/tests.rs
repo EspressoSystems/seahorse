@@ -162,18 +162,12 @@ pub mod generic_wallet_tests {
         ) {
             if native {
                 assert_eq!(
-                    wallet
-                        .0
-                        .balance_breakdown(&wallet.1[0], &coin.code)
-                        .await,
+                    wallet.0.balance_breakdown(&wallet.1[0], &coin.code).await,
                     expected_coin_balance - fees_paid
                 );
             } else {
                 assert_eq!(
-                    wallet
-                        .0
-                        .balance_breakdown(&wallet.1[0], &coin.code)
-                        .await,
+                    wallet.0.balance_breakdown(&wallet.1[0], &coin.code).await,
                     expected_coin_balance
                 );
                 assert_eq!(
@@ -771,7 +765,7 @@ pub mod generic_wallet_tests {
             .0
             .transfer(Some(&src), &asset.code, &[(dst, 1)], 1)
             .await
-            .unwrap()[0]
+            .unwrap()
             .clone();
         t.sync(&ledger, wallets.as_slice()).await;
         assert_eq!(
@@ -802,7 +796,7 @@ pub mod generic_wallet_tests {
                 time: Local::now(),
                 asset: asset.code,
                 kind: TransactionKind::<T::Ledger>::mint(),
-                sender: None,
+                senders: Vec::new(),
                 receivers: vec![(wallets[0].1[0].clone(), 1)],
                 receipt: None,
             },
@@ -810,7 +804,7 @@ pub mod generic_wallet_tests {
                 time: Local::now(),
                 asset: asset.code,
                 kind: TransactionKind::<T::Ledger>::freeze(),
-                sender: None,
+                senders: Vec::new(),
                 receivers: vec![(wallets[0].1[0].clone(), 1)],
                 receipt: None,
             },
@@ -818,7 +812,7 @@ pub mod generic_wallet_tests {
                 time: Local::now(),
                 asset: asset.code,
                 kind: TransactionKind::<T::Ledger>::unfreeze(),
-                sender: None,
+                senders: Vec::new(),
                 receivers: vec![(wallets[0].1[0].clone(), 1)],
                 receipt: None,
             },
@@ -826,7 +820,7 @@ pub mod generic_wallet_tests {
                 time: Local::now(),
                 asset: asset.code,
                 kind: TransactionKind::<T::Ledger>::send(),
-                sender: Some(wallets[0].1[0].clone()),
+                senders: wallets[0].1.clone(),
                 receivers: vec![(wallets[1].1[0].clone(), 1)],
                 receipt: Some(xfr_receipt),
             },
@@ -1002,7 +996,7 @@ pub mod generic_wallet_tests {
                     time: Local::now(),
                     asset: assets[asset - 1].code,
                     kind: TransactionKind::<T::Ledger>::mint(),
-                    sender: None,
+                    senders: Vec::new(),
                     receivers: vec![(address, amount)],
                     receipt: None,
                 },
@@ -1037,9 +1031,7 @@ pub mod generic_wallet_tests {
                 );
                 for (j, asset) in assets.iter().enumerate() {
                     assert_eq!(
-                        wallet
-                            .balance_breakdown(&addresses[0], &asset.code)
-                            .await,
+                        wallet.balance_breakdown(&addresses[0], &asset.code).await,
                         balance[j + 1]
                     );
                 }
@@ -1168,7 +1160,7 @@ pub mod generic_wallet_tests {
                             time: Local::now(),
                             asset: asset.code,
                             kind: TransactionKind::<T::Ledger>::mint(),
-                            sender: None,
+                            senders: Vec::new(),
                             receivers: vec![(sender_address.clone(), 2 * amount)],
                             receipt: None,
                         },
@@ -1190,7 +1182,7 @@ pub mod generic_wallet_tests {
                     )
                     .await
                 {
-                    Ok(receipts) => receipts[0].clone(),
+                    Ok(receipt) => receipt.clone(),
                     Err(WalletError::TransactionError {
                         source:
                             TransactionError::Fragmentation {
@@ -1221,7 +1213,7 @@ pub mod generic_wallet_tests {
                                     1,
                                 )
                                 .await
-                                .unwrap()[0]
+                                .unwrap()
                                 .clone()
                         } else {
                             println!(
@@ -1256,7 +1248,7 @@ pub mod generic_wallet_tests {
                                 1,
                             )
                             .await
-                            .unwrap()[0]
+                            .unwrap()
                             .clone()
                     }
                     Err(err) => {
@@ -1283,7 +1275,7 @@ pub mod generic_wallet_tests {
                         time: Local::now(),
                         asset: asset.code,
                         kind: TransactionKind::<T::Ledger>::send(),
-                        sender: Some(sender_address),
+                        senders: vec![sender_address],
                         receivers: vec![(receiver.clone(), amount)],
                         receipt: Some(receipt),
                     },
@@ -1296,7 +1288,7 @@ pub mod generic_wallet_tests {
                             time: Local::now(),
                             asset: asset.code,
                             kind: TransactionKind::<T::Ledger>::receive(),
-                            sender: None,
+                            senders: Vec::new(),
                             receivers: vec![(receiver, amount)],
                             receipt: None,
                         },
@@ -1635,7 +1627,7 @@ pub mod generic_wallet_tests {
                 1,
             )
             .await
-            .unwrap()[0]
+            .unwrap()
             .clone();
         await_transaction(&receipt, &wallet1, &[]).await;
         assert_eq!(
@@ -1669,7 +1661,7 @@ pub mod generic_wallet_tests {
                 1,
             )
             .await
-            .unwrap()[0]
+            .unwrap()
             .clone();
         await_transaction(&receipt, &wallet1, &[&wallet2]).await;
         assert_eq!(
@@ -1694,7 +1686,7 @@ pub mod generic_wallet_tests {
                 1,
             )
             .await
-            .unwrap()[0]
+            .unwrap()
             .clone();
         await_transaction(&receipt, &wallet2, &[&wallet1]).await;
         assert_eq!(
@@ -1840,7 +1832,10 @@ pub mod generic_wallet_tests {
             .await
             .unwrap();
         t.sync(&ledger, wallets.as_slice()).await;
-        println!("Transfer generated: {}s", now.elapsed().as_secs_f32());
+        println!(
+            "Transfer generated from a specified address: {}s",
+            now.elapsed().as_secs_f32()
+        );
         now = Instant::now();
 
         // Transferring from Alice to Bob without specifying Alice's address should also succeed.
@@ -1855,7 +1850,10 @@ pub mod generic_wallet_tests {
             .await
             .unwrap();
         t.sync(&ledger, wallets.as_slice()).await;
-        println!("Transfer generated: {}s", now.elapsed().as_secs_f32());
+        println!(
+            "Transfer generated without a specified address: {}s",
+            now.elapsed().as_secs_f32()
+        );
 
         // Verify the balances of the native and defined coins.
         assert_eq!(

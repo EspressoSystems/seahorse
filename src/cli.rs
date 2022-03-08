@@ -482,7 +482,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             C,
             |io, wallet, asset: ListItem<AssetCode>, to: UserAddress, amount: u64, fee: u64; wait: Option<bool>| {
                 let res = wallet.transfer(None, &asset.item, &[(to.0, amount)], fee).await;
-                finish_transactions::<C>(io, wallet, res, wait, "transferred").await;
+                finish_transaction::<C>(io, wallet, res, wait, "transferred").await;
             }
         ),
         command!(
@@ -491,7 +491,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             C,
             |io, wallet, asset: ListItem<AssetCode>, from: UserAddress, to: UserAddress, amount: u64, fee: u64; wait: Option<bool>| {
                 let res = wallet.transfer(Some(&from.0), &asset.item, &[(to.0, amount)], fee).await;
-                finish_transactions::<C>(io, wallet, res, wait, "transferred").await;
+                finish_transaction::<C>(io, wallet, res, wait, "transferred").await;
             }
         ),
         command!(
@@ -620,18 +620,23 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                             } else {
                                 txn.asset.to_string()
                             };
-                            let sender = match txn.sender {
-                                Some(sender) => UserAddress(sender).to_string(),
-                                None => String::from("unknown"),
-                            };
+                            let senders;
+                            if txn.senders.len() >0 {
+                                senders = txn.senders
+                                    .into_iter()
+                                    .map(|sender| UserAddress(sender).to_string())
+                                    .collect::<Vec<String>>();
+                            } else {
+                                senders = vec![String::from("unknown")];
+                            }
                             cli_write!(
                                 io,
-                                "{} {} {} {} {} ",
+                                "{} {} {} {} {:?} ",
                                 txn.time,
                                 status,
                                 asset,
                                 txn.kind,
-                                sender
+                                senders
                             );
                             for (receiver, amount) in txn.receivers {
                                 cli_write!(io, "{} {} ", UserAddress(receiver), amount);
@@ -904,26 +909,6 @@ pub async fn finish_transaction<'a, C: CLI<'a>>(
                 }
             } else {
                 cli_writeln!(io, "{}", receipt);
-            }
-        }
-        Err(err) => {
-            cli_writeln!(io, "{}\nAssets were not {}.", err, success_state);
-        }
-    }
-}
-
-pub async fn finish_transactions<'a, C: CLI<'a>>(
-    io: &mut SharedIO,
-    wallet: &Wallet<'a, C>,
-    results: Result<Vec<TransactionReceipt<C::Ledger>>, WalletError<C::Ledger>>,
-    wait: Option<bool>,
-    success_state: &str,
-) {
-    match results {
-        Ok(receipts) => {
-            for receipt in receipts {
-                let result: Result<TransactionReceipt<C::Ledger>, _> = Ok(receipt);
-                finish_transaction::<C>(io, wallet, result, wait, success_state).await;
             }
         }
         Err(err) => {

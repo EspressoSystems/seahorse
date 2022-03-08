@@ -752,11 +752,12 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
                     // If the transaction isn't in our pending data structures, but its fee record
                     // has not been spent, then either it was rejected, or it's someone else's
                     // transaction that we haven't been tracking through the lifecycle.
-                    if self.user_keys.contains_key(&receipt.submitter) {
-                        Ok(TransactionStatus::Rejected)
-                    } else {
-                        Ok(TransactionStatus::Unknown)
+                    for submitter in &receipt.submitters {
+                        if !self.user_keys.contains_key(submitter) {
+                            return Ok(TransactionStatus::Unknown);
+                        }
                     }
+                    Ok(TransactionStatus::Rejected)
                 }
             }
 
@@ -1197,7 +1198,7 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
             time: Local::now(),
             asset: txn_asset,
             kind,
-            sender: None,
+            senders: Vec::new(),
             // When we receive transactions, we can't tell from the protocol
             // who sent it to us.
             receivers: records
@@ -1639,7 +1640,7 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
         &mut self,
         session: &mut WalletSession<'a, L, impl WalletBackend<'a, L>>,
         spec: TransferSpec<'k>,
-    ) -> Result<Vec<TransferInfo<L>>, WalletError<L>> {
+    ) -> Result<TransferInfo<L>, WalletError<L>> {
         self.txn_state
             .transfer(spec, &self.proving_keys.xfr, &mut session.rng)
             .context(TransactionError)
@@ -2135,37 +2136,33 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
         asset: &AssetCode,
         receivers: &[(UserAddress, u64)],
         fee: u64,
-    ) -> Result<Vec<TransactionReceipt<L>>, WalletError<L>> {
+    ) -> Result<TransactionReceipt<L>, WalletError<L>> {
         let xfr_info = self
             .build_transfer(account, asset, receivers, fee, vec![], None)
             .await?;
-        let mut receipts = Vec::new();
-        for info in xfr_info {
-            let memos_rec = match info.fee_output {
-                Some(ro) => {
-                    let mut rec = vec![ro];
-                    rec.append(&mut info.outputs.clone());
-                    rec
-                }
-                None => info.outputs.clone(),
-            };
-            let (memos, sig) = self.generate_memos(memos_rec, &info.sig_key_pair).await?;
-            let txn_info = TransactionInfo {
-                account: info.owner_address,
-                memos,
-                sig,
-                freeze_outputs: vec![],
-                history: Some(info.history),
-                uid: None,
-                inputs: info.inputs,
-                outputs: info.outputs,
-            };
-            receipts.push(
-                self.submit_cap(TransactionNote::Transfer(Box::new(info.note)), txn_info)
-                    .await?,
-            )
-        }
-        Ok(receipts)
+        let memos_rec = match xfr_info.fee_output {
+            Some(ro) => {
+                let mut rec = vec![ro];
+                rec.append(&mut xfr_info.outputs.clone());
+                rec
+            }
+            None => xfr_info.outputs.clone(),
+        };
+        let (memos, sig) = self
+            .generate_memos(memos_rec, &xfr_info.sig_key_pair)
+            .await?;
+        let txn_info = TransactionInfo {
+            accounts: xfr_info.owner_addresses,
+            memos,
+            sig,
+            freeze_outputs: vec![],
+            history: Some(xfr_info.history),
+            uid: None,
+            inputs: xfr_info.inputs,
+            outputs: xfr_info.outputs,
+        };
+        self.submit_cap(TransactionNote::Transfer(Box::new(xfr_info.note)), txn_info)
+            .await
     }
 
     pub async fn build_transfer(
@@ -2176,7 +2173,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
         fee: u64,
         bound_data: Vec<u8>,
         xfr_size_requirement: Option<(usize, usize)>,
-    ) -> Result<Vec<TransferInfo<L>>, WalletError<L>> {
+    ) -> Result<TransferInfo<L>, WalletError<L>> {
         let WalletSharedState { state, session, .. } = &mut *self.mutex.lock().await;
         let receivers = iter(receivers)
             .then(|(addr, amt)| {
@@ -2511,7 +2508,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
         } else {
             let (sender, receiver) = oneshot::channel();
 
-            if state.user_keys.contains_key(&receipt.submitter) {
+            if state.user_keys.contains_key(&receipt.submitters[0]) {
                 // If we submitted this transaction, we have all the information we need to track it
                 // through the lifecycle based on its uid alone.
                 txn_subscribers

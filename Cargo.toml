@@ -42,7 +42,7 @@ zeroize = "1.3"
 atomic_store = { git = "ssh://git@github.com/EspressoSystems/atomicstore.git" }
 commit = { git = "ssh://git@github.com/EspressoSystems/commit.git", rev = "f48cd52c59755eade0605111826eef3df6abdcf8" }
 key-set = { git = "ssh://git@github.com/EspressoSystems/key-set.git" }
-zerok-macros = { git = "ssh://git@github.com/EspressoSystems/zerok-macros.git" }
+espresso-macros = { git = "ssh://git@github.com/EspressoSystems/espresso-macros.git" }
 jf-cap = { features=["std"], git = "ssh://git@github.com/EspressoSystems/cap.git", rev = "16ad157f96d2102d59206df0106fb341302180d3" }
 jf-utils = { features=["std"], git = "ssh://git@github.com/EspressoSystems/jellyfish.git" }
 arbitrary-wrappers = { git = "ssh://git@github.com/EspressoSystems/arbitrary-wrappers.git" }
