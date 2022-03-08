@@ -1,6 +1,19 @@
-use super::{encryption, hd, reader, EncryptionError, KeyError, WalletError};
+// Copyright (c) 2022 Espresso Systems (espressosys.com)
+// This file is part of the Seahorse library.
+
+// This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+// You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+//! Traits and types for creating and loading wallets.
+//!
+//! This module defines the [WalletLoader] interface, which allows various implementations as
+//! plugins to the persistence layer. It also provides a generally useful implementation [Loader],
+//! which loads an encrypted wallet from the file system using a mnemonic phrase to generate keys
+//! and a password to provide a more convenient login interface.
+use super::{encryption, hd, reader, EncryptionError, KeyError, MnemonicError, WalletError};
 use encryption::{Cipher, CipherText, Salt};
-use hd::KeyTree;
+use hd::{KeyTree, Mnemonic};
 use rand_chacha::{rand_core::SeedableRng, ChaChaRng};
 use reader::Reader;
 use reef::Ledger;
@@ -63,7 +76,7 @@ impl LoaderInput {
     fn create_mnemonic<L: Ledger>(
         &mut self,
         rng: &mut ChaChaRng,
-    ) -> Result<String, WalletError<L>> {
+    ) -> Result<Mnemonic, WalletError<L>> {
         match self {
             Self::User(reader) => {
                 println!(
@@ -73,7 +86,7 @@ impl LoaderInput {
                      safe, private place."
                 );
                 'outer: loop {
-                    let (_, mnemonic) = KeyTree::random(rng).context(KeyError)?;
+                    let (_, mnemonic) = KeyTree::random(rng);
                     println!("Your mnemonic phrase will be:");
                     println!("{}", mnemonic);
                     'inner: loop {
@@ -87,7 +100,17 @@ impl LoaderInput {
                                 "1" => return Ok(mnemonic),
                                 "2" => continue 'outer,
                                 "3" => {
-                                    return reader.read_password("Enter mnemonic phrase: ");
+                                    let phrase = reader.read_password("Enter mnemonic phrase: ")?;
+                                    match Mnemonic::from_phrase(&phrase) {
+                                        Ok(mnemonic) => return Ok(mnemonic),
+                                        Err(err) => {
+                                            println!(
+                                                "That's not a valid mnemonic phrase ({})",
+                                                err
+                                            );
+                                            continue 'inner;
+                                        }
+                                    }
                                 }
                                 _ => continue 'inner,
                             },
@@ -105,7 +128,9 @@ impl LoaderInput {
                 msg: String::from("missing mnemonic phrase"),
             }),
 
-            Self::MnemonicPasswordLiteral(mnemonic, _) => Ok(mnemonic.to_string()),
+            Self::MnemonicPasswordLiteral(mnemonic, _) => {
+                Mnemonic::from_phrase(mnemonic.as_str()).context(MnemonicError)
+            }
         }
     }
 
@@ -159,9 +184,9 @@ impl Loader {
         KeyTree::from_password_and_salt(password.as_bytes(), &meta.salt).context(KeyError)
     }
 
-    fn create_from_mnemonic<L: Ledger>(&mut self) -> Result<(String, KeyTree), WalletError<L>> {
+    fn create_from_mnemonic<L: Ledger>(&mut self) -> Result<(Mnemonic, KeyTree), WalletError<L>> {
         let mnemonic = self.input.create_mnemonic(&mut self.rng)?;
-        let key = KeyTree::from_mnemonic(mnemonic.as_bytes()).context(KeyError)?;
+        let key = KeyTree::from_mnemonic(&mnemonic);
         Ok((mnemonic, key))
     }
 }
@@ -186,7 +211,7 @@ impl<L: Ledger> WalletLoader<L> for Loader {
             encryption_key.derive_sub_tree(KEY_CHECK_SUB_TREE.as_bytes()),
             ChaChaRng::from_rng(&mut self.rng).unwrap(),
         )
-        .encrypt(mnemonic.as_bytes())
+        .encrypt(mnemonic.into_phrase().as_str().as_bytes())
         .context(EncryptionError)?;
 
         let meta = LoaderMetadata {
@@ -207,7 +232,11 @@ impl<L: Ledger> WalletLoader<L> for Loader {
             )
             .decrypt(&meta.encrypted_mnemonic)
             {
-                break KeyTree::from_mnemonic(&mnemonic_bytes).context(KeyError)?;
+                // If the data decrypts successfully, then `mnemonic_bytes` is authenticated, so we
+                // can safely unwrap when deserializing it.
+                break KeyTree::from_mnemonic(
+                    &Mnemonic::from_phrase(std::str::from_utf8(&mnemonic_bytes).unwrap()).unwrap(),
+                );
             } else if self.input.interactive() {
                 println!("Sorry, that's incorrect.");
             } else {

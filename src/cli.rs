@@ -1,17 +1,28 @@
-////////////////////////////////////////////////////////////////////////////////
-// The generic cap Wallet Frontend
-//
-// For now, this "frontend" is simply a comand-line read-eval-print loop which
-// allows the user to enter commands for a wallet interactively.
-//
+// Copyright (c) 2022 Espresso Systems (espressosys.com)
+// This file is part of the Seahorse library.
 
+// This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+// You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+//! The generic CAP Wallet frontend
+//!
+//! This module "frontend" provides a framework for implementing command line interfaces for
+//! ledger-specific instantiations of the [Wallet] type. Similar to the [Wallet] framework itself,
+//! there is are traits which must be implemented to adapt this framework to a particular ledger
+//! type, after which the implementor gains access to the full Seahorse CLI implementation.
+//!
+//! The [CLI] trait must be implemented for a particular ledger type and [WalletBackend]
+//! implementation. In addition, the [CLIArgs] trait must be implemented to map your command line
+//! arguments to the options and flags required by the general CLI implementation. After that,
+//! [cli_main] can be used to run the CLI interactively.
 use crate::{
     events::EventIndex,
     io::SharedIO,
     loader::{Loader, LoaderMetadata, WalletLoader},
     reader::Reader,
-    AssetInfo, BincodeError, IoError, MintInfo, TransactionReceipt, TransactionStatus,
-    WalletBackend, WalletError,
+    AssetInfo, BincodeError, IoError, TransactionReceipt, TransactionStatus, WalletBackend,
+    WalletError,
 };
 use async_std::task::block_on;
 use async_trait::async_trait;
@@ -20,9 +31,8 @@ use futures::future::BoxFuture;
 use jf_cap::{
     keys::{AuditorKeyPair, AuditorPubKey, FreezerKeyPair, FreezerPubKey, UserKeyPair},
     proof::UniversalParam,
-    structs::{
-        AssetCode, AssetDefinition, AssetPolicy, FreezeFlag, ReceiverMemo, RecordCommitment,
-    },
+    structs::{AssetCode, AssetPolicy, FreezeFlag, NoteType, ReceiverMemo, RecordCommitment},
+    utils::compute_universal_param_size,
 };
 use net::{MerklePath, UserAddress};
 use reef::Ledger;
@@ -32,23 +42,32 @@ use std::collections::HashMap;
 use std::fmt;
 use std::fs::File;
 use std::io::{Read, Write};
-use std::iter::once;
 use std::path::PathBuf;
 use std::str::FromStr;
 use tagged_base64::TaggedBase64;
 use tempdir::TempDir;
 
+/// The interface required of a particular ledger-specific instantiation.
 pub trait CLI<'a> {
+    /// The ledger for which we want to instantiate this CLI.
     type Ledger: 'static + Ledger;
+    /// The [WalletBackend] implementation to use for the wallet.
     type Backend: 'a + WalletBackend<'a, Self::Ledger> + Send + Sync;
+    /// The type of command line options for use when configuring the CLI.
     type Args: CLIArgs;
 
+    /// Create a backend for the wallet which is being controlled by the CLI.
     fn init_backend(
         universal_param: &'a UniversalParam,
         args: Self::Args,
         loader: &mut impl WalletLoader<Self::Ledger, Meta = LoaderMetadata>,
     ) -> Result<Self::Backend, WalletError<Self::Ledger>>;
 
+    /// Add extra, ledger-specific commands to the generic CLI interface.
+    ///
+    /// This method is optional. By default it returns an empty list, in which case the CLI
+    /// instantiation will still provide commands for all of the basic, ledger-agnostic wallet
+    /// functionality.
     fn extra_commands() -> Vec<Command<'a, Self>>
     where
         Self: Sized,
@@ -57,35 +76,46 @@ pub trait CLI<'a> {
     }
 }
 
+/// CLI command line arguments.
 pub trait CLIArgs {
+    /// If specified, do not run the REPl, only generate a key pair in the given file.
     fn key_gen_path(&self) -> Option<PathBuf>;
+
+    /// Path to use for the wallet's persistent storage.
+    ///
+    /// If not provided, the default path, `~/.espresso/<ledger-name>/wallet`, will be used.
     fn storage_path(&self) -> Option<PathBuf>;
 
     /// Override the default, terminal-based IO.
     ///
-    /// If io() returns Some, the CLI will use the provided IO adapters, without interactive line
-    /// editing or password input hiding. Otherwise, it will use stdin (which must be a terminal)
-    /// and stdout, with interactive line editing and password hiding.
+    /// If this method returns [Some], the CLI will use the provided IO adapters, without
+    /// interactive line editing or password input hiding. Otherwise, it will use stdin (which must
+    /// be a terminal) and stdout, with interactive line editing and password hiding.
     fn io(&self) -> Option<SharedIO>;
 
+    /// If `true`, create a temporary directory for storage instead of using [CLIArgs::storage_path].
     fn use_tmp_storage(&self) -> bool;
 }
 
 pub type Wallet<'a, C> = crate::Wallet<'a, <C as CLI<'a>>::Backend, <C as CLI<'a>>::Ledger>;
 
-// A REPL command.
+/// A REPL command.
+///
+/// This struct can be created manually, but it is easier to use the [command!] macro, which
+/// automatically parses a function specification to create the documentation for command
+/// parameters.
 pub struct Command<'a, C: CLI<'a>> {
-    // The name of the command, for display and lookup.
+    /// The name of the command, for display and lookup.
     pub name: String,
-    // The parameters of the command and their types, as strings, for display purposes in the 'help'
-    // command.
+    /// The parameters of the command and their types, as strings, for display purposes in the
+    /// `help` command.
     pub params: Vec<(String, String)>,
-    // The keyword parameters of the command and their types, as strings, for display purposes in
-    // the 'help' command.
+    /// The keyword parameters of the command and their types, as strings, for display purposes in
+    /// the `help` command.
     pub kwargs: Vec<(String, String)>,
-    // A brief description of what the command does.
+    /// A brief description of what the command does.
     pub help: String,
-    // Run the command with a list of arguments.
+    /// Run the command with a list of arguments.
     pub run: CommandFunc<'a, C>,
 }
 
@@ -114,6 +144,7 @@ impl<'a, C: CLI<'a>> Display for Command<'a, C> {
     }
 }
 
+/// Types which can be parsed from a string relative to a particular [Wallet].Stream
 pub trait CLIInput<'a, C: CLI<'a>>: Sized {
     fn parse_for_wallet(wallet: &mut Wallet<'a, C>, s: &str) -> Option<Self>;
 }
@@ -131,8 +162,8 @@ macro_rules! cli_input_from_str {
 }
 
 cli_input_from_str! {
-    bool, u64, String, AssetCode, AuditorPubKey, FreezerPubKey, UserAddress, PathBuf, ReceiverMemo,
-    RecordCommitment, MerklePath, EventIndex
+    bool, u64, String, AssetCode, AssetInfo, AuditorPubKey, FreezerPubKey, UserAddress,
+    PathBuf, ReceiverMemo, RecordCommitment, MerklePath, EventIndex
 }
 
 impl<'a, C: CLI<'a>, L: Ledger> CLIInput<'a, C> for TransactionReceipt<L> {
@@ -141,16 +172,18 @@ impl<'a, C: CLI<'a>, L: Ledger> CLIInput<'a, C> for TransactionReceipt<L> {
     }
 }
 
-// Convenience macros for panicking if output fails.
+/// Convenience macro for panicking if output fails.
 #[macro_export]
 macro_rules! cli_writeln {
     ($($arg:expr),+ $(,)?) => { writeln!($($arg),+).expect("failed to write CLI output") };
 }
+/// Convenience macro for panicking if output fails.
 #[macro_export]
 macro_rules! cli_write {
     ($($arg:expr),+ $(,)?) => { write!($($arg),+).expect("failed to write CLI output") };
 }
 
+/// Create a [Command] from a help string and a function.
 #[macro_export]
 macro_rules! command {
     ($name:ident,
@@ -247,7 +280,7 @@ pub use crate::cli_writeln;
 pub use crate::command;
 pub use crate::count;
 
-// Types which can be listed in terminal output and parsed from a list index.
+/// Types which can be listed in terminal output and parsed from a list index.
 #[async_trait]
 pub trait Listable<'a, C: CLI<'a>>: Sized {
     async fn list(wallet: &mut Wallet<'a, C>) -> Vec<ListItem<Self>>;
@@ -298,50 +331,33 @@ impl<'a, C: CLI<'a>, T: Listable<'a, C> + CLIInput<'a, C>> CLIInput<'a, C> for L
 #[async_trait]
 impl<'a, C: CLI<'a>> Listable<'a, C> for AssetCode {
     async fn list(wallet: &mut Wallet<'a, C>) -> Vec<ListItem<Self>> {
-        // Get all assets known to the wallet, except the native asset, which we will add to the
-        // results manually to make sure that it is always present and always first.
-        let mut assets = wallet
+        // Get our viewing and freezing keys so we can check if the asset types are
+        // viewable/freezable.
+        let viewing_keys = wallet.auditor_pub_keys().await;
+        let freezing_keys = wallet.freezer_pub_keys().await;
+
+        // Get the wallet's asset library and convert to ListItems.
+        wallet
             .assets()
             .await
             .into_iter()
-            .filter_map(|(code, asset)| {
-                if code == AssetCode::native() {
-                    None
-                } else {
-                    Some(asset)
-                }
-            })
-            .collect::<Vec<_>>();
-        // Sort alphabetically for consistent ordering as long as the set of known assets remains
-        // stable.
-        assets.sort_by_key(|info| info.asset.code.to_string());
-
-        // Get our auditor and freezer keys so we can check if the asset types are
-        // auditable/freezable.
-        let audit_keys = wallet.auditor_pub_keys().await;
-        let freeze_keys = wallet.freezer_pub_keys().await;
-
-        // Convert to ListItems and prepend the native asset code.
-        once(AssetInfo::from(AssetDefinition::native()))
-            .chain(assets)
-            .into_iter()
             .enumerate()
-            .map(|(index, info)| ListItem {
+            .map(|(index, asset)| ListItem {
                 index,
-                annotation: if info.asset.code == AssetCode::native() {
+                annotation: if asset.definition.code == AssetCode::native() {
                     Some(String::from("native"))
                 } else {
                     // Annotate the listing with attributes indicating whether the asset is
-                    // auditable, freezable, and mintable by us.
+                    // viewable, freezable, and mintable by us.
                     let mut attributes = String::new();
-                    let policy = info.asset.policy_ref();
-                    if audit_keys.contains(policy.auditor_pub_key()) {
-                        attributes.push('a');
+                    let policy = asset.definition.policy_ref();
+                    if viewing_keys.contains(policy.auditor_pub_key()) {
+                        attributes.push('v');
                     }
-                    if freeze_keys.contains(policy.freezer_pub_key()) {
+                    if freezing_keys.contains(policy.freezer_pub_key()) {
                         attributes.push('f');
                     }
-                    if info.mint_info.is_some() {
+                    if asset.mint_info.is_some() {
                         attributes.push('m');
                     }
                     if attributes.is_empty() {
@@ -350,7 +366,7 @@ impl<'a, C: CLI<'a>> Listable<'a, C> for AssetCode {
                         Some(attributes)
                     }
                 },
-                item: info.asset.code,
+                item: asset.definition.code,
             })
             .collect()
     }
@@ -387,7 +403,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                 for item in <AssetCode as Listable<C>>::list(wallet).await {
                     cli_writeln!(io, "{}", item);
                 }
-                cli_writeln!(io, "(a=auditable, f=freezeable, m=mintable)");
+                cli_writeln!(io, "(v=viewable, f=freezeable, m=mintable)");
             }
         ),
         command!(
@@ -395,47 +411,35 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             "print information about an asset",
             C,
             |io, wallet, asset: ListItem<AssetCode>| {
-                let assets = wallet.assets().await;
-                let info = if asset.item == AssetCode::native() {
-                    // We always recognize the native asset type in the CLI, even if it's not
-                    // included in the wallet's assets yet.
-                    AssetInfo::from(AssetDefinition::native())
-                } else {
-                    match assets.get(&asset.item) {
-                        Some(info) => info.clone(),
-                        None => {
-                            cli_writeln!(io, "No such asset {}", asset.item);
-                            return;
-                        }
+                let asset = match wallet.asset(asset.item).await {
+                    Some(asset) => asset.clone(),
+                    None => {
+                        cli_writeln!(io, "No such asset {}", asset.item);
+                        return;
                     }
                 };
 
                 // Try to format the asset description as human-readable as possible.
-                let desc = if let Some(MintInfo { desc, .. }) = &info.mint_info {
-                    // If it looks like it came from a string, interpret as a string. Otherwise,
-                    // encode the binary blob as tagged base64.
-                    match std::str::from_utf8(desc) {
-                        Ok(s) => String::from(s),
-                        Err(_) => TaggedBase64::new("DESC", desc).unwrap().to_string(),
-                    }
-                } else if info.asset.code == AssetCode::native() {
+                let desc = if let Some(mint_info) = &asset.mint_info {
+                    mint_info.fmt_description()
+                } else if asset.definition.code == AssetCode::native() {
                     String::from("Native")
                 } else {
                     String::from("Asset")
                 };
-                cli_writeln!(io, "{} {}", desc, info.asset.code);
+                cli_writeln!(io, "{} {}", desc, asset.definition.code);
 
-                // Print the auditor, noting if it is us.
-                let policy = info.asset.policy_ref();
+                // Print the viewer, noting if it is us.
+                let policy = asset.definition.policy_ref();
                 if policy.is_auditor_pub_key_set() {
-                    let auditor_key = policy.auditor_pub_key();
-                    if wallet.auditor_pub_keys().await.contains(auditor_key) {
-                        cli_writeln!(io, "Auditor: me");
+                    let viewing_key = policy.auditor_pub_key();
+                    if wallet.auditor_pub_keys().await.contains(viewing_key) {
+                        cli_writeln!(io, "Viewer: me");
                     } else {
-                        cli_writeln!(io, "Auditor: {}", *auditor_key);
+                        cli_writeln!(io, "Viewer: {}", *viewing_key);
                     }
                 } else {
-                    cli_writeln!(io, "Not auditable");
+                    cli_writeln!(io, "Not viewable");
                 }
 
                 // Print the freezer, noting if it is us.
@@ -451,9 +455,9 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                 }
 
                 // Print the minter, noting if it is us.
-                if info.mint_info.is_some() {
+                if asset.mint_info.is_some() {
                     cli_writeln!(io, "Minter: me");
-                } else if info.asset.code == AssetCode::native() {
+                } else if asset.definition.code == AssetCode::native() {
                     cli_writeln!(io, "Not mintable");
                 } else {
                     cli_writeln!(io, "Minter: unknown");
@@ -495,21 +499,21 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             }
         ),
         command!(
-            issue,
+            create_asset,
             "create a new asset",
             C,
-            |io, wallet, desc: String; auditor: Option<AuditorPubKey>, freezer: Option<FreezerPubKey>,
-             trace_amount: Option<bool>, trace_address: Option<bool>, trace_blind: Option<bool>,
-             reveal_threshold: Option<u64>|
+            |io, wallet, desc: String; viewing_key: Option<AuditorPubKey>,
+             freezing_key: Option<FreezerPubKey>, view_amount: Option<bool>,
+             view_address: Option<bool>, view_blind: Option<bool>, viewing_threshold: Option<u64>|
             {
                 let mut policy = AssetPolicy::default();
-                if let Some(auditor) = auditor {
-                    policy = policy.set_auditor_pub_key(auditor);
+                if let Some(viewing_key) = viewing_key {
+                    policy = policy.set_auditor_pub_key(viewing_key);
                 }
-                if let Some(freezer) = freezer {
-                    policy = policy.set_freezer_pub_key(freezer);
+                if let Some(freezing_key) = freezing_key {
+                    policy = policy.set_freezer_pub_key(freezing_key);
                 }
-                if Some(true) == trace_amount {
+                if Some(true) == view_amount {
                     policy = match policy.reveal_amount() {
                         Ok(policy) => policy,
                         Err(err) => {
@@ -518,7 +522,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                         }
                     }
                 }
-                if Some(true) == trace_address {
+                if Some(true) == view_address {
                     policy = match policy.reveal_user_address() {
                         Ok(policy) => policy,
                         Err(err) => {
@@ -527,7 +531,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                         }
                     }
                 }
-                if Some(true) == trace_blind {
+                if Some(true) == view_blind {
                     policy = match policy.reveal_blinding_factor() {
                         Ok(policy) => policy,
                         Err(err) => {
@@ -536,8 +540,8 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                         }
                     }
                 }
-                if let Some(reveal_threshold) = reveal_threshold {
-                    policy = policy.set_reveal_threshold(reveal_threshold);
+                if let Some(viewing_threshold) = viewing_threshold {
+                    policy = policy.set_reveal_threshold(viewing_threshold);
                 }
                 match wallet.define_asset(desc.as_bytes(), policy).await {
                     Ok(def) => {
@@ -607,13 +611,13 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                             } else if let Some(AssetInfo {
                                 mint_info: Some(mint_info),
                                 ..
-                            }) = wallet.assets().await.get(&txn.asset)
+                            }) = wallet.asset(txn.asset).await
                             {
                                 // If the description looks like it came from a string, interpret as
                                 // a string. Otherwise, encode the binary blob as tagged base64.
-                                match std::str::from_utf8(&mint_info.desc) {
+                                match std::str::from_utf8(&mint_info.description) {
                                     Ok(s) => String::from(s),
-                                    Err(_) => TaggedBase64::new("DESC", &mint_info.desc)
+                                    Err(_) => TaggedBase64::new("DESC", &mint_info.description)
                                         .unwrap()
                                         .to_string(),
                                 }
@@ -682,15 +686,15 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             C,
             |io, wallet, key_type: KeyType; scan_from: Option<EventIndex>, wait: Option<bool>| {
                 match key_type {
-                    KeyType::Audit => match wallet.generate_audit_key().await {
+                    KeyType::Viewing => match wallet.generate_audit_key().await {
                         Ok(pub_key) => cli_writeln!(io, "{}", pub_key),
-                        Err(err) => cli_writeln!(io, "Error generating audit key: {}", err),
+                        Err(err) => cli_writeln!(io, "Error generating viewing key: {}", err),
                     },
-                    KeyType::Freeze => match wallet.generate_freeze_key().await {
+                    KeyType::Freezing => match wallet.generate_freeze_key().await {
                         Ok(pub_key) => cli_writeln!(io, "{}", pub_key),
-                        Err(err) => cli_writeln!(io, "Error generating freeze key: {}", err),
+                        Err(err) => cli_writeln!(io, "Error generating freezing key: {}", err),
                     },
-                    KeyType::Spend => match wallet.generate_user_key(scan_from).await {
+                    KeyType::Spending => match wallet.generate_user_key(scan_from).await {
                         Ok(pub_key) => {
                             if wait == Some(true) {
                                 if let Err(err) = wallet.await_key_scan(&pub_key.address()).await {
@@ -723,25 +727,25 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                 }
 
                 match key_type {
-                    KeyType::Audit => match bincode::deserialize::<AuditorKeyPair>(&bytes) {
+                    KeyType::Viewing => match bincode::deserialize::<AuditorKeyPair>(&bytes) {
                         Ok(key) => match wallet.add_audit_key(key.clone()).await {
                             Ok(()) => cli_writeln!(io, "{}", key.pub_key()),
-                            Err(err) => cli_writeln!(io, "Error saving audit key: {}", err),
+                            Err(err) => cli_writeln!(io, "Error saving viewing key: {}", err),
                         },
                         Err(err) => {
-                            cli_writeln!(io, "Error loading audit key: {}", err);
+                            cli_writeln!(io, "Error loading viewing key: {}", err);
                         }
                     },
-                    KeyType::Freeze => match bincode::deserialize::<FreezerKeyPair>(&bytes) {
+                    KeyType::Freezing => match bincode::deserialize::<FreezerKeyPair>(&bytes) {
                         Ok(key) => match wallet.add_freeze_key(key.clone()).await {
                             Ok(()) => cli_writeln!(io, "{}", key.pub_key()),
-                            Err(err) => cli_writeln!(io, "Error saving freeze key: {}", err),
+                            Err(err) => cli_writeln!(io, "Error saving freezing key: {}", err),
                         },
                         Err(err) => {
-                            cli_writeln!(io, "Error loading freeze key: {}", err);
+                            cli_writeln!(io, "Error loading freezing key: {}", err);
                         }
                     },
-                    KeyType::Spend => match bincode::deserialize::<UserKeyPair>(&bytes) {
+                    KeyType::Spending => match bincode::deserialize::<UserKeyPair>(&bytes) {
                         Ok(key) => match wallet.add_user_key(
                             key.clone(),
                             scan_from.unwrap_or_default(),
@@ -797,8 +801,8 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             }
         ),
         command!(
-            audit,
-            "list unspent records of auditable asset types",
+            view,
+            "list unspent records of viewable asset types",
             C,
             |io, wallet, asset: ListItem<AssetCode>; account: Option<UserAddress>| {
                 let records = wallet
@@ -824,6 +828,16 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                         cli_write!(io, "\t{}", UserAddress::from(record.ro.pub_key.address()));
                     }
                     cli_writeln!(io);
+                }
+            }
+        ),
+        command!(
+            import_asset,
+            "import an asset type",
+            C,
+            |io, wallet, asset: AssetInfo| {
+                if let Err(err) = wallet.import_asset(asset).await {
+                    cli_writeln!(io, "Error: {}", err);
                 }
             }
         ),
@@ -855,32 +869,32 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
 }
 
 async fn print_keys<'a, C: CLI<'a>>(io: &mut SharedIO, wallet: &Wallet<'a, C>) {
-    cli_writeln!(io, "Public keys:");
+    cli_writeln!(io, "Spending keys:");
     for key in wallet.pub_keys().await {
         cli_writeln!(io, "  {}", key);
     }
-    cli_writeln!(io, "Audit keys:");
+    cli_writeln!(io, "Viewing keys:");
     for key in wallet.auditor_pub_keys().await {
         cli_writeln!(io, "  {}", key);
     }
-    cli_writeln!(io, "Freeze keys:");
+    cli_writeln!(io, "Freezing keys:");
     for key in wallet.freezer_pub_keys().await {
         cli_writeln!(io, "  {}", key);
     }
 }
 
 pub enum KeyType {
-    Audit,
-    Freeze,
-    Spend,
+    Viewing,
+    Freezing,
+    Spending,
 }
 
 impl<'a, C: CLI<'a>> CLIInput<'a, C> for KeyType {
     fn parse_for_wallet(_wallet: &mut Wallet<'a, C>, s: &str) -> Option<Self> {
         match s {
-            "audit" => Some(Self::Audit),
-            "freeze" => Some(Self::Freeze),
-            "spend" => Some(Self::Spend),
+            "view" | "viewing" => Some(Self::Viewing),
+            "freeze" | "freezing" => Some(Self::Freezing),
+            "spend" | "spending" => Some(Self::Spending),
             _ => None,
         }
     }
@@ -917,6 +931,7 @@ pub async fn finish_transaction<'a, C: CLI<'a>>(
     }
 }
 
+/// Run the CLI based in the provided command line arguments.
 pub async fn cli_main<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
     args: C::Args,
 ) -> Result<(), WalletError<L>> {
@@ -955,7 +970,13 @@ async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
                 ),
             })?;
             let mut dir = PathBuf::from(home);
-            dir.push(".translucence/wallet");
+            dir.push(format!(
+                ".espresso/{}/wallet",
+                L::name()
+                    .to_lowercase()
+                    .replace('/', "_")
+                    .replace('\\', "_")
+            ));
             (dir, None)
         }
         None => {
@@ -974,13 +995,34 @@ async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
         C::Ledger::name(),
         env!("CARGO_PKG_VERSION")
     );
-    cli_writeln!(io, "(c) 2021 Translucence Research, Inc.");
+    cli_writeln!(io, "(c) 2021 Espresso Systems, Inc.");
 
     let mut loader = Loader::new(storage, reader);
-    let universal_param = Box::leak(Box::new(universal_param::get(
-        &mut loader.rng,
-        L::merkle_height(),
-    )));
+
+    let max_degree = compute_universal_param_size(NoteType::Transfer, 3, 3, L::merkle_height())
+        .unwrap_or_else(|err| {
+            panic!(
+                "Error while computing the universal parameter size for Transfer: {}",
+                err
+            )
+        });
+    // NOTE: since we are currently using fresh SRS (instead of from proper SRS from MPC
+    // ceremony), and deserializing takes longer than generating new SRS, we choose to
+    // generate new one instead of storing and reading from files.
+    // TODO: (alex) use proper SRS for production
+    let universal_param = Box::leak(Box::new(
+        jf_cap::proof::universal_setup(max_degree, &mut loader.rng)
+            .unwrap_or_else(|err| panic!("Error while generating universal param: {}", err)),
+    ));
+
+    // Alternatively, here's how you would store and load SRS from files:
+    // // generate and store SRS in default path
+    // store_universal_parameter_for_demo(max_degree, None);
+    // let universal_param = Box::leak(Box::new(
+    //     jf_cap::parameters::load_universal_parameter(None)
+    //         .unwrap_or_else(|err| panic!("Error while loading universal param from file: {}", err)),
+    // ));
+
     let backend = C::init_backend(universal_param, args, &mut loader)?;
 
     // Loading the wallet takes a while. Let the user know that's expected.
@@ -1007,7 +1049,7 @@ async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
                 let mut args = Vec::new();
                 let mut kwargs = HashMap::new();
                 for tok in tokens.into_iter().skip(1) {
-                    if let Some((key, value)) = tok.split_once("=") {
+                    if let Some((key, value)) = tok.split_once('=') {
                         kwargs.insert(String::from(key), String::from(value));
                     } else {
                         args.push(String::from(tok));
@@ -1043,7 +1085,9 @@ mod test {
         task::spawn,
     };
     use futures::stream::{iter, StreamExt};
+    use jf_cap::structs::{AssetCodeSeed, AssetDefinition};
     use pipe::{PipeReader, PipeWriter};
+    use rand_chacha::{rand_core::SeedableRng, ChaChaRng};
     use reef::cap;
     use std::time::Instant;
 
@@ -1145,32 +1189,32 @@ mod test {
     }
 
     #[async_std::test]
-    async fn test_audit_freeze() {
+    async fn test_view_freeze() {
         let mut t = MockSystem::default();
         let (ledger, key_streams) = create_network(&mut t, &[1000, 1000, 0]).await;
 
-        // Create three wallet clients: one to mint and audit an asset, one to make an anonymous
-        // transfer, and one to receive an anonymous transfer. We will see if the auditor can
+        // Create three wallet clients: one to mint and view an asset, one to make an anonymous
+        // transfer, and one to receive an anonymous transfer. We will see if the viewer can
         // discover the output record of the anonymous transfer, in which it is not a participant.
-        let (mut auditor_input, mut auditor_output) =
+        let (mut viewer_input, mut viewer_output) =
             create_wallet(ledger.clone(), key_streams[0].clone());
         let (mut sender_input, mut sender_output) =
             create_wallet(ledger.clone(), key_streams[1].clone());
         let (mut receiver_input, mut receiver_output) =
             create_wallet(ledger, key_streams[2].clone());
 
-        // Get the auditor's funded address.
-        writeln!(auditor_input, "gen_key spend scan_from=start wait=true").unwrap();
-        let matches = match_output(&mut auditor_output, &["(?P<addr>ADDR~.*)"]);
-        let auditor_address = matches.get("addr");
-        writeln!(auditor_input, "balance 0").unwrap();
+        // Get the viewer's funded address.
+        writeln!(viewer_input, "gen_key spending scan_from=start wait=true").unwrap();
+        let matches = match_output(&mut viewer_output, &["(?P<addr>ADDR~.*)"]);
+        let viewer_address = matches.get("addr");
+        writeln!(viewer_input, "balance 0").unwrap();
         match_output(
-            &mut auditor_output,
-            &[format!("{} {}", auditor_address, 1000)],
+            &mut viewer_output,
+            &[format!("{} {}", viewer_address, 1000)],
         );
 
         // Get the sender's funded address.
-        writeln!(sender_input, "gen_key spend scan_from=start wait=true").unwrap();
+        writeln!(sender_input, "gen_key spending scan_from=start wait=true").unwrap();
         let matches = match_output(&mut sender_output, &["(?P<addr>ADDR~.*)"]);
         let sender_address = matches.get("addr");
         writeln!(sender_input, "balance 0").unwrap();
@@ -1180,46 +1224,46 @@ mod test {
         );
 
         // Get the receiver's (unfunded) address.
-        writeln!(receiver_input, "gen_key spend").unwrap();
+        writeln!(receiver_input, "gen_key spending").unwrap();
         let matches = match_output(&mut receiver_output, &["(?P<addr>ADDR~.*)"]);
         let receiver_address = matches.get("addr");
 
-        // Generate an audit key.
-        writeln!(auditor_input, "gen_key audit").unwrap();
-        let matches = match_output(&mut auditor_output, &["(?P<audkey>AUDPUBKEY~.*)"]);
-        let audkey = matches.get("audkey");
-        // Currently we only audit assets that we can freeze, so we need a freeze key.
-        writeln!(auditor_input, "gen_key freeze").unwrap();
-        let matches = match_output(&mut auditor_output, &["(?P<freezekey>FREEZEPUBKEY~.*)"]);
-        let freezekey = matches.get("freezekey");
+        // Generate a viewing key.
+        writeln!(viewer_input, "gen_key viewing").unwrap();
+        let matches = match_output(&mut viewer_output, &["(?P<view_key>AUDPUBKEY~.*)"]);
+        let view_key = matches.get("view_key");
+        // Currently we only view assets that we can freeze, so we need a freeze key.
+        writeln!(viewer_input, "gen_key freezing").unwrap();
+        let matches = match_output(&mut viewer_output, &["(?P<freeze_key>FREEZEPUBKEY~.*)"]);
+        let freeze_key = matches.get("freeze_key");
         // Define an auditable asset.
         writeln!(
-            auditor_input,
-            "issue my_asset auditor={} freezer={} trace_amount=true trace_address=true trace_blind=true",
-            audkey, freezekey
+            viewer_input,
+            "create_asset my_asset viewing_key={} freezing_key={} view_amount=true view_address=true view_blind=true",
+            view_key, freeze_key
         )
         .unwrap();
-        wait_for_prompt(&mut auditor_output);
+        wait_for_prompt(&mut viewer_output);
         // Mint some of the asset on behalf of `sender` (the asset has numeric code 1, since the
         // native asset is always 0).
         writeln!(
-            auditor_input,
+            viewer_input,
             "mint 1 {} {} 1000 1",
-            auditor_address, sender_address
+            viewer_address, sender_address
         )
         .unwrap();
-        let matches = match_output(&mut auditor_output, &["(?P<txn>TXN~.*)"]);
+        let matches = match_output(&mut viewer_output, &["(?P<txn>TXN~.*)"]);
         let receipt = matches.get("txn");
         await_transaction(
             &receipt,
-            (&mut auditor_input, &mut auditor_output),
+            (&mut viewer_input, &mut viewer_output),
             &mut [(&mut sender_input, &mut sender_output)],
         );
         writeln!(sender_input, "balance 1").unwrap();
         match_output(&mut sender_output, &[format!("{} 1000", sender_address)]);
 
-        // Make an anonymous transfer that doesn't involve the auditor (so we can check that the
-        // auditor nonetheless discovers the details of the transaction).
+        // Make an anonymous transfer that doesn't involve the viewer (so we can check that the
+        // viewer nonetheless discovers the details of the transaction).
         writeln!(
             sender_input,
             "transfer_from 1 {} {} 50 1",
@@ -1233,17 +1277,16 @@ mod test {
             (&mut sender_input, &mut sender_output),
             &mut [
                 (&mut receiver_input, &mut receiver_output),
-                (&mut auditor_input, &mut auditor_output),
+                (&mut viewer_input, &mut viewer_output),
             ],
         );
 
-        // Audit the transaction. We should find two unspent records: first the amount-50
-        // transaction output, and second the amount-950 change output. These records have UIDs 5
-        // and 6, because we already have 5 records: 3 initial grants, a mint output, and a mint fee
-        // change record.
-        writeln!(auditor_input, "audit 1").unwrap();
+        // View the transaction. We should find two unspent records: first the amount-50 transaction
+        // output, and second the amount-950 change output. These records have UIDs 5 and 6, because
+        // we already have 5 records: 3 initial grants, a mint output, and a mint fee change record.
+        writeln!(viewer_input, "view 1").unwrap();
         match_output(
-            &mut auditor_output,
+            &mut viewer_output,
             &[
                 "^UID\\s+AMOUNT\\s+FROZEN\\s+OWNER$",
                 format!("^5\\s+50\\s+false\\s+{}$", receiver_address).as_str(),
@@ -1251,37 +1294,37 @@ mod test {
             ],
         );
         // Filter by account.
-        writeln!(auditor_input, "audit 1 account={}", receiver_address).unwrap();
+        writeln!(viewer_input, "view 1 account={}", receiver_address).unwrap();
         match_output(
-            &mut auditor_output,
+            &mut viewer_output,
             &["^UID\\s+AMOUNT\\s+FROZEN$", "^5\\s+50\\s+false$"],
         );
-        writeln!(auditor_input, "audit 1 account={}", sender_address).unwrap();
+        writeln!(viewer_input, "view 1 account={}", sender_address).unwrap();
         match_output(
-            &mut auditor_output,
+            &mut viewer_output,
             &["^UID\\s+AMOUNT\\s+FROZEN$", "^6\\s+950\\s+false$"],
         );
 
         // If we can see the record openings and we hold the freezer key, we should be able to
         // freeze them.
         writeln!(
-            auditor_input,
+            viewer_input,
             "freeze 1 {} {} 950 1",
-            auditor_address, sender_address
+            viewer_address, sender_address
         )
         .unwrap();
-        let matches = match_output(&mut auditor_output, &["(?P<txn>TXN~.*)"]);
+        let matches = match_output(&mut viewer_output, &["(?P<txn>TXN~.*)"]);
         let receipt = matches.get("txn");
         await_transaction(
             &receipt,
-            (&mut auditor_input, &mut auditor_output),
+            (&mut viewer_input, &mut viewer_output),
             &mut [(&mut sender_input, &mut sender_output)],
         );
-        writeln!(auditor_input, "audit 1").unwrap();
+        writeln!(viewer_input, "view 1").unwrap();
         // Note that the UID changes after freezing, because the freeze consume the unfrozen record
         // and creates a new frozen one.
         match_output(
-            &mut auditor_output,
+            &mut viewer_output,
             &[
                 "^UID\\s+AMOUNT\\s+FROZEN\\s+OWNER$",
                 format!("^5\\s+50\\s+false\\s+{}$", receiver_address).as_str(),
@@ -1302,26 +1345,72 @@ mod test {
 
         // Unfreezing the record makes it available again.
         writeln!(
-            auditor_input,
+            viewer_input,
             "unfreeze 1 {} {} 950 1",
-            auditor_address, sender_address
+            viewer_address, sender_address
         )
         .unwrap();
-        let matches = match_output(&mut auditor_output, &["(?P<txn>TXN~.*)"]);
+        let matches = match_output(&mut viewer_output, &["(?P<txn>TXN~.*)"]);
         let receipt = matches.get("txn");
         await_transaction(
             &receipt,
-            (&mut auditor_input, &mut auditor_output),
+            (&mut viewer_input, &mut viewer_output),
             &mut [(&mut sender_input, &mut sender_output)],
         );
-        writeln!(auditor_input, "audit 1").unwrap();
+        writeln!(viewer_input, "view 1").unwrap();
         match_output(
-            &mut auditor_output,
+            &mut viewer_output,
             &[
                 "^UID\\s+AMOUNT\\s+FROZEN\\s+OWNER$",
                 format!("^5\\s+50\\s+false\\s+{}$", receiver_address).as_str(),
                 format!("^10\\s+950\\s+false\\s+{}$", sender_address).as_str(),
             ],
         );
+    }
+
+    #[async_std::test]
+    async fn test_import_asset() {
+        let mut rng = ChaChaRng::from_seed([38; 32]);
+        let seed = AssetCodeSeed::generate(&mut rng);
+        let code = AssetCode::new_domestic(seed, "my_asset".as_bytes());
+        let definition = AssetDefinition::new(code, AssetPolicy::default()).unwrap();
+
+        let mut t = MockSystem::default();
+        let (ledger, key_streams) = create_network(&mut t, &[0]).await;
+        let (mut input, mut output) = create_wallet(ledger.clone(), key_streams[0].clone());
+
+        // Load without mint info.
+        writeln!(input, "import_asset definition:{}", definition).unwrap();
+        wait_for_prompt(&mut output);
+        writeln!(input, "asset {}", definition.code).unwrap();
+        match_output(
+            &mut output,
+            &[
+                format!("Asset {}", definition.code).as_str(),
+                "Not viewable",
+                "Not freezeable",
+                "Minter: unknown",
+            ],
+        );
+
+        // Update later with mint info.
+        writeln!(
+            input,
+            "import_asset definition:{},seed:{},description:my_asset",
+            definition, seed
+        )
+        .unwrap();
+        wait_for_prompt(&mut output);
+        // Asset 0 is the native asset, ours is asset 1.
+        writeln!(input, "asset 1").unwrap();
+        match_output(
+            &mut output,
+            &["my_asset", "Not viewable", "Not freezeable", "Minter: me"],
+        );
+
+        // Make sure the asset was only loaded once (the second command should have updated the
+        // original instance).
+        writeln!(input, "asset 2").unwrap();
+        match_output(&mut output, &["invalid value for argument asset"]);
     }
 }

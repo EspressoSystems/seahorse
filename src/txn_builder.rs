@@ -1,8 +1,20 @@
+// Copyright (c) 2022 Espresso Systems (espressosys.com)
+// This file is part of the Seahorse library.
+
+// This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+// You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+//! Transaction building.
+//!
+//! This module defines the subset of ledger state required by a wallet to build transactions, and
+//! provides an interface for building them.
 use crate::events::EventIndex;
 use arbitrary::{Arbitrary, Unstructured};
 use arbitrary_wrappers::*;
 use ark_serialize::*;
 use chrono::{DateTime, Local};
+use espresso_macros::ser_test;
 use jf_cap::{
     errors::TxnApiError,
     freeze::{FreezeNote, FreezeNoteInput},
@@ -34,7 +46,6 @@ use std::fmt::{Debug, Formatter};
 use std::hash::{Hash, Hasher};
 use std::iter::FromIterator;
 use std::ops::{Index, IndexMut};
-use zerok_macros::ser_test;
 
 #[derive(Debug, Snafu)]
 #[snafu(visibility = "pub")]
@@ -157,12 +168,6 @@ impl RecordDatabase {
 
     pub fn iter(&self) -> impl Iterator<Item = &RecordInfo> {
         self.record_info.values()
-    }
-
-    pub fn assets(&'_ self) -> impl '_ + Iterator<Item = AssetDefinition> {
-        self.record_info
-            .values()
-            .map(|rec| rec.ro.asset_def.clone())
     }
 
     /// Find records which can be the input to a transaction, matching the given parameters.
@@ -710,42 +715,6 @@ where
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct MintInfo {
-    pub seed: AssetCodeSeed,
-    pub desc: Vec<u8>,
-}
-
-impl MintInfo {
-    pub fn new(seed: AssetCodeSeed, desc: Vec<u8>) -> Self {
-        Self { seed, desc }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct AssetInfo {
-    pub asset: AssetDefinition,
-    pub mint_info: Option<MintInfo>,
-}
-
-impl AssetInfo {
-    pub fn new(asset: AssetDefinition, mint_info: MintInfo) -> Self {
-        Self {
-            asset,
-            mint_info: Some(mint_info),
-        }
-    }
-}
-
-impl From<AssetDefinition> for AssetInfo {
-    fn from(asset: AssetDefinition) -> Self {
-        Self {
-            asset,
-            mint_info: None,
-        }
-    }
-}
-
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct TransactionHistoryEntry<L: Ledger> {
@@ -932,18 +901,10 @@ impl<L: Ledger> TransactionState<L> {
             .sum()
     }
 
-    pub fn assets(&self) -> HashMap<AssetCode, AssetInfo> {
-        self.records
-            .assets()
-            .map(|def| (def.code, AssetInfo::from(def)))
-            .collect()
-    }
-
-    pub fn clear_expired_transactions(&mut self) -> Vec<TransactionUID<L>> {
+    pub fn clear_expired_transactions(&mut self) -> Vec<PendingTransaction<L>> {
         self.transactions
             .remove_expired(self.validator.now())
             .into_iter()
-            .map(|txn| txn.uid())
             .collect()
     }
 
@@ -952,11 +913,11 @@ impl<L: Ledger> TransactionState<L> {
         rng: &mut ChaChaRng,
         description: &'b [u8],
         policy: AssetPolicy,
-    ) -> Result<(AssetCodeSeed, AssetCode, AssetDefinition), TransactionError> {
+    ) -> Result<(AssetCodeSeed, AssetDefinition), TransactionError> {
         let seed = AssetCodeSeed::generate(rng);
         let code = AssetCode::new_domestic(seed, description);
         let asset_definition = AssetDefinition::new(code, policy).context(CryptoError)?;
-        Ok((seed, code, asset_definition))
+        Ok((seed, asset_definition))
     }
 
     pub fn add_pending_transaction(

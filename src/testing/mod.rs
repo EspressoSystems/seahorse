@@ -1,3 +1,10 @@
+// Copyright (c) 2022 Espresso Systems (espressosys.com)
+// This file is part of the Seahorse library.
+
+// This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+// You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
+
 #![allow(dead_code)]
 
 /// This module contains testing utilities and unit tests for the generic wallet interface.
@@ -11,12 +18,30 @@
 use super::*;
 use async_std::sync::{Arc, Mutex};
 use futures::channel::mpsc;
+use jf_cap::structs::NoteType;
+use jf_cap::utils::compute_universal_param_size;
 use jf_cap::{proof::UniversalParam, MerkleTree, TransactionVerifyingKey};
 use key_set::{KeySet, OrderByOutputs, ProverKeySet, VerifierKeySet};
+use lazy_static::lazy_static;
 use rand_chacha::rand_core::RngCore;
 use std::collections::BTreeMap;
 use std::pin::Pin;
 use std::time::Instant;
+
+lazy_static! {
+    pub static ref UNIVERSAL_PARAM: UniversalParam = {
+        let max_degree =
+            compute_universal_param_size(NoteType::Transfer, 3, 3, cap::Ledger::merkle_height())
+                .unwrap_or_else(|err| {
+                    panic!(
+                        "Error while computing the universal parameter size for Transfer: {}",
+                        err
+                    )
+                });
+        jf_cap::proof::universal_setup(max_degree, &mut ChaChaRng::from_seed([0u8; 32]))
+            .unwrap_or_else(|err| panic!("Error while generating universal param: {}", err))
+    };
+}
 
 #[async_trait]
 pub trait MockNetwork<'a, L: Ledger> {
@@ -171,7 +196,7 @@ pub fn assert_wallet_states_eq<'a, L: Ledger>(w1: &WalletState<'a, L>, w2: &Wall
     assert_eq!(w1.proving_keys, w2.proving_keys);
     assert_eq!(w1.txn_state.records, w2.txn_state.records);
     assert_eq!(w1.key_state, w2.key_state);
-    assert_eq!(w1.auditable_assets, w2.auditable_assets);
+    assert_eq!(w1.assets, w2.assets);
     assert_eq!(
         w1.audit_keys.keys().collect::<Vec<_>>(),
         w2.audit_keys.keys().collect::<Vec<_>>()
@@ -185,7 +210,6 @@ pub fn assert_wallet_states_eq<'a, L: Ledger>(w1: &WalletState<'a, L>, w2: &Wall
         w1.txn_state.record_mt.commitment(),
         w2.txn_state.record_mt.commitment()
     );
-    assert_eq!(w1.defined_assets, w2.defined_assets);
     assert_eq!(w1.txn_state.transactions, w2.txn_state.transactions);
     assert_eq!(w1.key_scans, w2.key_scans);
 }
@@ -241,17 +265,17 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         let mut users = vec![];
         let mut initial_records = vec![];
         for amount in initial_grants {
-            let key_stream = hd::KeyTree::random(&mut rng).unwrap().0;
+            let key_stream = hd::KeyTree::random(&mut rng).0;
             let sub_tree = key_stream.derive_sub_tree("user".as_bytes());
             let keys_amounts;
             if two_addresses_per_wallet {
                 keys_amounts = vec![
                     (
-                        sub_tree.derive_user_key_pair(&0u64.to_le_bytes()),
+                        sub_tree.derive_user_keypair(&0u64.to_le_bytes()),
                         amount / 2,
                     ),
                     (
-                        sub_tree.derive_user_key_pair(&1u64.to_le_bytes()),
+                        sub_tree.derive_user_keypair(&1u64.to_le_bytes()),
                         amount - amount / 2,
                     ),
                 ];

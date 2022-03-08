@@ -1,6 +1,13 @@
+// Copyright (c) 2022 Espresso Systems (espressosys.com)
+// This file is part of the Seahorse library.
+
+// This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+// You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
+
 use super::*;
 use chrono::Duration;
-use zerok_macros::generic_tests;
+use espresso_macros::generic_tests;
 
 #[derive(Clone, Debug)]
 pub struct TxnHistoryWithTimeTolerantEq<L: Ledger>(pub TransactionHistoryEntry<L>);
@@ -611,7 +618,7 @@ pub mod generic_wallet_tests {
         let mut now = Instant::now();
 
         // The sender wallet (wallets[0]) gets an initial grant of 1 for a transfer fee. wallets[1]
-        // will act as the receiver, and wallets[2] will be a third party which issues and freezes
+        // will act as the receiver, and wallets[2] will be a third party which creates and freezes
         // some of wallets[0]'s assets. It gets a grant of 3, for a mint fee, a freeze fee and an
         // unfreeze fee.
         //
@@ -881,7 +888,7 @@ pub mod generic_wallet_tests {
         // that were validated in the same block can be recorded by the wallets in any order.
         let mut histories = vec![vec![vec![]]; nkeys as usize];
         let grants =
-            // The issuer (wallet 0) gets 1 coin per initial record, to pay transaction fees while
+            // The minter (wallet 0) gets 1 coin per initial record, to pay transaction fees while
             // it mints and distributes the records, and 1 coin per transaction, to pay transaction
             // fees while minting additional records if test wallets run out of balance during the
             // test.
@@ -1639,7 +1646,7 @@ pub mod generic_wallet_tests {
 
         // A new wallet joins the system after there are already some transactions on the ledger.
         let storage = t.create_storage().await;
-        let key_stream = hd::KeyTree::random(&mut rng).unwrap().0;
+        let key_stream = hd::KeyTree::random(&mut rng).0;
         let backend = t
             .create_backend(
                 ledger.clone(),
@@ -1866,5 +1873,84 @@ pub mod generic_wallet_tests {
         );
         assert_eq!(wallets[1].0.balance(&AssetCode::native()).await, bob_grant);
         assert_eq!(wallets[1].0.balance(&coin.code).await, transfer_amount * 2);
+    }
+
+    #[async_std::test]
+    pub async fn test_asset_library<'a, T: SystemUnderTest<'a>>() {
+        let mut t = T::default();
+        let mut now = Instant::now();
+        let initial_grant = 10;
+        let (ledger, mut wallets) = t
+            .create_test_network(&[(2, 2)], vec![initial_grant, initial_grant], &mut now)
+            .await;
+
+        // Test various ways of discovering assets. We will have wallets[0] discover assets by
+        //  * defining one itself
+        //  * receiving one from wallets[1]
+        //  * importing one
+        // All of these asset types should end up in the asset library, as well as the native asset
+        // type which should always be present. The defined asset should also appear in the
+        // auditable subset if we use the right auditor key, which we will define now:
+        let audit_key0 = wallets[0].0.generate_audit_key().await.unwrap();
+
+        // Define an asset.
+        let defined_asset = wallets[0]
+            .0
+            .define_asset(&[], AssetPolicy::default().set_auditor_pub_key(audit_key0))
+            .await
+            .unwrap();
+
+        // Receive an asset. wallets[1] will define a new asset type (auditable by itself) and then
+        // mint some to wallets[0].
+        let audit_key1 = wallets[1].0.generate_audit_key().await.unwrap();
+        let minted_asset = wallets[1]
+            .0
+            .define_asset(&[], AssetPolicy::default().set_auditor_pub_key(audit_key1))
+            .await
+            .unwrap();
+        let minter_addr = wallets[1].1.clone();
+        let receiver_addr = wallets[0].1.clone();
+        wallets[1]
+            .0
+            .mint(&minter_addr, 1, &minted_asset.code, 1, receiver_addr)
+            .await
+            .unwrap();
+        t.sync(&ledger, &wallets).await;
+
+        // Import an asset (we'll use `wallets[1]` to define it).
+        let imported_asset = wallets[1]
+            .0
+            .define_asset(&[], AssetPolicy::default())
+            .await
+            .unwrap();
+        wallets[0]
+            .0
+            .import_asset(AssetInfo::from(imported_asset.clone()))
+            .await
+            .unwrap();
+
+        // Now check that all expected asset types appear in wallets[0]'s asset library.
+        let get_asset = |code| {
+            let wallet = &wallets[0].0;
+            async move {
+                let asset = wallet.asset(code).await.unwrap();
+                assert!(wallet.assets().await.contains(&asset));
+                asset
+            }
+        };
+        assert_eq!(get_asset(AssetCode::native()).await, AssetInfo::native());
+        assert_eq!(
+            get_asset(defined_asset.code).await.definition,
+            defined_asset
+        );
+        assert!(get_asset(defined_asset.code).await.mint_info.is_some());
+        assert_eq!(
+            get_asset(minted_asset.code).await,
+            AssetInfo::from(minted_asset.clone())
+        );
+        assert_eq!(
+            get_asset(imported_asset.code).await,
+            AssetInfo::from(imported_asset.clone())
+        );
     }
 }

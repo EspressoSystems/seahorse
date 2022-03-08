@@ -1,10 +1,19 @@
+// Copyright (c) 2022 Espresso Systems (espressosys.com)
+// This file is part of the Seahorse library.
+
+// This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+// You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
+
 pub use crate::testing::MockLedger;
 
+use super::UNIVERSAL_PARAM;
 use crate::{
+    asset_library::AssetInfo,
     events::{EventIndex, EventSource, LedgerEvent},
     hd,
     testing::{MockEventSource, MockNetwork as _},
-    txn_builder::{TransactionHistoryEntry, TransactionState, TransactionUID},
+    txn_builder::{PendingTransaction, TransactionHistoryEntry, TransactionInfo, TransactionState},
     CryptoError, RoleKeyPair, WalletBackend, WalletError, WalletState, WalletStorage,
 };
 use async_std::sync::{Arc, Mutex, MutexGuard};
@@ -14,15 +23,12 @@ use itertools::izip;
 use jf_cap::{
     keys::{UserAddress, UserKeyPair, UserPubKey},
     proof::UniversalParam,
-    structs::{
-        AssetCodeSeed, AssetDefinition, Nullifier, ReceiverMemo, RecordCommitment, RecordOpening,
-    },
+    structs::{Nullifier, ReceiverMemo, RecordCommitment, RecordOpening},
     MerkleTree, Signature,
 };
 use key_set::{OrderByOutputs, ProverKeySet, VerifierKeySet};
-use lazy_static::lazy_static;
 use rand_chacha::{rand_core::SeedableRng, ChaChaRng};
-use reef::{cap, traits::Ledger as _, traits::Transaction as _, traits::Validator as _};
+use reef::{cap, traits::Transaction as _, traits::Validator as _};
 use snafu::ResultExt;
 use std::collections::{HashMap, HashSet};
 use std::pin::Pin;
@@ -56,12 +62,9 @@ impl<'a> WalletStorage<'a, cap::Ledger> for MockStorage<'a> {
         Ok(())
     }
 
-    async fn store_auditable_asset(
-        &mut self,
-        asset: &AssetDefinition,
-    ) -> Result<(), WalletError<cap::Ledger>> {
+    async fn store_asset(&mut self, asset: &AssetInfo) -> Result<(), WalletError<cap::Ledger>> {
         if let Some(working) = &mut self.working {
-            working.auditable_assets.insert(asset.code, asset.clone());
+            working.assets.insert(asset.clone());
         }
         Ok(())
     }
@@ -71,6 +74,7 @@ impl<'a> WalletStorage<'a, cap::Ledger> for MockStorage<'a> {
             match key {
                 RoleKeyPair::Auditor(key) => {
                     working.audit_keys.insert(key.pub_key(), key.clone());
+                    working.assets.add_audit_key(key.pub_key());
                 }
                 RoleKeyPair::Freezer(key) => {
                     working.freeze_keys.insert(key.pub_key(), key.clone());
@@ -79,20 +83,6 @@ impl<'a> WalletStorage<'a, cap::Ledger> for MockStorage<'a> {
                     working.user_keys.insert(key.address(), key.clone());
                 }
             }
-        }
-        Ok(())
-    }
-
-    async fn store_defined_asset(
-        &mut self,
-        asset: &AssetDefinition,
-        seed: AssetCodeSeed,
-        desc: &[u8],
-    ) -> Result<(), WalletError<cap::Ledger>> {
-        if let Some(working) = &mut self.working {
-            working
-                .defined_assets
-                .insert(asset.code, (asset.clone(), seed, desc.to_vec()));
         }
         Ok(())
     }
@@ -292,7 +282,6 @@ pub struct MockBackend<'a> {
     storage: Arc<Mutex<MockStorage<'a>>>,
     ledger: Arc<Mutex<MockLedger<'a, cap::Ledger, MockNetwork<'a>, MockStorage<'a>>>>,
     key_stream: hd::KeyTree,
-    pending_memos: HashMap<TransactionUID<cap::Ledger>, (Vec<ReceiverMemo>, Signature)>,
 }
 
 impl<'a> MockBackend<'a> {
@@ -305,7 +294,6 @@ impl<'a> MockBackend<'a> {
             ledger,
             storage,
             key_stream,
-            pending_memos: Default::default(),
         }
     }
 }
@@ -350,11 +338,10 @@ impl<'a> WalletBackend<'a, cap::Ledger> for MockBackend<'a> {
                 },
                 key_state: Default::default(),
                 key_scans: Default::default(),
-                auditable_assets: Default::default(),
+                assets: Default::default(),
                 audit_keys: Default::default(),
                 freeze_keys: Default::default(),
                 user_keys: Default::default(),
-                defined_assets: HashMap::new(),
             }
         };
 
@@ -445,26 +432,17 @@ impl<'a> WalletBackend<'a, cap::Ledger> for MockBackend<'a> {
     async fn submit(
         &mut self,
         txn: cap::Transaction,
-        uid: TransactionUID<cap::Ledger>,
-        memos: Vec<ReceiverMemo>,
-        sig: Signature,
+        _info: TransactionInfo<cap::Ledger>,
     ) -> Result<(), WalletError<cap::Ledger>> {
-        match self.ledger.lock().await.submit(txn) {
-            Ok(()) => {
-                self.pending_memos.insert(uid, (memos, sig));
-                Ok(())
-            }
-            Err(err) => Err(err),
-        }
+        self.ledger.lock().await.submit(txn)
     }
 
-    async fn finalize(&mut self, uid: TransactionUID<cap::Ledger>, txn_id: Option<(u64, u64)>) {
-        let (memos, sig) = self.pending_memos.remove(&uid).unwrap();
+    async fn finalize(&mut self, txn: PendingTransaction<cap::Ledger>, txn_id: Option<(u64, u64)>) {
         if let Some((block_id, txn_id)) = txn_id {
             self.ledger
                 .lock()
                 .await
-                .post_memos(block_id, txn_id, memos, sig)
+                .post_memos(block_id, txn_id, txn.info.memos, txn.info.sig)
                 .unwrap();
         }
     }
@@ -508,13 +486,6 @@ impl<'a> super::SystemUnderTest<'a> for MockSystem {
     fn universal_param(&self) -> &'a UniversalParam {
         &*UNIVERSAL_PARAM
     }
-}
-
-lazy_static! {
-    static ref UNIVERSAL_PARAM: UniversalParam = universal_param::get(
-        &mut ChaChaRng::from_seed([1u8; 32]),
-        cap::Ledger::merkle_height()
-    );
 }
 
 #[cfg(test)]
