@@ -279,7 +279,7 @@
     <span class="doccomment">/// included in `transaction`.</span>
     <span class="ident">Memos</span> {
         <span class="ident">outputs</span>: <span class="ident">Vec</span><span class="op">&lt;</span>(<span class="ident">ReceiverMemo</span>, <span class="ident">RecordCommitment</span>, <span class="ident">u64</span>, <span class="ident">MerklePath</span>)<span class="op">&gt;</span>,
-        <span class="ident">transaction</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span>(<span class="ident">u64</span>, <span class="ident">u64</span>)<span class="op">&gt;</span>,
+        <span class="ident">transaction</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span>(<span class="ident">u64</span>, <span class="ident">u64</span>, <span class="ident">TransactionKind</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span>)<span class="op">&gt;</span>,
     },
 }
 
