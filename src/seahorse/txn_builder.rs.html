@@ -1666,6 +1666,123 @@
 <span id="1666">1666</span>
 <span id="1667">1667</span>
 <span id="1668">1668</span>
+<span id="1669">1669</span>
+<span id="1670">1670</span>
+<span id="1671">1671</span>
+<span id="1672">1672</span>
+<span id="1673">1673</span>
+<span id="1674">1674</span>
+<span id="1675">1675</span>
+<span id="1676">1676</span>
+<span id="1677">1677</span>
+<span id="1678">1678</span>
+<span id="1679">1679</span>
+<span id="1680">1680</span>
+<span id="1681">1681</span>
+<span id="1682">1682</span>
+<span id="1683">1683</span>
+<span id="1684">1684</span>
+<span id="1685">1685</span>
+<span id="1686">1686</span>
+<span id="1687">1687</span>
+<span id="1688">1688</span>
+<span id="1689">1689</span>
+<span id="1690">1690</span>
+<span id="1691">1691</span>
+<span id="1692">1692</span>
+<span id="1693">1693</span>
+<span id="1694">1694</span>
+<span id="1695">1695</span>
+<span id="1696">1696</span>
+<span id="1697">1697</span>
+<span id="1698">1698</span>
+<span id="1699">1699</span>
+<span id="1700">1700</span>
+<span id="1701">1701</span>
+<span id="1702">1702</span>
+<span id="1703">1703</span>
+<span id="1704">1704</span>
+<span id="1705">1705</span>
+<span id="1706">1706</span>
+<span id="1707">1707</span>
+<span id="1708">1708</span>
+<span id="1709">1709</span>
+<span id="1710">1710</span>
+<span id="1711">1711</span>
+<span id="1712">1712</span>
+<span id="1713">1713</span>
+<span id="1714">1714</span>
+<span id="1715">1715</span>
+<span id="1716">1716</span>
+<span id="1717">1717</span>
+<span id="1718">1718</span>
+<span id="1719">1719</span>
+<span id="1720">1720</span>
+<span id="1721">1721</span>
+<span id="1722">1722</span>
+<span id="1723">1723</span>
+<span id="1724">1724</span>
+<span id="1725">1725</span>
+<span id="1726">1726</span>
+<span id="1727">1727</span>
+<span id="1728">1728</span>
+<span id="1729">1729</span>
+<span id="1730">1730</span>
+<span id="1731">1731</span>
+<span id="1732">1732</span>
+<span id="1733">1733</span>
+<span id="1734">1734</span>
+<span id="1735">1735</span>
+<span id="1736">1736</span>
+<span id="1737">1737</span>
+<span id="1738">1738</span>
+<span id="1739">1739</span>
+<span id="1740">1740</span>
+<span id="1741">1741</span>
+<span id="1742">1742</span>
+<span id="1743">1743</span>
+<span id="1744">1744</span>
+<span id="1745">1745</span>
+<span id="1746">1746</span>
+<span id="1747">1747</span>
+<span id="1748">1748</span>
+<span id="1749">1749</span>
+<span id="1750">1750</span>
+<span id="1751">1751</span>
+<span id="1752">1752</span>
+<span id="1753">1753</span>
+<span id="1754">1754</span>
+<span id="1755">1755</span>
+<span id="1756">1756</span>
+<span id="1757">1757</span>
+<span id="1758">1758</span>
+<span id="1759">1759</span>
+<span id="1760">1760</span>
+<span id="1761">1761</span>
+<span id="1762">1762</span>
+<span id="1763">1763</span>
+<span id="1764">1764</span>
+<span id="1765">1765</span>
+<span id="1766">1766</span>
+<span id="1767">1767</span>
+<span id="1768">1768</span>
+<span id="1769">1769</span>
+<span id="1770">1770</span>
+<span id="1771">1771</span>
+<span id="1772">1772</span>
+<span id="1773">1773</span>
+<span id="1774">1774</span>
+<span id="1775">1775</span>
+<span id="1776">1776</span>
+<span id="1777">1777</span>
+<span id="1778">1778</span>
+<span id="1779">1779</span>
+<span id="1780">1780</span>
+<span id="1781">1781</span>
+<span id="1782">1782</span>
+<span id="1783">1783</span>
+<span id="1784">1784</span>
+<span id="1785">1785</span>
 </pre><pre class="rust"><code><span class="comment">// Copyright (c) 2022 Espresso Systems (espressosys.com)</span>
 <span class="comment">// This file is part of the Seahorse library.</span>
 
@@ -2069,14 +2186,14 @@
 <span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">TransactionReceipt</span><span class="op">&lt;</span><span class="ident">L</span>: <span class="ident">Ledger</span><span class="op">&gt;</span> {
     <span class="kw">pub</span> <span class="ident">uid</span>: <span class="ident">TransactionUID</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span>,
     <span class="kw">pub</span> <span class="ident">fee_nullifier</span>: <span class="ident">Nullifier</span>,
-    <span class="kw">pub</span> <span class="ident">submitter</span>: <span class="ident">UserAddress</span>,
+    <span class="kw">pub</span> <span class="ident">submitters</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">UserAddress</span><span class="op">&gt;</span>,
 }
 
 <span class="kw">impl</span><span class="op">&lt;</span><span class="ident">L</span>: <span class="ident">Ledger</span><span class="op">&gt;</span> <span class="ident">PartialEq</span><span class="op">&lt;</span><span class="self">Self</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">TransactionReceipt</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span> {
     <span class="kw">fn</span> <span class="ident">eq</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">other</span>: <span class="kw-2">&amp;</span><span class="self">Self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">bool</span> {
         <span class="self">self</span>.<span class="ident">uid</span> <span class="op">=</span><span class="op">=</span> <span class="ident">other</span>.<span class="ident">uid</span>
             <span class="op">&amp;&amp;</span> <span class="self">self</span>.<span class="ident">fee_nullifier</span> <span class="op">=</span><span class="op">=</span> <span class="ident">other</span>.<span class="ident">fee_nullifier</span>
-            <span class="op">&amp;&amp;</span> <span class="self">self</span>.<span class="ident">submitter</span> <span class="op">=</span><span class="op">=</span> <span class="ident">other</span>.<span class="ident">submitter</span>
+            <span class="op">&amp;&amp;</span> <span class="self">self</span>.<span class="ident">submitters</span> <span class="op">=</span><span class="op">=</span> <span class="ident">other</span>.<span class="ident">submitters</span>
     }
 }
 
@@ -2088,7 +2205,10 @@
         <span class="prelude-val">Ok</span>(<span class="self">Self</span> {
             <span class="ident">uid</span>: <span class="ident">u</span>.<span class="ident">arbitrary</span>()<span class="question-mark">?</span>,
             <span class="ident">fee_nullifier</span>: <span class="ident">u</span>.<span class="ident">arbitrary</span>::<span class="op">&lt;</span><span class="ident">ArbitraryNullifier</span><span class="op">&gt;</span>()<span class="question-mark">?</span>.<span class="ident">into</span>(),
-            <span class="ident">submitter</span>: <span class="ident">u</span>.<span class="ident">arbitrary</span>::<span class="op">&lt;</span><span class="ident">ArbitraryUserAddress</span><span class="op">&gt;</span>()<span class="question-mark">?</span>.<span class="ident">into</span>(),
+            <span class="ident">submitters</span>: <span class="ident">u</span>
+                .<span class="ident">arbitrary_iter</span>::<span class="op">&lt;</span><span class="ident">ArbitraryUserAddress</span><span class="op">&gt;</span>()<span class="question-mark">?</span>
+                .<span class="ident">map</span>(<span class="op">|</span><span class="ident">a</span><span class="op">|</span> <span class="prelude-val">Ok</span>(<span class="ident">a</span><span class="question-mark">?</span>.<span class="ident">into</span>()))
+                .<span class="ident">collect</span>::<span class="op">&lt;</span><span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="kw">_</span>, <span class="kw">_</span><span class="op">&gt;</span><span class="op">&gt;</span>()<span class="question-mark">?</span>,
         })
     }
 }
@@ -2386,10 +2506,10 @@
     <span class="kw">pub</span> <span class="ident">time</span>: <span class="ident">DateTime</span><span class="op">&lt;</span><span class="ident">Local</span><span class="op">&gt;</span>,
     <span class="kw">pub</span> <span class="ident">asset</span>: <span class="ident">AssetCode</span>,
     <span class="kw">pub</span> <span class="ident">kind</span>: <span class="ident">TransactionKind</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span>,
-    <span class="comment">// If we sent this transaction, `sender` records the address of the spending key used to submit</span>
-    <span class="comment">// it. If we received this transaction from someone else, we may not know who the sender is and</span>
-    <span class="comment">// this field may be None.</span>
-    <span class="kw">pub</span> <span class="ident">sender</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">UserAddress</span><span class="op">&gt;</span>,
+    <span class="comment">// If we sent this transaction, `senders` records the addresses of the spending keys used to</span>
+    <span class="comment">// submit it. If we received this transaction from someone else, we may not know who the senders</span>
+    <span class="comment">// are and this field may be empty.</span>
+    <span class="kw">pub</span> <span class="ident">senders</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">UserAddress</span><span class="op">&gt;</span>,
     <span class="comment">// Receivers and corresponding amounts.</span>
     <span class="kw">pub</span> <span class="ident">receivers</span>: <span class="ident">Vec</span><span class="op">&lt;</span>(<span class="ident">UserAddress</span>, <span class="ident">u64</span>)<span class="op">&gt;</span>,
     <span class="comment">// If we sent this transaction, a receipt to track its progress.</span>
@@ -2412,8 +2532,8 @@
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Clone</span>, <span class="ident">Debug</span>, <span class="ident">Serialize</span>, <span class="ident">Deserialize</span>)]</span>
 <span class="attribute">#[<span class="ident">serde</span>(<span class="ident">bound</span> <span class="op">=</span> <span class="string">&quot;&quot;</span>)]</span>
 <span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">TransactionInfo</span><span class="op">&lt;</span><span class="ident">L</span>: <span class="ident">Ledger</span><span class="op">&gt;</span> {
-    <span class="comment">// The account sending the transaction.</span>
-    <span class="kw">pub</span> <span class="ident">account</span>: <span class="ident">UserAddress</span>,
+    <span class="comment">// The accounts sending the transaction.</span>
+    <span class="kw">pub</span> <span class="ident">accounts</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">UserAddress</span><span class="op">&gt;</span>,
     <span class="kw">pub</span> <span class="ident">memos</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">ReceiverMemo</span><span class="op">&gt;</span>,
     <span class="kw">pub</span> <span class="ident">sig</span>: <span class="ident">Signature</span>,
     <span class="comment">// If the transaction is a freeze, the expected frozen/unfrozen outputs.</span>
@@ -2428,7 +2548,7 @@
 
 <span class="kw">impl</span><span class="op">&lt;</span><span class="ident">L</span>: <span class="ident">Ledger</span><span class="op">&gt;</span> <span class="ident">PartialEq</span><span class="op">&lt;</span><span class="self">Self</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">TransactionInfo</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span> {
     <span class="kw">fn</span> <span class="ident">eq</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">other</span>: <span class="kw-2">&amp;</span><span class="self">Self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">bool</span> {
-        <span class="self">self</span>.<span class="ident">account</span> <span class="op">=</span><span class="op">=</span> <span class="ident">other</span>.<span class="ident">account</span>
+        <span class="self">self</span>.<span class="ident">accounts</span> <span class="op">=</span><span class="op">=</span> <span class="ident">other</span>.<span class="ident">accounts</span>
             <span class="op">&amp;&amp;</span> <span class="self">self</span>.<span class="ident">memos</span> <span class="op">=</span><span class="op">=</span> <span class="ident">other</span>.<span class="ident">memos</span>
             <span class="op">&amp;&amp;</span> <span class="self">self</span>.<span class="ident">sig</span> <span class="op">=</span><span class="op">=</span> <span class="ident">other</span>.<span class="ident">sig</span>
             <span class="op">&amp;&amp;</span> <span class="self">self</span>.<span class="ident">freeze_outputs</span> <span class="op">=</span><span class="op">=</span> <span class="ident">other</span>.<span class="ident">freeze_outputs</span>
@@ -2451,7 +2571,10 @@
         <span class="kw">let</span> <span class="ident">key</span> <span class="op">=</span> <span class="ident">u</span>.<span class="ident">arbitrary</span>::<span class="op">&lt;</span><span class="ident">ArbitraryKeyPair</span><span class="op">&gt;</span>()<span class="question-mark">?</span>.<span class="ident">into</span>();
         <span class="kw">let</span> <span class="ident">sig</span> <span class="op">=</span> <span class="ident">sign_receiver_memos</span>(<span class="kw-2">&amp;</span><span class="ident">key</span>, <span class="kw-2">&amp;</span><span class="ident">memos</span>).<span class="ident">unwrap</span>();
         <span class="prelude-val">Ok</span>(<span class="self">Self</span> {
-            <span class="ident">account</span>: <span class="ident">u</span>.<span class="ident">arbitrary</span>::<span class="op">&lt;</span><span class="ident">ArbitraryUserAddress</span><span class="op">&gt;</span>()<span class="question-mark">?</span>.<span class="ident">into</span>(),
+            <span class="ident">accounts</span>: <span class="ident">u</span>
+                .<span class="ident">arbitrary_iter</span>::<span class="op">&lt;</span><span class="ident">ArbitraryUserAddress</span><span class="op">&gt;</span>()<span class="question-mark">?</span>
+                .<span class="ident">map</span>(<span class="op">|</span><span class="ident">a</span><span class="op">|</span> <span class="prelude-val">Ok</span>(<span class="ident">a</span><span class="question-mark">?</span>.<span class="ident">into</span>()))
+                .<span class="ident">collect</span>::<span class="op">&lt;</span><span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="kw">_</span>, <span class="kw">_</span><span class="op">&gt;</span><span class="op">&gt;</span>()<span class="question-mark">?</span>,
             <span class="ident">memos</span>,
             <span class="ident">sig</span>,
             <span class="ident">freeze_outputs</span>: <span class="ident">u</span>
@@ -2476,8 +2599,8 @@
 <span class="doccomment">/// information.</span>
 <span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">TransferInfo</span><span class="op">&lt;</span><span class="ident">L</span>: <span class="ident">Ledger</span><span class="op">&gt;</span> {
     <span class="kw">pub</span> <span class="ident">note</span>: <span class="ident">TransferNote</span>,
-    <span class="kw">pub</span> <span class="ident">owner_address</span>: <span class="ident">UserAddress</span>,
-    <span class="kw">pub</span> <span class="ident">sig_keypair</span>: <span class="ident">KeyPair</span>,
+    <span class="kw">pub</span> <span class="ident">owner_addresses</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">UserAddress</span><span class="op">&gt;</span>,
+    <span class="kw">pub</span> <span class="ident">sig_key_pair</span>: <span class="ident">KeyPair</span>,
     <span class="kw">pub</span> <span class="ident">history</span>: <span class="ident">TransactionHistoryEntry</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span>,
     <span class="kw">pub</span> <span class="ident">inputs</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">RecordOpening</span><span class="op">&gt;</span>,
     <span class="kw">pub</span> <span class="ident">outputs</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">RecordOpening</span><span class="op">&gt;</span>,
@@ -2485,7 +2608,11 @@
 }
 
 <span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">TransferSpec</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span><span class="op">&gt;</span> {
-    <span class="kw">pub</span> <span class="ident">owner_keypair</span>: <span class="kw-2">&amp;</span><span class="lifetime">&#39;a</span> <span class="ident">UserKeyPair</span>,
+    <span class="doccomment">/// List of key_pairs that will be used to find the records for the transfer.</span>
+    <span class="doccomment">///</span>
+    <span class="doccomment">/// The list may contain multiple key_pairs, or only one key_pair in which case only the</span>
+    <span class="doccomment">/// associated records can be transferred.</span>
+    <span class="kw">pub</span> <span class="ident">owner_key_pairs</span>: <span class="kw-2">&amp;</span><span class="lifetime">&#39;a</span> <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">UserKeyPair</span><span class="op">&gt;</span>,
     <span class="kw">pub</span> <span class="ident">asset</span>: <span class="kw-2">&amp;</span><span class="lifetime">&#39;a</span> <span class="ident">AssetCode</span>,
     <span class="kw">pub</span> <span class="ident">receivers</span>: <span class="kw-2">&amp;</span><span class="lifetime">&#39;a</span> [(<span class="ident">UserPubKey</span>, <span class="ident">u64</span>)],
     <span class="kw">pub</span> <span class="ident">fee</span>: <span class="ident">u64</span>,
@@ -2605,7 +2732,7 @@
         <span class="kw">let</span> <span class="ident">receipt</span> <span class="op">=</span> <span class="ident">TransactionReceipt</span> {
             <span class="ident">uid</span>: <span class="ident">pending</span>.<span class="ident">uid</span>(),
             <span class="ident">fee_nullifier</span>: <span class="ident">txn</span>.<span class="ident">input_nullifiers</span>()[<span class="number">0</span>],
-            <span class="ident">submitter</span>: <span class="ident">pending</span>.<span class="ident">info</span>.<span class="ident">account</span>.<span class="ident">clone</span>(),
+            <span class="ident">submitters</span>: <span class="ident">pending</span>.<span class="ident">info</span>.<span class="ident">accounts</span>.<span class="ident">clone</span>(),
         };
         <span class="self">self</span>.<span class="ident">transactions</span>.<span class="ident">insert_pending</span>(<span class="ident">pending</span>);
         <span class="ident">receipt</span>
@@ -2671,28 +2798,31 @@
             <span class="op">+</span> <span class="ident">spec</span>.<span class="ident">fee</span>;
 
         <span class="comment">// find input records which account for at least the total amount, and possibly some change.</span>
-        <span class="kw">let</span> (<span class="ident">input_records</span>, <span class="ident">_change</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">find_records</span>(
+        <span class="kw">let</span> <span class="ident">records</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">find_records</span>(
             <span class="kw-2">&amp;</span><span class="ident">AssetCode::native</span>(),
-            <span class="kw-2">&amp;</span><span class="ident">spec</span>.<span class="ident">owner_keypair</span>.<span class="ident">pub_key</span>(),
+            <span class="ident">spec</span>.<span class="ident">owner_key_pairs</span>,
             <span class="ident">FreezeFlag::Unfrozen</span>,
             <span class="ident">total_output_amount</span>,
             <span class="prelude-val">None</span>,
         )<span class="question-mark">?</span>;
-
-        <span class="comment">// prepare inputs</span>
-        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">inputs</span> <span class="op">=</span> <span class="macro">vec!</span>[];
-        <span class="kw">for</span> (<span class="ident">ro</span>, <span class="ident">uid</span>) <span class="kw">in</span> <span class="kw-2">&amp;</span><span class="ident">input_records</span> {
-            <span class="kw">let</span> <span class="ident">acc_member_witness</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">get_merkle_proof</span>(<span class="kw-2">*</span><span class="ident">uid</span>);
-            <span class="ident">inputs</span>.<span class="ident">push</span>(<span class="ident">TransferNoteInput</span> {
-                <span class="ident">ro</span>: <span class="ident">ro</span>.<span class="ident">clone</span>(),
-                <span class="ident">acc_member_witness</span>,
-                <span class="ident">owner_keypair</span>: <span class="ident">spec</span>.<span class="ident">owner_keypair</span>,
-                <span class="ident">cred</span>: <span class="prelude-val">None</span>,
-            });
+        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">inputs</span> <span class="op">=</span> <span class="ident">Vec::new</span>();
+        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">input_ros</span> <span class="op">=</span> <span class="ident">Vec::new</span>();
+        <span class="kw">for</span> (<span class="ident">owner_key_pair</span>, <span class="ident">input_records</span>, <span class="kw">_</span>) <span class="kw">in</span> <span class="kw-2">&amp;</span><span class="ident">records</span> {
+            <span class="comment">// prepare inputs</span>
+            <span class="kw">for</span> (<span class="ident">ro</span>, <span class="ident">uid</span>) <span class="kw">in</span> <span class="ident">input_records</span> {
+                <span class="kw">let</span> <span class="ident">acc_member_witness</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">get_merkle_proof</span>(<span class="kw-2">*</span><span class="ident">uid</span>);
+                <span class="ident">inputs</span>.<span class="ident">push</span>(<span class="ident">TransferNoteInput</span> {
+                    <span class="ident">ro</span>: <span class="ident">ro</span>.<span class="ident">clone</span>(),
+                    <span class="ident">acc_member_witness</span>,
+                    <span class="ident">owner_keypair</span>: <span class="ident">owner_key_pair</span>,
+                    <span class="ident">cred</span>: <span class="prelude-val">None</span>,
+                });
+                <span class="ident">input_ros</span>.<span class="ident">push</span>(<span class="ident">ro</span>.<span class="ident">clone</span>());
+            }
         }
 
         <span class="comment">// prepare outputs, excluding fee change (which will be automatically generated)</span>
-        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">outputs</span> <span class="op">=</span> <span class="macro">vec!</span>[];
+        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">outputs</span> <span class="op">=</span> <span class="ident">Vec::new</span>();
         <span class="kw">for</span> (<span class="ident">pub_key</span>, <span class="ident">amount</span>) <span class="kw">in</span> <span class="ident">spec</span>.<span class="ident">receivers</span> {
             <span class="ident">outputs</span>.<span class="ident">push</span>(<span class="ident">RecordOpening::new</span>(
                 <span class="ident">rng</span>,
@@ -2706,7 +2836,7 @@
         <span class="comment">// find a proving key which can handle this transaction size</span>
         <span class="kw">let</span> (<span class="ident">proving_key</span>, <span class="ident">dummy_inputs</span>) <span class="op">=</span> <span class="ident"><span class="self">Self</span>::xfr_proving_key</span>(
             <span class="ident">rng</span>,
-            <span class="ident">spec</span>.<span class="ident">owner_keypair</span>.<span class="ident">pub_key</span>(),
+            <span class="ident">records</span>[<span class="number">0</span>].<span class="number">0</span>.<span class="ident">pub_key</span>(),
             <span class="ident">proving_keys</span>,
             <span class="kw-2">&amp;</span><span class="ident">AssetDefinition::native</span>(),
             <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">inputs</span>,
@@ -2714,15 +2844,16 @@
             <span class="ident">spec</span>.<span class="ident">xfr_size_requirement</span>,
             <span class="bool-val">false</span>,
         )<span class="question-mark">?</span>;
+
         <span class="comment">// pad with dummy inputs if necessary</span>
         <span class="kw">let</span> <span class="ident">dummy_inputs</span> <span class="op">=</span> (<span class="number">0</span>..<span class="ident">dummy_inputs</span>)
             .<span class="ident">map</span>(<span class="op">|</span><span class="kw">_</span><span class="op">|</span> <span class="ident">RecordOpening::dummy</span>(<span class="ident">rng</span>, <span class="ident">FreezeFlag::Unfrozen</span>))
             .<span class="ident">collect</span>::<span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="kw">_</span><span class="op">&gt;</span><span class="op">&gt;</span>();
-        <span class="kw">for</span> (<span class="ident">ro</span>, <span class="ident">owner_keypair</span>) <span class="kw">in</span> <span class="kw-2">&amp;</span><span class="ident">dummy_inputs</span> {
+        <span class="kw">for</span> (<span class="ident">ro</span>, <span class="ident">owner_key_pair</span>) <span class="kw">in</span> <span class="kw-2">&amp;</span><span class="ident">dummy_inputs</span> {
             <span class="kw">let</span> <span class="ident">dummy_input</span> <span class="op">=</span> <span class="ident">TransferNoteInput</span> {
                 <span class="ident">ro</span>: <span class="ident">ro</span>.<span class="ident">clone</span>(),
                 <span class="ident">acc_member_witness</span>: <span class="ident">AccMemberWitness::dummy</span>(<span class="ident">L::merkle_height</span>()),
-                <span class="ident">owner_keypair</span>,
+                <span class="ident">owner_keypair</span>: <span class="ident">owner_key_pair</span>,
                 <span class="ident">cred</span>: <span class="prelude-val">None</span>,
             };
             <span class="ident">inputs</span>.<span class="ident">push</span>(<span class="ident">dummy_input</span>);
@@ -2745,11 +2876,16 @@
             .<span class="ident">collect</span>();
 
         <span class="comment">// Build auxiliary info.</span>
+        <span class="kw">let</span> <span class="ident">owner_addresses</span> <span class="op">=</span> <span class="ident">spec</span>
+            .<span class="ident">owner_key_pairs</span>
+            .<span class="ident">iter</span>()
+            .<span class="ident">map</span>(<span class="op">|</span><span class="ident">key_pair</span><span class="op">|</span> <span class="ident">key_pair</span>.<span class="ident">address</span>())
+            .<span class="ident">collect</span>::<span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">UserAddress</span><span class="op">&gt;</span><span class="op">&gt;</span>();
         <span class="kw">let</span> <span class="ident">history</span> <span class="op">=</span> <span class="ident">TransactionHistoryEntry</span> {
             <span class="ident">time</span>: <span class="ident">Local::now</span>(),
             <span class="ident">asset</span>: <span class="ident">AssetCode::native</span>(),
             <span class="ident">kind</span>: <span class="ident">TransactionKind</span>::<span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="ident">::send</span>(),
-            <span class="ident">sender</span>: <span class="prelude-val">Some</span>(<span class="ident">spec</span>.<span class="ident">owner_keypair</span>.<span class="ident">address</span>()),
+            <span class="ident">senders</span>: <span class="ident">owner_addresses</span>.<span class="ident">clone</span>(),
             <span class="ident">receivers</span>: <span class="ident">spec</span>
                 .<span class="ident">receivers</span>
                 .<span class="ident">iter</span>()
@@ -2757,12 +2893,13 @@
                 .<span class="ident">collect</span>(),
             <span class="ident">receipt</span>: <span class="prelude-val">None</span>,
         };
+
         <span class="prelude-val">Ok</span>(<span class="ident">TransferInfo</span> {
             <span class="ident">note</span>,
-            <span class="ident">owner_address</span>: <span class="ident">spec</span>.<span class="ident">owner_keypair</span>.<span class="ident">address</span>(),
-            <span class="ident">sig_keypair</span>: <span class="ident">kp</span>,
+            <span class="ident">owner_addresses</span>,
+            <span class="ident">sig_key_pair</span>: <span class="ident">kp</span>,
             <span class="ident">history</span>,
-            <span class="ident">inputs</span>: <span class="ident">input_records</span>.<span class="ident">into_iter</span>().<span class="ident">map</span>(<span class="op">|</span>(<span class="ident">ro</span>, <span class="kw">_</span>)<span class="op">|</span> <span class="ident">ro</span>).<span class="ident">collect</span>(),
+            <span class="ident">inputs</span>: <span class="ident">input_ros</span>,
             <span class="ident">outputs</span>,
             <span class="ident">fee_output</span>: <span class="prelude-val">None</span>,
         })
@@ -2785,30 +2922,53 @@
             .<span class="ident">fold</span>(<span class="number">0</span>, <span class="op">|</span><span class="ident">sum</span>, (<span class="kw">_</span>, <span class="ident">amount</span>)<span class="op">|</span> <span class="ident">sum</span> <span class="op">+</span> <span class="kw-2">*</span><span class="ident">amount</span>);
 
         <span class="comment">// find input records of the asset type to spend (this does not include the fee input)</span>
-        <span class="kw">let</span> (<span class="ident">input_records</span>, <span class="ident">change</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">find_records</span>(
+        <span class="kw">let</span> <span class="ident">records</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">find_records</span>(
             <span class="ident">spec</span>.<span class="ident">asset</span>,
-            <span class="kw-2">&amp;</span><span class="ident">spec</span>.<span class="ident">owner_keypair</span>.<span class="ident">pub_key</span>(),
+            <span class="ident">spec</span>.<span class="ident">owner_key_pairs</span>,
             <span class="ident">FreezeFlag::Unfrozen</span>,
             <span class="ident">total_output_amount</span>,
             <span class="prelude-val">None</span>,
         )<span class="question-mark">?</span>;
-        <span class="kw">let</span> <span class="ident">asset</span> <span class="op">=</span> <span class="ident">input_records</span>[<span class="number">0</span>].<span class="number">0</span>.<span class="ident">asset_def</span>.<span class="ident">clone</span>();
 
-        <span class="comment">// prepare inputs</span>
-        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">inputs</span> <span class="op">=</span> <span class="macro">vec!</span>[];
-        <span class="kw">for</span> (<span class="ident">ro</span>, <span class="ident">uid</span>) <span class="kw">in</span> <span class="ident">input_records</span>.<span class="ident">iter</span>() {
-            <span class="kw">let</span> <span class="ident">witness</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">get_merkle_proof</span>(<span class="kw-2">*</span><span class="ident">uid</span>);
-            <span class="ident">inputs</span>.<span class="ident">push</span>(<span class="ident">TransferNoteInput</span> {
-                <span class="ident">ro</span>: <span class="ident">ro</span>.<span class="ident">clone</span>(),
-                <span class="ident">acc_member_witness</span>: <span class="ident">witness</span>,
-                <span class="ident">owner_keypair</span>: <span class="ident">spec</span>.<span class="ident">owner_keypair</span>,
-                <span class="ident">cred</span>: <span class="prelude-val">None</span>, <span class="comment">// TODO support credentials</span>
-            })
+        <span class="kw">let</span> <span class="ident">asset</span> <span class="op">=</span> <span class="ident">records</span>[<span class="number">0</span>].<span class="number">1</span>[<span class="number">0</span>].<span class="number">0</span>.<span class="ident">asset_def</span>.<span class="ident">clone</span>();
+
+        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">inputs</span> <span class="op">=</span> <span class="ident">Vec::new</span>();
+        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">input_ros</span> <span class="op">=</span> <span class="ident">Vec::new</span>();
+        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">fee_input</span> <span class="op">=</span> <span class="prelude-val">None</span>;
+        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">change_ro</span> <span class="op">=</span> <span class="prelude-val">None</span>;
+        <span class="kw">for</span> (<span class="ident">owner_key_pair</span>, <span class="ident">input_records</span>, <span class="ident">change</span>) <span class="kw">in</span> <span class="kw-2">&amp;</span><span class="ident">records</span> {
+            <span class="comment">// prepare inputs</span>
+            <span class="kw">for</span> (<span class="ident">ro</span>, <span class="ident">uid</span>) <span class="kw">in</span> <span class="ident">input_records</span>.<span class="ident">iter</span>() {
+                <span class="kw">let</span> <span class="ident">witness</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">get_merkle_proof</span>(<span class="kw-2">*</span><span class="ident">uid</span>);
+                <span class="ident">inputs</span>.<span class="ident">push</span>(<span class="ident">TransferNoteInput</span> {
+                    <span class="ident">ro</span>: <span class="ident">ro</span>.<span class="ident">clone</span>(),
+                    <span class="ident">acc_member_witness</span>: <span class="ident">witness</span>,
+                    <span class="ident">owner_keypair</span>: <span class="ident">owner_key_pair</span>,
+                    <span class="ident">cred</span>: <span class="prelude-val">None</span>, <span class="comment">// TODO support credentials</span>
+                });
+                <span class="ident">input_ros</span>.<span class="ident">push</span>(<span class="ident">ro</span>.<span class="ident">clone</span>());
+            }
+            <span class="kw">if</span> <span class="ident">fee_input</span>.<span class="ident">is_none</span>() {
+                <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Ok</span>(<span class="ident">input</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">find_fee_input</span>(<span class="ident">owner_key_pair</span>, <span class="ident">spec</span>.<span class="ident">fee</span>) {
+                    <span class="ident">fee_input</span> <span class="op">=</span> <span class="prelude-val">Some</span>(<span class="ident">input</span>);
+                }
+            }
+
+            <span class="comment">// change in the asset type being transfered (not fee change)</span>
+            <span class="kw">if</span> <span class="kw-2">*</span><span class="ident">change</span> <span class="op">&gt;</span> <span class="number">0</span> {
+                <span class="kw">let</span> <span class="ident">me</span> <span class="op">=</span> <span class="ident">owner_key_pair</span>.<span class="ident">pub_key</span>();
+                <span class="ident">change_ro</span> <span class="op">=</span> <span class="prelude-val">Some</span>(<span class="ident">RecordOpening::new</span>(
+                    <span class="ident">rng</span>,
+                    <span class="kw-2">*</span><span class="ident">change</span>,
+                    <span class="ident">asset</span>.<span class="ident">clone</span>(),
+                    <span class="ident">me</span>,
+                    <span class="ident">FreezeFlag::Unfrozen</span>,
+                ));
+            }
         }
-        <span class="kw">let</span> <span class="ident">fee_input</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">find_fee_input</span>(<span class="ident">spec</span>.<span class="ident">owner_keypair</span>, <span class="ident">spec</span>.<span class="ident">fee</span>)<span class="question-mark">?</span>;
 
         <span class="comment">// prepare outputs, excluding fee change (which will be automatically generated)</span>
-        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">outputs</span> <span class="op">=</span> <span class="macro">vec!</span>[];
+        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">outputs</span> <span class="op">=</span> <span class="ident">Vec::new</span>();
         <span class="kw">for</span> (<span class="ident">pub_key</span>, <span class="ident">amount</span>) <span class="kw">in</span> <span class="ident">spec</span>.<span class="ident">receivers</span> {
             <span class="ident">outputs</span>.<span class="ident">push</span>(<span class="ident">RecordOpening::new</span>(
                 <span class="ident">rng</span>,
@@ -2818,35 +2978,43 @@
                 <span class="ident">FreezeFlag::Unfrozen</span>,
             ));
         }
-        <span class="comment">// change in the asset type being transfered (not fee change)</span>
-        <span class="kw">if</span> <span class="ident">change</span> <span class="op">&gt;</span> <span class="number">0</span> {
-            <span class="kw">let</span> <span class="ident">me</span> <span class="op">=</span> <span class="ident">spec</span>.<span class="ident">owner_keypair</span>.<span class="ident">pub_key</span>();
-            <span class="kw">let</span> <span class="ident">change_ro</span> <span class="op">=</span>
-                <span class="ident">RecordOpening::new</span>(<span class="ident">rng</span>, <span class="ident">change</span>, <span class="ident">asset</span>.<span class="ident">clone</span>(), <span class="ident">me</span>, <span class="ident">FreezeFlag::Unfrozen</span>);
-            <span class="ident">outputs</span>.<span class="ident">push</span>(<span class="ident">change_ro</span>);
+        <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">ro</span>) <span class="op">=</span> <span class="ident">change_ro</span>.<span class="ident">clone</span>() {
+            <span class="ident">outputs</span>.<span class="ident">push</span>(<span class="ident">ro</span>);
         }
+
+        <span class="kw">let</span> <span class="ident">fee_input</span> <span class="op">=</span> <span class="kw">match</span> <span class="ident">fee_input</span> {
+            <span class="prelude-val">Some</span>(<span class="ident">input</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">input</span>,
+            <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> {
+                <span class="kw">return</span> <span class="prelude-val">Err</span>(<span class="ident">TransactionError::InsufficientBalance</span> {
+                    <span class="ident">asset</span>: <span class="ident">AssetCode::native</span>(),
+                    <span class="ident">required</span>: <span class="ident">spec</span>.<span class="ident">fee</span>,
+                    <span class="ident">actual</span>: <span class="number">0</span>,
+                });
+            }
+        };
 
         <span class="comment">// find a proving key which can handle this transaction size</span>
         <span class="kw">let</span> (<span class="ident">proving_key</span>, <span class="ident">dummy_inputs</span>) <span class="op">=</span> <span class="ident"><span class="self">Self</span>::xfr_proving_key</span>(
             <span class="ident">rng</span>,
-            <span class="ident">spec</span>.<span class="ident">owner_keypair</span>.<span class="ident">pub_key</span>(),
+            <span class="ident">records</span>[<span class="number">0</span>].<span class="number">0</span>.<span class="ident">pub_key</span>(),
             <span class="ident">proving_keys</span>,
             <span class="kw-2">&amp;</span><span class="ident">asset</span>,
             <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">inputs</span>,
             <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">outputs</span>,
             <span class="ident">spec</span>.<span class="ident">xfr_size_requirement</span>,
-            <span class="ident">change</span> <span class="op">&gt;</span> <span class="number">0</span>,
+            <span class="ident">change_ro</span>.<span class="ident">is_some</span>(),
         )<span class="question-mark">?</span>;
+
         <span class="comment">// pad with dummy inputs if necessary</span>
-        <span class="kw">let</span> <span class="ident">rng</span> <span class="op">=</span> <span class="ident">rng</span>;
+        <span class="kw">let</span> <span class="ident">rng</span> <span class="op">=</span> <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">rng</span>.<span class="ident">clone</span>();
         <span class="kw">let</span> <span class="ident">dummy_inputs</span> <span class="op">=</span> (<span class="number">0</span>..<span class="ident">dummy_inputs</span>)
             .<span class="ident">map</span>(<span class="op">|</span><span class="kw">_</span><span class="op">|</span> <span class="ident">RecordOpening::dummy</span>(<span class="ident">rng</span>, <span class="ident">FreezeFlag::Unfrozen</span>))
             .<span class="ident">collect</span>::<span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="kw">_</span><span class="op">&gt;</span><span class="op">&gt;</span>();
-        <span class="kw">for</span> (<span class="ident">ro</span>, <span class="ident">owner_keypair</span>) <span class="kw">in</span> <span class="kw-2">&amp;</span><span class="ident">dummy_inputs</span> {
+        <span class="kw">for</span> (<span class="ident">ro</span>, <span class="ident">owner_key_pair</span>) <span class="kw">in</span> <span class="kw-2">&amp;</span><span class="ident">dummy_inputs</span> {
             <span class="kw">let</span> <span class="ident">dummy_input</span> <span class="op">=</span> <span class="ident">TransferNoteInput</span> {
                 <span class="ident">ro</span>: <span class="ident">ro</span>.<span class="ident">clone</span>(),
                 <span class="ident">acc_member_witness</span>: <span class="ident">AccMemberWitness::dummy</span>(<span class="ident">L::merkle_height</span>()),
-                <span class="ident">owner_keypair</span>,
+                <span class="ident">owner_keypair</span>: <span class="ident">owner_key_pair</span>,
                 <span class="ident">cred</span>: <span class="prelude-val">None</span>,
             };
             <span class="ident">inputs</span>.<span class="ident">push</span>(<span class="ident">dummy_input</span>);
@@ -2854,23 +3022,28 @@
 
         <span class="comment">// generate transfer note and receiver memos</span>
         <span class="kw">let</span> (<span class="ident">fee_info</span>, <span class="ident">fee_out_rec</span>) <span class="op">=</span> <span class="ident">TxnFeeInfo::new</span>(<span class="ident">rng</span>, <span class="ident">fee_input</span>, <span class="ident">spec</span>.<span class="ident">fee</span>).<span class="ident">unwrap</span>();
-        <span class="kw">let</span> (<span class="ident">note</span>, <span class="ident">sig_keypair</span>) <span class="op">=</span> <span class="ident">TransferNote::generate_non_native</span>(
+        <span class="kw">let</span> (<span class="ident">note</span>, <span class="ident">sig_key_pair</span>) <span class="op">=</span> <span class="ident">TransferNote::generate_non_native</span>(
             <span class="ident">rng</span>,
             <span class="ident">inputs</span>,
             <span class="kw-2">&amp;</span><span class="ident">outputs</span>,
             <span class="ident">fee_info</span>,
             <span class="ident">UNEXPIRED_VALID_UNTIL</span>,
             <span class="ident">proving_key</span>,
-            <span class="ident">spec</span>.<span class="ident">bound_data</span>,
+            <span class="ident">spec</span>.<span class="ident">bound_data</span>.<span class="ident">clone</span>(),
         )
         .<span class="ident">context</span>(<span class="ident">CryptoError</span>)<span class="question-mark">?</span>;
 
         <span class="comment">// Build auxiliary info.</span>
+        <span class="kw">let</span> <span class="ident">owner_addresses</span> <span class="op">=</span> <span class="ident">spec</span>
+            .<span class="ident">owner_key_pairs</span>
+            .<span class="ident">iter</span>()
+            .<span class="ident">map</span>(<span class="op">|</span><span class="ident">key_pair</span><span class="op">|</span> <span class="ident">key_pair</span>.<span class="ident">address</span>())
+            .<span class="ident">collect</span>::<span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">UserAddress</span><span class="op">&gt;</span><span class="op">&gt;</span>();
         <span class="kw">let</span> <span class="ident">history</span> <span class="op">=</span> <span class="ident">TransactionHistoryEntry</span> {
             <span class="ident">time</span>: <span class="ident">Local::now</span>(),
             <span class="ident">asset</span>: <span class="ident">asset</span>.<span class="ident">code</span>,
             <span class="ident">kind</span>: <span class="ident">TransactionKind</span>::<span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="ident">::send</span>(),
-            <span class="ident">sender</span>: <span class="prelude-val">Some</span>(<span class="ident">spec</span>.<span class="ident">owner_keypair</span>.<span class="ident">address</span>()),
+            <span class="ident">senders</span>: <span class="ident">owner_addresses</span>.<span class="ident">clone</span>(),
             <span class="ident">receivers</span>: <span class="ident">spec</span>
                 .<span class="ident">receivers</span>
                 .<span class="ident">iter</span>()
@@ -2880,10 +3053,10 @@
         };
         <span class="prelude-val">Ok</span>(<span class="ident">TransferInfo</span> {
             <span class="ident">note</span>,
-            <span class="ident">owner_address</span>: <span class="ident">spec</span>.<span class="ident">owner_keypair</span>.<span class="ident">address</span>(),
-            <span class="ident">sig_keypair</span>,
+            <span class="ident">owner_addresses</span>,
+            <span class="ident">sig_key_pair</span>,
             <span class="ident">history</span>,
-            <span class="ident">inputs</span>: <span class="ident">input_records</span>.<span class="ident">into_iter</span>().<span class="ident">map</span>(<span class="op">|</span>(<span class="ident">ro</span>, <span class="kw">_</span>)<span class="op">|</span> <span class="ident">ro</span>).<span class="ident">collect</span>(),
+            <span class="ident">inputs</span>: <span class="ident">input_ros</span>,
             <span class="ident">outputs</span>,
             <span class="ident">fee_output</span>: <span class="prelude-val">Some</span>(<span class="ident">fee_out_rec</span>),
         })
@@ -2893,14 +3066,14 @@
         <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>,
         <span class="ident">records</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">RecordOpening</span><span class="op">&gt;</span>,
         <span class="ident">rng</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">ChaChaRng</span>,
-        <span class="ident">sig_keypair</span>: <span class="kw-2">&amp;</span><span class="ident">KeyPair</span>,
+        <span class="ident">sig_key_pair</span>: <span class="kw-2">&amp;</span><span class="ident">KeyPair</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(<span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">ReceiverMemo</span><span class="op">&gt;</span>, <span class="ident">Signature</span>), <span class="ident">TransactionError</span><span class="op">&gt;</span> {
         <span class="kw">let</span> <span class="ident">memos</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="kw">_</span><span class="op">&gt;</span> <span class="op">=</span> <span class="ident">records</span>
             .<span class="ident">iter</span>()
             .<span class="ident">map</span>(<span class="op">|</span><span class="ident">ro</span><span class="op">|</span> <span class="ident">ReceiverMemo::from_ro</span>(<span class="ident">rng</span>, <span class="ident">ro</span>, <span class="kw-2">&amp;</span>[]))
             .<span class="ident">collect</span>::<span class="op">&lt;</span><span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="kw">_</span><span class="op">&gt;</span>, <span class="kw">_</span><span class="op">&gt;</span><span class="op">&gt;</span>()
             .<span class="ident">unwrap</span>();
-        <span class="kw">let</span> <span class="ident">sig</span> <span class="op">=</span> <span class="ident">sign_receiver_memos</span>(<span class="ident">sig_keypair</span>, <span class="kw-2">&amp;</span><span class="ident">memos</span>).<span class="ident">context</span>(<span class="ident">CryptoError</span>)<span class="question-mark">?</span>;
+        <span class="kw">let</span> <span class="ident">sig</span> <span class="op">=</span> <span class="ident">sign_receiver_memos</span>(<span class="ident">sig_key_pair</span>, <span class="kw-2">&amp;</span><span class="ident">memos</span>).<span class="ident">context</span>(<span class="ident">CryptoError</span>)<span class="question-mark">?</span>;
 
         <span class="prelude-val">Ok</span>((<span class="ident">memos</span>, <span class="ident">sig</span>))
     }
@@ -2908,7 +3081,7 @@
     <span class="attribute">#[<span class="ident">allow</span>(<span class="ident">clippy::too_many_arguments</span>)]</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">mint</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span><span class="op">&gt;</span>(
         <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>,
-        <span class="ident">owner_keypair</span>: <span class="kw-2">&amp;</span><span class="ident">UserKeyPair</span>,
+        <span class="ident">owner_key_pair</span>: <span class="kw-2">&amp;</span><span class="ident">UserKeyPair</span>,
         <span class="ident">proving_key</span>: <span class="kw-2">&amp;</span><span class="ident">MintProvingKey</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span><span class="op">&gt;</span>,
         <span class="ident">fee</span>: <span class="ident">u64</span>,
         <span class="ident">asset</span>: <span class="kw-2">&amp;</span>(<span class="ident">AssetDefinition</span>, <span class="ident">AssetCodeSeed</span>, <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span>),
@@ -2925,7 +3098,7 @@
             <span class="ident">blind</span>: <span class="ident">BlindFactor::rand</span>(<span class="ident">rng</span>),
         };
 
-        <span class="kw">let</span> <span class="ident">fee_input</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">find_fee_input</span>(<span class="ident">owner_keypair</span>, <span class="ident">fee</span>)<span class="question-mark">?</span>;
+        <span class="kw">let</span> <span class="ident">fee_input</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">find_fee_input</span>(<span class="ident">owner_key_pair</span>, <span class="ident">fee</span>)<span class="question-mark">?</span>;
         <span class="kw">let</span> <span class="ident">fee_rec</span> <span class="op">=</span> <span class="ident">fee_input</span>.<span class="ident">ro</span>.<span class="ident">clone</span>();
         <span class="kw">let</span> (<span class="ident">fee_info</span>, <span class="ident">fee_out_rec</span>) <span class="op">=</span> <span class="ident">TxnFeeInfo::new</span>(<span class="ident">rng</span>, <span class="ident">fee_input</span>, <span class="ident">fee</span>).<span class="ident">unwrap</span>();
         <span class="kw">let</span> <span class="ident">rng</span> <span class="op">=</span> <span class="ident">rng</span>;
@@ -2934,7 +3107,7 @@
             .<span class="ident">map</span>(<span class="op">|</span><span class="ident">r</span><span class="op">|</span> <span class="ident">ReceiverMemo::from_ro</span>(<span class="ident">rng</span>, <span class="ident">r</span>, <span class="kw-2">&amp;</span>[]))
             .<span class="ident">collect</span>::<span class="op">&lt;</span><span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="kw">_</span><span class="op">&gt;</span>, <span class="kw">_</span><span class="op">&gt;</span><span class="op">&gt;</span>()
             .<span class="ident">unwrap</span>();
-        <span class="kw">let</span> (<span class="ident">note</span>, <span class="ident">sig_keypair</span>) <span class="op">=</span> <span class="ident">jf_cap::mint::MintNote::generate</span>(
+        <span class="kw">let</span> (<span class="ident">note</span>, <span class="ident">sig_key_pair</span>) <span class="op">=</span> <span class="ident">jf_cap::mint::MintNote::generate</span>(
             <span class="ident">rng</span>,
             <span class="ident">mint_record</span>.<span class="ident">clone</span>(),
             <span class="kw-2">*</span><span class="ident">seed</span>,
@@ -2943,21 +3116,21 @@
             <span class="ident">proving_key</span>,
         )
         .<span class="ident">context</span>(<span class="ident">CryptoError</span>)<span class="question-mark">?</span>;
-        <span class="kw">let</span> <span class="ident">sig</span> <span class="op">=</span> <span class="ident">sign_receiver_memos</span>(<span class="kw-2">&amp;</span><span class="ident">sig_keypair</span>, <span class="kw-2">&amp;</span><span class="ident">memos</span>).<span class="ident">unwrap</span>();
+        <span class="kw">let</span> <span class="ident">sig</span> <span class="op">=</span> <span class="ident">sign_receiver_memos</span>(<span class="kw-2">&amp;</span><span class="ident">sig_key_pair</span>, <span class="kw-2">&amp;</span><span class="ident">memos</span>).<span class="ident">unwrap</span>();
 
         <span class="comment">// Build auxiliary info.</span>
         <span class="kw">let</span> <span class="ident">history</span> <span class="op">=</span> <span class="ident">TransactionHistoryEntry</span> {
             <span class="ident">time</span>: <span class="ident">Local::now</span>(),
             <span class="ident">asset</span>: <span class="ident">asset_def</span>.<span class="ident">code</span>,
             <span class="ident">kind</span>: <span class="ident">TransactionKind</span>::<span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="ident">::mint</span>(),
-            <span class="ident">sender</span>: <span class="prelude-val">Some</span>(<span class="ident">owner_keypair</span>.<span class="ident">address</span>()),
+            <span class="ident">senders</span>: <span class="macro">vec!</span>[<span class="ident">owner_key_pair</span>.<span class="ident">address</span>()],
             <span class="ident">receivers</span>: <span class="macro">vec!</span>[(<span class="ident">receiver</span>.<span class="ident">address</span>(), <span class="ident">amount</span>)],
             <span class="ident">receipt</span>: <span class="prelude-val">None</span>,
         };
         <span class="prelude-val">Ok</span>((
             <span class="ident">note</span>,
             <span class="ident">TransactionInfo</span> {
-                <span class="ident">account</span>: <span class="ident">owner_keypair</span>.<span class="ident">address</span>(),
+                <span class="ident">accounts</span>: <span class="macro">vec!</span>[<span class="ident">owner_key_pair</span>.<span class="ident">address</span>()],
                 <span class="ident">memos</span>,
                 <span class="ident">sig</span>,
                 <span class="ident">freeze_outputs</span>: <span class="macro">vec!</span>[],
@@ -2972,8 +3145,8 @@
     <span class="attribute">#[<span class="ident">allow</span>(<span class="ident">clippy::too_many_arguments</span>)]</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">freeze_or_unfreeze</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span><span class="op">&gt;</span>(
         <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>,
-        <span class="ident">fee_keypair</span>: <span class="kw-2">&amp;</span><span class="ident">UserKeyPair</span>,
-        <span class="ident">freezer_keypair</span>: <span class="kw-2">&amp;</span><span class="ident">FreezerKeyPair</span>,
+        <span class="ident">fee_key_pair</span>: <span class="kw-2">&amp;</span><span class="ident">UserKeyPair</span>,
+        <span class="ident">freezer_key_pair</span>: <span class="kw-2">&amp;</span><span class="ident">FreezerKeyPair</span>,
         <span class="ident">proving_keys</span>: <span class="kw-2">&amp;</span><span class="ident">KeySet</span><span class="op">&lt;</span><span class="ident">FreezeProvingKey</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span><span class="op">&gt;</span>, <span class="ident">key_set::OrderByOutputs</span><span class="op">&gt;</span>,
         <span class="ident">fee</span>: <span class="ident">u64</span>,
         <span class="ident">asset</span>: <span class="kw-2">&amp;</span><span class="ident">AssetDefinition</span>,
@@ -2987,8 +3160,14 @@
             <span class="ident">FreezeFlag::Frozen</span> <span class="op">=</span><span class="op">&gt;</span> <span class="ident">FreezeFlag::Unfrozen</span>,
             <span class="ident">FreezeFlag::Unfrozen</span> <span class="op">=</span><span class="op">&gt;</span> <span class="ident">FreezeFlag::Frozen</span>,
         };
-        <span class="kw">let</span> (<span class="ident">input_records</span>, <span class="kw">_</span>) <span class="op">=</span>
-            <span class="self">self</span>.<span class="ident">find_records</span>(<span class="kw-2">&amp;</span><span class="ident">asset</span>.<span class="ident">code</span>, <span class="kw-2">&amp;</span><span class="ident">target</span>, <span class="ident">inputs_frozen</span>, <span class="ident">amount</span>, <span class="prelude-val">None</span>)<span class="question-mark">?</span>;
+        <span class="kw">let</span> (<span class="ident">input_records</span>, <span class="kw">_</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">find_records_with_pub_key</span>(
+            <span class="kw-2">&amp;</span><span class="ident">asset</span>.<span class="ident">code</span>,
+            <span class="kw-2">&amp;</span><span class="ident">target</span>,
+            <span class="ident">inputs_frozen</span>,
+            <span class="ident">amount</span>,
+            <span class="prelude-val">None</span>,
+            <span class="bool-val">false</span>,
+        )<span class="question-mark">?</span>;
 
         <span class="comment">// prepare inputs</span>
         <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">inputs</span> <span class="op">=</span> <span class="macro">vec!</span>[];
@@ -2997,18 +3176,18 @@
             <span class="ident">inputs</span>.<span class="ident">push</span>(<span class="ident">FreezeNoteInput</span> {
                 <span class="ident">ro</span>: <span class="ident">ro</span>.<span class="ident">clone</span>(),
                 <span class="ident">acc_member_witness</span>: <span class="ident">witness</span>,
-                <span class="ident">keypair</span>: <span class="ident">freezer_keypair</span>,
+                <span class="ident">keypair</span>: <span class="ident">freezer_key_pair</span>,
             })
         }
-        <span class="kw">let</span> <span class="ident">fee_input</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">find_fee_input</span>(<span class="ident">fee_keypair</span>, <span class="ident">fee</span>)<span class="question-mark">?</span>;
+        <span class="kw">let</span> <span class="ident">fee_input</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">find_fee_input</span>(<span class="ident">fee_key_pair</span>, <span class="ident">fee</span>)<span class="question-mark">?</span>;
 
         <span class="comment">// find a proving key which can handle this transaction size</span>
         <span class="kw">let</span> <span class="ident">proving_key</span> <span class="op">=</span>
-            <span class="ident"><span class="self">Self</span>::freeze_proving_key</span>(<span class="ident">rng</span>, <span class="ident">proving_keys</span>, <span class="ident">asset</span>, <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">inputs</span>, <span class="ident">freezer_keypair</span>)<span class="question-mark">?</span>;
+            <span class="ident"><span class="self">Self</span>::freeze_proving_key</span>(<span class="ident">rng</span>, <span class="ident">proving_keys</span>, <span class="ident">asset</span>, <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">inputs</span>, <span class="ident">freezer_key_pair</span>)<span class="question-mark">?</span>;
 
         <span class="comment">// generate transfer note and receiver memos</span>
         <span class="kw">let</span> (<span class="ident">fee_info</span>, <span class="ident">fee_out_rec</span>) <span class="op">=</span> <span class="ident">TxnFeeInfo::new</span>(<span class="ident">rng</span>, <span class="ident">fee_input</span>, <span class="ident">fee</span>).<span class="ident">unwrap</span>();
-        <span class="kw">let</span> (<span class="ident">note</span>, <span class="ident">sig_keypair</span>, <span class="ident">outputs</span>) <span class="op">=</span>
+        <span class="kw">let</span> (<span class="ident">note</span>, <span class="ident">sig_key_pair</span>, <span class="ident">outputs</span>) <span class="op">=</span>
             <span class="ident">FreezeNote::generate</span>(<span class="ident">rng</span>, <span class="ident">inputs</span>, <span class="ident">fee_info</span>, <span class="ident">proving_key</span>).<span class="ident">context</span>(<span class="ident">CryptoError</span>)<span class="question-mark">?</span>;
         <span class="kw">let</span> <span class="ident">memos</span> <span class="op">=</span> <span class="macro">vec!</span>[<span class="kw-2">&amp;</span><span class="ident">fee_out_rec</span>]
             .<span class="ident">into_iter</span>()
@@ -3016,7 +3195,7 @@
             .<span class="ident">map</span>(<span class="op">|</span><span class="ident">r</span><span class="op">|</span> <span class="ident">ReceiverMemo::from_ro</span>(<span class="ident">rng</span>, <span class="ident">r</span>, <span class="kw-2">&amp;</span>[]))
             .<span class="ident">collect</span>::<span class="op">&lt;</span><span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="kw">_</span><span class="op">&gt;</span>, <span class="kw">_</span><span class="op">&gt;</span><span class="op">&gt;</span>()
             .<span class="ident">unwrap</span>();
-        <span class="kw">let</span> <span class="ident">sig</span> <span class="op">=</span> <span class="ident">sign_receiver_memos</span>(<span class="kw-2">&amp;</span><span class="ident">sig_keypair</span>, <span class="kw-2">&amp;</span><span class="ident">memos</span>).<span class="ident">unwrap</span>();
+        <span class="kw">let</span> <span class="ident">sig</span> <span class="op">=</span> <span class="ident">sign_receiver_memos</span>(<span class="kw-2">&amp;</span><span class="ident">sig_key_pair</span>, <span class="kw-2">&amp;</span><span class="ident">memos</span>).<span class="ident">unwrap</span>();
 
         <span class="comment">// Build auxiliary info.</span>
         <span class="kw">let</span> <span class="ident">history</span> <span class="op">=</span> <span class="ident">TransactionHistoryEntry</span> {
@@ -3026,14 +3205,14 @@
                 <span class="ident">FreezeFlag::Frozen</span> <span class="op">=</span><span class="op">&gt;</span> <span class="ident">TransactionKind</span>::<span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="ident">::freeze</span>(),
                 <span class="ident">FreezeFlag::Unfrozen</span> <span class="op">=</span><span class="op">&gt;</span> <span class="ident">TransactionKind</span>::<span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="ident">::unfreeze</span>(),
             },
-            <span class="ident">sender</span>: <span class="prelude-val">Some</span>(<span class="ident">fee_keypair</span>.<span class="ident">address</span>()),
+            <span class="ident">senders</span>: <span class="macro">vec!</span>[<span class="ident">fee_key_pair</span>.<span class="ident">address</span>()],
             <span class="ident">receivers</span>: <span class="macro">vec!</span>[(<span class="ident">target</span>.<span class="ident">address</span>(), <span class="ident">amount</span>)],
             <span class="ident">receipt</span>: <span class="prelude-val">None</span>,
         };
         <span class="prelude-val">Ok</span>((
             <span class="ident">note</span>,
             <span class="ident">TransactionInfo</span> {
-                <span class="ident">account</span>: <span class="ident">fee_keypair</span>.<span class="ident">address</span>(),
+                <span class="ident">accounts</span>: <span class="macro">vec!</span>[<span class="ident">fee_key_pair</span>.<span class="ident">address</span>()],
                 <span class="ident">memos</span>,
                 <span class="ident">sig</span>,
                 <span class="ident">freeze_outputs</span>: <span class="ident">outputs</span>.<span class="ident">clone</span>(),
@@ -3085,15 +3264,23 @@
         }
     }
 
+    <span class="doccomment">/// Returns a list of record openings and UIDs, and the change amount.</span>
+    <span class="doccomment">///</span>
+    <span class="doccomment">/// `allow_insufficient`</span>
+    <span class="doccomment">/// * If true, the change amount may be negative, meaning the address owned by the provided</span>
+    <span class="doccomment">/// public key doesn&#39;t have sufficient balance, which isn&#39;t necessarily an error since a total</span>
+    <span class="doccomment">/// balance can be aggragated by multiple addresses.</span>
+    <span class="doccomment">/// * Otherwise, the change amount must be nonnegative.</span>
     <span class="attribute">#[<span class="ident">allow</span>(<span class="ident">clippy::type_complexity</span>)]</span>
-    <span class="kw">fn</span> <span class="ident">find_records</span>(
+    <span class="kw">fn</span> <span class="ident">find_records_with_pub_key</span>(
         <span class="kw-2">&amp;</span><span class="self">self</span>,
         <span class="ident">asset</span>: <span class="kw-2">&amp;</span><span class="ident">AssetCode</span>,
         <span class="ident">owner</span>: <span class="kw-2">&amp;</span><span class="ident">UserPubKey</span>,
         <span class="ident">frozen</span>: <span class="ident">FreezeFlag</span>,
         <span class="ident">amount</span>: <span class="ident">u64</span>,
         <span class="ident">max_records</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">usize</span><span class="op">&gt;</span>,
-    ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(<span class="ident">Vec</span><span class="op">&lt;</span>(<span class="ident">RecordOpening</span>, <span class="ident">u64</span>)<span class="op">&gt;</span>, <span class="ident">u64</span>), <span class="ident">TransactionError</span><span class="op">&gt;</span> {
+        <span class="ident">allow_insufficient</span>: <span class="ident">bool</span>,
+    ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(<span class="ident">Vec</span><span class="op">&lt;</span>(<span class="ident">RecordOpening</span>, <span class="ident">u64</span>)<span class="op">&gt;</span>, <span class="ident">i64</span>), <span class="ident">TransactionError</span><span class="op">&gt;</span> {
         <span class="kw">let</span> <span class="ident">now</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">validator</span>.<span class="ident">now</span>();
 
         <span class="comment">// If we have a record with the exact size required, use it to avoid fragmenting big records</span>
@@ -3114,7 +3301,7 @@
         <span class="comment">// make exact change using combinations of larger and smaller blocks. We can replace this</span>
         <span class="comment">// with something more sophisticated later.</span>
         <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">result</span> <span class="op">=</span> <span class="macro">vec!</span>[];
-        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">current_amount</span> <span class="op">=</span> <span class="number">0u64</span>;
+        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">current_amount</span> <span class="op">=</span> <span class="number">0</span>;
         <span class="kw">for</span> <span class="ident">record</span> <span class="kw">in</span> <span class="self">self</span>.<span class="ident">records</span>.<span class="ident">input_records</span>(<span class="ident">asset</span>, <span class="ident">owner</span>, <span class="ident">frozen</span>, <span class="ident">now</span>) {
             <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">max_records</span>) <span class="op">=</span> <span class="ident">max_records</span> {
                 <span class="kw">if</span> <span class="ident">result</span>.<span class="ident">len</span>() <span class="op">&gt;</span><span class="op">=</span> <span class="ident">max_records</span> {
@@ -3137,37 +3324,82 @@
             <span class="ident">current_amount</span> <span class="op">+</span><span class="op">=</span> <span class="ident">record</span>.<span class="ident">ro</span>.<span class="ident">amount</span>;
             <span class="ident">result</span>.<span class="ident">push</span>((<span class="ident">record</span>.<span class="ident">ro</span>.<span class="ident">clone</span>(), <span class="ident">record</span>.<span class="ident">uid</span>));
             <span class="kw">if</span> <span class="ident">current_amount</span> <span class="op">&gt;</span><span class="op">=</span> <span class="ident">amount</span> {
-                <span class="kw">return</span> <span class="prelude-val">Ok</span>((<span class="ident">result</span>, <span class="ident">current_amount</span> <span class="op">-</span> <span class="ident">amount</span>));
+                <span class="kw">return</span> <span class="prelude-val">Ok</span>((<span class="ident">result</span>, (<span class="ident">current_amount</span> <span class="op">-</span> <span class="ident">amount</span>) <span class="kw">as</span> <span class="ident">i64</span>));
             }
+        }
+
+        <span class="kw">if</span> <span class="ident">allow_insufficient</span> {
+            <span class="prelude-val">Ok</span>((<span class="ident">result</span>, (<span class="ident">current_amount</span> <span class="op">-</span> <span class="ident">amount</span>) <span class="kw">as</span> <span class="ident">i64</span>))
+        } <span class="kw">else</span> {
+            <span class="prelude-val">Err</span>(<span class="ident">TransactionError::InsufficientBalance</span> {
+                <span class="ident">asset</span>: <span class="kw-2">*</span><span class="ident">asset</span>,
+                <span class="ident">required</span>: <span class="ident">amount</span>,
+                <span class="ident">actual</span>: <span class="ident">current_amount</span>,
+            })
+        }
+    }
+
+    <span class="attribute">#[<span class="ident">allow</span>(<span class="ident">clippy::type_complexity</span>)]</span>
+    <span class="kw">fn</span> <span class="ident">find_records</span>(
+        <span class="kw-2">&amp;</span><span class="self">self</span>,
+        <span class="ident">asset</span>: <span class="kw-2">&amp;</span><span class="ident">AssetCode</span>,
+        <span class="ident">owner_key_pairs</span>: <span class="kw-2">&amp;</span>[<span class="ident">UserKeyPair</span>],
+        <span class="ident">frozen</span>: <span class="ident">FreezeFlag</span>,
+        <span class="ident">amount</span>: <span class="ident">u64</span>,
+        <span class="ident">max_records</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">usize</span><span class="op">&gt;</span>,
+    ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span>(<span class="ident">UserKeyPair</span>, <span class="ident">Vec</span><span class="op">&lt;</span>(<span class="ident">RecordOpening</span>, <span class="ident">u64</span>)<span class="op">&gt;</span>, <span class="ident">u64</span>)<span class="op">&gt;</span>, <span class="ident">TransactionError</span><span class="op">&gt;</span> {
+        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">records</span> <span class="op">=</span> <span class="ident">Vec::new</span>();
+        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">target_amount</span> <span class="op">=</span> <span class="ident">amount</span>;
+
+        <span class="kw">for</span> <span class="ident">owner_key_pair</span> <span class="kw">in</span> <span class="ident">owner_key_pairs</span> {
+            <span class="kw">let</span> (<span class="ident">input_records</span>, <span class="ident">change</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">find_records_with_pub_key</span>(
+                <span class="ident">asset</span>,
+                <span class="kw-2">&amp;</span><span class="ident">owner_key_pair</span>.<span class="ident">pub_key</span>(),
+                <span class="ident">frozen</span>,
+                <span class="ident">target_amount</span>,
+                <span class="ident">max_records</span>.<span class="ident">map</span>(<span class="op">|</span><span class="ident">max</span><span class="op">|</span> <span class="ident">max</span> <span class="op">-</span> <span class="ident">records</span>.<span class="ident">len</span>()),
+                <span class="bool-val">true</span>,
+            )<span class="question-mark">?</span>;
+            <span class="comment">// A nonnegative change indicates that we&#39;ve find sufficient records.</span>
+            <span class="kw">if</span> <span class="ident">change</span> <span class="op">&gt;</span><span class="op">=</span> <span class="number">0</span> {
+                <span class="ident">records</span>.<span class="ident">push</span>((<span class="ident">owner_key_pair</span>.<span class="ident">clone</span>(), <span class="ident">input_records</span>, <span class="ident">change</span> <span class="kw">as</span> <span class="ident">u64</span>));
+                <span class="kw">return</span> <span class="prelude-val">Ok</span>(<span class="ident">records</span>);
+            }
+            <span class="kw">if</span> <span class="op">!</span><span class="ident">input_records</span>.<span class="ident">is_empty</span>() {
+                <span class="ident">records</span>.<span class="ident">push</span>((<span class="ident">owner_key_pair</span>.<span class="ident">clone</span>(), <span class="ident">input_records</span>, <span class="number">0</span>));
+            }
+            <span class="ident">target_amount</span> <span class="op">=</span> (<span class="number">0</span> <span class="op">-</span> <span class="ident">change</span>) <span class="kw">as</span> <span class="ident">u64</span>;
         }
 
         <span class="prelude-val">Err</span>(<span class="ident">TransactionError::InsufficientBalance</span> {
             <span class="ident">asset</span>: <span class="kw-2">*</span><span class="ident">asset</span>,
             <span class="ident">required</span>: <span class="ident">amount</span>,
-            <span class="ident">actual</span>: <span class="ident">current_amount</span>,
+            <span class="ident">actual</span>: <span class="ident">amount</span> <span class="op">-</span> <span class="ident">target_amount</span>,
         })
     }
 
     <span class="doccomment">/// find a record of the native asset type with enough funds to pay a transaction fee</span>
     <span class="kw">fn</span> <span class="ident">find_fee_input</span><span class="op">&lt;</span><span class="lifetime">&#39;l</span><span class="op">&gt;</span>(
         <span class="kw-2">&amp;</span><span class="self">self</span>,
-        <span class="ident">owner_keypair</span>: <span class="kw-2">&amp;</span><span class="lifetime">&#39;l</span> <span class="ident">UserKeyPair</span>,
+        <span class="ident">owner_key_pair</span>: <span class="kw-2">&amp;</span><span class="lifetime">&#39;l</span> <span class="ident">UserKeyPair</span>,
         <span class="ident">fee</span>: <span class="ident">u64</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">FeeInput</span><span class="op">&lt;</span><span class="lifetime">&#39;l</span><span class="op">&gt;</span>, <span class="ident">TransactionError</span><span class="op">&gt;</span> {
         <span class="kw">let</span> (<span class="ident">ro</span>, <span class="ident">uid</span>) <span class="op">=</span> <span class="self">self</span>
-            .<span class="ident">find_records</span>(
+            .<span class="ident">find_records_with_pub_key</span>(
                 <span class="kw-2">&amp;</span><span class="ident">AssetCode::native</span>(),
-                <span class="kw-2">&amp;</span><span class="ident">owner_keypair</span>.<span class="ident">pub_key</span>(),
+                <span class="kw-2">&amp;</span><span class="ident">owner_key_pair</span>.<span class="ident">pub_key</span>(),
                 <span class="ident">FreezeFlag::Unfrozen</span>,
                 <span class="ident">fee</span>,
                 <span class="prelude-val">Some</span>(<span class="number">1</span>),
-            )
-            .<span class="ident">map</span>(<span class="op">|</span>(<span class="ident">ros</span>, <span class="ident">_change</span>)<span class="op">|</span> <span class="ident">ros</span>.<span class="ident">into_iter</span>().<span class="ident">next</span>().<span class="ident">unwrap</span>())<span class="question-mark">?</span>;
+                <span class="bool-val">false</span>,
+            )<span class="question-mark">?</span>
+            .<span class="number">0</span>
+            .<span class="ident">remove</span>(<span class="number">0</span>);
 
         <span class="prelude-val">Ok</span>(<span class="ident">FeeInput</span> {
             <span class="ident">ro</span>,
             <span class="ident">acc_member_witness</span>: <span class="self">self</span>.<span class="ident">get_merkle_proof</span>(<span class="ident">uid</span>),
-            <span class="ident">owner_keypair</span>,
+            <span class="ident">owner_keypair</span>: <span class="ident">owner_key_pair</span>,
         })
     }
 
@@ -3183,6 +3415,8 @@
     <span class="comment">// Find a proving key large enough to prove the given transaction, returning the number of dummy</span>
     <span class="comment">// inputs needed to pad the transaction.</span>
     <span class="comment">//</span>
+    <span class="comment">// `any_key` - Any key used for padding dummy outputs.</span>
+    <span class="comment">//</span>
     <span class="comment">// `proving_keys` should always be `&amp;self.proving_key`. This is a non-member function in order</span>
     <span class="comment">// to prove to the compiler that the result only borrows from `&amp;self.proving_key`, not all of</span>
     <span class="comment">// `&amp;self`.</span>
@@ -3191,7 +3425,7 @@
     <span class="attribute">#[<span class="ident">allow</span>(<span class="ident">clippy::too_many_arguments</span>)]</span>
     <span class="kw">fn</span> <span class="ident">xfr_proving_key</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="lifetime">&#39;k</span><span class="op">&gt;</span>(
         <span class="ident">rng</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">ChaChaRng</span>,
-        <span class="ident">me</span>: <span class="ident">UserPubKey</span>,
+        <span class="ident">any_key</span>: <span class="ident">UserPubKey</span>,
         <span class="ident">proving_keys</span>: <span class="kw-2">&amp;</span><span class="lifetime">&#39;k</span> <span class="ident">KeySet</span><span class="op">&lt;</span><span class="ident">TransferProvingKey</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span><span class="op">&gt;</span>, <span class="ident">key_set::OrderByOutputs</span><span class="op">&gt;</span>,
         <span class="ident">asset</span>: <span class="kw-2">&amp;</span><span class="ident">AssetDefinition</span>,
         <span class="ident">inputs</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">TransferNoteInput</span><span class="op">&lt;</span><span class="lifetime">&#39;k</span><span class="op">&gt;</span><span class="op">&gt;</span>,
@@ -3269,7 +3503,7 @@
                             <span class="ident">rng</span>,
                             <span class="number">0</span>,
                             <span class="ident">asset</span>.<span class="ident">clone</span>(),
-                            <span class="ident">me</span>.<span class="ident">clone</span>(),
+                            <span class="ident">any_key</span>.<span class="ident">clone</span>(),
                             <span class="ident">FreezeFlag::Unfrozen</span>,
                         ));
                         <span class="kw">if</span> <span class="ident">outputs</span>.<span class="ident">len</span>() <span class="op">&gt;</span><span class="op">=</span> <span class="ident">key_outputs</span> <span class="op">-</span> <span class="ident">fee_outputs</span> {
@@ -3292,7 +3526,7 @@
         <span class="ident">proving_keys</span>: <span class="kw-2">&amp;</span><span class="lifetime">&#39;k</span> <span class="ident">KeySet</span><span class="op">&lt;</span><span class="ident">FreezeProvingKey</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span><span class="op">&gt;</span>, <span class="ident">key_set::OrderByOutputs</span><span class="op">&gt;</span>,
         <span class="ident">asset</span>: <span class="kw-2">&amp;</span><span class="ident">AssetDefinition</span>,
         <span class="ident">inputs</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">FreezeNoteInput</span><span class="op">&lt;</span><span class="lifetime">&#39;k</span><span class="op">&gt;</span><span class="op">&gt;</span>,
-        <span class="ident">keypair</span>: <span class="kw-2">&amp;</span><span class="lifetime">&#39;k</span> <span class="ident">FreezerKeyPair</span>,
+        <span class="ident">key_pair</span>: <span class="kw-2">&amp;</span><span class="lifetime">&#39;k</span> <span class="ident">FreezerKeyPair</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="kw-2">&amp;</span><span class="lifetime">&#39;k</span> <span class="ident">FreezeProvingKey</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span><span class="op">&gt;</span>, <span class="ident">TransactionError</span><span class="op">&gt;</span> {
         <span class="kw">let</span> <span class="ident">total_output_amount</span> <span class="op">=</span> <span class="ident">inputs</span>.<span class="ident">iter</span>().<span class="ident">map</span>(<span class="op">|</span><span class="ident">input</span><span class="op">|</span> <span class="ident">input</span>.<span class="ident">ro</span>.<span class="ident">amount</span>).<span class="ident">sum</span>();
 
@@ -3323,7 +3557,7 @@
                 <span class="ident">inputs</span>.<span class="ident">push</span>(<span class="ident">FreezeNoteInput</span> {
                     <span class="ident">ro</span>,
                     <span class="ident">acc_member_witness</span>: <span class="ident">AccMemberWitness::dummy</span>(<span class="ident">L::merkle_height</span>()),
-                    <span class="ident">keypair</span>,
+                    <span class="ident">keypair</span>: <span class="ident">key_pair</span>,
                 });
                 <span class="kw">if</span> <span class="ident">inputs</span>.<span class="ident">len</span>() <span class="op">&gt;</span><span class="op">=</span> <span class="ident">key_inputs</span> <span class="op">-</span> <span class="number">1</span> {
                     <span class="kw">break</span>;

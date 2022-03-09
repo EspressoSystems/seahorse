@@ -356,7 +356,7 @@
     <span class="ident">depth</span>: <span class="ident">usize</span>,
 }
 
-<span class="macro">macro_rules!</span> <span class="ident">derive_keypair</span> {
+<span class="macro">macro_rules!</span> <span class="ident">derive_key_pair</span> {
     (<span class="macro-nonterminal">$</span><span class="macro-nonterminal">self</span>: <span class="ident">expr</span>, <span class="macro-nonterminal">$</span><span class="macro-nonterminal">label</span>:<span class="ident">expr</span>, <span class="macro-nonterminal">$</span><span class="macro-nonterminal">id</span>: <span class="ident">expr</span>, <span class="macro-nonterminal">$</span><span class="macro-nonterminal">tar</span>:<span class="ident">ident</span>) <span class="op">=</span><span class="op">&gt;</span> {{
         <span class="kw">let</span> <span class="ident">id</span> <span class="op">=</span> [<span class="macro-nonterminal">$</span><span class="macro-nonterminal">label</span>.<span class="ident">as_bytes</span>(), <span class="macro-nonterminal">$</span><span class="macro-nonterminal">id</span>].<span class="ident">concat</span>();
         <span class="kw">let</span> <span class="ident">derived_seed</span> <span class="op">=</span> <span class="macro-nonterminal">$</span><span class="macro-nonterminal">self</span>.<span class="ident">derive_key_internal</span>(<span class="kw-2">&amp;</span><span class="ident">id</span>);
@@ -479,18 +479,18 @@
     }
 
     <span class="doccomment">/// Derive a sending key from the [KeyTree] with a certain id.</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">derive_user_keypair</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">id</span>: <span class="kw-2">&amp;</span>[<span class="ident">u8</span>]) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">UserKeyPair</span> {
-        <span class="macro">derive_keypair!</span>(<span class="self">self</span>, <span class="string">&quot;user keypair&quot;</span>, <span class="ident">id</span>, <span class="ident">UserKeyPair</span>)
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">derive_user_key_pair</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">id</span>: <span class="kw-2">&amp;</span>[<span class="ident">u8</span>]) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">UserKeyPair</span> {
+        <span class="macro">derive_key_pair!</span>(<span class="self">self</span>, <span class="string">&quot;user key pair&quot;</span>, <span class="ident">id</span>, <span class="ident">UserKeyPair</span>)
     }
 
     <span class="doccomment">/// Derive a viewing key from the [KeyTree] with a certain id.</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">derive_auditor_keypair</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">id</span>: <span class="kw-2">&amp;</span>[<span class="ident">u8</span>]) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">AuditorKeyPair</span> {
-        <span class="macro">derive_keypair!</span>(<span class="self">self</span>, <span class="string">&quot;auditor keypair&quot;</span>, <span class="ident">id</span>, <span class="ident">AuditorKeyPair</span>)
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">derive_auditor_key_pair</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">id</span>: <span class="kw-2">&amp;</span>[<span class="ident">u8</span>]) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">AuditorKeyPair</span> {
+        <span class="macro">derive_key_pair!</span>(<span class="self">self</span>, <span class="string">&quot;auditor key pair&quot;</span>, <span class="ident">id</span>, <span class="ident">AuditorKeyPair</span>)
     }
 
     <span class="doccomment">/// Derive a freezing key from the [KeyTree] with a certain id.</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">derive_freezer_keypair</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">id</span>: <span class="kw-2">&amp;</span>[<span class="ident">u8</span>]) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">FreezerKeyPair</span> {
-        <span class="macro">derive_keypair!</span>(<span class="self">self</span>, <span class="string">&quot;freezer keypair&quot;</span>, <span class="ident">id</span>, <span class="ident">FreezerKeyPair</span>)
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">derive_freezer_key_pair</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">id</span>: <span class="kw-2">&amp;</span>[<span class="ident">u8</span>]) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">FreezerKeyPair</span> {
+        <span class="macro">derive_key_pair!</span>(<span class="self">self</span>, <span class="string">&quot;freezer key pair&quot;</span>, <span class="ident">id</span>, <span class="ident">FreezerKeyPair</span>)
     }
 }
 
@@ -563,12 +563,12 @@
 
         <span class="kw">let</span> (<span class="ident">key_tree</span>, <span class="kw">_</span>) <span class="op">=</span> <span class="ident">KeyTree::random</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">rng</span>);
         <span class="kw">let</span> <span class="ident">all_keys</span> <span class="op">=</span> <span class="macro">vec!</span>[
-            <span class="ident">bincode::serialize</span>(<span class="kw-2">&amp;</span><span class="ident">key_tree</span>.<span class="ident">derive_auditor_keypair</span>(<span class="kw-2">&amp;</span><span class="ident">id1</span>)).<span class="ident">unwrap</span>(),
-            <span class="ident">bincode::serialize</span>(<span class="kw-2">&amp;</span><span class="ident">key_tree</span>.<span class="ident">derive_auditor_keypair</span>(<span class="kw-2">&amp;</span><span class="ident">id2</span>)).<span class="ident">unwrap</span>(),
-            <span class="ident">bincode::serialize</span>(<span class="kw-2">&amp;</span><span class="ident">key_tree</span>.<span class="ident">derive_freezer_keypair</span>(<span class="kw-2">&amp;</span><span class="ident">id1</span>)).<span class="ident">unwrap</span>(),
-            <span class="ident">bincode::serialize</span>(<span class="kw-2">&amp;</span><span class="ident">key_tree</span>.<span class="ident">derive_freezer_keypair</span>(<span class="kw-2">&amp;</span><span class="ident">id2</span>)).<span class="ident">unwrap</span>(),
-            <span class="ident">bincode::serialize</span>(<span class="kw-2">&amp;</span><span class="ident">key_tree</span>.<span class="ident">derive_user_keypair</span>(<span class="kw-2">&amp;</span><span class="ident">id1</span>)).<span class="ident">unwrap</span>(),
-            <span class="ident">bincode::serialize</span>(<span class="kw-2">&amp;</span><span class="ident">key_tree</span>.<span class="ident">derive_user_keypair</span>(<span class="kw-2">&amp;</span><span class="ident">id2</span>)).<span class="ident">unwrap</span>(),
+            <span class="ident">bincode::serialize</span>(<span class="kw-2">&amp;</span><span class="ident">key_tree</span>.<span class="ident">derive_auditor_key_pair</span>(<span class="kw-2">&amp;</span><span class="ident">id1</span>)).<span class="ident">unwrap</span>(),
+            <span class="ident">bincode::serialize</span>(<span class="kw-2">&amp;</span><span class="ident">key_tree</span>.<span class="ident">derive_auditor_key_pair</span>(<span class="kw-2">&amp;</span><span class="ident">id2</span>)).<span class="ident">unwrap</span>(),
+            <span class="ident">bincode::serialize</span>(<span class="kw-2">&amp;</span><span class="ident">key_tree</span>.<span class="ident">derive_freezer_key_pair</span>(<span class="kw-2">&amp;</span><span class="ident">id1</span>)).<span class="ident">unwrap</span>(),
+            <span class="ident">bincode::serialize</span>(<span class="kw-2">&amp;</span><span class="ident">key_tree</span>.<span class="ident">derive_freezer_key_pair</span>(<span class="kw-2">&amp;</span><span class="ident">id2</span>)).<span class="ident">unwrap</span>(),
+            <span class="ident">bincode::serialize</span>(<span class="kw-2">&amp;</span><span class="ident">key_tree</span>.<span class="ident">derive_user_key_pair</span>(<span class="kw-2">&amp;</span><span class="ident">id1</span>)).<span class="ident">unwrap</span>(),
+            <span class="ident">bincode::serialize</span>(<span class="kw-2">&amp;</span><span class="ident">key_tree</span>.<span class="ident">derive_user_key_pair</span>(<span class="kw-2">&amp;</span><span class="ident">id2</span>)).<span class="ident">unwrap</span>(),
             <span class="ident">key_tree</span>.<span class="ident">derive_key</span>(<span class="kw-2">&amp;</span><span class="ident">id1</span>).<span class="ident">as_bytes</span>().<span class="ident">open_secret</span>().<span class="ident">to_vec</span>(),
             <span class="ident">key_tree</span>.<span class="ident">derive_key</span>(<span class="kw-2">&amp;</span><span class="ident">id2</span>).<span class="ident">as_bytes</span>().<span class="ident">open_secret</span>().<span class="ident">to_vec</span>(),
             <span class="ident">key_tree</span>.<span class="ident">derive_sub_tree</span>(<span class="kw-2">&amp;</span><span class="ident">id1</span>).<span class="ident">state</span>.<span class="ident">open_secret</span>().<span class="ident">to_vec</span>(),

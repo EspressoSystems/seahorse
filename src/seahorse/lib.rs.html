@@ -2760,6 +2760,48 @@
 <span id="2760">2760</span>
 <span id="2761">2761</span>
 <span id="2762">2762</span>
+<span id="2763">2763</span>
+<span id="2764">2764</span>
+<span id="2765">2765</span>
+<span id="2766">2766</span>
+<span id="2767">2767</span>
+<span id="2768">2768</span>
+<span id="2769">2769</span>
+<span id="2770">2770</span>
+<span id="2771">2771</span>
+<span id="2772">2772</span>
+<span id="2773">2773</span>
+<span id="2774">2774</span>
+<span id="2775">2775</span>
+<span id="2776">2776</span>
+<span id="2777">2777</span>
+<span id="2778">2778</span>
+<span id="2779">2779</span>
+<span id="2780">2780</span>
+<span id="2781">2781</span>
+<span id="2782">2782</span>
+<span id="2783">2783</span>
+<span id="2784">2784</span>
+<span id="2785">2785</span>
+<span id="2786">2786</span>
+<span id="2787">2787</span>
+<span id="2788">2788</span>
+<span id="2789">2789</span>
+<span id="2790">2790</span>
+<span id="2791">2791</span>
+<span id="2792">2792</span>
+<span id="2793">2793</span>
+<span id="2794">2794</span>
+<span id="2795">2795</span>
+<span id="2796">2796</span>
+<span id="2797">2797</span>
+<span id="2798">2798</span>
+<span id="2799">2799</span>
+<span id="2800">2800</span>
+<span id="2801">2801</span>
+<span id="2802">2802</span>
+<span id="2803">2803</span>
+<span id="2804">2804</span>
 </pre><pre class="rust"><code><span class="comment">// Copyright (c) 2022 Espresso Systems (espressosys.com)</span>
 <span class="comment">// This file is part of the Seahorse library.</span>
 
@@ -3554,11 +3596,28 @@
 }
 
 <span class="kw">impl</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span>: <span class="lifetime">&#39;static</span> <span class="op">+</span> <span class="ident">Ledger</span><span class="op">&gt;</span> <span class="ident">WalletState</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span><span class="op">&gt;</span> {
+    <span class="kw">fn</span> <span class="ident">key_pairs</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">UserKeyPair</span><span class="op">&gt;</span> {
+        <span class="self">self</span>.<span class="ident">user_keys</span>.<span class="ident">values</span>().<span class="ident">cloned</span>().<span class="ident">collect</span>::<span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="kw">_</span><span class="op">&gt;</span><span class="op">&gt;</span>()
+    }
+
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">pub_keys</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">UserPubKey</span><span class="op">&gt;</span> {
         <span class="self">self</span>.<span class="ident">user_keys</span>.<span class="ident">values</span>().<span class="ident">map</span>(<span class="op">|</span><span class="ident">key</span><span class="op">|</span> <span class="ident">key</span>.<span class="ident">pub_key</span>()).<span class="ident">collect</span>()
     }
 
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">balance</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">account</span>: <span class="kw-2">&amp;</span><span class="ident">UserAddress</span>, <span class="ident">asset</span>: <span class="kw-2">&amp;</span><span class="ident">AssetCode</span>, <span class="ident">frozen</span>: <span class="ident">FreezeFlag</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">u64</span> {
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">balance</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">asset</span>: <span class="kw-2">&amp;</span><span class="ident">AssetCode</span>, <span class="ident">frozen</span>: <span class="ident">FreezeFlag</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">u64</span> {
+        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">balance</span> <span class="op">=</span> <span class="number">0</span>;
+        <span class="kw">for</span> <span class="ident">pub_key</span> <span class="kw">in</span> <span class="self">self</span>.<span class="ident">pub_keys</span>() {
+            <span class="ident">balance</span> <span class="op">+</span><span class="op">=</span> <span class="self">self</span>.<span class="ident">txn_state</span>.<span class="ident">balance</span>(<span class="ident">asset</span>, <span class="kw-2">&amp;</span><span class="ident">pub_key</span>, <span class="ident">frozen</span>);
+        }
+        <span class="ident">balance</span>
+    }
+
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">balance_breakdown</span>(
+        <span class="kw-2">&amp;</span><span class="self">self</span>,
+        <span class="ident">account</span>: <span class="kw-2">&amp;</span><span class="ident">UserAddress</span>,
+        <span class="ident">asset</span>: <span class="kw-2">&amp;</span><span class="ident">AssetCode</span>,
+        <span class="ident">frozen</span>: <span class="ident">FreezeFlag</span>,
+    ) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">u64</span> {
         <span class="kw">match</span> <span class="self">self</span>.<span class="ident">user_keys</span>.<span class="ident">get</span>(<span class="ident">account</span>) {
             <span class="prelude-val">Some</span>(<span class="ident">key</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="self">self</span>.<span class="ident">txn_state</span>.<span class="ident">balance</span>(<span class="ident">asset</span>, <span class="kw-2">&amp;</span><span class="ident">key</span>.<span class="ident">pub_key</span>(), <span class="ident">frozen</span>),
             <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> <span class="number">0</span>,
@@ -3586,11 +3645,12 @@
                     <span class="comment">// If the transaction isn&#39;t in our pending data structures, but its fee record</span>
                     <span class="comment">// has not been spent, then either it was rejected, or it&#39;s someone else&#39;s</span>
                     <span class="comment">// transaction that we haven&#39;t been tracking through the lifecycle.</span>
-                    <span class="kw">if</span> <span class="self">self</span>.<span class="ident">user_keys</span>.<span class="ident">contains_key</span>(<span class="kw-2">&amp;</span><span class="ident">receipt</span>.<span class="ident">submitter</span>) {
-                        <span class="prelude-val">Ok</span>(<span class="ident">TransactionStatus::Rejected</span>)
-                    } <span class="kw">else</span> {
-                        <span class="prelude-val">Ok</span>(<span class="ident">TransactionStatus::Unknown</span>)
+                    <span class="kw">for</span> <span class="ident">submitter</span> <span class="kw">in</span> <span class="kw-2">&amp;</span><span class="ident">receipt</span>.<span class="ident">submitters</span> {
+                        <span class="kw">if</span> <span class="op">!</span><span class="self">self</span>.<span class="ident">user_keys</span>.<span class="ident">contains_key</span>(<span class="ident">submitter</span>) {
+                            <span class="kw">return</span> <span class="prelude-val">Ok</span>(<span class="ident">TransactionStatus::Unknown</span>);
+                        }
                     }
+                    <span class="prelude-val">Ok</span>(<span class="ident">TransactionStatus::Rejected</span>)
                 }
             }
 
@@ -4046,7 +4106,7 @@
             <span class="ident">time</span>: <span class="ident">Local::now</span>(),
             <span class="ident">asset</span>: <span class="ident">txn_asset</span>,
             <span class="ident">kind</span>,
-            <span class="ident">sender</span>: <span class="prelude-val">None</span>,
+            <span class="ident">senders</span>: <span class="ident">Vec::new</span>(),
             <span class="comment">// When we receive transactions, we can&#39;t tell from the protocol</span>
             <span class="comment">// who sent it to us.</span>
             <span class="ident">receivers</span>: <span class="ident">records</span>
@@ -4347,7 +4407,7 @@
                 <span class="kw">let</span> <span class="ident">user_key</span> <span class="op">=</span> <span class="kw">loop</span> {
                     <span class="kw">let</span> <span class="ident">user_key</span> <span class="op">=</span> <span class="ident">session</span>
                         .<span class="ident">user_key_stream</span>
-                        .<span class="ident">derive_user_keypair</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">key_state</span>.<span class="ident">user</span>.<span class="ident">to_le_bytes</span>());
+                        .<span class="ident">derive_user_key_pair</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">key_state</span>.<span class="ident">user</span>.<span class="ident">to_le_bytes</span>());
                     <span class="self">self</span>.<span class="ident">key_state</span>.<span class="ident">user</span> <span class="op">+</span><span class="op">=</span> <span class="number">1</span>;
                     <span class="kw">if</span> <span class="op">!</span><span class="self">self</span>.<span class="ident">user_keys</span>.<span class="ident">contains_key</span>(<span class="kw-2">&amp;</span><span class="ident">user_key</span>.<span class="ident">address</span>()) {
                         <span class="kw">break</span> <span class="ident">user_key</span>;
@@ -4479,10 +4539,10 @@
         <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>,
         <span class="ident">session</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">WalletSession</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span>, <span class="kw">impl</span> <span class="ident">WalletBackend</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span>,
         <span class="ident">records</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">RecordOpening</span><span class="op">&gt;</span>,
-        <span class="ident">sig_keypair</span>: <span class="kw-2">&amp;</span><span class="ident">SigKeyPair</span>,
+        <span class="ident">sig_key_pair</span>: <span class="kw-2">&amp;</span><span class="ident">SigKeyPair</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(<span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">ReceiverMemo</span><span class="op">&gt;</span>, <span class="ident">Signature</span>), <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
         <span class="self">self</span>.<span class="ident">txn_state</span>
-            .<span class="ident">generate_memos</span>(<span class="ident">records</span>, <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">session</span>.<span class="ident">rng</span>, <span class="ident">sig_keypair</span>)
+            .<span class="ident">generate_memos</span>(<span class="ident">records</span>, <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">session</span>.<span class="ident">rng</span>, <span class="ident">sig_key_pair</span>)
             .<span class="ident">context</span>(<span class="ident">TransactionError</span>)
     }
 
@@ -4508,7 +4568,7 @@
                 })<span class="question-mark">?</span>;
         <span class="self">self</span>.<span class="ident">txn_state</span>
             .<span class="ident">mint</span>(
-                <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">account_keypair</span>(<span class="ident">account</span>)<span class="question-mark">?</span>.<span class="ident">clone</span>(),
+                <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">account_key_pair</span>(<span class="ident">account</span>)<span class="question-mark">?</span>.<span class="ident">clone</span>(),
                 <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">proving_keys</span>.<span class="ident">mint</span>,
                 <span class="ident">fee</span>,
                 <span class="kw-2">&amp;</span>(<span class="ident">asset</span>.<span class="ident">definition</span>.<span class="ident">clone</span>(), <span class="ident">seed</span>, <span class="ident">description</span>),
@@ -4541,7 +4601,7 @@
 
         <span class="self">self</span>.<span class="ident">txn_state</span>
             .<span class="ident">freeze_or_unfreeze</span>(
-                <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">account_keypair</span>(<span class="ident">account</span>)<span class="question-mark">?</span>.<span class="ident">clone</span>(),
+                <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">account_key_pair</span>(<span class="ident">account</span>)<span class="question-mark">?</span>.<span class="ident">clone</span>(),
                 <span class="ident">freeze_key</span>,
                 <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">proving_keys</span>.<span class="ident">freeze</span>,
                 <span class="ident">fee</span>,
@@ -4642,7 +4702,10 @@
         }
     }
 
-    <span class="kw">fn</span> <span class="ident">account_keypair</span>(<span class="kw-2">&amp;</span><span class="lifetime">&#39;_</span> <span class="self">self</span>, <span class="ident">account</span>: <span class="kw-2">&amp;</span><span class="ident">UserAddress</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="kw-2">&amp;</span><span class="lifetime">&#39;_</span> <span class="ident">UserKeyPair</span>, <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
+    <span class="kw">fn</span> <span class="ident">account_key_pair</span>(
+        <span class="kw-2">&amp;</span><span class="lifetime">&#39;_</span> <span class="self">self</span>,
+        <span class="ident">account</span>: <span class="kw-2">&amp;</span><span class="ident">UserAddress</span>,
+    ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="kw-2">&amp;</span><span class="lifetime">&#39;_</span> <span class="ident">UserKeyPair</span>, <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
         <span class="kw">match</span> <span class="self">self</span>.<span class="ident">user_keys</span>.<span class="ident">get</span>(<span class="ident">account</span>) {
             <span class="prelude-val">Some</span>(<span class="ident">key_pair</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Ok</span>(<span class="ident">key_pair</span>),
             <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Err</span>(<span class="ident">WalletError</span>::<span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="ident">::NoSuchAccount</span> {
@@ -4909,10 +4972,16 @@
         <span class="ident">state</span>.<span class="ident">freeze_keys</span>.<span class="ident">keys</span>().<span class="ident">cloned</span>().<span class="ident">collect</span>()
     }
 
-    <span class="doccomment">/// Compute the spendable balance of the given asset type owned by the given address.</span>
-    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">balance</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">account</span>: <span class="kw-2">&amp;</span><span class="ident">UserAddress</span>, <span class="ident">asset</span>: <span class="kw-2">&amp;</span><span class="ident">AssetCode</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">u64</span> {
+    <span class="doccomment">/// Compute the spendable balance of the given asset type owned by all addresses.</span>
+    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">balance</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">asset</span>: <span class="kw-2">&amp;</span><span class="ident">AssetCode</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">u64</span> {
         <span class="kw">let</span> <span class="ident">WalletSharedState</span> { <span class="ident">state</span>, .. } <span class="op">=</span> <span class="kw-2">&amp;</span><span class="kw-2">*</span><span class="self">self</span>.<span class="ident">mutex</span>.<span class="ident">lock</span>().<span class="kw">await</span>;
-        <span class="ident">state</span>.<span class="ident">balance</span>(<span class="ident">account</span>, <span class="ident">asset</span>, <span class="ident">FreezeFlag::Unfrozen</span>)
+        <span class="ident">state</span>.<span class="ident">balance</span>(<span class="ident">asset</span>, <span class="ident">FreezeFlag::Unfrozen</span>)
+    }
+
+    <span class="doccomment">/// Compute the spendable balance of the given asset type owned by the given address.</span>
+    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">balance_breakdown</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">account</span>: <span class="kw-2">&amp;</span><span class="ident">UserAddress</span>, <span class="ident">asset</span>: <span class="kw-2">&amp;</span><span class="ident">AssetCode</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">u64</span> {
+        <span class="kw">let</span> <span class="ident">WalletSharedState</span> { <span class="ident">state</span>, .. } <span class="op">=</span> <span class="kw-2">&amp;</span><span class="kw-2">*</span><span class="self">self</span>.<span class="ident">mutex</span>.<span class="ident">lock</span>().<span class="kw">await</span>;
+        <span class="ident">state</span>.<span class="ident">balance_breakdown</span>(<span class="ident">account</span>, <span class="ident">asset</span>, <span class="ident">FreezeFlag::Unfrozen</span>)
     }
 
     <span class="doccomment">/// List records owned or viewable by this wallet.</span>
@@ -4928,9 +4997,9 @@
     }
 
     <span class="doccomment">/// Compute the balance frozen records of the given asset type owned by the given address.</span>
-    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">frozen_balance</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">account</span>: <span class="kw-2">&amp;</span><span class="ident">UserAddress</span>, <span class="ident">asset</span>: <span class="kw-2">&amp;</span><span class="ident">AssetCode</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">u64</span> {
+    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">frozen_balance_breakdown</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">account</span>: <span class="kw-2">&amp;</span><span class="ident">UserAddress</span>, <span class="ident">asset</span>: <span class="kw-2">&amp;</span><span class="ident">AssetCode</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">u64</span> {
         <span class="kw">let</span> <span class="ident">WalletSharedState</span> { <span class="ident">state</span>, .. } <span class="op">=</span> <span class="kw-2">&amp;</span><span class="kw-2">*</span><span class="self">self</span>.<span class="ident">mutex</span>.<span class="ident">lock</span>().<span class="kw">await</span>;
-        <span class="ident">state</span>.<span class="ident">balance</span>(<span class="ident">account</span>, <span class="ident">asset</span>, <span class="ident">FreezeFlag::Frozen</span>)
+        <span class="ident">state</span>.<span class="ident">balance_breakdown</span>(<span class="ident">account</span>, <span class="ident">asset</span>, <span class="ident">FreezeFlag::Frozen</span>)
     }
 
     <span class="doccomment">/// List assets discovered or imported by this wallet.</span>
@@ -4959,9 +5028,14 @@
     <span class="doccomment">/// To add transfer size requirement, call [Wallet::build_transfer] with a specified</span>
     <span class="doccomment">/// `xfr_size_requirement`. To skip an output when generating memos, call</span>
     <span class="doccomment">/// [Wallet::generate_memos] after removing the record from the list of outputs.</span>
+    <span class="doccomment">///</span>
+    <span class="doccomment">/// `account`</span>
+    <span class="doccomment">/// * If provided, only this address will be used to transfer the asset.</span>
+    <span class="doccomment">/// * Otherwise, all the owned addresses can be used for the transfer.</span>
+    <span class="doccomment">///</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">transfer</span>(
         <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>,
-        <span class="ident">account</span>: <span class="kw-2">&amp;</span><span class="ident">UserAddress</span>,
+        <span class="ident">account</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="kw-2">&amp;</span><span class="ident">UserAddress</span><span class="op">&gt;</span>,
         <span class="ident">asset</span>: <span class="kw-2">&amp;</span><span class="ident">AssetCode</span>,
         <span class="ident">receivers</span>: <span class="kw-2">&amp;</span>[(<span class="ident">UserAddress</span>, <span class="ident">u64</span>)],
         <span class="ident">fee</span>: <span class="ident">u64</span>,
@@ -4978,10 +5052,10 @@
             <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> <span class="ident">xfr_info</span>.<span class="ident">outputs</span>.<span class="ident">clone</span>(),
         };
         <span class="kw">let</span> (<span class="ident">memos</span>, <span class="ident">sig</span>) <span class="op">=</span> <span class="self">self</span>
-            .<span class="ident">generate_memos</span>(<span class="ident">memos_rec</span>, <span class="kw-2">&amp;</span><span class="ident">xfr_info</span>.<span class="ident">sig_keypair</span>)
+            .<span class="ident">generate_memos</span>(<span class="ident">memos_rec</span>, <span class="kw-2">&amp;</span><span class="ident">xfr_info</span>.<span class="ident">sig_key_pair</span>)
             .<span class="kw">await</span><span class="question-mark">?</span>;
         <span class="kw">let</span> <span class="ident">txn_info</span> <span class="op">=</span> <span class="ident">TransactionInfo</span> {
-            <span class="ident">account</span>: <span class="ident">xfr_info</span>.<span class="ident">owner_address</span>,
+            <span class="ident">accounts</span>: <span class="ident">xfr_info</span>.<span class="ident">owner_addresses</span>,
             <span class="ident">memos</span>,
             <span class="ident">sig</span>,
             <span class="ident">freeze_outputs</span>: <span class="macro">vec!</span>[],
@@ -4997,7 +5071,7 @@
     <span class="doccomment">/// Build a transfer with full customization.</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">build_transfer</span>(
         <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>,
-        <span class="ident">account</span>: <span class="kw-2">&amp;</span><span class="ident">UserAddress</span>,
+        <span class="ident">account</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="kw-2">&amp;</span><span class="ident">UserAddress</span><span class="op">&gt;</span>,
         <span class="ident">asset</span>: <span class="kw-2">&amp;</span><span class="ident">AssetCode</span>,
         <span class="ident">receivers</span>: <span class="kw-2">&amp;</span>[(<span class="ident">UserAddress</span>, <span class="ident">u64</span>)],
         <span class="ident">fee</span>: <span class="ident">u64</span>,
@@ -5017,8 +5091,14 @@
             })
             .<span class="ident">try_collect</span>::<span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="kw">_</span><span class="op">&gt;</span><span class="op">&gt;</span>()
             .<span class="kw">await</span><span class="question-mark">?</span>;
+        <span class="kw">let</span> <span class="ident">owner_key_pairs</span> <span class="op">=</span> <span class="kw">match</span> <span class="ident">account</span> {
+            <span class="prelude-val">Some</span>(<span class="ident">addr</span>) <span class="op">=</span><span class="op">&gt;</span> {
+                <span class="macro">vec!</span>[<span class="ident">state</span>.<span class="ident">account_key_pair</span>(<span class="ident">addr</span>)<span class="question-mark">?</span>.<span class="ident">clone</span>()]
+            }
+            <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> <span class="ident">state</span>.<span class="ident">key_pairs</span>(),
+        };
         <span class="kw">let</span> <span class="ident">spec</span> <span class="op">=</span> <span class="ident">TransferSpec</span> {
-            <span class="ident">owner_keypair</span>: <span class="kw-2">&amp;</span><span class="ident">state</span>.<span class="ident">account_keypair</span>(<span class="ident">account</span>)<span class="question-mark">?</span>.<span class="ident">clone</span>(),
+            <span class="ident">owner_key_pairs</span>: <span class="kw-2">&amp;</span><span class="ident">owner_key_pairs</span>,
             <span class="ident">asset</span>,
             <span class="ident">receivers</span>: <span class="kw-2">&amp;</span><span class="ident">receivers</span>,
             <span class="ident">fee</span>,
@@ -5032,10 +5112,10 @@
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">generate_memos</span>(
         <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>,
         <span class="ident">records</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">RecordOpening</span><span class="op">&gt;</span>,
-        <span class="ident">sig_keypair</span>: <span class="kw-2">&amp;</span><span class="ident">SigKeyPair</span>,
+        <span class="ident">sig_key_pair</span>: <span class="kw-2">&amp;</span><span class="ident">SigKeyPair</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(<span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">ReceiverMemo</span><span class="op">&gt;</span>, <span class="ident">Signature</span>), <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
         <span class="kw">let</span> <span class="ident">WalletSharedState</span> { <span class="ident">state</span>, <span class="ident">session</span>, .. } <span class="op">=</span> <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="kw-2">*</span><span class="self">self</span>.<span class="ident">mutex</span>.<span class="ident">lock</span>().<span class="kw">await</span>;
-        <span class="ident">state</span>.<span class="ident">generate_memos</span>(<span class="ident">session</span>, <span class="ident">records</span>, <span class="ident">sig_keypair</span>)
+        <span class="ident">state</span>.<span class="ident">generate_memos</span>(<span class="ident">session</span>, <span class="ident">records</span>, <span class="ident">sig_key_pair</span>)
     }
 
     <span class="doccomment">/// Submit a transaction to be validated.</span>
@@ -5104,7 +5184,7 @@
             <span class="kw">let</span> <span class="ident">WalletSharedState</span> { <span class="ident">state</span>, <span class="ident">session</span>, .. } <span class="op">=</span> <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="kw-2">*</span><span class="self">self</span>.<span class="ident">mutex</span>.<span class="ident">lock</span>().<span class="kw">await</span>;
             <span class="kw">let</span> <span class="ident">audit_key</span> <span class="op">=</span> <span class="ident">session</span>
                 .<span class="ident">auditor_key_stream</span>
-                .<span class="ident">derive_auditor_keypair</span>(<span class="kw-2">&amp;</span><span class="ident">state</span>.<span class="ident">key_state</span>.<span class="ident">auditor</span>.<span class="ident">to_le_bytes</span>());
+                .<span class="ident">derive_auditor_key_pair</span>(<span class="kw-2">&amp;</span><span class="ident">state</span>.<span class="ident">key_state</span>.<span class="ident">auditor</span>.<span class="ident">to_le_bytes</span>());
             <span class="ident">state</span>.<span class="ident">key_state</span>.<span class="ident">auditor</span> <span class="op">+</span><span class="op">=</span> <span class="number">1</span>;
             <span class="ident">state</span>.<span class="ident">add_audit_key</span>(<span class="ident">session</span>, <span class="ident">audit_key</span>.<span class="ident">clone</span>()).<span class="kw">await</span><span class="question-mark">?</span>;
             <span class="prelude-val">Ok</span>(<span class="ident">audit_key</span>.<span class="ident">pub_key</span>())
@@ -5136,7 +5216,7 @@
             <span class="kw">let</span> <span class="ident">WalletSharedState</span> { <span class="ident">state</span>, <span class="ident">session</span>, .. } <span class="op">=</span> <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="kw-2">*</span><span class="self">self</span>.<span class="ident">mutex</span>.<span class="ident">lock</span>().<span class="kw">await</span>;
             <span class="kw">let</span> <span class="ident">freeze_key</span> <span class="op">=</span> <span class="ident">session</span>
                 .<span class="ident">freezer_key_stream</span>
-                .<span class="ident">derive_freezer_keypair</span>(<span class="kw-2">&amp;</span><span class="ident">state</span>.<span class="ident">key_state</span>.<span class="ident">freezer</span>.<span class="ident">to_le_bytes</span>());
+                .<span class="ident">derive_freezer_key_pair</span>(<span class="kw-2">&amp;</span><span class="ident">state</span>.<span class="ident">key_state</span>.<span class="ident">freezer</span>.<span class="ident">to_le_bytes</span>());
             <span class="ident">state</span>.<span class="ident">key_state</span>.<span class="ident">freezer</span> <span class="op">+</span><span class="op">=</span> <span class="number">1</span>;
             <span class="ident">state</span>.<span class="ident">add_freeze_key</span>(<span class="ident">session</span>, <span class="ident">freeze_key</span>.<span class="ident">clone</span>()).<span class="kw">await</span><span class="question-mark">?</span>;
             <span class="prelude-val">Ok</span>(<span class="ident">freeze_key</span>.<span class="ident">pub_key</span>())
@@ -5381,7 +5461,11 @@
         } <span class="kw">else</span> {
             <span class="kw">let</span> (<span class="ident">sender</span>, <span class="ident">receiver</span>) <span class="op">=</span> <span class="ident">oneshot::channel</span>();
 
-            <span class="kw">if</span> <span class="ident">state</span>.<span class="ident">user_keys</span>.<span class="ident">contains_key</span>(<span class="kw-2">&amp;</span><span class="ident">receipt</span>.<span class="ident">submitter</span>) {
+            <span class="kw">if</span> <span class="ident">receipt</span>
+                .<span class="ident">submitters</span>
+                .<span class="ident">iter</span>()
+                .<span class="ident">all</span>(<span class="op">|</span><span class="ident">key</span><span class="op">|</span> <span class="ident">state</span>.<span class="ident">user_keys</span>.<span class="ident">contains_key</span>(<span class="ident">key</span>))
+            {
                 <span class="comment">// If we submitted this transaction, we have all the information we need to track it</span>
                 <span class="comment">// through the lifecycle based on its uid alone.</span>
                 <span class="ident">txn_subscribers</span>
