@@ -475,17 +475,31 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                         io,
                         "{} {}",
                         UserAddress(pub_key.address()),
-                        wallet.balance(&pub_key.address(), &asset.item).await
+                        wallet.balance_breakdown(&pub_key.address(), &asset.item).await
                     );
                 }
+                cli_writeln!(
+                    io,
+                    "Total {}",
+                    wallet.balance(&asset.item).await
+                );
             }
         ),
         command!(
             transfer,
             "transfer some owned assets to another user",
             C,
+            |io, wallet, asset: ListItem<AssetCode>, to: UserAddress, amount: u64, fee: u64; wait: Option<bool>| {
+                let res = wallet.transfer(None, &asset.item, &[(to.0, amount)], fee).await;
+                finish_transaction::<C>(io, wallet, res, wait, "transferred").await;
+            }
+        ),
+        command!(
+            transfer_from,
+            "transfer some assets from an owned address to another user",
+            C,
             |io, wallet, asset: ListItem<AssetCode>, from: UserAddress, to: UserAddress, amount: u64, fee: u64; wait: Option<bool>| {
-                let res = wallet.transfer(&from.0, &asset.item, &[(to.0, amount)], fee).await;
+                let res = wallet.transfer(Some(&from.0), &asset.item, &[(to.0, amount)], fee).await;
                 finish_transaction::<C>(io, wallet, res, wait, "transferred").await;
             }
         ),
@@ -615,18 +629,23 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                             } else {
                                 txn.asset.to_string()
                             };
-                            let sender = match txn.sender {
-                                Some(sender) => UserAddress(sender).to_string(),
-                                None => String::from("unknown"),
-                            };
+                            let senders;
+                            if !txn.senders.is_empty() {
+                                senders = txn.senders
+                                    .into_iter()
+                                    .map(|sender| UserAddress(sender).to_string())
+                                    .collect::<Vec<String>>();
+                            } else {
+                                senders = vec![String::from("unknown")];
+                            }
                             cli_write!(
                                 io,
-                                "{} {} {} {} {} ",
+                                "{} {} {} {} {:?} ",
                                 txn.time,
                                 status,
                                 asset,
                                 txn.kind,
-                                sender
+                                senders
                             );
                             for (receiver, amount) in txn.receivers {
                                 cli_write!(io, "{} {} ", UserAddress(receiver), amount);
@@ -1172,7 +1191,7 @@ mod test {
     #[async_std::test]
     async fn test_view_freeze() {
         let mut t = MockSystem::default();
-        let (ledger, key_streams) = create_network(&mut t, &[1000, 1000, 0]).await;
+        let (ledger, key_streams) = create_network(&mut t, &[2000, 2000, 0]).await;
 
         // Create three wallet clients: one to mint and view an asset, one to make an anonymous
         // transfer, and one to receive an anonymous transfer. We will see if the viewer can
@@ -1247,7 +1266,7 @@ mod test {
         // viewer nonetheless discovers the details of the transaction).
         writeln!(
             sender_input,
-            "transfer 1 {} {} 50 1",
+            "transfer_from 1 {} {} 50 1",
             sender_address, receiver_address
         )
         .unwrap();
@@ -1263,27 +1282,27 @@ mod test {
         );
 
         // View the transaction. We should find two unspent records: first the amount-50 transaction
-        // output, and second the amount-950 change output. These records have UIDs 5 and 6, because
-        // we already have 5 records: 3 initial grants, a mint output, and a mint fee change record.
+        // output, and second the amount-950 change output. These records have UIDs 7 and 8, because
+        // we already have 7 records: 5 initial grants, a mint output, and a mint fee change record.
         writeln!(viewer_input, "view 1").unwrap();
         match_output(
             &mut viewer_output,
             &[
                 "^UID\\s+AMOUNT\\s+FROZEN\\s+OWNER$",
-                format!("^5\\s+50\\s+false\\s+{}$", receiver_address).as_str(),
-                format!("^6\\s+950\\s+false\\s+{}$", sender_address).as_str(),
+                format!("^7\\s+50\\s+false\\s+{}$", receiver_address).as_str(),
+                format!("^8\\s+950\\s+false\\s+{}$", sender_address).as_str(),
             ],
         );
         // Filter by account.
         writeln!(viewer_input, "view 1 account={}", receiver_address).unwrap();
         match_output(
             &mut viewer_output,
-            &["^UID\\s+AMOUNT\\s+FROZEN$", "^5\\s+50\\s+false$"],
+            &["^UID\\s+AMOUNT\\s+FROZEN$", "^7\\s+50\\s+false$"],
         );
         writeln!(viewer_input, "view 1 account={}", sender_address).unwrap();
         match_output(
             &mut viewer_output,
-            &["^UID\\s+AMOUNT\\s+FROZEN$", "^6\\s+950\\s+false$"],
+            &["^UID\\s+AMOUNT\\s+FROZEN$", "^8\\s+950\\s+false$"],
         );
 
         // If we can see the record openings and we hold the freezer key, we should be able to
@@ -1308,15 +1327,15 @@ mod test {
             &mut viewer_output,
             &[
                 "^UID\\s+AMOUNT\\s+FROZEN\\s+OWNER$",
-                format!("^5\\s+50\\s+false\\s+{}$", receiver_address).as_str(),
-                format!("^8\\s+950\\s+true\\s+{}$", sender_address).as_str(),
+                format!("^7\\s+50\\s+false\\s+{}$", receiver_address).as_str(),
+                format!("^10\\s+950\\s+true\\s+{}$", sender_address).as_str(),
             ],
         );
 
         // Transfers that need the frozen record as an input should now fail.
         writeln!(
             sender_input,
-            "transfer 1 {} {} 50 1",
+            "transfer_from 1 {} {} 50 1",
             sender_address, receiver_address
         )
         .unwrap();
@@ -1343,8 +1362,8 @@ mod test {
             &mut viewer_output,
             &[
                 "^UID\\s+AMOUNT\\s+FROZEN\\s+OWNER$",
-                format!("^5\\s+50\\s+false\\s+{}$", receiver_address).as_str(),
-                format!("^10\\s+950\\s+false\\s+{}$", sender_address).as_str(),
+                format!("^7\\s+50\\s+false\\s+{}$", receiver_address).as_str(),
+                format!("^12\\s+950\\s+false\\s+{}$", sender_address).as_str(),
             ],
         );
     }

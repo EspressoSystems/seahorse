@@ -792,11 +792,28 @@ impl<L: Ledger> Default for EventSummary<L> {
 }
 
 impl<'a, L: 'static + Ledger> WalletState<'a, L> {
+    fn key_pairs(&self) -> Vec<UserKeyPair> {
+        self.user_keys.values().cloned().collect::<Vec<_>>()
+    }
+
     pub fn pub_keys(&self) -> Vec<UserPubKey> {
         self.user_keys.values().map(|key| key.pub_key()).collect()
     }
 
-    pub fn balance(&self, account: &UserAddress, asset: &AssetCode, frozen: FreezeFlag) -> u64 {
+    pub fn balance(&self, asset: &AssetCode, frozen: FreezeFlag) -> u64 {
+        let mut balance = 0;
+        for pub_key in self.pub_keys() {
+            balance += self.txn_state.balance(asset, &pub_key, frozen);
+        }
+        balance
+    }
+
+    pub fn balance_breakdown(
+        &self,
+        account: &UserAddress,
+        asset: &AssetCode,
+        frozen: FreezeFlag,
+    ) -> u64 {
         match self.user_keys.get(account) {
             Some(key) => self.txn_state.balance(asset, &key.pub_key(), frozen),
             None => 0,
@@ -824,11 +841,12 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
                     // If the transaction isn't in our pending data structures, but its fee record
                     // has not been spent, then either it was rejected, or it's someone else's
                     // transaction that we haven't been tracking through the lifecycle.
-                    if self.user_keys.contains_key(&receipt.submitter) {
-                        Ok(TransactionStatus::Rejected)
-                    } else {
-                        Ok(TransactionStatus::Unknown)
+                    for submitter in &receipt.submitters {
+                        if !self.user_keys.contains_key(submitter) {
+                            return Ok(TransactionStatus::Unknown);
+                        }
                     }
+                    Ok(TransactionStatus::Rejected)
                 }
             }
 
@@ -1284,7 +1302,7 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
             time: Local::now(),
             asset: txn_asset,
             kind,
-            sender: None,
+            senders: Vec::new(),
             // When we receive transactions, we can't tell from the protocol
             // who sent it to us.
             receivers: records
@@ -1585,7 +1603,7 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
                 let user_key = loop {
                     let user_key = session
                         .user_key_stream
-                        .derive_user_keypair(&self.key_state.user.to_le_bytes());
+                        .derive_user_key_pair(&self.key_state.user.to_le_bytes());
                     self.key_state.user += 1;
                     if !self.user_keys.contains_key(&user_key.address()) {
                         break user_key;
@@ -1717,10 +1735,10 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
         &mut self,
         session: &mut WalletSession<'a, L, impl WalletBackend<'a, L>>,
         records: Vec<RecordOpening>,
-        sig_keypair: &SigKeyPair,
+        sig_key_pair: &SigKeyPair,
     ) -> Result<(Vec<ReceiverMemo>, Signature), WalletError<L>> {
         self.txn_state
-            .generate_memos(records, &mut session.rng, sig_keypair)
+            .generate_memos(records, &mut session.rng, sig_key_pair)
             .context(TransactionError)
     }
 
@@ -1746,7 +1764,7 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
                 })?;
         self.txn_state
             .mint(
-                &self.account_keypair(account)?.clone(),
+                &self.account_key_pair(account)?.clone(),
                 &self.proving_keys.mint,
                 fee,
                 &(asset.definition.clone(), seed, description),
@@ -1779,7 +1797,7 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
 
         self.txn_state
             .freeze_or_unfreeze(
-                &self.account_keypair(account)?.clone(),
+                &self.account_key_pair(account)?.clone(),
                 freeze_key,
                 &self.proving_keys.freeze,
                 fee,
@@ -1880,7 +1898,10 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
         }
     }
 
-    fn account_keypair(&'_ self, account: &UserAddress) -> Result<&'_ UserKeyPair, WalletError<L>> {
+    fn account_key_pair(
+        &'_ self,
+        account: &UserAddress,
+    ) -> Result<&'_ UserKeyPair, WalletError<L>> {
         match self.user_keys.get(account) {
             Some(key_pair) => Ok(key_pair),
             None => Err(WalletError::<L>::NoSuchAccount {
@@ -2147,10 +2168,16 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
         state.freeze_keys.keys().cloned().collect()
     }
 
-    /// Compute the spendable balance of the given asset type owned by the given address.
-    pub async fn balance(&self, account: &UserAddress, asset: &AssetCode) -> u64 {
+    /// Compute the spendable balance of the given asset type owned by all addresses.
+    pub async fn balance(&self, asset: &AssetCode) -> u64 {
         let WalletSharedState { state, .. } = &*self.mutex.lock().await;
-        state.balance(account, asset, FreezeFlag::Unfrozen)
+        state.balance(asset, FreezeFlag::Unfrozen)
+    }
+
+    /// Compute the spendable balance of the given asset type owned by the given address.
+    pub async fn balance_breakdown(&self, account: &UserAddress, asset: &AssetCode) -> u64 {
+        let WalletSharedState { state, .. } = &*self.mutex.lock().await;
+        state.balance_breakdown(account, asset, FreezeFlag::Unfrozen)
     }
 
     /// List records owned or viewable by this wallet.
@@ -2166,9 +2193,9 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
     }
 
     /// Compute the balance frozen records of the given asset type owned by the given address.
-    pub async fn frozen_balance(&self, account: &UserAddress, asset: &AssetCode) -> u64 {
+    pub async fn frozen_balance_breakdown(&self, account: &UserAddress, asset: &AssetCode) -> u64 {
         let WalletSharedState { state, .. } = &*self.mutex.lock().await;
-        state.balance(account, asset, FreezeFlag::Frozen)
+        state.balance_breakdown(account, asset, FreezeFlag::Frozen)
     }
 
     /// List assets discovered or imported by this wallet.
@@ -2197,9 +2224,14 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
     /// To add transfer size requirement, call [Wallet::build_transfer] with a specified
     /// `xfr_size_requirement`. To skip an output when generating memos, call
     /// [Wallet::generate_memos] after removing the record from the list of outputs.
+    ///
+    /// `account`
+    /// * If provided, only this address will be used to transfer the asset.
+    /// * Otherwise, all the owned addresses can be used for the transfer.
+    ///
     pub async fn transfer(
         &mut self,
-        account: &UserAddress,
+        account: Option<&UserAddress>,
         asset: &AssetCode,
         receivers: &[(UserAddress, u64)],
         fee: u64,
@@ -2216,10 +2248,10 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
             None => xfr_info.outputs.clone(),
         };
         let (memos, sig) = self
-            .generate_memos(memos_rec, &xfr_info.sig_keypair)
+            .generate_memos(memos_rec, &xfr_info.sig_key_pair)
             .await?;
         let txn_info = TransactionInfo {
-            account: xfr_info.owner_address,
+            accounts: xfr_info.owner_addresses,
             memos,
             sig,
             freeze_outputs: vec![],
@@ -2235,7 +2267,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
     /// Build a transfer with full customization.
     pub async fn build_transfer(
         &mut self,
-        account: &UserAddress,
+        account: Option<&UserAddress>,
         asset: &AssetCode,
         receivers: &[(UserAddress, u64)],
         fee: u64,
@@ -2255,8 +2287,14 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
             })
             .try_collect::<Vec<_>>()
             .await?;
+        let owner_key_pairs = match account {
+            Some(addr) => {
+                vec![state.account_key_pair(addr)?.clone()]
+            }
+            None => state.key_pairs(),
+        };
         let spec = TransferSpec {
-            owner_keypair: &state.account_keypair(account)?.clone(),
+            owner_key_pairs: &owner_key_pairs,
             asset,
             receivers: &receivers,
             fee,
@@ -2270,10 +2308,10 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
     pub async fn generate_memos(
         &mut self,
         records: Vec<RecordOpening>,
-        sig_keypair: &SigKeyPair,
+        sig_key_pair: &SigKeyPair,
     ) -> Result<(Vec<ReceiverMemo>, Signature), WalletError<L>> {
         let WalletSharedState { state, session, .. } = &mut *self.mutex.lock().await;
-        state.generate_memos(session, records, sig_keypair)
+        state.generate_memos(session, records, sig_key_pair)
     }
 
     /// Submit a transaction to be validated.
@@ -2342,7 +2380,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
             let WalletSharedState { state, session, .. } = &mut *self.mutex.lock().await;
             let audit_key = session
                 .auditor_key_stream
-                .derive_auditor_keypair(&state.key_state.auditor.to_le_bytes());
+                .derive_auditor_key_pair(&state.key_state.auditor.to_le_bytes());
             state.key_state.auditor += 1;
             state.add_audit_key(session, audit_key.clone()).await?;
             Ok(audit_key.pub_key())
@@ -2374,7 +2412,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
             let WalletSharedState { state, session, .. } = &mut *self.mutex.lock().await;
             let freeze_key = session
                 .freezer_key_stream
-                .derive_freezer_keypair(&state.key_state.freezer.to_le_bytes());
+                .derive_freezer_key_pair(&state.key_state.freezer.to_le_bytes());
             state.key_state.freezer += 1;
             state.add_freeze_key(session, freeze_key.clone()).await?;
             Ok(freeze_key.pub_key())
@@ -2619,7 +2657,11 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
         } else {
             let (sender, receiver) = oneshot::channel();
 
-            if state.user_keys.contains_key(&receipt.submitter) {
+            if receipt
+                .submitters
+                .iter()
+                .all(|key| state.user_keys.contains_key(key))
+            {
                 // If we submitted this transaction, we have all the information we need to track it
                 // through the lifecycle based on its uid alone.
                 txn_subscribers

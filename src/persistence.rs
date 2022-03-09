@@ -648,7 +648,7 @@ mod tests {
         let txn_uid = TransactionUID(random_txn_hash(&mut rng));
         let txn = PendingTransaction {
             info: TransactionInfo {
-                account: user_key.address(),
+                accounts: vec![user_key.address()],
                 memos,
                 sig,
                 freeze_outputs: random_ros(&mut rng, &user_key),
@@ -773,12 +773,13 @@ mod tests {
                     time: Local::now(),
                     asset: AssetCode::native(),
                     kind: TransactionKind::<cap::Ledger>::send(),
-                    sender: Some(user_key.address()),
+                    senders: vec![user_key.address()],
                     receivers: vec![],
                     receipt: None,
                 })
                 .await
                 .unwrap();
+
             // Revert the changes.
             stored
                 .txn_state
