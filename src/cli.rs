@@ -1144,12 +1144,7 @@ mod test {
     ) -> (MockCapLedger<'a>, Vec<hd::KeyTree>) {
         // Use `create_test_network` to create a ledger with some initial records.
         let (ledger, wallets) = t
-            .create_test_network(
-                &[(3, 3)],
-                initial_grants.to_vec(),
-                false,
-                &mut Instant::now(),
-            )
+            .create_test_network(&[(3, 3)], initial_grants.to_vec(), &mut Instant::now())
             .await;
         // Set `block_size` to `1` so we don't have to explicitly flush the ledger after each
         // transaction submission.

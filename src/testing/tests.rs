@@ -60,37 +60,55 @@ pub mod generic_wallet_tests {
         let num_inputs = 3;
         let num_outputs = 4;
 
-        // Give Alice an initial grant of 5 native coins. If using non-native transfers, give Bob an
-        // initial grant with which to pay his transaction fee, since he will not be receiving any
-        // native coins from Alice.
-        let alice_grant = 5;
-        let bob_grant = if native { 0 } else { 1 };
+        // Give Alice an initial grant of 10 native coins. If using non-native transfers, give Bob
+        // an initial grant with which to pay his transaction fee, since he will not be receiving
+        // any native coins from Alice.
+        let alice_grant = 10;
+        let bob_grant = if native { 0 } else { 2 };
         let (ledger, mut wallets) = t
             .create_test_network(
                 &[(num_inputs, num_outputs)],
                 vec![alice_grant, bob_grant],
-                false,
                 &mut now,
             )
             .await;
-        let alice_address = wallets[0].1[0].clone();
-        let bob_address = wallets[1].1[0].clone();
+        let alice_addresses = wallets[0].1.clone();
+        let bob_addresses = wallets[1].1.clone();
 
         // Verify initial wallet state.
-        assert_ne!(alice_address, bob_address);
+        assert_ne!(alice_addresses, bob_addresses);
+        assert_eq!(
+            wallets[0].0.balance(&AssetCode::native()).await,
+            alice_grant
+        );
         assert_eq!(
             wallets[0]
                 .0
-                .balance_breakdown(&alice_address, &AssetCode::native())
+                .balance_breakdown(&alice_addresses[0], &AssetCode::native())
                 .await,
-            alice_grant
+            alice_grant / 2
+        );
+        assert_eq!(
+            wallets[0]
+                .0
+                .balance_breakdown(&alice_addresses[1], &AssetCode::native())
+                .await,
+            alice_grant - alice_grant / 2
+        );
+        assert_eq!(wallets[1].0.balance(&AssetCode::native()).await, bob_grant);
+        assert_eq!(
+            wallets[1]
+                .0
+                .balance_breakdown(&bob_addresses[0], &AssetCode::native())
+                .await,
+            bob_grant / 2
         );
         assert_eq!(
             wallets[1]
                 .0
-                .balance_breakdown(&bob_address, &AssetCode::native())
+                .balance_breakdown(&bob_addresses[1], &AssetCode::native())
                 .await,
-            bob_grant
+            bob_grant - bob_grant / 2
         );
 
         let coin = if native {
@@ -104,47 +122,42 @@ pub mod generic_wallet_tests {
             // Alice gives herself an initial grant of 5 coins.
             wallets[0]
                 .0
-                .mint(&alice_address, 1, &coin.code, 5, alice_address.clone())
+                .mint(
+                    &alice_addresses[0],
+                    1,
+                    &coin.code,
+                    5,
+                    alice_addresses[0].clone(),
+                )
                 .await
                 .unwrap();
             t.sync(&ledger, wallets.as_slice()).await;
             println!("Asset minted: {}s", now.elapsed().as_secs_f32());
             now = Instant::now();
 
+            assert_eq!(wallets[0].0.balance(&coin.code).await, 5);
             assert_eq!(
                 wallets[0]
                     .0
-                    .balance_breakdown(&alice_address, &coin.code)
+                    .balance_breakdown(&alice_addresses[0], &coin.code)
                     .await,
                 5
             );
-            assert_eq!(
-                wallets[1]
-                    .0
-                    .balance_breakdown(&bob_address, &coin.code)
-                    .await,
-                0
-            );
+            assert_eq!(wallets[1].0.balance(&coin.code).await, 0);
 
             coin
         };
 
-        let alice_initial_native_balance = wallets[0]
-            .0
-            .balance_breakdown(&alice_address, &AssetCode::native())
-            .await;
-        let bob_initial_native_balance = wallets[1]
-            .0
-            .balance_breakdown(&bob_address, &AssetCode::native())
-            .await;
+        let alice_initial_native_balance = wallets[0].0.balance(&AssetCode::native()).await;
+        let bob_initial_native_balance = wallets[1].0.balance(&AssetCode::native()).await;
 
         // Construct a transaction to transfer some coins from Alice to Bob.
         wallets[0]
             .0
             .transfer(
-                Some(&alice_address),
+                Some(&alice_addresses[0]),
                 &coin.code,
-                &[(bob_address.clone(), 3)],
+                &[(bob_addresses[0].clone(), 3)],
                 1,
             )
             .await
@@ -173,15 +186,9 @@ pub mod generic_wallet_tests {
                     expected_coin_balance - fees_paid
                 );
             } else {
+                assert_eq!(wallet.0.balance(&coin.code).await, expected_coin_balance);
                 assert_eq!(
-                    wallet.0.balance_breakdown(&wallet.1[0], &coin.code).await,
-                    expected_coin_balance
-                );
-                assert_eq!(
-                    wallet
-                        .0
-                        .balance_breakdown(&wallet.1[0], &AssetCode::native())
-                        .await,
+                    wallet.0.balance(&AssetCode::native()).await,
                     starting_native_balance - fees_paid
                 );
             }
@@ -205,7 +212,12 @@ pub mod generic_wallet_tests {
         // the sum of the outputs and fee of this transaction is only 2.
         wallets[1]
             .0
-            .transfer(Some(&bob_address), &coin.code, &[(alice_address, 1)], 1)
+            .transfer(
+                Some(&bob_addresses[0]),
+                &coin.code,
+                &[(alice_addresses[0].clone(), 1)],
+                1,
+            )
             .await
             .unwrap();
         t.sync(&ledger, wallets.as_slice()).await;
@@ -288,7 +300,6 @@ pub mod generic_wallet_tests {
                     0,
                     2 * T::Ledger::record_root_history() as u64,
                 ],
-                false,
                 &mut now,
             )
             .await;
@@ -617,15 +628,15 @@ pub mod generic_wallet_tests {
         let mut t = T::default();
         let mut now = Instant::now();
 
-        // The sender wallet (wallets[0]) gets an initial grant of 1 for a transfer fee. wallets[1]
-        // will act as the receiver, and wallets[2] will be a third party which creates and freezes
-        // some of wallets[0]'s assets. It gets a grant of 3, for a mint fee, a freeze fee and an
-        // unfreeze fee.
+        // Each of the two addresses of the sender wallet (wallets[0]) gets an initial grant of 1
+        // for a transfer fee. wallets[1] will act as the receiver, and wallets[2] will be a third
+        // party which creates and freezes some of wallets[0]'s assets. Each of its two addresses
+        // gets a grant of 3, for a mint fee, a freeze fee and an unfreeze fee.
         //
         // Note that the transfer proving key size (3, 4) used here is chosen to be 1 larger than
         // necessary in both inputs and outputs, to test dummy records.
         let (ledger, mut wallets) = t
-            .create_test_network(&[(3, 4)], vec![1, 0, 3], false, &mut now)
+            .create_test_network(&[(3, 4)], vec![2, 0, 6], &mut now)
             .await;
 
         let asset = {
@@ -859,7 +870,7 @@ pub mod generic_wallet_tests {
         // An asset def of 0 in a transfer spec or record indicates the native asset type; other
         // asset types are indexed startin from 1.
         txs: Vec<Vec<(u8, u8, u8, u64)>>,
-        nkeys: u8,
+        nwallets: u8,
         ndefs: u8,
         // (def,key,amount)
         init_rec: (u8, u8, u64),
@@ -869,7 +880,7 @@ pub mod generic_wallet_tests {
 
         println!(
             "multixfr_wallet test: {} users, {} assets, {} records, {} transfers",
-            nkeys,
+            nwallets,
             ndefs,
             init_recs.len() + 1,
             txs.iter().flatten().count()
@@ -882,35 +893,35 @@ pub mod generic_wallet_tests {
             (2, 3), // non-native transfer with change output
             (3, 2), // non-native merge
         ];
-        let mut balances = vec![vec![0; ndefs as usize + 1]; nkeys as usize];
+        let mut balances = vec![vec![0; ndefs as usize + 1]; nwallets as usize];
         // `histories` is a map from wallet indices to vectors of blocks of history entries. The
         // reason for blocking the history entries is that entries corresponding to transactions
         // that were validated in the same block can be recorded by the wallets in any order.
-        let mut histories = vec![vec![vec![]]; nkeys as usize];
+        let mut histories = vec![vec![vec![]]; nwallets as usize];
         let grants =
-            // The minter (wallet 0) gets 1 coin per initial record, to pay transaction fees while
-            // it mints and distributes the records, and 1 coin per transaction, to pay transaction
-            // fees while minting additional records if test wallets run out of balance during the
-            // test.
-            once((1 + init_recs.len() + txs.iter().flatten().count()) as u64).chain(
-                (0..nkeys)
+            // Each of the two addresses of the minter (wallet 0) gets 1 coin per initial record,
+            // to pay transaction fees while it mints and distributes the records, and 1 coin per
+            // transaction, to pay transaction fees while minting additional records if test
+            // wallets run out of balance during the test.
+            once((1 + init_recs.len() + txs.iter().flatten().count()) as u64 * 2).chain(
+                (0..nwallets)
                     .map(|i| {
                         // The remaining wallets (the test wallets) get 1 coin for each transaction
                         // in which they are the sender, to pay transaction fees, plus...
                         let txn_fees = txs.iter()
                             .flatten()
                             .map(|(_, sender, _, _)| {
-                                if sender % nkeys == i {1} else {0}
+                                if sender % nwallets == i {1} else {0}
                             })
                             .sum::<u64>();
                         balances[i as usize][0] += txn_fees;
-                        txn_fees +
+                        (txn_fees +
                         // ...one record for each native asset type initial record that they own,
                         // plus...
                         once(&init_rec).chain(&init_recs)
                             .map(|(def, owner, amount)| {
                                 let def = (def % (ndefs + 1)) as usize;
-                                let owner = (owner % nkeys) as usize;
+                                let owner = (owner % nwallets) as usize;
                                 if def == 0 && owner == (i as usize) {
                                     balances[owner][def] += amount;
                                     *amount
@@ -931,7 +942,7 @@ pub mod generic_wallet_tests {
                             let total_txn_amount: u64 = txs.iter()
                                 .flatten()
                                 .map(|(def, sender, _, amount)| {
-                                    if (def % (ndefs + 1)) == 0 && (sender % nkeys) == i {
+                                    if (def % (ndefs + 1)) == 0 && (sender % nwallets) == i {
                                         *amount
                                     } else {
                                         0
@@ -945,13 +956,13 @@ pub mod generic_wallet_tests {
                             } else {
                                 0
                             }
-                        }
+                        })
+                        // Give the same grant to the two addresses of each wallet.
+                        * 2
                     })
             ).collect();
 
-        let (ledger, mut wallets) = t
-            .create_test_network(xfr_sizes, grants, false, &mut now)
-            .await;
+        let (ledger, mut wallets) = t.create_test_network(xfr_sizes, grants, &mut now).await;
         println!(
             "ceremony complete, minting initial records: {}s",
             now.elapsed().as_secs_f32()
@@ -989,15 +1000,15 @@ pub mod generic_wallet_tests {
                 continue;
             }
             let minter = wallets[0].1[0].clone();
-            let address = wallets[(owner % nkeys) as usize + 1].1[0].clone();
-            balances[(owner % nkeys) as usize][asset] += amount;
+            let address = wallets[(owner % nwallets) as usize + 1].1[0].clone();
+            balances[(owner % nwallets) as usize][asset] += amount;
             wallets[0]
                 .0
                 .mint(&minter, 1, &assets[asset - 1].code, amount, address.clone())
                 .await
                 .unwrap();
             push_history(
-                (owner % nkeys) as usize,
+                (owner % nwallets) as usize,
                 &mut histories,
                 TransactionHistoryEntry {
                     time: Local::now(),
@@ -1111,8 +1122,8 @@ pub mod generic_wallet_tests {
                 );
 
                 let asset_ix = (asset_ix % (ndefs + 1)) as usize;
-                let sender_ix = (sender_ix % nkeys) as usize;
-                let receiver_ix = (receiver_ix % nkeys) as usize;
+                let sender_ix = (sender_ix % nwallets) as usize;
+                let receiver_ix = (receiver_ix % nwallets) as usize;
                 let native = AssetDefinition::native();
                 let asset = if asset_ix == 0 {
                     &native
@@ -1527,9 +1538,7 @@ pub mod generic_wallet_tests {
     pub async fn test_generate_user_key<'a, T: SystemUnderTest<'a>>() {
         let mut t = T::default();
         let mut now = Instant::now();
-        let (ledger, mut wallets) = t
-            .create_test_network(&[(3, 4)], vec![0, 4], false, &mut now)
-            .await;
+        let (ledger, mut wallets) = t.create_test_network(&[(3, 4)], vec![0, 8], &mut now).await;
 
         // Figure out the next key in `wallets[0]`s deterministic key stream without adding it to
         // the wallet. We will use this to create a record owned by this key, _and then_ generate
@@ -1541,7 +1550,7 @@ pub mod generic_wallet_tests {
                 .backend
                 .key_stream()
                 .derive_sub_tree("user".as_bytes())
-                .derive_user_keypair(&state.key_state.user.to_le_bytes());
+                .derive_user_key_pair(&state.key_state.user.to_le_bytes());
             session.backend.register_user_key(&key).await.unwrap();
             key
         };
@@ -1621,7 +1630,7 @@ pub mod generic_wallet_tests {
         let mut now = Instant::now();
         let initial_grant = 10;
         let (ledger, mut wallets) = t
-            .create_test_network(&[(2, 2)], vec![initial_grant], false, &mut now)
+            .create_test_network(&[(2, 2)], vec![initial_grant * 2], &mut now)
             .await;
         ledger.lock().await.set_block_size(1).unwrap();
 
@@ -1726,7 +1735,6 @@ pub mod generic_wallet_tests {
             .create_test_network(
                 &[(num_inputs, num_outputs)],
                 vec![alice_grant, bob_grant],
-                true,
                 &mut now,
             )
             .await;
@@ -1881,12 +1889,7 @@ pub mod generic_wallet_tests {
         let mut now = Instant::now();
         let initial_grant = 10;
         let (ledger, mut wallets) = t
-            .create_test_network(
-                &[(2, 2)],
-                vec![initial_grant, initial_grant],
-                false,
-                &mut now,
-            )
+            .create_test_network(&[(2, 2)], vec![initial_grant, initial_grant], &mut now)
             .await;
 
         // Test various ways of discovering assets. We will have wallets[0] discover assets by

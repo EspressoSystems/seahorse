@@ -239,14 +239,14 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
     ) -> Self::MockNetwork;
     async fn create_storage(&mut self) -> Self::MockStorage;
 
-    /// `two_addresses_per_wallet`
-    /// * If true, two key pairs/addresses will be created for each wallet.
-    /// * Otherwise, only one key pair/address per wallet.
+    /// Creates two key pairs/addresses for each wallet.
+    ///
+    /// `initial_grants` - List of total initial grants for each wallet. Each amount will be
+    /// divided by 2, and any remainder will be added to the second address.
     async fn create_test_network(
         &mut self,
         xfr_sizes: &[(usize, usize)],
         initial_grants: Vec<u64>,
-        two_addresses_per_wallet: bool,
         now: &mut Instant,
     ) -> (
         Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork, Self::MockStorage>>>,
@@ -264,49 +264,44 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         let mut record_merkle_tree = MerkleTree::new(Self::Ledger::merkle_height()).unwrap();
         let mut users = vec![];
         let mut initial_records = vec![];
-        for amount in initial_grants {
+        for total_amount in initial_grants {
             let key_stream = hd::KeyTree::random(&mut rng).0;
             let sub_tree = key_stream.derive_sub_tree("user".as_bytes());
-            let keys_amounts;
-            if two_addresses_per_wallet {
-                keys_amounts = vec![
-                    (
-                        sub_tree.derive_user_keypair(&0u64.to_le_bytes()),
-                        amount / 2,
-                    ),
-                    (
-                        sub_tree.derive_user_keypair(&1u64.to_le_bytes()),
-                        amount - amount / 2,
-                    ),
-                ];
-            } else {
-                keys_amounts = vec![(sub_tree.derive_user_keypair(&0u64.to_le_bytes()), amount)];
-            }
+            let keys_amounts = vec![
+                (
+                    sub_tree.derive_user_key_pair(&0u64.to_le_bytes()),
+                    total_amount / 2,
+                ),
+                (
+                    sub_tree.derive_user_key_pair(&1u64.to_le_bytes()),
+                    total_amount - total_amount / 2,
+                ),
+            ];
             let keys = keys_amounts
                 .clone()
                 .into_iter()
                 .map(|(key, _)| key)
                 .collect::<Vec<UserKeyPair>>();
-            if amount > 0 {
-                let mut records = vec![];
+            let mut records = vec![];
+            if total_amount > 0 {
                 for (key, amount) in keys_amounts {
-                    let ro = RecordOpening::new(
-                        &mut rng,
-                        amount,
-                        AssetDefinition::native(),
-                        key.pub_key(),
-                        FreezeFlag::Unfrozen,
-                    );
-                    let comm = RecordCommitment::from(&ro);
-                    let uid = record_merkle_tree.num_leaves();
-                    record_merkle_tree.push(comm.to_field_element());
-                    records.push((ro.clone(), uid));
-                    initial_records.push((ro, uid));
+                    if amount > 0 {
+                        let ro = RecordOpening::new(
+                            &mut rng,
+                            amount,
+                            AssetDefinition::native(),
+                            key.pub_key(),
+                            FreezeFlag::Unfrozen,
+                        );
+                        let comm = RecordCommitment::from(&ro);
+                        let uid = record_merkle_tree.num_leaves();
+                        record_merkle_tree.push(comm.to_field_element());
+                        records.push((ro.clone(), uid));
+                        initial_records.push((ro, uid));
+                    }
                 }
-                users.push((key_stream, keys, records));
-            } else {
-                users.push((key_stream, keys, vec![]));
             }
+            users.push((key_stream, keys, records));
         }
 
         // Create the validator using the ledger state containing the initial grants, computed

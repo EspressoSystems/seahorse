@@ -1603,7 +1603,7 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
                 let user_key = loop {
                     let user_key = session
                         .user_key_stream
-                        .derive_user_keypair(&self.key_state.user.to_le_bytes());
+                        .derive_user_key_pair(&self.key_state.user.to_le_bytes());
                     self.key_state.user += 1;
                     if !self.user_keys.contains_key(&user_key.address()) {
                         break user_key;
@@ -2380,7 +2380,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
             let WalletSharedState { state, session, .. } = &mut *self.mutex.lock().await;
             let audit_key = session
                 .auditor_key_stream
-                .derive_auditor_keypair(&state.key_state.auditor.to_le_bytes());
+                .derive_auditor_key_pair(&state.key_state.auditor.to_le_bytes());
             state.key_state.auditor += 1;
             state.add_audit_key(session, audit_key.clone()).await?;
             Ok(audit_key.pub_key())
@@ -2412,7 +2412,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
             let WalletSharedState { state, session, .. } = &mut *self.mutex.lock().await;
             let freeze_key = session
                 .freezer_key_stream
-                .derive_freezer_keypair(&state.key_state.freezer.to_le_bytes());
+                .derive_freezer_key_pair(&state.key_state.freezer.to_le_bytes());
             state.key_state.freezer += 1;
             state.add_freeze_key(session, freeze_key.clone()).await?;
             Ok(freeze_key.pub_key())
