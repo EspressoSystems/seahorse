@@ -1093,7 +1093,7 @@ impl<L: Ledger> TransactionState<L> {
         // Build auxiliary info.
         let owner_addresses = spec
             .owner_key_pairs
-            .into_iter()
+            .iter()
             .map(|key_pair| key_pair.address())
             .collect::<Vec<UserAddress>>();
         let history = TransactionHistoryEntry {
@@ -1158,17 +1158,14 @@ impl<L: Ledger> TransactionState<L> {
                 inputs.push(TransferNoteInput {
                     ro: ro.clone(),
                     acc_member_witness: witness,
-                    owner_keypair: &owner_key_pair,
+                    owner_keypair: owner_key_pair,
                     cred: None, // TODO support credentials
                 });
                 input_ros.push(ro.clone());
             }
             if fee_input.is_none() {
-                match self.find_fee_input(owner_key_pair, spec.fee) {
-                    Ok(input) => {
-                        fee_input = Some(input);
-                    }
-                    _ => {}
+                if let Ok(input) = self.find_fee_input(owner_key_pair, spec.fee) {
+                    fee_input = Some(input);
                 }
             }
 
@@ -1254,7 +1251,7 @@ impl<L: Ledger> TransactionState<L> {
         // Build auxiliary info.
         let owner_addresses = spec
             .owner_key_pairs
-            .into_iter()
+            .iter()
             .map(|key_pair| key_pair.address())
             .collect::<Vec<UserAddress>>();
         let history = TransactionHistoryEntry {
@@ -1583,7 +1580,7 @@ impl<L: Ledger> TransactionState<L> {
                 records.push((owner_key_pair.clone(), input_records, change as u64));
                 return Ok(records);
             }
-            if input_records.len() > 0 {
+            if !input_records.is_empty() {
                 records.push((owner_key_pair.clone(), input_records, 0));
             }
             target_amount = (0 - change) as u64;

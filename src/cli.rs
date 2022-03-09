@@ -625,7 +625,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                                 txn.asset.to_string()
                             };
                             let senders;
-                            if txn.senders.len() >0 {
+                            if !txn.senders.is_empty() {
                                 senders = txn.senders
                                     .into_iter()
                                     .map(|sender| UserAddress(sender).to_string())
