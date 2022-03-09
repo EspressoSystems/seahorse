@@ -2193,7 +2193,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
     }
 
     /// Compute the balance frozen records of the given asset type owned by the given address.
-    pub async fn frozen_balance(&self, account: &UserAddress, asset: &AssetCode) -> u64 {
+    pub async fn frozen_balance_breakdown(&self, account: &UserAddress, asset: &AssetCode) -> u64 {
         let WalletSharedState { state, .. } = &*self.mutex.lock().await;
         state.balance_breakdown(account, asset, FreezeFlag::Frozen)
     }
@@ -2657,7 +2657,11 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
         } else {
             let (sender, receiver) = oneshot::channel();
 
-            if state.user_keys.contains_key(&receipt.submitters[0]) {
+            if receipt
+                .submitters
+                .iter()
+                .all(|key| state.user_keys.contains_key(key))
+            {
                 // If we submitted this transaction, we have all the information we need to track it
                 // through the lifecycle based on its uid alone.
                 txn_subscribers

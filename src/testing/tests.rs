@@ -678,7 +678,7 @@ pub mod generic_wallet_tests {
         assert_eq!(
             wallets[0]
                 .0
-                .frozen_balance(&wallets[0].1[0], &asset.code)
+                .frozen_balance_breakdown(&wallets[0].1[0], &asset.code)
                 .await,
             0
         );
@@ -720,7 +720,7 @@ pub mod generic_wallet_tests {
         assert_eq!(
             wallets[0]
                 .0
-                .frozen_balance(&wallets[0].1[0], &asset.code)
+                .frozen_balance_breakdown(&wallets[0].1[0], &asset.code)
                 .await,
             1
         );
@@ -771,7 +771,7 @@ pub mod generic_wallet_tests {
         assert_eq!(
             wallets[0]
                 .0
-                .frozen_balance(&wallets[0].1[0], &asset.code)
+                .frozen_balance_breakdown(&wallets[0].1[0], &asset.code)
                 .await,
             0
         );
@@ -796,7 +796,7 @@ pub mod generic_wallet_tests {
         assert_eq!(
             wallets[0]
                 .0
-                .frozen_balance(&wallets[0].1[0], &asset.code)
+                .frozen_balance_breakdown(&wallets[0].1[0], &asset.code)
                 .await,
             0
         );

@@ -723,7 +723,7 @@ pub struct TransactionHistoryEntry<L: Ledger> {
     pub kind: TransactionKind<L>,
     // If we sent this transaction, `senders` records the addresses of the spending keys used to
     // submit it. If we received this transaction from someone else, we may not know who the senders
-    // are and this field may be None.
+    // are and this field may be empty.
     pub senders: Vec<UserAddress>,
     // Receivers and corresponding amounts.
     pub receivers: Vec<(UserAddress, u64)>,
@@ -1186,7 +1186,7 @@ impl<L: Ledger> TransactionState<L> {
         let mut outputs = Vec::new();
         for (pub_key, amount) in spec.receivers {
             outputs.push(RecordOpening::new(
-                &mut rng.clone(),
+                rng,
                 *amount,
                 asset.clone(),
                 pub_key.clone(),
@@ -1572,7 +1572,7 @@ impl<L: Ledger> TransactionState<L> {
                 &owner_key_pair.pub_key(),
                 frozen,
                 target_amount,
-                max_records,
+                max_records.map(|max| max - records.len()),
                 true,
             )?;
             // A nonnegative change indicates that we've find sufficient records.
@@ -1599,18 +1599,17 @@ impl<L: Ledger> TransactionState<L> {
         owner_key_pair: &'l UserKeyPair,
         fee: u64,
     ) -> Result<FeeInput<'l>, TransactionError> {
-        let (ro, uid) = self.find_records(
-            &AssetCode::native(),
-            &vec![owner_key_pair.clone()],
-            FreezeFlag::Unfrozen,
-            fee,
-            Some(1),
-        )?[0]
-            .1
-            .clone()
-            .into_iter()
-            .next()
-            .unwrap();
+        let (ro, uid) = self
+            .find_records_with_pub_key(
+                &AssetCode::native(),
+                &owner_key_pair.pub_key(),
+                FreezeFlag::Unfrozen,
+                fee,
+                Some(1),
+                false,
+            )?
+            .0
+            .remove(0);
 
         Ok(FeeInput {
             ro,

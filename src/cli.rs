@@ -478,6 +478,11 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                         wallet.balance_breakdown(&pub_key.address(), &asset.item).await
                     );
                 }
+                cli_writeln!(
+                    io,
+                    "Total {}",
+                    wallet.balance(&asset.item).await
+                );
             }
         ),
         command!(
