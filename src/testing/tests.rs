@@ -285,20 +285,20 @@ pub mod generic_wallet_tests {
         let (ledger, mut wallets) = t
             .create_test_network(
                 &[(num_inputs, num_outputs)],
-                // If native, wallets[0] gets 1 coin to transfer and 1 for a transaction fee. Otherwise,
-                // it gets
+                // If native, each address of wallets[0] gets 1 coin to transfer and 1 for a
+                // transaction fee. Otherwise, it gets
                 //  * 1 transaction fee
                 //  * 1 mint fee for its initial non-native record, if the test itself is not minting
                 //    that record
                 //  * 1 mint fee for wallets[2]'s initial non-native record in the timeout test.
                 vec![
                     if native {
-                        2
+                        4
                     } else {
-                        1 + !mint as u64 + timeout as u64
+                        2 * (1 + !mint as u64 + timeout as u64)
                     },
                     0,
-                    2 * T::Ledger::record_root_history() as u64,
+                    4 * T::Ledger::record_root_history() as u64,
                 ],
                 &mut now,
             )

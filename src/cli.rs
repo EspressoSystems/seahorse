@@ -1186,7 +1186,7 @@ mod test {
     #[async_std::test]
     async fn test_view_freeze() {
         let mut t = MockSystem::default();
-        let (ledger, key_streams) = create_network(&mut t, &[1000, 1000, 0]).await;
+        let (ledger, key_streams) = create_network(&mut t, &[2000, 2000, 0]).await;
 
         // Create three wallet clients: one to mint and view an asset, one to make an anonymous
         // transfer, and one to receive an anonymous transfer. We will see if the viewer can
@@ -1277,27 +1277,27 @@ mod test {
         );
 
         // View the transaction. We should find two unspent records: first the amount-50 transaction
-        // output, and second the amount-950 change output. These records have UIDs 5 and 6, because
-        // we already have 5 records: 3 initial grants, a mint output, and a mint fee change record.
+        // output, and second the amount-950 change output. These records have UIDs 7 and 8, because
+        // we already have 7 records: 5 initial grants, a mint output, and a mint fee change record.
         writeln!(viewer_input, "view 1").unwrap();
         match_output(
             &mut viewer_output,
             &[
                 "^UID\\s+AMOUNT\\s+FROZEN\\s+OWNER$",
-                format!("^5\\s+50\\s+false\\s+{}$", receiver_address).as_str(),
-                format!("^6\\s+950\\s+false\\s+{}$", sender_address).as_str(),
+                format!("^7\\s+50\\s+false\\s+{}$", receiver_address).as_str(),
+                format!("^8\\s+950\\s+false\\s+{}$", sender_address).as_str(),
             ],
         );
         // Filter by account.
         writeln!(viewer_input, "view 1 account={}", receiver_address).unwrap();
         match_output(
             &mut viewer_output,
-            &["^UID\\s+AMOUNT\\s+FROZEN$", "^5\\s+50\\s+false$"],
+            &["^UID\\s+AMOUNT\\s+FROZEN$", "^7\\s+50\\s+false$"],
         );
         writeln!(viewer_input, "view 1 account={}", sender_address).unwrap();
         match_output(
             &mut viewer_output,
-            &["^UID\\s+AMOUNT\\s+FROZEN$", "^6\\s+950\\s+false$"],
+            &["^UID\\s+AMOUNT\\s+FROZEN$", "^8\\s+950\\s+false$"],
         );
 
         // If we can see the record openings and we hold the freezer key, we should be able to
@@ -1322,8 +1322,8 @@ mod test {
             &mut viewer_output,
             &[
                 "^UID\\s+AMOUNT\\s+FROZEN\\s+OWNER$",
-                format!("^5\\s+50\\s+false\\s+{}$", receiver_address).as_str(),
-                format!("^8\\s+950\\s+true\\s+{}$", sender_address).as_str(),
+                format!("^7\\s+50\\s+false\\s+{}$", receiver_address).as_str(),
+                format!("^10\\s+950\\s+true\\s+{}$", sender_address).as_str(),
             ],
         );
 
@@ -1357,8 +1357,8 @@ mod test {
             &mut viewer_output,
             &[
                 "^UID\\s+AMOUNT\\s+FROZEN\\s+OWNER$",
-                format!("^5\\s+50\\s+false\\s+{}$", receiver_address).as_str(),
-                format!("^10\\s+950\\s+false\\s+{}$", sender_address).as_str(),
+                format!("^7\\s+50\\s+false\\s+{}$", receiver_address).as_str(),
+                format!("^12\\s+950\\s+false\\s+{}$", sender_address).as_str(),
             ],
         );
     }
