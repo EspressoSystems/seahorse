@@ -32,6 +32,7 @@ rustyline = "9.0.0"
 serde = { version = "1.0", features = ["derive"] }
 sha3 = "^0.9"
 snafu = { version = "0.6.10", features = ["backtraces"] }
+structopt = "0.3"
 strum = "0.20"
 strum_macros = "0.20.1"
 surf = "2.3.1"

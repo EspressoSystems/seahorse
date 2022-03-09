@@ -683,10 +683,7 @@ mod tests {
             AssetDefinition::new(AssetCode::random(&mut rng).0, Default::default()).unwrap();
         let audit_key = AuditorKeyPair::generate(&mut rng);
         let freeze_key = FreezerKeyPair::generate(&mut rng);
-        let asset = AssetInfo {
-            definition,
-            mint_info: None,
-        };
+        let asset = AssetInfo::from(definition);
         stored.assets.insert(asset.clone());
         stored.assets.add_audit_key(audit_key.pub_key());
         stored
