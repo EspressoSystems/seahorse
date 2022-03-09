@@ -220,6 +220,7 @@ impl<'a> super::MockNetwork<'a, cap::Ledger> for MockNetwork<'a> {
     ) -> Result<(), WalletError<cap::Ledger>> {
         let (block, block_uids) = &self.committed_blocks[block_id as usize];
         let txn = &block[txn_id as usize];
+        let kind = txn.kind();
         let comms = txn.output_commitments();
         let uids = block_uids[txn_id as usize].clone();
 
@@ -239,7 +240,7 @@ impl<'a> super::MockNetwork<'a, cap::Ledger> for MockNetwork<'a> {
             .collect::<Vec<_>>();
         self.generate_event(LedgerEvent::<cap::Ledger>::Memos {
             outputs: izip!(memos, comms, uids, merkle_paths).collect(),
-            transaction: Some((block_id, txn_id)),
+            transaction: Some((block_id, txn_id, kind)),
         });
 
         Ok(())
@@ -382,38 +383,6 @@ impl<'a> WalletBackend<'a, cap::Ledger> for MockBackend<'a> {
     ) -> Result<(bool, ()), WalletError<cap::Ledger>> {
         let mut ledger = self.ledger.lock().await;
         Ok((ledger.network().nullifiers.contains(&nullifier), ()))
-    }
-
-    async fn get_transaction(
-        &self,
-        block_id: u64,
-        txn_id: u64,
-    ) -> Result<cap::Transaction, WalletError<cap::Ledger>> {
-        let mut ledger = self.ledger.lock().await;
-        let network = ledger.network();
-        let block = &network
-            .committed_blocks
-            .get(block_id as usize)
-            .ok_or_else(|| WalletError::<cap::Ledger>::Failed {
-                msg: format!(
-                    "invalid block id {}/{}",
-                    block_id,
-                    network.committed_blocks.len()
-                ),
-            })?
-            .0;
-
-        if txn_id as usize >= block.len() {
-            return Err(WalletError::<cap::Ledger>::Failed {
-                msg: format!(
-                    "invalid transaction id {}/{} for block {}",
-                    txn_id,
-                    block.len(),
-                    block_id
-                ),
-            });
-        }
-        Ok(block[txn_id as usize].clone())
     }
 
     async fn register_user_key(

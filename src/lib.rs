@@ -726,13 +726,6 @@ pub trait WalletBackend<'a, L: Ledger>: Send {
         nullifier: Nullifier,
     ) -> Result<(bool, NullifierProof<L>), WalletError<L>>;
 
-    /// Get the specified transaction from the specified block.
-    async fn get_transaction(
-        &self,
-        block_id: u64,
-        txn_id: u64,
-    ) -> Result<Transaction<L>, WalletError<L>>;
-
     /// Submit a transaction to a validator.
     async fn submit(
         &mut self,
@@ -1059,7 +1052,13 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
                     .extend(outputs.iter().map(|(memo, _, uid, _)| (memo.clone(), *uid)));
                 for key_pair in self.user_keys.values().cloned().collect::<Vec<_>>() {
                     let records = self
-                        .try_open_memos(session, &key_pair, &outputs, transaction, !self_published)
+                        .try_open_memos(
+                            session,
+                            &key_pair,
+                            &outputs,
+                            transaction.clone(),
+                            !self_published,
+                        )
                         .await;
                     if let Err(err) = self.add_records(session, &key_pair, records).await {
                         println!("error saving received records: {}", err);
@@ -1183,7 +1182,7 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
         session: &mut WalletSession<'a, L, impl WalletBackend<'a, L>>,
         key_pair: &UserKeyPair,
         memos: &[(ReceiverMemo, RecordCommitment, u64, MerklePath)],
-        transaction: Option<(u64, u64)>,
+        transaction: Option<(u64, u64, TransactionKind<L>)>,
         add_to_history: bool,
     ) -> Vec<(RecordOpening, u64, MerklePath)> {
         let mut records = Vec::new();
@@ -1198,21 +1197,7 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
         }
 
         if add_to_history && !records.is_empty() {
-            if let Some((block_id, txn_id)) = transaction {
-                // To add a transaction history entry, we need to fetch the actual transaction to
-                // figure out what type it was.
-                let kind = match session.backend.get_transaction(block_id, txn_id).await {
-                    Ok(txn) => txn.kind(),
-                    Err(err) => {
-                        println!(
-                            "Error fetching received transaction ({}, {}) from network: {}. \
-                                Transaction will be recorded with unknown type.",
-                            block_id, txn_id, err
-                        );
-                        TransactionKind::<L>::unknown()
-                    }
-                };
-
+            if let Some((block_id, txn_id, kind)) = transaction {
                 self.add_receive_history(
                     session,
                     block_id,
