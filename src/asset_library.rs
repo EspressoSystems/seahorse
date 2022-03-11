@@ -339,6 +339,14 @@ impl From<AssetLibrary> for Vec<AssetInfo> {
     }
 }
 
+impl IntoIterator for AssetLibrary {
+    type Item = AssetInfo;
+    type IntoIter = <Vec<AssetInfo> as IntoIterator>::IntoIter;
+    fn into_iter(self) -> Self::IntoIter {
+        self.assets.into_iter()
+    }
+}
+
 impl FromIterator<AssetInfo> for AssetLibrary {
     fn from_iter<T: IntoIterator<Item = AssetInfo>>(iter: T) -> Self {
         iter.into_iter().collect::<Vec<_>>().into()

@@ -1795,11 +1795,22 @@ pub mod generic_wallet_tests {
         let loaded = {
             let storage = &ledger.lock().await.storage[0];
             let mut assets = storage.lock().await.load().await.unwrap().assets;
-            for asset in imported {
-                assets.insert(asset);
+            for asset in &imported {
+                assets.insert(asset.clone());
             }
             assets
         };
         assert_eq!(loaded, wallets[0].0.lock().await.state.assets);
+
+        // Check that the verified assets are marked verified once again.
+        for asset in loaded {
+            assert_eq!(
+                asset.verified,
+                imported
+                    .iter()
+                    .find(|verified| verified.definition == asset.definition)
+                    .is_some()
+            );
+        }
     }
 }
