@@ -187,7 +187,9 @@ pub struct AtomicWalletStorage<'a, L: Ledger, Meta: Serialize + DeserializeOwned
     wallet_key_tree: KeyTree,
 }
 
-impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicWalletStorage<'a, L, Meta> {
+impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned + Clone + PartialEq>
+    AtomicWalletStorage<'a, L, Meta>
+{
     pub fn new(
         loader: &mut impl WalletLoader<L, Meta = Meta>,
         file_fill_size: u64,
@@ -198,21 +200,32 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicWalletStora
 
         // Load the metadata first so the loader can use it to generate the encryption key needed to
         // read the rest of the data.
-        let persisted_meta = RollingLog::load(
+        let mut persisted_meta = RollingLog::load(
             &mut atomic_loader,
-            BincodeLoadStore::default(),
+            BincodeLoadStore::<Meta>::default(),
             "wallet_meta",
             1024,
         )
         .context(crate::PersistenceError)?;
-        let (meta, key) = match persisted_meta.load_latest() {
-            Ok(meta) => {
-                let key = loader.load(&meta)?;
-                (meta, key)
+        let (meta, key, meta_dirty) = match persisted_meta.load_latest() {
+            Ok(mut meta) => {
+                let old_meta = meta.clone();
+                let key = loader.load(&mut meta)?;
+
+                // Store the new metadata if the loader changed it
+                if meta != old_meta {
+                    persisted_meta
+                        .store_resource(&meta)
+                        .context(crate::PersistenceError)?;
+                    (meta, key, true)
+                } else {
+                    (meta, key, false)
+                }
             }
             Err(_) => {
                 // If there is no persisted metadata, ask the loader to generate a new wallet.
-                loader.create()?
+                let (meta, key) = loader.create()?;
+                (meta, key, false)
             }
         };
 
@@ -257,7 +270,7 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicWalletStora
         Ok(Self {
             meta,
             persisted_meta,
-            meta_dirty: false,
+            meta_dirty,
             static_data,
             static_dirty: false,
             store,
@@ -272,7 +285,9 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicWalletStora
             wallet_key_tree: key.derive_sub_tree("wallet".as_bytes()),
         })
     }
+}
 
+impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicWalletStorage<'a, L, Meta> {
     pub async fn create(mut self: &mut Self, w: &WalletState<'a, L>) -> Result<(), WalletError<L>> {
         // Store the initial static and dynamic state, and the metadata. We do this in a closure so
         // that if any operation fails, it will exit the closure but not this function, and we can
@@ -332,6 +347,10 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> WalletStorage<'a,
     }
 
     async fn load(&mut self) -> Result<WalletState<'a, L>, WalletError<L>> {
+        // This function is called once, when the wallet is loaded. It is a good place to persist
+        // changes to the metadata that happened during loading.
+        self.commit().await;
+
         let static_state = self
             .static_data
             .load_latest()
@@ -512,7 +531,7 @@ mod tests {
             Ok(((), self.key.clone()))
         }
 
-        fn load(&mut self, _meta: &Self::Meta) -> Result<KeyTree, WalletError<L>> {
+        fn load(&mut self, _meta: &mut Self::Meta) -> Result<KeyTree, WalletError<L>> {
             Ok(self.key.clone())
         }
     }
