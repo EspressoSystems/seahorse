@@ -797,6 +797,25 @@
 <span id="797">797</span>
 <span id="798">798</span>
 <span id="799">799</span>
+<span id="800">800</span>
+<span id="801">801</span>
+<span id="802">802</span>
+<span id="803">803</span>
+<span id="804">804</span>
+<span id="805">805</span>
+<span id="806">806</span>
+<span id="807">807</span>
+<span id="808">808</span>
+<span id="809">809</span>
+<span id="810">810</span>
+<span id="811">811</span>
+<span id="812">812</span>
+<span id="813">813</span>
+<span id="814">814</span>
+<span id="815">815</span>
+<span id="816">816</span>
+<span id="817">817</span>
+<span id="818">818</span>
 </pre><pre class="rust"><code><span class="comment">// Copyright (c) 2022 Espresso Systems (espressosys.com)</span>
 <span class="comment">// This file is part of the Seahorse library.</span>
 
@@ -986,7 +1005,9 @@
     <span class="ident">wallet_key_tree</span>: <span class="ident">KeyTree</span>,
 }
 
-<span class="kw">impl</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span>: <span class="ident">Ledger</span>, <span class="ident">Meta</span>: <span class="ident">Send</span> <span class="op">+</span> <span class="ident">Serialize</span> <span class="op">+</span> <span class="ident">DeserializeOwned</span><span class="op">&gt;</span> <span class="ident">AtomicWalletStorage</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span>, <span class="ident">Meta</span><span class="op">&gt;</span> {
+<span class="kw">impl</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span>: <span class="ident">Ledger</span>, <span class="ident">Meta</span>: <span class="ident">Send</span> <span class="op">+</span> <span class="ident">Serialize</span> <span class="op">+</span> <span class="ident">DeserializeOwned</span> <span class="op">+</span> <span class="ident">Clone</span> <span class="op">+</span> <span class="ident">PartialEq</span><span class="op">&gt;</span>
+    <span class="ident">AtomicWalletStorage</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span>, <span class="ident">Meta</span><span class="op">&gt;</span>
+{
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">new</span>(
         <span class="ident">loader</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="kw">impl</span> <span class="ident">WalletLoader</span><span class="op">&lt;</span><span class="ident">L</span>, <span class="ident">Meta</span> <span class="op">=</span> <span class="ident">Meta</span><span class="op">&gt;</span>,
         <span class="ident">file_fill_size</span>: <span class="ident">u64</span>,
@@ -997,21 +1018,32 @@
 
         <span class="comment">// Load the metadata first so the loader can use it to generate the encryption key needed to</span>
         <span class="comment">// read the rest of the data.</span>
-        <span class="kw">let</span> <span class="ident">persisted_meta</span> <span class="op">=</span> <span class="ident">RollingLog::load</span>(
+        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">persisted_meta</span> <span class="op">=</span> <span class="ident">RollingLog::load</span>(
             <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">atomic_loader</span>,
-            <span class="ident">BincodeLoadStore::default</span>(),
+            <span class="ident">BincodeLoadStore</span>::<span class="op">&lt;</span><span class="ident">Meta</span><span class="op">&gt;</span><span class="ident">::default</span>(),
             <span class="string">&quot;wallet_meta&quot;</span>,
             <span class="number">1024</span>,
         )
         .<span class="ident">context</span>(<span class="ident"><span class="kw">crate</span>::PersistenceError</span>)<span class="question-mark">?</span>;
-        <span class="kw">let</span> (<span class="ident">meta</span>, <span class="ident">key</span>) <span class="op">=</span> <span class="kw">match</span> <span class="ident">persisted_meta</span>.<span class="ident">load_latest</span>() {
-            <span class="prelude-val">Ok</span>(<span class="ident">meta</span>) <span class="op">=</span><span class="op">&gt;</span> {
-                <span class="kw">let</span> <span class="ident">key</span> <span class="op">=</span> <span class="ident">loader</span>.<span class="ident">load</span>(<span class="kw-2">&amp;</span><span class="ident">meta</span>)<span class="question-mark">?</span>;
-                (<span class="ident">meta</span>, <span class="ident">key</span>)
+        <span class="kw">let</span> (<span class="ident">meta</span>, <span class="ident">key</span>, <span class="ident">meta_dirty</span>) <span class="op">=</span> <span class="kw">match</span> <span class="ident">persisted_meta</span>.<span class="ident">load_latest</span>() {
+            <span class="prelude-val">Ok</span>(<span class="kw-2">mut</span> <span class="ident">meta</span>) <span class="op">=</span><span class="op">&gt;</span> {
+                <span class="kw">let</span> <span class="ident">old_meta</span> <span class="op">=</span> <span class="ident">meta</span>.<span class="ident">clone</span>();
+                <span class="kw">let</span> <span class="ident">key</span> <span class="op">=</span> <span class="ident">loader</span>.<span class="ident">load</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">meta</span>)<span class="question-mark">?</span>;
+
+                <span class="comment">// Store the new metadata if the loader changed it</span>
+                <span class="kw">if</span> <span class="ident">meta</span> <span class="op">!</span><span class="op">=</span> <span class="ident">old_meta</span> {
+                    <span class="ident">persisted_meta</span>
+                        .<span class="ident">store_resource</span>(<span class="kw-2">&amp;</span><span class="ident">meta</span>)
+                        .<span class="ident">context</span>(<span class="ident"><span class="kw">crate</span>::PersistenceError</span>)<span class="question-mark">?</span>;
+                    (<span class="ident">meta</span>, <span class="ident">key</span>, <span class="bool-val">true</span>)
+                } <span class="kw">else</span> {
+                    (<span class="ident">meta</span>, <span class="ident">key</span>, <span class="bool-val">false</span>)
+                }
             }
             <span class="prelude-val">Err</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> {
                 <span class="comment">// If there is no persisted metadata, ask the loader to generate a new wallet.</span>
-                <span class="ident">loader</span>.<span class="ident">create</span>()<span class="question-mark">?</span>
+                <span class="kw">let</span> (<span class="ident">meta</span>, <span class="ident">key</span>) <span class="op">=</span> <span class="ident">loader</span>.<span class="ident">create</span>()<span class="question-mark">?</span>;
+                (<span class="ident">meta</span>, <span class="ident">key</span>, <span class="bool-val">false</span>)
             }
         };
 
@@ -1056,7 +1088,7 @@
         <span class="prelude-val">Ok</span>(<span class="self">Self</span> {
             <span class="ident">meta</span>,
             <span class="ident">persisted_meta</span>,
-            <span class="ident">meta_dirty</span>: <span class="bool-val">false</span>,
+            <span class="ident">meta_dirty</span>,
             <span class="ident">static_data</span>,
             <span class="ident">static_dirty</span>: <span class="bool-val">false</span>,
             <span class="ident">store</span>,
@@ -1071,7 +1103,9 @@
             <span class="ident">wallet_key_tree</span>: <span class="ident">key</span>.<span class="ident">derive_sub_tree</span>(<span class="string">&quot;wallet&quot;</span>.<span class="ident">as_bytes</span>()),
         })
     }
+}
 
+<span class="kw">impl</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span>: <span class="ident">Ledger</span>, <span class="ident">Meta</span>: <span class="ident">Send</span> <span class="op">+</span> <span class="ident">Serialize</span> <span class="op">+</span> <span class="ident">DeserializeOwned</span><span class="op">&gt;</span> <span class="ident">AtomicWalletStorage</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span>, <span class="ident">Meta</span><span class="op">&gt;</span> {
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">create</span>(<span class="kw-2">mut</span> <span class="self">self</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">Self</span>, <span class="ident">w</span>: <span class="kw-2">&amp;</span><span class="ident">WalletState</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span><span class="op">&gt;</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(), <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
         <span class="comment">// Store the initial static and dynamic state, and the metadata. We do this in a closure so</span>
         <span class="comment">// that if any operation fails, it will exit the closure but not this function, and we can</span>
@@ -1131,6 +1165,10 @@
     }
 
     <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">load</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">WalletState</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span><span class="op">&gt;</span>, <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
+        <span class="comment">// This function is called once, when the wallet is loaded. It is a good place to persist</span>
+        <span class="comment">// changes to the metadata that happened during loading.</span>
+        <span class="self">self</span>.<span class="ident">commit</span>().<span class="kw">await</span>;
+
         <span class="kw">let</span> <span class="ident">static_state</span> <span class="op">=</span> <span class="self">self</span>
             .<span class="ident">static_data</span>
             .<span class="ident">load_latest</span>()
@@ -1311,7 +1349,7 @@
             <span class="prelude-val">Ok</span>(((), <span class="self">self</span>.<span class="ident">key</span>.<span class="ident">clone</span>()))
         }
 
-        <span class="kw">fn</span> <span class="ident">load</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">_meta</span>: <span class="kw-2">&amp;</span><span class="ident"><span class="self">Self</span>::Meta</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">KeyTree</span>, <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
+        <span class="kw">fn</span> <span class="ident">load</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">_meta</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident"><span class="self">Self</span>::Meta</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">KeyTree</span>, <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
             <span class="prelude-val">Ok</span>(<span class="self">self</span>.<span class="ident">key</span>.<span class="ident">clone</span>())
         }
     }
