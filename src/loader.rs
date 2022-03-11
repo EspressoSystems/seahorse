@@ -76,11 +76,11 @@ impl LoaderInput {
     fn read_password<L: Ledger>(&mut self) -> Result<Option<String>, WalletError<L>> {
         match self {
             Self::User(reader) => loop {
-                println!("Do you remember your password? [y/n]");
+                println!("Forgot your password? Want to change it? [y/n]");
                 match reader.read_line() {
                     Some(line) => match line.as_str().trim() {
-                        "y" => break Ok(Some(reader.read_password("Enter password: ")?)),
-                        "n" => break Ok(None),
+                        "n" => break Ok(Some(reader.read_password("Enter password: ")?)),
+                        "y" => break Ok(None),
                         _ => println!("Please enter 'y' or 'n'."),
                     },
                     None => {
