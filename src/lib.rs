@@ -156,6 +156,12 @@ pub enum WalletError<L: Ledger> {
     Failed {
         msg: String,
     },
+    InvalidFreezerKey {
+        key: FreezerPubKey,
+    },
+    InvalidAuditorKey {
+        key: AuditorPubKey,
+    },
 }
 
 impl<L: Ledger> From<crate::txn_builder::TransactionError> for WalletError<L> {
@@ -2158,6 +2164,48 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
     pub async fn freezer_pub_keys(&self) -> Vec<FreezerPubKey> {
         let WalletSharedState { state, .. } = &*self.mutex.lock().await;
         state.freeze_keys.keys().cloned().collect()
+    }
+
+    /// Get sending private key
+    pub async fn get_user_private_key(
+        &self,
+        account: &UserAddress,
+    ) -> Result<UserKeyPair, WalletError<L>> {
+        let WalletSharedState { state, .. } = &*self.mutex.lock().await;
+        match state.user_keys.get(account) {
+            Some(key_pair) => Ok(key_pair.clone()),
+            None => Err(WalletError::<L>::InvalidAddress {
+                address: account.clone(),
+            }),
+        }
+    }
+
+    /// Get freezing private key
+    pub async fn get_freezer_private_key(
+        &self,
+        pub_key: &FreezerPubKey,
+    ) -> Result<FreezerKeyPair, WalletError<L>> {
+        let WalletSharedState { state, .. } = &*self.mutex.lock().await;
+        match state.freeze_keys.get(pub_key) {
+            Some(key_pair) => Ok(key_pair.clone()),
+            None => Err(WalletError::<L>::InvalidFreezerKey {
+                key: pub_key.clone(),
+            }),
+        }
+    }
+
+    /// Get auditing private key
+    pub async fn get_auditor_private_key(
+        &self,
+        pub_key: &AuditorPubKey,
+    ) -> Result<AuditorKeyPair, WalletError<L>> {
+        let WalletSharedState { state, .. } = &*self.mutex.lock().await;
+        match state.audit_keys.get(pub_key) {
+            Some(key_pair) => Ok(key_pair.clone()),
+            None => Err(WalletError::<L>::InvalidAuditorKey {
+                key: pub_key.clone(),
+            }),
+        }
     }
 
     /// Compute the spendable balance of the given asset type owned by all addresses.
