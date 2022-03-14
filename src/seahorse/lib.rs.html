@@ -2825,6 +2825,54 @@
 <span id="2825">2825</span>
 <span id="2826">2826</span>
 <span id="2827">2827</span>
+<span id="2828">2828</span>
+<span id="2829">2829</span>
+<span id="2830">2830</span>
+<span id="2831">2831</span>
+<span id="2832">2832</span>
+<span id="2833">2833</span>
+<span id="2834">2834</span>
+<span id="2835">2835</span>
+<span id="2836">2836</span>
+<span id="2837">2837</span>
+<span id="2838">2838</span>
+<span id="2839">2839</span>
+<span id="2840">2840</span>
+<span id="2841">2841</span>
+<span id="2842">2842</span>
+<span id="2843">2843</span>
+<span id="2844">2844</span>
+<span id="2845">2845</span>
+<span id="2846">2846</span>
+<span id="2847">2847</span>
+<span id="2848">2848</span>
+<span id="2849">2849</span>
+<span id="2850">2850</span>
+<span id="2851">2851</span>
+<span id="2852">2852</span>
+<span id="2853">2853</span>
+<span id="2854">2854</span>
+<span id="2855">2855</span>
+<span id="2856">2856</span>
+<span id="2857">2857</span>
+<span id="2858">2858</span>
+<span id="2859">2859</span>
+<span id="2860">2860</span>
+<span id="2861">2861</span>
+<span id="2862">2862</span>
+<span id="2863">2863</span>
+<span id="2864">2864</span>
+<span id="2865">2865</span>
+<span id="2866">2866</span>
+<span id="2867">2867</span>
+<span id="2868">2868</span>
+<span id="2869">2869</span>
+<span id="2870">2870</span>
+<span id="2871">2871</span>
+<span id="2872">2872</span>
+<span id="2873">2873</span>
+<span id="2874">2874</span>
+<span id="2875">2875</span>
 </pre><pre class="rust"><code><span class="comment">// Copyright (c) 2022 Espresso Systems (espressosys.com)</span>
 <span class="comment">// This file is part of the Seahorse library.</span>
 
@@ -2982,6 +3030,12 @@
     <span class="attribute">#[<span class="ident">snafu</span>(<span class="ident">display</span>(<span class="string">&quot;{}&quot;</span>, <span class="ident">msg</span>))]</span>
     <span class="ident">Failed</span> {
         <span class="ident">msg</span>: <span class="ident">String</span>,
+    },
+    <span class="ident">InvalidFreezerKey</span> {
+        <span class="ident">key</span>: <span class="ident">FreezerPubKey</span>,
+    },
+    <span class="ident">InvalidAuditorKey</span> {
+        <span class="ident">key</span>: <span class="ident">AuditorPubKey</span>,
     },
 }
 
@@ -4985,6 +5039,48 @@
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">freezer_pub_keys</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">FreezerPubKey</span><span class="op">&gt;</span> {
         <span class="kw">let</span> <span class="ident">WalletSharedState</span> { <span class="ident">state</span>, .. } <span class="op">=</span> <span class="kw-2">&amp;</span><span class="kw-2">*</span><span class="self">self</span>.<span class="ident">mutex</span>.<span class="ident">lock</span>().<span class="kw">await</span>;
         <span class="ident">state</span>.<span class="ident">freeze_keys</span>.<span class="ident">keys</span>().<span class="ident">cloned</span>().<span class="ident">collect</span>()
+    }
+
+    <span class="doccomment">/// Get sending private key</span>
+    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">get_user_private_key</span>(
+        <span class="kw-2">&amp;</span><span class="self">self</span>,
+        <span class="ident">account</span>: <span class="kw-2">&amp;</span><span class="ident">UserAddress</span>,
+    ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">UserKeyPair</span>, <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
+        <span class="kw">let</span> <span class="ident">WalletSharedState</span> { <span class="ident">state</span>, .. } <span class="op">=</span> <span class="kw-2">&amp;</span><span class="kw-2">*</span><span class="self">self</span>.<span class="ident">mutex</span>.<span class="ident">lock</span>().<span class="kw">await</span>;
+        <span class="kw">match</span> <span class="ident">state</span>.<span class="ident">user_keys</span>.<span class="ident">get</span>(<span class="ident">account</span>) {
+            <span class="prelude-val">Some</span>(<span class="ident">key_pair</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Ok</span>(<span class="ident">key_pair</span>.<span class="ident">clone</span>()),
+            <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Err</span>(<span class="ident">WalletError</span>::<span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="ident">::InvalidAddress</span> {
+                <span class="ident">address</span>: <span class="ident">account</span>.<span class="ident">clone</span>(),
+            }),
+        }
+    }
+
+    <span class="doccomment">/// Get freezing private key</span>
+    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">get_freezer_private_key</span>(
+        <span class="kw-2">&amp;</span><span class="self">self</span>,
+        <span class="ident">pub_key</span>: <span class="kw-2">&amp;</span><span class="ident">FreezerPubKey</span>,
+    ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">FreezerKeyPair</span>, <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
+        <span class="kw">let</span> <span class="ident">WalletSharedState</span> { <span class="ident">state</span>, .. } <span class="op">=</span> <span class="kw-2">&amp;</span><span class="kw-2">*</span><span class="self">self</span>.<span class="ident">mutex</span>.<span class="ident">lock</span>().<span class="kw">await</span>;
+        <span class="kw">match</span> <span class="ident">state</span>.<span class="ident">freeze_keys</span>.<span class="ident">get</span>(<span class="ident">pub_key</span>) {
+            <span class="prelude-val">Some</span>(<span class="ident">key_pair</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Ok</span>(<span class="ident">key_pair</span>.<span class="ident">clone</span>()),
+            <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Err</span>(<span class="ident">WalletError</span>::<span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="ident">::InvalidFreezerKey</span> {
+                <span class="ident">key</span>: <span class="ident">pub_key</span>.<span class="ident">clone</span>(),
+            }),
+        }
+    }
+
+    <span class="doccomment">/// Get auditing private key</span>
+    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">get_auditor_private_key</span>(
+        <span class="kw-2">&amp;</span><span class="self">self</span>,
+        <span class="ident">pub_key</span>: <span class="kw-2">&amp;</span><span class="ident">AuditorPubKey</span>,
+    ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">AuditorKeyPair</span>, <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
+        <span class="kw">let</span> <span class="ident">WalletSharedState</span> { <span class="ident">state</span>, .. } <span class="op">=</span> <span class="kw-2">&amp;</span><span class="kw-2">*</span><span class="self">self</span>.<span class="ident">mutex</span>.<span class="ident">lock</span>().<span class="kw">await</span>;
+        <span class="kw">match</span> <span class="ident">state</span>.<span class="ident">audit_keys</span>.<span class="ident">get</span>(<span class="ident">pub_key</span>) {
+            <span class="prelude-val">Some</span>(<span class="ident">key_pair</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Ok</span>(<span class="ident">key_pair</span>.<span class="ident">clone</span>()),
+            <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Err</span>(<span class="ident">WalletError</span>::<span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="ident">::InvalidAuditorKey</span> {
+                <span class="ident">key</span>: <span class="ident">pub_key</span>.<span class="ident">clone</span>(),
+            }),
+        }
     }
 
     <span class="doccomment">/// Compute the spendable balance of the given asset type owned by all addresses.</span>
