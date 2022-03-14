@@ -2787,6 +2787,44 @@
 <span id="2787">2787</span>
 <span id="2788">2788</span>
 <span id="2789">2789</span>
+<span id="2790">2790</span>
+<span id="2791">2791</span>
+<span id="2792">2792</span>
+<span id="2793">2793</span>
+<span id="2794">2794</span>
+<span id="2795">2795</span>
+<span id="2796">2796</span>
+<span id="2797">2797</span>
+<span id="2798">2798</span>
+<span id="2799">2799</span>
+<span id="2800">2800</span>
+<span id="2801">2801</span>
+<span id="2802">2802</span>
+<span id="2803">2803</span>
+<span id="2804">2804</span>
+<span id="2805">2805</span>
+<span id="2806">2806</span>
+<span id="2807">2807</span>
+<span id="2808">2808</span>
+<span id="2809">2809</span>
+<span id="2810">2810</span>
+<span id="2811">2811</span>
+<span id="2812">2812</span>
+<span id="2813">2813</span>
+<span id="2814">2814</span>
+<span id="2815">2815</span>
+<span id="2816">2816</span>
+<span id="2817">2817</span>
+<span id="2818">2818</span>
+<span id="2819">2819</span>
+<span id="2820">2820</span>
+<span id="2821">2821</span>
+<span id="2822">2822</span>
+<span id="2823">2823</span>
+<span id="2824">2824</span>
+<span id="2825">2825</span>
+<span id="2826">2826</span>
+<span id="2827">2827</span>
 </pre><pre class="rust"><code><span class="comment">// Copyright (c) 2022 Espresso Systems (espressosys.com)</span>
 <span class="comment">// This file is part of the Seahorse library.</span>
 
@@ -2807,7 +2845,7 @@
 <span class="doccomment">//!</span>
 <span class="doccomment">//! Users should also be familiar with [reef], which provides traits to adapt a particular CAP</span>
 <span class="doccomment">//! ledger to the ledger-agnostic interfaces defined here.</span>
-<span class="kw">mod</span> <span class="ident">asset_library</span>;
+<span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">asset_library</span>;
 <span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">cli</span>;
 <span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">encryption</span>;
 <span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">events</span>;
@@ -2826,7 +2864,7 @@
 <span class="kw">pub</span> <span class="kw">use</span> <span class="ident">reef</span>;
 
 <span class="kw">use</span> <span class="kw">crate</span>::{
-    <span class="ident">asset_library::AssetLibrary</span>,
+    <span class="ident">asset_library</span>::{<span class="ident">AssetLibrary</span>, <span class="ident">VerifiedAssetLibrary</span>},
     <span class="ident">events</span>::{<span class="ident">EventIndex</span>, <span class="ident">EventSource</span>, <span class="ident">LedgerEvent</span>},
     <span class="ident">txn_builder</span>::<span class="kw-2">*</span>,
 };
@@ -2856,7 +2894,7 @@
         <span class="ident">AssetCode</span>, <span class="ident">AssetDefinition</span>, <span class="ident">AssetPolicy</span>, <span class="ident">FreezeFlag</span>, <span class="ident">Nullifier</span>, <span class="ident">ReceiverMemo</span>,
         <span class="ident">RecordCommitment</span>, <span class="ident">RecordOpening</span>,
     },
-    <span class="ident">KeyPair</span> <span class="kw">as</span> <span class="ident">SigKeyPair</span>, <span class="ident">MerkleLeafProof</span>, <span class="ident">MerklePath</span>, <span class="ident">Signature</span>, <span class="ident">TransactionNote</span>,
+    <span class="ident">KeyPair</span> <span class="kw">as</span> <span class="ident">SigKeyPair</span>, <span class="ident">MerkleLeafProof</span>, <span class="ident">MerklePath</span>, <span class="ident">Signature</span>, <span class="ident">TransactionNote</span>, <span class="ident">VerKey</span>,
 };
 <span class="kw">use</span> <span class="ident">key_set::ProverKeySet</span>;
 <span class="kw">use</span> <span class="ident">rand_chacha::rand_core::SeedableRng</span>;
@@ -2939,6 +2977,8 @@
     <span class="ident">UserKeyExists</span> {
         <span class="ident">pub_key</span>: <span class="ident">UserPubKey</span>,
     },
+    <span class="doccomment">/// Attempted to load an asset library with an invalid signature.</span>
+    <span class="ident">AssetVerificationError</span>,
     <span class="attribute">#[<span class="ident">snafu</span>(<span class="ident">display</span>(<span class="string">&quot;{}&quot;</span>, <span class="ident">msg</span>))]</span>
     <span class="ident">Failed</span> {
         <span class="ident">msg</span>: <span class="ident">String</span>,
@@ -3335,6 +3375,11 @@
     }
 
     <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">store_asset</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">asset</span>: <span class="kw-2">&amp;</span><span class="ident">AssetInfo</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(), <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
+        <span class="comment">// We should never mark assets as verified in persistent storage. The single source of truth</span>
+        <span class="comment">// for verified assets is a verified asset library loaded independently from our own</span>
+        <span class="comment">// persistent storage.</span>
+        <span class="macro">assert!</span>(<span class="op">!</span><span class="ident">asset</span>.<span class="ident">verified</span>);
+
         <span class="kw">if</span> <span class="op">!</span><span class="self">self</span>.<span class="ident">cancelled</span> {
             <span class="kw">let</span> <span class="ident">res</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">storage</span>().<span class="kw">await</span>.<span class="ident">store_asset</span>(<span class="ident">asset</span>).<span class="kw">await</span>;
             <span class="kw">if</span> <span class="ident">res</span>.<span class="ident">is_err</span>() {
@@ -4276,13 +4321,13 @@
             <span class="kw">let</span> (<span class="ident">seed</span>, <span class="ident">definition</span>) <span class="op">=</span>
                 <span class="self">self</span>.<span class="ident">txn_state</span>
                     .<span class="ident">define_asset</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">session</span>.<span class="ident">rng</span>, <span class="ident">description</span>, <span class="ident">policy</span>)<span class="question-mark">?</span>;
-            <span class="kw">let</span> <span class="ident">asset</span> <span class="op">=</span> <span class="ident">AssetInfo</span> {
+            <span class="kw">let</span> <span class="ident">asset</span> <span class="op">=</span> <span class="ident">AssetInfo::new</span>(
                 <span class="ident">definition</span>,
-                <span class="ident">mint_info</span>: <span class="prelude-val">Some</span>(<span class="ident">MintInfo</span> {
+                <span class="ident">MintInfo</span> {
                     <span class="ident">seed</span>,
                     <span class="ident">description</span>: <span class="ident">description</span>.<span class="ident">to_vec</span>(),
-                }),
-            };
+                },
+            );
 
             <span class="comment">// Persist the change that we&#39;re about to make before updating our in-memory state. We</span>
             <span class="comment">// can&#39;t report success until we know the new asset has been saved to disk (otherwise we</span>
@@ -5127,6 +5172,37 @@
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">import_asset</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">asset</span>: <span class="ident">AssetInfo</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(), <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
         <span class="kw">let</span> <span class="ident">WalletSharedState</span> { <span class="ident">state</span>, <span class="ident">session</span>, .. } <span class="op">=</span> <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="kw-2">*</span><span class="self">self</span>.<span class="ident">mutex</span>.<span class="ident">lock</span>().<span class="kw">await</span>;
         <span class="ident">state</span>.<span class="ident">import_asset</span>(<span class="ident">session</span>, <span class="ident">asset</span>).<span class="kw">await</span>
+    }
+
+    <span class="doccomment">/// Load a verified asset library from a file or byte stream.</span>
+    <span class="doccomment">///</span>
+    <span class="doccomment">/// `trusted_signer` must be the public key of an entity trusted by this application to verify</span>
+    <span class="doccomment">/// assets. It must also be the public key which was used to sign `library`.</span>
+    <span class="doccomment">///</span>
+    <span class="doccomment">/// If successful, the assets loaded from `library` are returned as well as being added to this</span>
+    <span class="doccomment">/// wallet&#39;s asset library. Note that assets loaded from a verified library are not persisted</span>
+    <span class="doccomment">/// (unless the same assets are imported as unverified using [Wallet::import_asset]) in order to</span>
+    <span class="doccomment">/// preserve the verified library as the single source of truth about verified assets.</span>
+    <span class="doccomment">/// Therefore, this function must be called each time a wallet is created or opened in order to</span>
+    <span class="doccomment">/// ensure that the verified assets show up in the wallet&#39;s library.</span>
+    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">verify_assets</span>(
+        <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>,
+        <span class="ident">trusted_signer</span>: <span class="kw-2">&amp;</span><span class="ident">VerKey</span>,
+        <span class="ident">library</span>: <span class="ident">VerifiedAssetLibrary</span>,
+    ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">AssetInfo</span><span class="op">&gt;</span>, <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
+        <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">assets</span>) <span class="op">=</span> <span class="ident">library</span>.<span class="ident">open</span>(<span class="ident">trusted_signer</span>) {
+            <span class="kw">let</span> <span class="ident">WalletSharedState</span> { <span class="ident">state</span>, .. } <span class="op">=</span> <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="kw-2">*</span><span class="self">self</span>.<span class="ident">lock</span>().<span class="kw">await</span>;
+            <span class="kw">for</span> <span class="ident">asset</span> <span class="kw">in</span> <span class="kw-2">&amp;</span><span class="ident">assets</span> {
+                <span class="comment">// `import_asset` is only for unverified assets. It automatically persists the asset</span>
+                <span class="comment">// being imported. We explicitly do not want to persist verified assets (unless</span>
+                <span class="comment">// the user explicitly requests persistence by importing the same asset manually) so</span>
+                <span class="comment">// all we need to do is add the asset to our in-memory asset library.</span>
+                <span class="ident">state</span>.<span class="ident">assets</span>.<span class="ident">insert</span>(<span class="ident">asset</span>.<span class="ident">clone</span>());
+            }
+            <span class="prelude-val">Ok</span>(<span class="ident">assets</span>)
+        } <span class="kw">else</span> {
+            <span class="prelude-val">Err</span>(<span class="ident">WalletError::AssetVerificationError</span>)
+        }
     }
 
     <span class="doccomment">/// Add a viewing key to the wallet&#39;s key set.</span>

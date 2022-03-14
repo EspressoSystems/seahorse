@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["AssetInfo","Details about an asset type."],["AssetLibrary","Indexable collection of asset types."],["MintInfo","Information required to mint an asset."],["VerifiedAssetLibrary","A library of assets, signed by a trusted party."]]});
