@@ -32,6 +32,7 @@ impl<L: Ledger> PartialEq<Self> for TxnHistoryWithTimeTolerantEq<L> {
 pub mod generic_wallet_tests {
     use super::*;
     use async_std::task::block_on;
+    use jf_cap::KeyPair;
     use proptest::{collection::vec, strategy::Strategy, test_runner, test_runner::TestRunner};
     use std::iter::once;
 
@@ -1960,5 +1961,167 @@ pub mod generic_wallet_tests {
             get_asset(imported_asset.code).await,
             AssetInfo::from(imported_asset.clone())
         );
+    }
+
+    #[async_std::test]
+    pub async fn test_verified_assets<'a, T: SystemUnderTest<'a>>() {
+        let mut t = T::default();
+        let mut rng = ChaChaRng::from_seed([37; 32]);
+        let mut now = Instant::now();
+        let initial_grant = 10;
+        let (ledger, mut wallets) = t
+            .create_test_network(&[(2, 2)], vec![initial_grant], &mut now)
+            .await;
+
+        // Discover a non-verified asset so we can later test verifying a non-verified asset.
+        let asset1 = wallets[0]
+            .0
+            .define_asset(&[], AssetPolicy::default())
+            .await
+            .unwrap();
+        {
+            let asset1_info = wallets[0].0.asset(asset1.code).await.unwrap();
+            assert!(!asset1_info.verified);
+            assert!(!asset1_info.temporary);
+        }
+
+        // Now created a verified asset library with 2 assets:
+        // * one that will update `asset1` to be marked verified
+        // * one that does not yet exist in the wallet (later we will import it to check updating
+        //   verified assets with persistence and new information)
+        let key_pair = KeyPair::generate(&mut rng);
+        let (asset2, mint_info2) = {
+            let (code, seed) = AssetCode::random(&mut rng);
+            let definition = AssetDefinition::new(code, AssetPolicy::default()).unwrap();
+            (
+                definition,
+                MintInfo {
+                    seed,
+                    description: vec![],
+                },
+            )
+        };
+        let verified_assets =
+            VerifiedAssetLibrary::new(vec![asset1.clone(), asset2.clone()], &key_pair);
+        let imposter_assets =
+            VerifiedAssetLibrary::new(vec![asset2.clone()], &KeyPair::generate(&mut rng));
+
+        // Import the verified asset library and check that the two expected assets are returned.
+        let imported = wallets[0]
+            .0
+            .verify_assets(key_pair.ver_key_ref(), verified_assets)
+            .await
+            .unwrap();
+        assert_eq!(imported.len(), 2);
+        assert_eq!(
+            imported[0],
+            AssetInfo {
+                definition: asset1.clone(),
+                mint_info: None,
+                verified: true,
+                temporary: true,
+            }
+        );
+        assert_eq!(
+            imported[1],
+            AssetInfo {
+                definition: asset2.clone(),
+                mint_info: None,
+                verified: true,
+                temporary: true,
+            }
+        );
+
+        // Check that importing an asset library signed by an imposter fails.
+        assert!(matches!(
+            wallets[0]
+                .0
+                .verify_assets(key_pair.ver_key_ref(), imposter_assets)
+                .await,
+            Err(WalletError::AssetVerificationError)
+        ));
+
+        // Check that `asset1` got updated, retaining it's mint info and persistence but attaining
+        // verified status.
+        {
+            let asset1_info = wallets[0].0.asset(asset1.code).await.unwrap();
+            assert!(asset1_info.verified);
+            assert!(!asset1_info.temporary);
+            assert_eq!(asset1_info.definition, asset1);
+            assert!(asset1_info.mint_info.is_some());
+        }
+        // Check that `asset2`, which was not present before, got imported as-is.
+        assert_eq!(
+            wallets[0].0.asset(asset2.code).await.unwrap(),
+            AssetInfo {
+                definition: asset2.clone(),
+                mint_info: None,
+                verified: true,
+                temporary: true,
+            }
+        );
+
+        // Check that temporary assets are not persisted, and that persisted assets are never
+        // verified.
+        {
+            let storage = &ledger.lock().await.storage[0];
+            let loaded = storage.lock().await.load().await.unwrap();
+            assert!(loaded.assets.iter().all(|asset| !asset.verified));
+            assert!(loaded.assets.contains(AssetCode::native()));
+            assert!(loaded.assets.contains(asset1.code));
+            assert!(!loaded.assets.contains(asset2.code));
+            assert_eq!(loaded.assets.len(), 2);
+        }
+
+        // Now import `asset2`, updating the existing verified asset with persistence and mint info.
+        wallets[0]
+            .0
+            .import_asset(AssetInfo::new(asset2.clone(), mint_info2.clone()))
+            .await
+            .unwrap();
+        assert_eq!(
+            wallets[0].0.asset(asset2.code).await.unwrap(),
+            AssetInfo {
+                definition: asset2.clone(),
+                mint_info: Some(mint_info2),
+                verified: true,
+                temporary: false,
+            }
+        );
+
+        // Check that `asset2` is now persisted, but still no assets in storage are verified.
+        {
+            let storage = &ledger.lock().await.storage[0];
+            let loaded = storage.lock().await.load().await.unwrap();
+            assert!(loaded.assets.iter().all(|asset| !asset.verified));
+            assert!(loaded.assets.contains(AssetCode::native()));
+            assert!(loaded.assets.contains(asset1.code));
+            assert!(loaded.assets.contains(asset2.code));
+            assert_eq!(loaded.assets.len(), 3);
+        }
+
+        // Finally, check that by loading the persisted, unverified information, and combining it
+        // with the verified information, we get back the current in-memory information (which was
+        // generated in a different order).
+        let loaded = {
+            let storage = &ledger.lock().await.storage[0];
+            let mut assets = storage.lock().await.load().await.unwrap().assets;
+            for asset in &imported {
+                assets.insert(asset.clone());
+            }
+            assets
+        };
+        assert_eq!(loaded, wallets[0].0.lock().await.state.assets);
+
+        // Check that the verified assets are marked verified once again.
+        for asset in loaded {
+            assert_eq!(
+                asset.verified,
+                imported
+                    .iter()
+                    .find(|verified| verified.definition == asset.definition)
+                    .is_some()
+            );
+        }
     }
 }

@@ -18,7 +18,7 @@
 //!
 //! Users should also be familiar with [reef], which provides traits to adapt a particular CAP
 //! ledger to the ledger-agnostic interfaces defined here.
-mod asset_library;
+pub mod asset_library;
 pub mod cli;
 pub mod encryption;
 pub mod events;
@@ -37,7 +37,7 @@ pub use jf_cap;
 pub use reef;
 
 use crate::{
-    asset_library::AssetLibrary,
+    asset_library::{AssetLibrary, VerifiedAssetLibrary},
     events::{EventIndex, EventSource, LedgerEvent},
     txn_builder::*,
 };
@@ -67,7 +67,7 @@ use jf_cap::{
         AssetCode, AssetDefinition, AssetPolicy, FreezeFlag, Nullifier, ReceiverMemo,
         RecordCommitment, RecordOpening,
     },
-    KeyPair as SigKeyPair, MerkleLeafProof, MerklePath, Signature, TransactionNote,
+    KeyPair as SigKeyPair, MerkleLeafProof, MerklePath, Signature, TransactionNote, VerKey,
 };
 use key_set::ProverKeySet;
 use rand_chacha::rand_core::SeedableRng;
@@ -150,6 +150,8 @@ pub enum WalletError<L: Ledger> {
     UserKeyExists {
         pub_key: UserPubKey,
     },
+    /// Attempted to load an asset library with an invalid signature.
+    AssetVerificationError,
     #[snafu(display("{}", msg))]
     Failed {
         msg: String,
@@ -546,6 +548,11 @@ impl<'a, 'l, L: Ledger, Backend: WalletBackend<'a, L> + ?Sized>
     }
 
     async fn store_asset(&mut self, asset: &AssetInfo) -> Result<(), WalletError<L>> {
+        // We should never mark assets as verified in persistent storage. The single source of truth
+        // for verified assets is a verified asset library loaded independently from our own
+        // persistent storage.
+        assert!(!asset.verified);
+
         if !self.cancelled {
             let res = self.storage().await.store_asset(asset).await;
             if res.is_err() {
@@ -1487,13 +1494,13 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
             let (seed, definition) =
                 self.txn_state
                     .define_asset(&mut session.rng, description, policy)?;
-            let asset = AssetInfo {
+            let asset = AssetInfo::new(
                 definition,
-                mint_info: Some(MintInfo {
+                MintInfo {
                     seed,
                     description: description.to_vec(),
-                }),
-            };
+                },
+            );
 
             // Persist the change that we're about to make before updating our in-memory state. We
             // can't report success until we know the new asset has been saved to disk (otherwise we
@@ -2338,6 +2345,37 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
     pub async fn import_asset(&mut self, asset: AssetInfo) -> Result<(), WalletError<L>> {
         let WalletSharedState { state, session, .. } = &mut *self.mutex.lock().await;
         state.import_asset(session, asset).await
+    }
+
+    /// Load a verified asset library from a file or byte stream.
+    ///
+    /// `trusted_signer` must be the public key of an entity trusted by this application to verify
+    /// assets. It must also be the public key which was used to sign `library`.
+    ///
+    /// If successful, the assets loaded from `library` are returned as well as being added to this
+    /// wallet's asset library. Note that assets loaded from a verified library are not persisted
+    /// (unless the same assets are imported as unverified using [Wallet::import_asset]) in order to
+    /// preserve the verified library as the single source of truth about verified assets.
+    /// Therefore, this function must be called each time a wallet is created or opened in order to
+    /// ensure that the verified assets show up in the wallet's library.
+    pub async fn verify_assets(
+        &mut self,
+        trusted_signer: &VerKey,
+        library: VerifiedAssetLibrary,
+    ) -> Result<Vec<AssetInfo>, WalletError<L>> {
+        if let Some(assets) = library.open(trusted_signer) {
+            let WalletSharedState { state, .. } = &mut *self.lock().await;
+            for asset in &assets {
+                // `import_asset` is only for unverified assets. It automatically persists the asset
+                // being imported. We explicitly do not want to persist verified assets (unless
+                // the user explicitly requests persistence by importing the same asset manually) so
+                // all we need to do is add the asset to our in-memory asset library.
+                state.assets.insert(asset.clone());
+            }
+            Ok(assets)
+        } else {
+            Err(WalletError::AssetVerificationError)
+        }
     }
 
     /// Add a viewing key to the wallet's key set.

@@ -3034,6 +3034,7 @@ dependencies = [
  "serde",
  "sha3 0.9.1",
  "snafu 0.6.10",
+ "structopt",
  "strum",
  "strum_macros",
  "surf",
