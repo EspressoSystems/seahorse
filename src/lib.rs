@@ -2160,6 +2160,24 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
         state.freeze_keys.keys().cloned().collect()
     }
 
+    /// Get sending private key
+    pub async fn get_user_private_key(&self, account: UserAddress) -> UserKeyPair {
+        let WalletSharedState { state, .. } = &*self.mutex.lock().await;
+        state.user_keys[&account].clone()
+    }
+
+    /// Get freezing private key
+    pub async fn get_freezer_private_key(&self, pub_key: FreezerPubKey) -> FreezerKeyPair {
+        let WalletSharedState { state, .. } = &*self.mutex.lock().await;
+        state.freeze_keys[&pub_key].clone()
+    }
+
+    /// Get auditing private key
+    pub async fn get_auditor_private_key(&self, pub_key: AuditorPubKey) -> AuditorKeyPair {
+        let WalletSharedState { state, .. } = &*self.mutex.lock().await;
+        state.audit_keys[&pub_key].clone()
+    }
+
     /// Compute the spendable balance of the given asset type owned by all addresses.
     pub async fn balance(&self, asset: &AssetCode) -> u64 {
         let WalletSharedState { state, .. } = &*self.mutex.lock().await;
