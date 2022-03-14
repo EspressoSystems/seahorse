@@ -2169,36 +2169,42 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
     /// Get sending private key
     pub async fn get_user_private_key(
         &self,
-        account: UserAddress,
+        account: &UserAddress,
     ) -> Result<UserKeyPair, WalletError<L>> {
         let WalletSharedState { state, .. } = &*self.mutex.lock().await;
-        match state.user_keys.get(&account) {
+        match state.user_keys.get(account) {
             Some(key_pair) => Ok(key_pair.clone()),
-            None => Err(WalletError::<L>::InvalidAddress { address: account }),
+            None => Err(WalletError::<L>::InvalidAddress {
+                address: account.clone(),
+            }),
         }
     }
 
     /// Get freezing private key
     pub async fn get_freezer_private_key(
         &self,
-        pub_key: FreezerPubKey,
+        pub_key: &FreezerPubKey,
     ) -> Result<FreezerKeyPair, WalletError<L>> {
         let WalletSharedState { state, .. } = &*self.mutex.lock().await;
-        match state.freeze_keys.get(&pub_key) {
+        match state.freeze_keys.get(pub_key) {
             Some(key_pair) => Ok(key_pair.clone()),
-            None => Err(WalletError::<L>::InvalidFreezerKey { key: pub_key }),
+            None => Err(WalletError::<L>::InvalidFreezerKey {
+                key: pub_key.clone(),
+            }),
         }
     }
 
     /// Get auditing private key
     pub async fn get_auditor_private_key(
         &self,
-        pub_key: AuditorPubKey,
+        pub_key: &AuditorPubKey,
     ) -> Result<AuditorKeyPair, WalletError<L>> {
         let WalletSharedState { state, .. } = &*self.mutex.lock().await;
-        match state.audit_keys.get(&pub_key) {
+        match state.audit_keys.get(pub_key) {
             Some(key_pair) => Ok(key_pair.clone()),
-            None => Err(WalletError::<L>::InvalidAuditorKey { key: pub_key }),
+            None => Err(WalletError::<L>::InvalidAuditorKey {
+                key: pub_key.clone(),
+            }),
         }
     }
 
