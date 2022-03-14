@@ -67,7 +67,8 @@ use jf_cap::{
         AssetCode, AssetDefinition, AssetPolicy, FreezeFlag, Nullifier, ReceiverMemo,
         RecordCommitment, RecordOpening,
     },
-    KeyPair as SigKeyPair, MerkleLeafProof, MerklePath, Signature, TransactionNote, VerKey,
+    transfer::TransferNote,
+    MerkleLeafProof, MerklePath, TransactionNote, VerKey,
 };
 use key_set::ProverKeySet;
 use rand_chacha::rand_core::SeedableRng;
@@ -982,9 +983,13 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
                             TransactionStatus::AwaitingMemos
                         };
                         summary.updated_txns.push((pending.uid(), status));
-                        self.txn_state
-                            .transactions
-                            .await_memos(pending.uid(), this_txn_uids.iter().map(|(uid, _)| *uid));
+                        self.txn_state.transactions.await_memos(
+                            pending.uid(),
+                            this_txn_uids
+                                .iter()
+                                .zip(&pending.info.memos)
+                                .filter_map(|((uid, _), memo)| memo.as_ref().map(|_| *uid)),
+                        );
                         session
                             .backend
                             .finalize(pending, Some((block_id, txn_id as u64)))
@@ -1418,8 +1423,11 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
         txn: &Transaction<L>,
         uids: &mut [(u64, bool)],
     ) {
+        println!("auditing transaction {} {:?}", txn.kind(), uids);
+
         // Try to decrypt auditor memos.
         if let Ok(memo) = txn.open_audit_memo(self.assets.auditable(), &self.audit_keys) {
+            println!("opened memo {}", memo.outputs.len());
             //todo !jeb.bearer eventually, we will probably want to save all the audit memos for
             // the whole transaction (inputs and outputs) regardless of whether any of the outputs
             // are freezeable, just for general auditing purposes.
@@ -1434,6 +1442,7 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
                 if let (Some(pub_key), Some(amount), Some(blind)) =
                     (pub_key, output.amount, output.blinding_factor)
                 {
+                    println!("opened output {}", uid);
                     // If the audit memo contains all the information we need to potentially freeze
                     // this record, save it in our database for later freezing.
                     if let Some(freeze_key) = self
@@ -1717,20 +1726,9 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
         &mut self,
         session: &mut WalletSession<'a, L, impl WalletBackend<'a, L>>,
         spec: TransferSpec<'k>,
-    ) -> Result<TransferInfo<L>, WalletError<L>> {
+    ) -> Result<(TransferNote, TransactionInfo<L>), WalletError<L>> {
         self.txn_state
             .transfer(spec, &self.proving_keys.xfr, &mut session.rng)
-            .context(TransactionError)
-    }
-
-    fn generate_memos(
-        &mut self,
-        session: &mut WalletSession<'a, L, impl WalletBackend<'a, L>>,
-        records: Vec<RecordOpening>,
-        sig_key_pair: &SigKeyPair,
-    ) -> Result<(Vec<ReceiverMemo>, Signature), WalletError<L>> {
-        self.txn_state
-            .generate_memos(records, &mut session.rng, sig_key_pair)
             .context(TransactionError)
     }
 
@@ -2214,8 +2212,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
     /// Basic transfer without customization.
     ///
     /// To add transfer size requirement, call [Wallet::build_transfer] with a specified
-    /// `xfr_size_requirement`. To skip an output when generating memos, call
-    /// [Wallet::generate_memos] after removing the record from the list of outputs.
+    /// `xfr_size_requirement`.
     ///
     /// `account`
     /// * If provided, only this address will be used to transfer the asset.
@@ -2228,52 +2225,38 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
         receivers: &[(UserAddress, u64)],
         fee: u64,
     ) -> Result<TransactionReceipt<L>, WalletError<L>> {
-        let xfr_info = self
-            .build_transfer(account, asset, receivers, fee, vec![], None)
+        let receivers = receivers
+            .iter()
+            .map(|(addr, amount)| (addr.clone(), *amount, false))
+            .collect::<Vec<_>>();
+        let (note, info) = self
+            .build_transfer(account, asset, &receivers, fee, vec![], None)
             .await?;
-        let memos_rec = match xfr_info.fee_output {
-            Some(ro) => {
-                let mut rec = vec![ro];
-                rec.append(&mut xfr_info.outputs.clone());
-                rec
-            }
-            None => xfr_info.outputs.clone(),
-        };
-        let (memos, sig) = self
-            .generate_memos(memos_rec, &xfr_info.sig_key_pair)
-            .await?;
-        let txn_info = TransactionInfo {
-            accounts: xfr_info.owner_addresses,
-            memos,
-            sig,
-            freeze_outputs: vec![],
-            history: Some(xfr_info.history),
-            uid: None,
-            inputs: xfr_info.inputs,
-            outputs: xfr_info.outputs,
-        };
-        self.submit_cap(TransactionNote::Transfer(Box::new(xfr_info.note)), txn_info)
+        self.submit_cap(TransactionNote::Transfer(Box::new(note)), info)
             .await
     }
 
     /// Build a transfer with full customization.
+    ///
+    /// `receivers`: list of (receiver address, amount, burn)
     pub async fn build_transfer(
         &mut self,
         account: Option<&UserAddress>,
         asset: &AssetCode,
-        receivers: &[(UserAddress, u64)],
+        receivers: &[(UserAddress, u64, bool)],
         fee: u64,
         bound_data: Vec<u8>,
         xfr_size_requirement: Option<(usize, usize)>,
-    ) -> Result<TransferInfo<L>, WalletError<L>> {
+    ) -> Result<(TransferNote, TransactionInfo<L>), WalletError<L>> {
         let WalletSharedState { state, session, .. } = &mut *self.mutex.lock().await;
         let receivers = iter(receivers)
-            .then(|(addr, amt)| {
+            .then(|(addr, amt, burn)| {
                 let session = &session;
                 async move {
-                    Ok::<(UserPubKey, u64), WalletError<L>>((
+                    Ok::<_, WalletError<L>>((
                         session.backend.get_public_key(addr).await?,
                         *amt,
+                        *burn,
                     ))
                 }
             })
@@ -2294,16 +2277,6 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
             xfr_size_requirement,
         };
         state.build_transfer(session, spec)
-    }
-
-    /// Generate and sign owner memos for the given records.
-    pub async fn generate_memos(
-        &mut self,
-        records: Vec<RecordOpening>,
-        sig_key_pair: &SigKeyPair,
-    ) -> Result<(Vec<ReceiverMemo>, Signature), WalletError<L>> {
-        let WalletSharedState { state, session, .. } = &mut *self.mutex.lock().await;
-        state.generate_memos(session, records, sig_key_pair)
     }
 
     /// Submit a transaction to be validated.

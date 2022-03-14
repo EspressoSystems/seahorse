@@ -20,7 +20,7 @@ use async_std::sync::{Arc, Mutex};
 use futures::channel::mpsc;
 use jf_cap::structs::NoteType;
 use jf_cap::utils::compute_universal_param_size;
-use jf_cap::{proof::UniversalParam, MerkleTree, TransactionVerifyingKey};
+use jf_cap::{proof::UniversalParam, MerkleTree, Signature, TransactionVerifyingKey};
 use key_set::{KeySet, OrderByOutputs, ProverKeySet, VerifierKeySet};
 use lazy_static::lazy_static;
 use rand_chacha::rand_core::RngCore;
