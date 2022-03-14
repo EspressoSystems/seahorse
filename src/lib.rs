@@ -156,6 +156,12 @@ pub enum WalletError<L: Ledger> {
     Failed {
         msg: String,
     },
+    InvalidFreezerKey {
+        key: FreezerPubKey,
+    },
+    InvalidAuditorKey {
+        key: AuditorPubKey,
+    },
 }
 
 impl<L: Ledger> From<crate::txn_builder::TransactionError> for WalletError<L> {
@@ -2161,21 +2167,39 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
     }
 
     /// Get sending private key
-    pub async fn get_user_private_key(&self, account: UserAddress) -> UserKeyPair {
+    pub async fn get_user_private_key(
+        &self,
+        account: UserAddress,
+    ) -> Result<UserKeyPair, WalletError<L>> {
         let WalletSharedState { state, .. } = &*self.mutex.lock().await;
-        state.user_keys[&account].clone()
+        match state.user_keys.get(&account) {
+            Some(key_pair) => Ok(key_pair.clone()),
+            None => Err(WalletError::<L>::InvalidAddress { address: account }),
+        }
     }
 
     /// Get freezing private key
-    pub async fn get_freezer_private_key(&self, pub_key: FreezerPubKey) -> FreezerKeyPair {
+    pub async fn get_freezer_private_key(
+        &self,
+        pub_key: FreezerPubKey,
+    ) -> Result<FreezerKeyPair, WalletError<L>> {
         let WalletSharedState { state, .. } = &*self.mutex.lock().await;
-        state.freeze_keys[&pub_key].clone()
+        match state.freeze_keys.get(&pub_key) {
+            Some(key_pair) => Ok(key_pair.clone()),
+            None => Err(WalletError::<L>::InvalidFreezerKey { key: pub_key }),
+        }
     }
 
     /// Get auditing private key
-    pub async fn get_auditor_private_key(&self, pub_key: AuditorPubKey) -> AuditorKeyPair {
+    pub async fn get_auditor_private_key(
+        &self,
+        pub_key: AuditorPubKey,
+    ) -> Result<AuditorKeyPair, WalletError<L>> {
         let WalletSharedState { state, .. } = &*self.mutex.lock().await;
-        state.audit_keys[&pub_key].clone()
+        match state.audit_keys.get(&pub_key) {
+            Some(key_pair) => Ok(key_pair.clone()),
+            None => Err(WalletError::<L>::InvalidAuditorKey { key: pub_key }),
+        }
     }
 
     /// Compute the spendable balance of the given asset type owned by all addresses.
