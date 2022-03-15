@@ -1358,8 +1358,6 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
         txn: &Transaction<L>,
         uids: &mut [(u64, bool)],
     ) {
-        println!("auditing transaction {} {:?}", txn.kind(), uids);
-
         // Try to decrypt auditor memos.
         if let Ok(memo) = txn.open_audit_memo(
             self.assets.auditable(),
@@ -1389,7 +1387,6 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
                 if let (Some(pub_key), Some(amount), Some(blind)) =
                     (pub_key, output.amount, output.blinding_factor)
                 {
-                    println!("opened output {}", uid);
                     // If the audit memo contains all the information we need to potentially freeze
                     // this record, save it in our database for later freezing.
                     if let Some(account) = self
@@ -1443,6 +1440,7 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
     fn define_asset<'b>(
         &'b mut self,
         session: &'b mut WalletSession<'a, L, impl WalletBackend<'a, L>>,
+        name: String,
         description: &'b [u8],
         policy: AssetPolicy,
     ) -> impl 'b + Captures<'a> + Future<Output = Result<AssetDefinition, WalletError<L>>> + Send
@@ -1453,13 +1451,13 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
             let (seed, definition) =
                 self.txn_state
                     .define_asset(&mut session.rng, description, policy)?;
-            let asset = AssetInfo::new(
-                definition,
-                MintInfo {
-                    seed,
-                    description: description.to_vec(),
-                },
-            );
+            let mint_info = MintInfo {
+                seed,
+                description: description.to_vec(),
+            };
+            let asset = AssetInfo::new(definition, mint_info.clone())
+                .with_name(name)
+                .with_description(mint_info.fmt_description());
 
             // Persist the change that we're about to make before updating our in-memory state. We
             // can't report success until we know the new asset has been saved to disk (otherwise we
@@ -2412,11 +2410,12 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
     /// Define a new asset and store secret info for minting.
     pub async fn define_asset(
         &mut self,
+        name: String,
         description: &[u8],
         policy: AssetPolicy,
     ) -> Result<AssetDefinition, WalletError<L>> {
         let WalletSharedState { state, session, .. } = &mut *self.mutex.lock().await;
-        state.define_asset(session, description, policy).await
+        state.define_asset(session, name, description, policy).await
     }
 
     /// Add an asset to the asset library.

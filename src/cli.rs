@@ -507,7 +507,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             create_asset,
             "create a new asset",
             C,
-            |io, wallet, desc: String; viewing_key: Option<AuditorPubKey>,
+            |io, wallet, desc: String; name: Option<String>, viewing_key: Option<AuditorPubKey>,
              freezing_key: Option<FreezerPubKey>, view_amount: Option<bool>,
              view_address: Option<bool>, view_blind: Option<bool>, viewing_threshold: Option<u64>|
             {
@@ -548,7 +548,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                 if let Some(viewing_threshold) = viewing_threshold {
                     policy = policy.set_reveal_threshold(viewing_threshold);
                 }
-                match wallet.define_asset(desc.as_bytes(), policy).await {
+                match wallet.define_asset(name.unwrap_or_default(), desc.as_bytes(), policy).await {
                     Ok(def) => {
                         cli_writeln!(io, "{}", def.code);
                     }
@@ -1404,7 +1404,7 @@ mod test {
         // Update later with mint info.
         writeln!(
             input,
-            "import_asset definition:{},seed:{},description:my_asset",
+            "import_asset definition:{},seed:{},mint_description:my_asset",
             definition, seed
         )
         .unwrap();

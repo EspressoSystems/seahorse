@@ -117,7 +117,11 @@ pub mod generic_wallet_tests {
         } else {
             let coin = wallets[0]
                 .0
-                .define_asset("Alice's asset".as_bytes(), Default::default())
+                .define_asset(
+                    "Alice".into(),
+                    "Alice's asset".as_bytes(),
+                    Default::default(),
+                )
                 .await
                 .unwrap();
             // Alice gives herself an initial grant of 5 coins.
@@ -328,7 +332,7 @@ pub mod generic_wallet_tests {
                 .unwrap();
             let asset = wallets[0]
                 .0
-                .define_asset("test asset".as_bytes(), policy)
+                .define_asset("test".into(), "test asset".as_bytes(), policy)
                 .await
                 .unwrap();
 
@@ -669,7 +673,7 @@ pub mod generic_wallet_tests {
                 .unwrap();
             let asset = wallets[2]
                 .0
-                .define_asset("test asset".as_bytes(), policy)
+                .define_asset("test".into(), "test asset".as_bytes(), policy)
                 .await
                 .unwrap();
 
@@ -1002,10 +1006,11 @@ pub mod generic_wallet_tests {
         // Define all of the test assets and mint initial records.
         let mut assets = vec![];
         for i in 0..ndefs {
+            let name = format!("Asset {}", i);
             assets.push(
                 wallets[0]
                     .0
-                    .define_asset(format!("Asset {}", i).as_bytes(), Default::default())
+                    .define_asset(name.clone(), name.as_bytes(), Default::default())
                     .await
                     .unwrap(),
             );
@@ -1800,7 +1805,11 @@ pub mod generic_wallet_tests {
         // Alice defines a coin and gives her first address some initial grant.
         let coin = wallets[0]
             .0
-            .define_asset("Alice's asset".as_bytes(), Default::default())
+            .define_asset(
+                "Alice".into(),
+                "Alice's asset".as_bytes(),
+                Default::default(),
+            )
             .await
             .unwrap();
         let amount = 10;
@@ -1929,7 +1938,11 @@ pub mod generic_wallet_tests {
         // Define an asset.
         let defined_asset = wallets[0]
             .0
-            .define_asset(&[], AssetPolicy::default().set_auditor_pub_key(audit_key0))
+            .define_asset(
+                "defined_asset".into(),
+                "defined_asset description".as_bytes(),
+                AssetPolicy::default().set_auditor_pub_key(audit_key0),
+            )
             .await
             .unwrap();
 
@@ -1942,7 +1955,11 @@ pub mod generic_wallet_tests {
             .unwrap();
         let minted_asset = wallets[1]
             .0
-            .define_asset(&[], AssetPolicy::default().set_auditor_pub_key(audit_key1))
+            .define_asset(
+                "minted_asset".into(),
+                "minted_asset description".as_bytes(),
+                AssetPolicy::default().set_auditor_pub_key(audit_key1),
+            )
             .await
             .unwrap();
         let minter_addr = wallets[1].1[0].clone();
@@ -1957,7 +1974,11 @@ pub mod generic_wallet_tests {
         // Import an asset (we'll use `wallets[1]` to define it).
         let imported_asset = wallets[1]
             .0
-            .define_asset(&[], AssetPolicy::default())
+            .define_asset(
+                "imported_asset".into(),
+                "imported_asset description".as_bytes(),
+                AssetPolicy::default(),
+            )
             .await
             .unwrap();
         wallets[0]
@@ -1982,13 +2003,25 @@ pub mod generic_wallet_tests {
         );
         assert!(get_asset(defined_asset.code).await.mint_info.is_some());
         assert_eq!(
+            get_asset(defined_asset.code).await.name.unwrap(),
+            "defined_asset"
+        );
+        assert_eq!(
+            get_asset(defined_asset.code).await.description.unwrap(),
+            "defined_asset description"
+        );
+        assert_eq!(
             get_asset(minted_asset.code).await,
             AssetInfo::from(minted_asset.clone())
         );
+        assert_eq!(get_asset(minted_asset.code).await.name, None);
+        assert_eq!(get_asset(minted_asset.code).await.description, None);
         assert_eq!(
             get_asset(imported_asset.code).await,
             AssetInfo::from(imported_asset.clone())
         );
+        assert_eq!(get_asset(imported_asset.code).await.name, None);
+        assert_eq!(get_asset(imported_asset.code).await.description, None);
     }
 
     #[async_std::test]
@@ -2004,7 +2037,7 @@ pub mod generic_wallet_tests {
         // Discover a non-verified asset so we can later test verifying a non-verified asset.
         let asset1 = wallets[0]
             .0
-            .define_asset(&[], AssetPolicy::default())
+            .define_asset("asset1".into(), &[], AssetPolicy::default())
             .await
             .unwrap();
         {
@@ -2029,10 +2062,12 @@ pub mod generic_wallet_tests {
                 },
             )
         };
-        let verified_assets =
-            VerifiedAssetLibrary::new(vec![asset1.clone(), asset2.clone()], &key_pair);
+        let verified_assets = VerifiedAssetLibrary::new(
+            vec![asset1.clone().into(), asset2.clone().into()],
+            &key_pair,
+        );
         let imposter_assets =
-            VerifiedAssetLibrary::new(vec![asset2.clone()], &KeyPair::generate(&mut rng));
+            VerifiedAssetLibrary::new(vec![asset2.clone().into()], &KeyPair::generate(&mut rng));
 
         // Import the verified asset library and check that the two expected assets are returned.
         let imported = wallets[0]
@@ -2045,6 +2080,8 @@ pub mod generic_wallet_tests {
             imported[0],
             AssetInfo {
                 definition: asset1.clone(),
+                name: None,
+                description: None,
                 mint_info: None,
                 verified: true,
                 temporary: true,
@@ -2054,6 +2091,8 @@ pub mod generic_wallet_tests {
             imported[1],
             AssetInfo {
                 definition: asset2.clone(),
+                name: None,
+                description: None,
                 mint_info: None,
                 verified: true,
                 temporary: true,
@@ -2083,6 +2122,8 @@ pub mod generic_wallet_tests {
             wallets[0].0.asset(asset2.code).await.unwrap(),
             AssetInfo {
                 definition: asset2.clone(),
+                name: None,
+                description: None,
                 mint_info: None,
                 verified: true,
                 temporary: true,
@@ -2111,6 +2152,8 @@ pub mod generic_wallet_tests {
             wallets[0].0.asset(asset2.code).await.unwrap(),
             AssetInfo {
                 definition: asset2.clone(),
+                name: None,
+                description: None,
                 mint_info: Some(mint_info2),
                 verified: true,
                 temporary: false,
@@ -2361,5 +2404,98 @@ pub mod generic_wallet_tests {
             assert_eq!(account.balance, 0);
             assert_eq!(account.records.len(), 0);
         }
+    }
+
+    #[async_std::test]
+    pub async fn test_update_asset<'a, T: SystemUnderTest<'a>>() {
+        let mut t = T::default();
+        let mut rng = ChaChaRng::from_seed([4; 32]);
+        let mut now = Instant::now();
+        let (ledger, mut wallets) = t.create_test_network(&[(2, 2)], vec![0], &mut now).await;
+
+        // Case 1: update user-defined asset with user-defined asset.
+        let asset1 = wallets[0]
+            .0
+            .define_asset(
+                "asset1_orig".into(),
+                "asset1_orig description".as_bytes(),
+                AssetPolicy::default(),
+            )
+            .await
+            .unwrap();
+        wallets[0]
+            .0
+            .import_asset(
+                AssetInfo::from(asset1.clone())
+                    .with_name("asset1".into())
+                    .with_description("asset1 description".into()),
+            )
+            .await
+            .unwrap();
+        let info = wallets[0].0.asset(asset1.code).await.unwrap();
+        assert_eq!(info.name, Some("asset1".into()));
+        assert_eq!(info.description, Some("asset1 description".into()));
+        t.check_storage(&ledger, &wallets).await;
+
+        // Create verified asset library containing one user-defined asset and one other asset.
+        let key_pair = KeyPair::generate(&mut rng);
+        let asset2 = {
+            let (code, _) = AssetCode::random(&mut rng);
+            AssetDefinition::new(code, AssetPolicy::default()).unwrap()
+        };
+        let verified_asset1 = AssetInfo::from(asset1.clone())
+            .with_name("asset1_verified".into())
+            .with_description("asset1_verified description".into());
+        let verified_asset2 = AssetInfo::from(asset2.clone())
+            .with_name("asset2_verified".into())
+            .with_description("asset2_verified description".into());
+        let verified_assets =
+            VerifiedAssetLibrary::new(vec![verified_asset1, verified_asset2], &key_pair);
+
+        // Case 2: update user-defined asset with verified asset.
+        wallets[0]
+            .0
+            .verify_assets(&key_pair.ver_key(), verified_assets)
+            .await
+            .unwrap();
+        let info = wallets[0].0.asset(asset1.code).await.unwrap();
+        assert_eq!(info.name, Some("asset1_verified".into()));
+        assert_eq!(info.description, Some("asset1_verified description".into()));
+        t.check_storage(&ledger, &wallets).await;
+
+        // Case 3: update verified asset with user-defined asset.
+        wallets[0]
+            .0
+            .import_asset(
+                AssetInfo::from(asset2.clone())
+                    .with_name("asset2_fake".into())
+                    .with_description("asset2_fake".into()),
+            )
+            .await
+            .unwrap();
+        let info = wallets[0].0.asset(asset2.code).await.unwrap();
+        assert_eq!(info.name, Some("asset2_verified".into()));
+        assert_eq!(info.description, Some("asset2_verified description".into()));
+        t.check_storage(&ledger, &wallets).await;
+
+        // Case 4: update verified asset with verified asset.
+        let verified_assets = VerifiedAssetLibrary::new(
+            vec![AssetInfo::from(asset2.clone())
+                .with_name("asset2_verified_new".into())
+                .with_description("asset2_verified_new description".into())],
+            &key_pair,
+        );
+        wallets[0]
+            .0
+            .verify_assets(&key_pair.ver_key(), verified_assets)
+            .await
+            .unwrap();
+        let info = wallets[0].0.asset(asset2.code).await.unwrap();
+        assert_eq!(info.name, Some("asset2_verified_new".into()));
+        assert_eq!(
+            info.description,
+            Some("asset2_verified_new description".into())
+        );
+        t.check_storage(&ledger, &wallets).await;
     }
 }

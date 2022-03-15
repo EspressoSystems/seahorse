@@ -37,6 +37,24 @@ use tagged_base64::TaggedBase64;
 pub struct AssetInfo {
     /// CAP asset definition.
     pub definition: AssetDefinition,
+    /// UI-friendly name assigned to this asset.
+    ///
+    /// The name is purely for display purposes. It is not bound to anything in the CAP protocol,
+    /// and will not be populated when a wallet discovers an asset, only when a user manually
+    /// imports or creates that asset with a particular name. Two wallets will only agree on the
+    /// name for an asset if both wallets have imported that asset with the same name.
+    pub name: Option<String>,
+    /// UI-friendly description assigned to this asset.
+    ///
+    /// This is intended to be a field containing a bit more information than `name`, but really it
+    /// can be used however the client wants.
+    ///
+    /// The description is purely for display purposes. It is not bound to anything in the CAP
+    /// protocol, and will not be populated when a wallet discovers an asset, only when a user
+    /// manually imports or creates that asset with a particular description. Two wallets will only
+    /// agree on the description for an asset if both wallets have imported that asset with the same
+    /// description.
+    pub description: Option<String>,
     /// Secret information required to mint an asset.
     pub mint_info: Option<MintInfo>,
     /// This asset is included in a [VerifiedAssetLibrary].
@@ -51,44 +69,70 @@ impl AssetInfo {
     pub fn new(definition: AssetDefinition, mint_info: MintInfo) -> Self {
         Self {
             definition,
+            name: None,
+            description: None,
             mint_info: Some(mint_info),
             verified: false,
             temporary: false,
         }
     }
 
-    fn verified(definition: AssetDefinition) -> Self {
-        Self {
-            definition,
-            // Verified assets are meant to be distributed. We should never distribute mint info.
-            mint_info: None,
-            verified: true,
-            // Assets loaded from verified libraries are not included in our persistent state.
-            // Instead, they should be loaded from the verified library each time the wallet is
-            // launched, in case the verified library changes.
-            //
-            // Note that if the same asset is imported manually, it will be persisted due to the
-            // semantics of [AssetInfo::update] with respect to `temporary`, but upon being loaded
-            // it will be marked unverified until the verified library containing it is reloaded.
-            temporary: true,
-        }
+    fn verified(mut self) -> Self {
+        // Verified assets are meant to be distributed. We should never distribute mint info.
+        self.mint_info = None;
+        self.verified = true;
+        // Assets loaded from verified libraries are not included in our persistent state. Instead,
+        // they should be loaded from the verified library each time the wallet is launched, in case
+        // the verified library changes.
+        //
+        // Note that if the same asset is imported manually, it will be persisted due to the
+        // semantics of [AssetInfo::update] with respect to `temporary`, but upon being loaded it
+        // will be marked unverified until the verified library containing it is reloaded.
+        self.temporary = true;
+        self
+    }
+
+    pub fn with_name(mut self, name: String) -> Self {
+        self.name = Some(name);
+        self
+    }
+
+    pub fn with_description(mut self, description: String) -> Self {
+        self.description = Some(description);
+        self
     }
 
     /// Details about the native asset type.
     pub fn native() -> Self {
         Self::from(AssetDefinition::native())
+            .with_name("native".into())
+            .with_description("the native CAP asset type".into())
     }
 
     /// Update this info by merging in information from `info`.
     ///
+    /// Both `self` and `info` must refer to the same CAP asset; that is, `self.definition` must
+    /// equal `info.definition`.
+    ///
     /// * `self.definition` is replaced with `info.definition`
+    /// * `self.name` and `self.description` are updated with `info.name` and `info.description`, if
+    ///   present, _unless_ `self` is verified and `info` is not.
     /// * If `info.mint_info` exists, it replaces `self.mint_info`
     /// * `self.temporary` is `true` only if both `self` and `info` are temporary
     /// * `self.verified` is `true` if either `self` or `info` is verified
     pub fn update(&mut self, info: AssetInfo) {
-        self.definition = info.definition;
+        assert_eq!(self.definition, info.definition);
         if let Some(mint_info) = info.mint_info {
             self.mint_info = Some(mint_info);
+        }
+        if info.verified || !self.verified {
+            // Update UI metadata as long as `info` is at least as verified as `self`.
+            if let Some(name) = info.name {
+                self.name = Some(name);
+            }
+            if let Some(description) = info.description {
+                self.description = Some(description);
+            }
         }
         self.temporary &= info.temporary;
         self.verified |= info.verified;
@@ -99,6 +143,8 @@ impl From<AssetDefinition> for AssetInfo {
     fn from(definition: AssetDefinition) -> Self {
         Self {
             definition,
+            name: None,
+            description: None,
             mint_info: None,
             verified: false,
             temporary: false,
@@ -134,13 +180,15 @@ impl FromStr for AssetInfo {
         // separated list of key-value pairs, like `description:my_asset`. This allows the fields to
         // be specified in any order, or not at all.
         //
-        // Recognized fields are "description", "seed", "definition", and "temporary". Note that the
-        // `verified` field cannot be set this way. There is only one way to create verified
-        // `AssetInfo`: using [Wallet::verify_assets], which performs a signature check before
-        // marking assets verified.
+        // Recognized fields are "description", "name", "definition", "mint_description", "seed",
+        // and "temporary". Note that the `verified` field cannot be set this way. There is only one
+        // way to create verified `AssetInfo`: using [Wallet::verify_assets], which performs a
+        // signature check before marking assets verified.
         let mut definition = None;
-        let mut seed = None;
+        let mut name = None;
         let mut description = None;
+        let mut mint_description = None;
+        let mut seed = None;
         let mut temporary = false;
         for kv in s.split(',') {
             let (key, value) = match kv.split_once(':') {
@@ -155,6 +203,12 @@ impl FromStr for AssetInfo {
                             .map_err(|_| format!("expected AssetDefinition, got {}", value))?,
                     )
                 }
+                "name" => {
+                    name = Some(value.into());
+                }
+                "description" => {
+                    description = Some(value.into());
+                }
                 "seed" => {
                     seed = Some(
                         value
@@ -162,7 +216,7 @@ impl FromStr for AssetInfo {
                             .map_err(|_| format!("expected AssetCodeSeed, got {}", value))?,
                     )
                 }
-                "description" => description = Some(MintInfo::parse_description(value)),
+                "mint_description" => mint_description = Some(MintInfo::parse_description(value)),
                 "temporary" => {
                     temporary = value
                         .parse()
@@ -176,7 +230,7 @@ impl FromStr for AssetInfo {
             Some(definition) => definition,
             None => return Err(String::from("must specify definition")),
         };
-        let mint_info = match (seed, description) {
+        let mint_info = match (seed, mint_description) {
             (Some(seed), Some(description)) => Some(MintInfo { seed, description }),
             (None, None) => None,
             _ => {
@@ -187,6 +241,8 @@ impl FromStr for AssetInfo {
         };
         Ok(AssetInfo {
             definition,
+            name,
+            description,
             mint_info,
             temporary,
             verified: false,
@@ -386,10 +442,10 @@ pub struct VerifiedAssetLibrary {
 
 impl VerifiedAssetLibrary {
     /// Create and sign a new verified asset library.
-    pub fn new(assets: impl IntoIterator<Item = AssetDefinition>, signer: &KeyPair) -> Self {
+    pub fn new(assets: impl IntoIterator<Item = AssetInfo>, signer: &KeyPair) -> Self {
         let assets = assets
             .into_iter()
-            .map(AssetInfo::verified)
+            .map(|asset| asset.verified())
             .collect::<Vec<_>>();
         Self {
             signer: signer.ver_key(),
