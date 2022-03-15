@@ -689,17 +689,19 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             gen_key,
             "generate new keys",
             C,
-            |io, wallet, key_type: KeyType; scan_from: Option<EventIndex>, wait: Option<bool>| {
+            |io, wallet, key_type: KeyType;
+             description: Option<String>, scan_from: Option<EventIndex>, wait: Option<bool>| {
+                let description = description.unwrap_or_default();
                 match key_type {
-                    KeyType::Viewing => match wallet.generate_audit_key().await {
+                    KeyType::Viewing => match wallet.generate_audit_key(description).await {
                         Ok(pub_key) => cli_writeln!(io, "{}", pub_key),
                         Err(err) => cli_writeln!(io, "Error generating viewing key: {}", err),
                     },
-                    KeyType::Freezing => match wallet.generate_freeze_key().await {
+                    KeyType::Freezing => match wallet.generate_freeze_key(description).await {
                         Ok(pub_key) => cli_writeln!(io, "{}", pub_key),
                         Err(err) => cli_writeln!(io, "Error generating freezing key: {}", err),
                     },
-                    KeyType::Spending => match wallet.generate_user_key(scan_from).await {
+                    KeyType::Sending => match wallet.generate_user_key(description, scan_from).await {
                         Ok(pub_key) => {
                             if wait == Some(true) {
                                 if let Err(err) = wallet.await_key_scan(&pub_key.address()).await {
@@ -708,7 +710,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                             }
                             cli_writeln!(io, "{}", UserAddress(pub_key.address()));
                         }
-                        Err(err) => cli_writeln!(io, "Error generating spending key: {}", err),
+                        Err(err) => cli_writeln!(io, "Error generating sending key: {}", err),
                     },
                 }
             }
@@ -717,7 +719,8 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             load_key,
             "load a key from a file",
             C,
-            |io, wallet, key_type: KeyType, path: PathBuf; scan_from: Option<EventIndex>, wait: Option<bool>| {
+            |io, wallet, key_type: KeyType, path: PathBuf;
+             description: Option<String>, scan_from: Option<EventIndex>, wait: Option<bool>| {
                 let mut file = match File::open(path.clone()) {
                     Ok(file) => file,
                     Err(err) => {
@@ -731,9 +734,10 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                     return;
                 }
 
+                let description = description.unwrap_or_default();
                 match key_type {
                     KeyType::Viewing => match bincode::deserialize::<AuditorKeyPair>(&bytes) {
-                        Ok(key) => match wallet.add_audit_key(key.clone()).await {
+                        Ok(key) => match wallet.add_audit_key(key.clone(), description).await {
                             Ok(()) => cli_writeln!(io, "{}", key.pub_key()),
                             Err(err) => cli_writeln!(io, "Error saving viewing key: {}", err),
                         },
@@ -742,7 +746,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                         }
                     },
                     KeyType::Freezing => match bincode::deserialize::<FreezerKeyPair>(&bytes) {
-                        Ok(key) => match wallet.add_freeze_key(key.clone()).await {
+                        Ok(key) => match wallet.add_freeze_key(key.clone(), description).await {
                             Ok(()) => cli_writeln!(io, "{}", key.pub_key()),
                             Err(err) => cli_writeln!(io, "Error saving freezing key: {}", err),
                         },
@@ -750,9 +754,10 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                             cli_writeln!(io, "Error loading freezing key: {}", err);
                         }
                     },
-                    KeyType::Spending => match bincode::deserialize::<UserKeyPair>(&bytes) {
+                    KeyType::Sending => match bincode::deserialize::<UserKeyPair>(&bytes) {
                         Ok(key) => match wallet.add_user_key(
                             key.clone(),
+                            description,
                             scan_from.unwrap_or_default(),
                         ).await {
                             Ok(()) => {
@@ -769,10 +774,10 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                                     cli_writeln!(io, "{}", UserAddress(key.address()));
                                 }
                             }
-                            Err(err) => cli_writeln!(io, "Error saving spending key: {}", err),
+                            Err(err) => cli_writeln!(io, "Error saving sending key: {}", err),
                         },
                         Err(err) => {
-                            cli_writeln!(io, "Error loading spending key: {}", err);
+                            cli_writeln!(io, "Error loading sending key: {}", err);
                         }
                     },
                 };
@@ -874,24 +879,27 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
 }
 
 async fn print_keys<'a, C: CLI<'a>>(io: &mut SharedIO, wallet: &Wallet<'a, C>) {
-    cli_writeln!(io, "Spending keys:");
+    cli_writeln!(io, "Sending keys:");
     for key in wallet.pub_keys().await {
-        cli_writeln!(io, "  {}", key);
+        let account = wallet.sending_account(&key.address()).await.unwrap();
+        cli_writeln!(io, "  {} {}", key, account.description);
     }
     cli_writeln!(io, "Viewing keys:");
     for key in wallet.auditor_pub_keys().await {
-        cli_writeln!(io, "  {}", key);
+        let account = wallet.viewing_account(&key).await.unwrap();
+        cli_writeln!(io, "  {} {}", key, account.description);
     }
     cli_writeln!(io, "Freezing keys:");
     for key in wallet.freezer_pub_keys().await {
-        cli_writeln!(io, "  {}", key);
+        let account = wallet.freezing_account(&key).await.unwrap();
+        cli_writeln!(io, "  {} {}", key, account.description);
     }
 }
 
 pub enum KeyType {
     Viewing,
     Freezing,
-    Spending,
+    Sending,
 }
 
 impl<'a, C: CLI<'a>> CLIInput<'a, C> for KeyType {
@@ -899,7 +907,7 @@ impl<'a, C: CLI<'a>> CLIInput<'a, C> for KeyType {
         match s {
             "view" | "viewing" => Some(Self::Viewing),
             "freeze" | "freezing" => Some(Self::Freezing),
-            "spend" | "spending" => Some(Self::Spending),
+            "send" | "sending" => Some(Self::Sending),
             _ => None,
         }
     }
@@ -1204,7 +1212,7 @@ mod test {
             create_wallet(ledger, key_streams[2].clone());
 
         // Get the viewer's funded address.
-        writeln!(viewer_input, "gen_key spending scan_from=start wait=true").unwrap();
+        writeln!(viewer_input, "gen_key sending scan_from=start wait=true").unwrap();
         let matches = match_output(&mut viewer_output, &["(?P<addr>ADDR~.*)"]);
         let viewer_address = matches.get("addr");
         writeln!(viewer_input, "balance 0").unwrap();
@@ -1214,7 +1222,7 @@ mod test {
         );
 
         // Get the sender's funded address.
-        writeln!(sender_input, "gen_key spending scan_from=start wait=true").unwrap();
+        writeln!(sender_input, "gen_key sending scan_from=start wait=true").unwrap();
         let matches = match_output(&mut sender_output, &["(?P<addr>ADDR~.*)"]);
         let sender_address = matches.get("addr");
         writeln!(sender_input, "balance 0").unwrap();
@@ -1224,7 +1232,7 @@ mod test {
         );
 
         // Get the receiver's (unfunded) address.
-        writeln!(receiver_input, "gen_key spending").unwrap();
+        writeln!(receiver_input, "gen_key sending").unwrap();
         let matches = match_output(&mut receiver_output, &["(?P<addr>ADDR~.*)"]);
         let receiver_address = matches.get("addr");
 

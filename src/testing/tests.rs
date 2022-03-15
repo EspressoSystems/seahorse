@@ -316,8 +316,16 @@ pub mod generic_wallet_tests {
                 .set_freezer_pub_key(freeze_key.pub_key())
                 .reveal_record_opening()
                 .unwrap();
-            wallets[0].0.add_audit_key(audit_key).await.unwrap();
-            wallets[0].0.add_freeze_key(freeze_key).await.unwrap();
+            wallets[0]
+                .0
+                .add_audit_key(audit_key, "audit_key".into())
+                .await
+                .unwrap();
+            wallets[0]
+                .0
+                .add_freeze_key(freeze_key, "freeze_key".into())
+                .await
+                .unwrap();
             let asset = wallets[0]
                 .0
                 .define_asset("test asset".as_bytes(), policy)
@@ -649,8 +657,16 @@ pub mod generic_wallet_tests {
                 .set_freezer_pub_key(freeze_key.pub_key())
                 .reveal_record_opening()
                 .unwrap();
-            wallets[2].0.add_audit_key(audit_key).await.unwrap();
-            wallets[2].0.add_freeze_key(freeze_key).await.unwrap();
+            wallets[2]
+                .0
+                .add_audit_key(audit_key, "audit_key".into())
+                .await
+                .unwrap();
+            wallets[2]
+                .0
+                .add_freeze_key(freeze_key, "freeze_key".into())
+                .await
+                .unwrap();
             let asset = wallets[2]
                 .0
                 .define_asset("test asset".as_bytes(), policy)
@@ -1586,7 +1602,7 @@ pub mod generic_wallet_tests {
             key.pub_key(),
             wallets[0]
                 .0
-                .generate_user_key(Some(Default::default()))
+                .generate_user_key("sending_key".into(), Some(Default::default()))
                 .await
                 .unwrap()
         );
@@ -1667,7 +1683,11 @@ pub mod generic_wallet_tests {
             .await;
         let mut wallet2 = Wallet::new(backend).await.unwrap();
         wallet2.sync(ledger.lock().await.now()).await.unwrap();
-        let address2 = wallet2.generate_user_key(None).await.unwrap().address();
+        let address2 = wallet2
+            .generate_user_key("sending_key".into(), None)
+            .await
+            .unwrap()
+            .address();
 
         // Transfer to the late wallet.
         let receipt = wallet1
@@ -1900,7 +1920,11 @@ pub mod generic_wallet_tests {
         // All of these asset types should end up in the asset library, as well as the native asset
         // type which should always be present. The defined asset should also appear in the
         // auditable subset if we use the right auditor key, which we will define now:
-        let audit_key0 = wallets[0].0.generate_audit_key().await.unwrap();
+        let audit_key0 = wallets[0]
+            .0
+            .generate_audit_key("audit_key".into())
+            .await
+            .unwrap();
 
         // Define an asset.
         let defined_asset = wallets[0]
@@ -1911,7 +1935,11 @@ pub mod generic_wallet_tests {
 
         // Receive an asset. wallets[1] will define a new asset type (auditable by itself) and then
         // mint some to wallets[0].
-        let audit_key1 = wallets[1].0.generate_audit_key().await.unwrap();
+        let audit_key1 = wallets[1]
+            .0
+            .generate_audit_key("audit_key".into())
+            .await
+            .unwrap();
         let minted_asset = wallets[1]
             .0
             .define_asset(&[], AssetPolicy::default().set_auditor_pub_key(audit_key1))
@@ -2122,6 +2150,216 @@ pub mod generic_wallet_tests {
                     .find(|verified| verified.definition == asset.definition)
                     .is_some()
             );
+        }
+    }
+
+    #[async_std::test]
+    pub async fn test_accounts<'a, T: SystemUnderTest<'a>>() {
+        let mut t = T::default();
+        let mut now = Instant::now();
+        let (ledger, mut wallets) = t
+            .create_test_network(&[(2, 2)], vec![10, 0], &mut now)
+            .await;
+        ledger.lock().await.set_block_size(1).unwrap();
+        t.check_storage(&ledger, &wallets).await;
+
+        // The default accounts have no name and a balance of the native assets.
+        for address in &wallets[0].1 {
+            let account = wallets[0].0.sending_account(address).await.unwrap();
+            assert!(account.used);
+            assert_eq!(account.address, *address);
+            assert_eq!(account.description, "");
+            assert_eq!(account.balance, 5);
+            assert_eq!(account.assets, vec![AssetInfo::native()]);
+            assert_eq!(account.records.len(), 1);
+            assert_eq!(account.records[0].ro.amount, 5);
+            assert_eq!(account.records[0].ro.asset_def, AssetDefinition::native());
+        }
+
+        // Create a named sending account with no balance.
+        let address = wallets[0]
+            .0
+            .generate_user_key("sending_account".into(), None)
+            .await
+            .unwrap()
+            .address();
+        assert_eq!(
+            wallets[0].0.sending_account(&address).await.unwrap(),
+            AccountInfo {
+                address: address.clone(),
+                description: "sending_account".into(),
+                used: false,
+                assets: vec![],
+                records: vec![],
+                balance: 0,
+            }
+        );
+        t.check_storage(&ledger, &wallets).await;
+
+        // Transfer to the new account, make sure it gets marked used and gets the new balance,
+        // records, and assets.
+        let receipt = wallets[0]
+            .0
+            .transfer(None, &AssetCode::native(), &[(address.clone(), 2)], 1)
+            .await
+            .unwrap();
+        await_transaction(&receipt, &wallets[0].0, &[]).await;
+        {
+            let account = wallets[0].0.sending_account(&address).await.unwrap();
+            assert!(account.used);
+            assert_eq!(account.balance, 2);
+            assert_eq!(account.assets, vec![AssetInfo::native()]);
+            assert_eq!(account.records.len(), 1);
+            assert_eq!(account.records[0].ro.amount, 2);
+            assert_eq!(account.records[0].ro.asset_def, AssetDefinition::native());
+        }
+        t.check_storage(&ledger, &wallets).await;
+
+        // Create empty viewing and freezing accounts.
+        let viewing_key = wallets[0]
+            .0
+            .generate_audit_key("viewing_account".into())
+            .await
+            .unwrap();
+        let freezing_key = wallets[0]
+            .0
+            .generate_freeze_key("freezing_account".into())
+            .await
+            .unwrap();
+        assert_eq!(
+            wallets[0].0.viewing_account(&viewing_key).await.unwrap(),
+            AccountInfo {
+                address: viewing_key.clone(),
+                description: "viewing_account".into(),
+                used: false,
+                assets: vec![],
+                records: vec![],
+                balance: 0,
+            }
+        );
+        assert_eq!(
+            wallets[0].0.freezing_account(&freezing_key).await.unwrap(),
+            AccountInfo {
+                address: freezing_key.clone(),
+                description: "freezing_account".into(),
+                used: false,
+                assets: vec![],
+                records: vec![],
+                balance: 0,
+            }
+        );
+        t.check_storage(&ledger, &wallets).await;
+
+        // Generate one asset that is just viewable and one that is both viewable and freezable.
+        let viewable_asset = wallets[0]
+            .0
+            .define_asset(
+                "asset1".as_bytes(),
+                AssetPolicy::default()
+                    .set_auditor_pub_key(viewing_key.clone())
+                    .reveal_amount()
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let freezable_asset = wallets[0]
+            .0
+            .define_asset(
+                "asset2".as_bytes(),
+                AssetPolicy::default()
+                    .set_auditor_pub_key(viewing_key.clone())
+                    .set_freezer_pub_key(freezing_key.clone())
+                    .reveal_record_opening()
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        // Check that the new assets appear in the proper accounts.
+        assert_eq!(
+            wallets[0]
+                .0
+                .viewing_account(&viewing_key)
+                .await
+                .unwrap()
+                .assets
+                .into_iter()
+                // Convert to HashMap for order-independent comparison.
+                .map(|asset| (asset.definition.code, asset.definition))
+                .collect::<HashMap<_, _>>(),
+            vec![
+                (viewable_asset.code, viewable_asset.clone()),
+                (freezable_asset.code, freezable_asset.clone())
+            ]
+            .into_iter()
+            .collect::<HashMap<_, _>>(),
+        );
+        assert_eq!(
+            wallets[0]
+                .0
+                .freezing_account(&freezing_key)
+                .await
+                .unwrap()
+                .assets
+                .into_iter()
+                .map(|asset| asset.definition)
+                .collect::<Vec<_>>(),
+            vec![freezable_asset.clone()]
+        );
+
+        // Mint some of each asset for the other wallet (`wallets[1]`). Check that both accounts are
+        // marked used and the freezable record is added to both accounts.
+        let receiver = wallets[1].1[0].clone();
+        let receipt = wallets[0]
+            .0
+            .mint(&address, 1, &viewable_asset.code, 100, receiver.clone())
+            .await
+            .unwrap();
+        await_transaction(&receipt, &wallets[0].0, &[&wallets[1].0]).await;
+        assert!(
+            wallets[0]
+                .0
+                .viewing_account(&viewing_key)
+                .await
+                .unwrap()
+                .used
+        );
+        assert!(
+            !wallets[0]
+                .0
+                .freezing_account(&freezing_key)
+                .await
+                .unwrap()
+                .used
+        );
+        t.check_storage(&ledger, &wallets).await;
+
+        // Mint the freezable asset.
+        let receipt = wallets[0]
+            .0
+            .mint(&address, 1, &freezable_asset.code, 200, receiver)
+            .await
+            .unwrap();
+        await_transaction(&receipt, &wallets[0].0, &[&wallets[1].0]).await;
+        {
+            let account = wallets[0].0.viewing_account(&viewing_key).await.unwrap();
+            assert_eq!(account.balance, 200);
+            assert_eq!(account.records.len(), 1);
+            assert_eq!(account.records[0].ro.asset_def.code, freezable_asset.code);
+        }
+        {
+            let account = wallets[0].0.freezing_account(&freezing_key).await.unwrap();
+            assert_eq!(account.balance, 200);
+            assert_eq!(account.records.len(), 1);
+            assert_eq!(account.records[0].ro.asset_def.code, freezable_asset.code);
+        }
+        t.check_storage(&ledger, &wallets).await;
+
+        // Check that the native records consumed to pay the minting fees no longer show up in the
+        // sending account.
+        {
+            let account = wallets[0].0.sending_account(&address).await.unwrap();
+            assert_eq!(account.balance, 0);
+            assert_eq!(account.records.len(), 0);
         }
     }
 }
