@@ -551,7 +551,10 @@ mod tests {
         repeat_with(|| random_ro(rng, key_pair)).take(3).collect()
     }
 
-    fn random_memos(rng: &mut ChaChaRng, key_pair: &UserKeyPair) -> (Vec<ReceiverMemo>, Signature) {
+    fn random_memos(
+        rng: &mut ChaChaRng,
+        key_pair: &UserKeyPair,
+    ) -> (Vec<Option<ReceiverMemo>>, Signature) {
         let memos = repeat_with(|| {
             let ro = random_ro(rng, key_pair);
             ReceiverMemo::from_ro(rng, &ro, &[]).unwrap()
@@ -559,7 +562,7 @@ mod tests {
         .take(3)
         .collect::<Vec<_>>();
         let sig = sign_receiver_memos(&KeyPair::generate(rng), &memos).unwrap();
-        (memos, sig)
+        (memos.into_iter().map(|memo| Some(memo)).collect(), sig)
     }
 
     fn random_txn_hash(rng: &mut ChaChaRng) -> Commitment<cap::Transaction> {

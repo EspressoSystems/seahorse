@@ -741,21 +741,24 @@ impl<L: Ledger> PartialEq<Self> for TransactionHistoryEntry<L> {
     }
 }
 
-// Additional information about a transaction not included in the note, needed to submit it and
-// track it after submission..
+/// Additional information about a transaction.
+///
+/// Any information not included in the note, needed to submit the transaction and track it after
+/// submission.
 #[ser_test(arbitrary, types(cap::Ledger), ark(false))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct TransactionInfo<L: Ledger> {
-    // The accounts sending the transaction.
+    /// The accounts sending the transaction.
     pub accounts: Vec<UserAddress>,
-    pub memos: Vec<ReceiverMemo>,
+    /// A receiver memo for each output, except for burned outputs.
+    pub memos: Vec<Option<ReceiverMemo>>,
     pub sig: Signature,
-    // If the transaction is a freeze, the expected frozen/unfrozen outputs.
+    /// If the transaction is a freeze, the expected frozen/unfrozen outputs.
     pub freeze_outputs: Vec<RecordOpening>,
-    // Entry to include in transaction history when the transaction is submitted.
+    /// Entry to include in transaction history when the transaction is submitted.
     pub history: Option<TransactionHistoryEntry<L>>,
-    // If this is a resubmission of a previous transaction, the UID for tracking.
+    /// If this is a resubmission of a previous transaction, the UID for tracking.
     pub uid: Option<TransactionUID<L>>,
     pub inputs: Vec<RecordOpening>,
     pub outputs: Vec<RecordOpening>,
@@ -780,11 +783,20 @@ where
 {
     fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
         let memos = std::iter::once(u.arbitrary())
-            .chain(u.arbitrary_iter::<ArbitraryReceiverMemo>()?)
-            .map(|a| Ok(a?.into()))
+            .chain(u.arbitrary_iter::<Option<ArbitraryReceiverMemo>>()?)
+            .map(|a| Ok(a?.map(|memo| memo.into())))
             .collect::<Result<Vec<_>, _>>()?;
         let key = u.arbitrary::<ArbitraryKeyPair>()?.into();
-        let sig = sign_receiver_memos(&key, &memos).unwrap();
+        let sig = sign_receiver_memos(
+            &key,
+            memos
+                .iter()
+                .flatten()
+                .cloned()
+                .collect::<Vec<_>>()
+                .as_slice(),
+        )
+        .unwrap();
         Ok(Self {
             accounts: u
                 .arbitrary_iter::<ArbitraryUserAddress>()?
@@ -810,18 +822,6 @@ where
     }
 }
 
-/// Transfer information that will be used to generate memos and construct additional transaction
-/// information.
-pub struct TransferInfo<L: Ledger> {
-    pub note: TransferNote,
-    pub owner_addresses: Vec<UserAddress>,
-    pub sig_key_pair: KeyPair,
-    pub history: TransactionHistoryEntry<L>,
-    pub inputs: Vec<RecordOpening>,
-    pub outputs: Vec<RecordOpening>,
-    pub fee_output: Option<RecordOpening>,
-}
-
 pub struct TransferSpec<'a> {
     /// List of key_pairs that will be used to find the records for the transfer.
     ///
@@ -829,7 +829,7 @@ pub struct TransferSpec<'a> {
     /// associated records can be transferred.
     pub owner_key_pairs: &'a Vec<UserKeyPair>,
     pub asset: &'a AssetCode,
-    pub receivers: &'a [(UserPubKey, u64)],
+    pub receivers: &'a [(UserPubKey, u64, bool)],
     pub fee: u64,
     pub bound_data: Vec<u8>,
     pub xfr_size_requirement: Option<(usize, usize)>,
@@ -992,7 +992,7 @@ impl<L: Ledger> TransactionState<L> {
         spec: TransferSpec<'k>,
         proving_keys: &'k KeySet<TransferProvingKey<'a>, key_set::OrderByOutputs>,
         rng: &mut ChaChaRng,
-    ) -> Result<TransferInfo<L>, TransactionError> {
+    ) -> Result<(TransferNote, TransactionInfo<L>), TransactionError> {
         if *spec.asset == AssetCode::native() {
             self.transfer_native(spec, proving_keys, rng)
         } else {
@@ -1005,11 +1005,11 @@ impl<L: Ledger> TransactionState<L> {
         spec: TransferSpec<'k>,
         proving_keys: &'k KeySet<TransferProvingKey<'a>, key_set::OrderByOutputs>,
         rng: &mut ChaChaRng,
-    ) -> Result<TransferInfo<L>, TransactionError> {
+    ) -> Result<(TransferNote, TransactionInfo<L>), TransactionError> {
         let total_output_amount: u64 = spec
             .receivers
             .iter()
-            .fold(0, |sum, (_, amount)| sum + *amount)
+            .fold(0, |sum, (_, amount, _)| sum + *amount)
             + spec.fee;
 
         // find input records which account for at least the total amount, and possibly some change.
@@ -1038,7 +1038,7 @@ impl<L: Ledger> TransactionState<L> {
 
         // prepare outputs, excluding fee change (which will be automatically generated)
         let mut outputs = Vec::new();
-        for (pub_key, amount) in spec.receivers {
+        for (pub_key, amount, _) in spec.receivers.iter() {
             outputs.push(RecordOpening::new(
                 rng,
                 *amount,
@@ -1089,6 +1089,11 @@ impl<L: Ledger> TransactionState<L> {
             .into_iter()
             .chain(outputs.into_iter())
             .collect();
+        // Always generate a memo for the fee change. Generate memos for the receiver outputs if
+        // they are not to be burned.
+        let gen_memos =
+            std::iter::once(true).chain(spec.receivers.iter().map(|(_, _, burn)| !*burn));
+        let (memos, sig) = self.generate_memos(&outputs, gen_memos, rng, &kp)?;
 
         // Build auxiliary info.
         let owner_addresses = spec
@@ -1104,20 +1109,23 @@ impl<L: Ledger> TransactionState<L> {
             receivers: spec
                 .receivers
                 .iter()
-                .map(|(pub_key, amount)| (pub_key.address(), *amount))
+                .map(|(pub_key, amount, _)| (pub_key.address(), *amount))
                 .collect(),
             receipt: None,
         };
-
-        Ok(TransferInfo {
+        Ok((
             note,
-            owner_addresses,
-            sig_key_pair: kp,
-            history,
-            inputs: input_ros,
-            outputs,
-            fee_output: None,
-        })
+            TransactionInfo {
+                accounts: owner_addresses,
+                memos,
+                sig,
+                freeze_outputs: vec![],
+                history: Some(history),
+                uid: None,
+                inputs: input_ros,
+                outputs,
+            },
+        ))
     }
 
     fn transfer_non_native<'a, 'k>(
@@ -1125,7 +1133,7 @@ impl<L: Ledger> TransactionState<L> {
         spec: TransferSpec<'k>,
         proving_keys: &'k KeySet<TransferProvingKey<'a>, key_set::OrderByOutputs>,
         rng: &mut ChaChaRng,
-    ) -> Result<TransferInfo<L>, TransactionError> {
+    ) -> Result<(TransferNote, TransactionInfo<L>), TransactionError> {
         assert_ne!(
             *spec.asset,
             AssetCode::native(),
@@ -1134,7 +1142,7 @@ impl<L: Ledger> TransactionState<L> {
         let total_output_amount: u64 = spec
             .receivers
             .iter()
-            .fold(0, |sum, (_, amount)| sum + *amount);
+            .fold(0, |sum, (_, amount, _)| sum + *amount);
 
         // find input records of the asset type to spend (this does not include the fee input)
         let records = self.find_records(
@@ -1184,7 +1192,7 @@ impl<L: Ledger> TransactionState<L> {
 
         // prepare outputs, excluding fee change (which will be automatically generated)
         let mut outputs = Vec::new();
-        for (pub_key, amount) in spec.receivers {
+        for (pub_key, amount, _) in spec.receivers.iter() {
             outputs.push(RecordOpening::new(
                 rng,
                 *amount,
@@ -1248,6 +1256,19 @@ impl<L: Ledger> TransactionState<L> {
         )
         .context(CryptoError)?;
 
+        let outputs: Vec<_> = vec![fee_out_rec]
+            .into_iter()
+            .chain(outputs.into_iter())
+            .collect();
+        let gen_memos =
+            // Always generate a memo for the fee change. 
+            std::iter::once(true)
+            // Generate memos for the receiver outputs if they are not to be burned.
+            .chain(spec.receivers.iter().map(|(_, _, burn)| !*burn))
+            // Generate a memo for the change output if there is one.
+            .chain(change_ro.map(|_| true));
+        let (memos, sig) = self.generate_memos(&outputs, gen_memos, rng, &sig_key_pair)?;
+
         // Build auxiliary info.
         let owner_addresses = spec
             .owner_key_pairs
@@ -1262,33 +1283,50 @@ impl<L: Ledger> TransactionState<L> {
             receivers: spec
                 .receivers
                 .iter()
-                .map(|(pub_key, amount)| (pub_key.address(), *amount))
+                .map(|(pub_key, amount, _)| (pub_key.address(), *amount))
                 .collect(),
             receipt: None,
         };
-        Ok(TransferInfo {
+        Ok((
             note,
-            owner_addresses,
-            sig_key_pair,
-            history,
-            inputs: input_ros,
-            outputs,
-            fee_output: Some(fee_out_rec),
-        })
+            TransactionInfo {
+                accounts: owner_addresses,
+                memos,
+                sig,
+                freeze_outputs: vec![],
+                history: Some(history),
+                uid: None,
+                inputs: input_ros,
+                outputs,
+            },
+        ))
     }
 
-    pub fn generate_memos(
+    fn generate_memos(
         &mut self,
-        records: Vec<RecordOpening>,
+        records: &[RecordOpening],
+        include: impl IntoIterator<Item = bool>,
         rng: &mut ChaChaRng,
         sig_key_pair: &KeyPair,
-    ) -> Result<(Vec<ReceiverMemo>, Signature), TransactionError> {
+    ) -> Result<(Vec<Option<ReceiverMemo>>, Signature), TransactionError> {
         let memos: Vec<_> = records
             .iter()
-            .map(|ro| ReceiverMemo::from_ro(rng, ro, &[]))
-            .collect::<Result<Vec<_>, _>>()
-            .unwrap();
-        let sig = sign_receiver_memos(sig_key_pair, &memos).context(CryptoError)?;
+            .zip(include)
+            .map(|(ro, include)| {
+                if include {
+                    Ok(Some(
+                        ReceiverMemo::from_ro(rng, ro, &[]).context(CryptoError)?,
+                    ))
+                } else {
+                    Ok(None)
+                }
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let sig = sign_receiver_memos(
+            sig_key_pair,
+            &memos.iter().flatten().cloned().collect::<Vec<_>>(),
+        )
+        .context(CryptoError)?;
 
         Ok((memos, sig))
     }
@@ -1317,11 +1355,6 @@ impl<L: Ledger> TransactionState<L> {
         let fee_rec = fee_input.ro.clone();
         let (fee_info, fee_out_rec) = TxnFeeInfo::new(rng, fee_input, fee).unwrap();
         let rng = rng;
-        let memos = vec![&fee_out_rec, &mint_record]
-            .into_iter()
-            .map(|r| ReceiverMemo::from_ro(rng, r, &[]))
-            .collect::<Result<Vec<_>, _>>()
-            .unwrap();
         let (note, sig_key_pair) = jf_cap::mint::MintNote::generate(
             rng,
             mint_record.clone(),
@@ -1331,7 +1364,8 @@ impl<L: Ledger> TransactionState<L> {
             proving_key,
         )
         .context(CryptoError)?;
-        let sig = sign_receiver_memos(&sig_key_pair, &memos).unwrap();
+        let outputs = vec![fee_out_rec, mint_record];
+        let (memos, sig) = self.generate_memos(&outputs, vec![true, true], rng, &sig_key_pair)?;
 
         // Build auxiliary info.
         let history = TransactionHistoryEntry {
@@ -1352,7 +1386,7 @@ impl<L: Ledger> TransactionState<L> {
                 history: Some(history),
                 uid: None,
                 inputs: vec![fee_rec],
-                outputs: vec![fee_out_rec, mint_record],
+                outputs,
             },
         ))
     }
@@ -1404,13 +1438,11 @@ impl<L: Ledger> TransactionState<L> {
         let (fee_info, fee_out_rec) = TxnFeeInfo::new(rng, fee_input, fee).unwrap();
         let (note, sig_key_pair, outputs) =
             FreezeNote::generate(rng, inputs, fee_info, proving_key).context(CryptoError)?;
-        let memos = vec![&fee_out_rec]
-            .into_iter()
-            .chain(outputs.iter())
-            .map(|r| ReceiverMemo::from_ro(rng, r, &[]))
-            .collect::<Result<Vec<_>, _>>()
-            .unwrap();
-        let sig = sign_receiver_memos(&sig_key_pair, &memos).unwrap();
+        let outputs = std::iter::once(fee_out_rec)
+            .chain(outputs)
+            .collect::<Vec<_>>();
+        let gen_memos = outputs.iter().map(|_| true);
+        let (memos, sig) = self.generate_memos(&outputs, gen_memos, rng, &sig_key_pair)?;
 
         // Build auxiliary info.
         let history = TransactionHistoryEntry {
@@ -1430,7 +1462,9 @@ impl<L: Ledger> TransactionState<L> {
                 accounts: vec![fee_key_pair.address()],
                 memos,
                 sig,
-                freeze_outputs: outputs.clone(),
+                // `freeze_outputs` should only contain the frozen/unfrozen records, not the fee
+                // change, so we skip the first output.
+                freeze_outputs: outputs.clone().into_iter().skip(1).collect(),
                 history: Some(history),
                 uid: None,
                 inputs: input_records.into_iter().map(|(ro, _)| ro).collect(),

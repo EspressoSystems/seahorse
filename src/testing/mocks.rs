@@ -411,7 +411,12 @@ impl<'a> WalletBackend<'a, cap::Ledger> for MockBackend<'a> {
             self.ledger
                 .lock()
                 .await
-                .post_memos(block_id, txn_id, txn.info.memos, txn.info.sig)
+                .post_memos(
+                    block_id,
+                    txn_id,
+                    txn.info.memos.into_iter().flatten().collect(),
+                    txn.info.sig,
+                )
                 .unwrap();
         }
     }
