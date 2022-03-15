@@ -2846,33 +2846,6 @@
 <span id="2846">2846</span>
 <span id="2847">2847</span>
 <span id="2848">2848</span>
-<span id="2849">2849</span>
-<span id="2850">2850</span>
-<span id="2851">2851</span>
-<span id="2852">2852</span>
-<span id="2853">2853</span>
-<span id="2854">2854</span>
-<span id="2855">2855</span>
-<span id="2856">2856</span>
-<span id="2857">2857</span>
-<span id="2858">2858</span>
-<span id="2859">2859</span>
-<span id="2860">2860</span>
-<span id="2861">2861</span>
-<span id="2862">2862</span>
-<span id="2863">2863</span>
-<span id="2864">2864</span>
-<span id="2865">2865</span>
-<span id="2866">2866</span>
-<span id="2867">2867</span>
-<span id="2868">2868</span>
-<span id="2869">2869</span>
-<span id="2870">2870</span>
-<span id="2871">2871</span>
-<span id="2872">2872</span>
-<span id="2873">2873</span>
-<span id="2874">2874</span>
-<span id="2875">2875</span>
 </pre><pre class="rust"><code><span class="comment">// Copyright (c) 2022 Espresso Systems (espressosys.com)</span>
 <span class="comment">// This file is part of the Seahorse library.</span>
 
@@ -2942,7 +2915,8 @@
         <span class="ident">AssetCode</span>, <span class="ident">AssetDefinition</span>, <span class="ident">AssetPolicy</span>, <span class="ident">FreezeFlag</span>, <span class="ident">Nullifier</span>, <span class="ident">ReceiverMemo</span>,
         <span class="ident">RecordCommitment</span>, <span class="ident">RecordOpening</span>,
     },
-    <span class="ident">KeyPair</span> <span class="kw">as</span> <span class="ident">SigKeyPair</span>, <span class="ident">MerkleLeafProof</span>, <span class="ident">MerklePath</span>, <span class="ident">Signature</span>, <span class="ident">TransactionNote</span>, <span class="ident">VerKey</span>,
+    <span class="ident">transfer::TransferNote</span>,
+    <span class="ident">MerkleLeafProof</span>, <span class="ident">MerklePath</span>, <span class="ident">TransactionNote</span>, <span class="ident">VerKey</span>,
 };
 <span class="kw">use</span> <span class="ident">key_set::ProverKeySet</span>;
 <span class="kw">use</span> <span class="ident">rand_chacha::rand_core::SeedableRng</span>;
@@ -3863,9 +3837,13 @@
                             <span class="ident">TransactionStatus::AwaitingMemos</span>
                         };
                         <span class="ident">summary</span>.<span class="ident">updated_txns</span>.<span class="ident">push</span>((<span class="ident">pending</span>.<span class="ident">uid</span>(), <span class="ident">status</span>));
-                        <span class="self">self</span>.<span class="ident">txn_state</span>
-                            .<span class="ident">transactions</span>
-                            .<span class="ident">await_memos</span>(<span class="ident">pending</span>.<span class="ident">uid</span>(), <span class="ident">this_txn_uids</span>.<span class="ident">iter</span>().<span class="ident">map</span>(<span class="op">|</span>(<span class="ident">uid</span>, <span class="kw">_</span>)<span class="op">|</span> <span class="kw-2">*</span><span class="ident">uid</span>));
+                        <span class="self">self</span>.<span class="ident">txn_state</span>.<span class="ident">transactions</span>.<span class="ident">await_memos</span>(
+                            <span class="ident">pending</span>.<span class="ident">uid</span>(),
+                            <span class="ident">this_txn_uids</span>
+                                .<span class="ident">iter</span>()
+                                .<span class="ident">zip</span>(<span class="kw-2">&amp;</span><span class="ident">pending</span>.<span class="ident">info</span>.<span class="ident">memos</span>)
+                                .<span class="ident">filter_map</span>(<span class="op">|</span>((<span class="ident">uid</span>, <span class="kw">_</span>), <span class="ident">memo</span>)<span class="op">|</span> <span class="ident">memo</span>.<span class="ident">as_ref</span>().<span class="ident">map</span>(<span class="op">|</span><span class="kw">_</span><span class="op">|</span> <span class="kw-2">*</span><span class="ident">uid</span>)),
+                        );
                         <span class="ident">session</span>
                             .<span class="ident">backend</span>
                             .<span class="ident">finalize</span>(<span class="ident">pending</span>, <span class="prelude-val">Some</span>((<span class="ident">block_id</span>, <span class="ident">txn_id</span> <span class="kw">as</span> <span class="ident">u64</span>)))
@@ -4299,8 +4277,11 @@
         <span class="ident">txn</span>: <span class="kw-2">&amp;</span><span class="ident">Transaction</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span>,
         <span class="ident">uids</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> [(<span class="ident">u64</span>, <span class="ident">bool</span>)],
     ) {
+        <span class="macro">println!</span>(<span class="string">&quot;auditing transaction {} {:?}&quot;</span>, <span class="ident">txn</span>.<span class="ident">kind</span>(), <span class="ident">uids</span>);
+
         <span class="comment">// Try to decrypt auditor memos.</span>
         <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Ok</span>(<span class="ident">memo</span>) <span class="op">=</span> <span class="ident">txn</span>.<span class="ident">open_audit_memo</span>(<span class="self">self</span>.<span class="ident">assets</span>.<span class="ident">auditable</span>(), <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">audit_keys</span>) {
+            <span class="macro">println!</span>(<span class="string">&quot;opened memo {}&quot;</span>, <span class="ident">memo</span>.<span class="ident">outputs</span>.<span class="ident">len</span>());
             <span class="comment">//todo !jeb.bearer eventually, we will probably want to save all the audit memos for</span>
             <span class="comment">// the whole transaction (inputs and outputs) regardless of whether any of the outputs</span>
             <span class="comment">// are freezeable, just for general auditing purposes.</span>
@@ -4315,6 +4296,7 @@
                 <span class="kw">if</span> <span class="kw">let</span> (<span class="prelude-val">Some</span>(<span class="ident">pub_key</span>), <span class="prelude-val">Some</span>(<span class="ident">amount</span>), <span class="prelude-val">Some</span>(<span class="ident">blind</span>)) <span class="op">=</span>
                     (<span class="ident">pub_key</span>, <span class="ident">output</span>.<span class="ident">amount</span>, <span class="ident">output</span>.<span class="ident">blinding_factor</span>)
                 {
+                    <span class="macro">println!</span>(<span class="string">&quot;opened output {}&quot;</span>, <span class="ident">uid</span>);
                     <span class="comment">// If the audit memo contains all the information we need to potentially freeze</span>
                     <span class="comment">// this record, save it in our database for later freezing.</span>
                     <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">freeze_key</span>) <span class="op">=</span> <span class="self">self</span>
@@ -4598,20 +4580,9 @@
         <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>,
         <span class="ident">session</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">WalletSession</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span>, <span class="kw">impl</span> <span class="ident">WalletBackend</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span>,
         <span class="ident">spec</span>: <span class="ident">TransferSpec</span><span class="op">&lt;</span><span class="lifetime">&#39;k</span><span class="op">&gt;</span>,
-    ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">TransferInfo</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span>, <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
+    ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(<span class="ident">TransferNote</span>, <span class="ident">TransactionInfo</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span>), <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
         <span class="self">self</span>.<span class="ident">txn_state</span>
             .<span class="ident">transfer</span>(<span class="ident">spec</span>, <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">proving_keys</span>.<span class="ident">xfr</span>, <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">session</span>.<span class="ident">rng</span>)
-            .<span class="ident">context</span>(<span class="ident">TransactionError</span>)
-    }
-
-    <span class="kw">fn</span> <span class="ident">generate_memos</span>(
-        <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>,
-        <span class="ident">session</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">WalletSession</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span>, <span class="kw">impl</span> <span class="ident">WalletBackend</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span>,
-        <span class="ident">records</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">RecordOpening</span><span class="op">&gt;</span>,
-        <span class="ident">sig_key_pair</span>: <span class="kw-2">&amp;</span><span class="ident">SigKeyPair</span>,
-    ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(<span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">ReceiverMemo</span><span class="op">&gt;</span>, <span class="ident">Signature</span>), <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
-        <span class="self">self</span>.<span class="ident">txn_state</span>
-            .<span class="ident">generate_memos</span>(<span class="ident">records</span>, <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">session</span>.<span class="ident">rng</span>, <span class="ident">sig_key_pair</span>)
             .<span class="ident">context</span>(<span class="ident">TransactionError</span>)
     }
 
@@ -5137,8 +5108,7 @@
     <span class="doccomment">/// Basic transfer without customization.</span>
     <span class="doccomment">///</span>
     <span class="doccomment">/// To add transfer size requirement, call [Wallet::build_transfer] with a specified</span>
-    <span class="doccomment">/// `xfr_size_requirement`. To skip an output when generating memos, call</span>
-    <span class="doccomment">/// [Wallet::generate_memos] after removing the record from the list of outputs.</span>
+    <span class="doccomment">/// `xfr_size_requirement`.</span>
     <span class="doccomment">///</span>
     <span class="doccomment">/// `account`</span>
     <span class="doccomment">/// * If provided, only this address will be used to transfer the asset.</span>
@@ -5151,52 +5121,38 @@
         <span class="ident">receivers</span>: <span class="kw-2">&amp;</span>[(<span class="ident">UserAddress</span>, <span class="ident">u64</span>)],
         <span class="ident">fee</span>: <span class="ident">u64</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">TransactionReceipt</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span>, <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
-        <span class="kw">let</span> <span class="ident">xfr_info</span> <span class="op">=</span> <span class="self">self</span>
-            .<span class="ident">build_transfer</span>(<span class="ident">account</span>, <span class="ident">asset</span>, <span class="ident">receivers</span>, <span class="ident">fee</span>, <span class="macro">vec!</span>[], <span class="prelude-val">None</span>)
+        <span class="kw">let</span> <span class="ident">receivers</span> <span class="op">=</span> <span class="ident">receivers</span>
+            .<span class="ident">iter</span>()
+            .<span class="ident">map</span>(<span class="op">|</span>(<span class="ident">addr</span>, <span class="ident">amount</span>)<span class="op">|</span> (<span class="ident">addr</span>.<span class="ident">clone</span>(), <span class="kw-2">*</span><span class="ident">amount</span>, <span class="bool-val">false</span>))
+            .<span class="ident">collect</span>::<span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="kw">_</span><span class="op">&gt;</span><span class="op">&gt;</span>();
+        <span class="kw">let</span> (<span class="ident">note</span>, <span class="ident">info</span>) <span class="op">=</span> <span class="self">self</span>
+            .<span class="ident">build_transfer</span>(<span class="ident">account</span>, <span class="ident">asset</span>, <span class="kw-2">&amp;</span><span class="ident">receivers</span>, <span class="ident">fee</span>, <span class="macro">vec!</span>[], <span class="prelude-val">None</span>)
             .<span class="kw">await</span><span class="question-mark">?</span>;
-        <span class="kw">let</span> <span class="ident">memos_rec</span> <span class="op">=</span> <span class="kw">match</span> <span class="ident">xfr_info</span>.<span class="ident">fee_output</span> {
-            <span class="prelude-val">Some</span>(<span class="ident">ro</span>) <span class="op">=</span><span class="op">&gt;</span> {
-                <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">rec</span> <span class="op">=</span> <span class="macro">vec!</span>[<span class="ident">ro</span>];
-                <span class="ident">rec</span>.<span class="ident">append</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">xfr_info</span>.<span class="ident">outputs</span>.<span class="ident">clone</span>());
-                <span class="ident">rec</span>
-            }
-            <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> <span class="ident">xfr_info</span>.<span class="ident">outputs</span>.<span class="ident">clone</span>(),
-        };
-        <span class="kw">let</span> (<span class="ident">memos</span>, <span class="ident">sig</span>) <span class="op">=</span> <span class="self">self</span>
-            .<span class="ident">generate_memos</span>(<span class="ident">memos_rec</span>, <span class="kw-2">&amp;</span><span class="ident">xfr_info</span>.<span class="ident">sig_key_pair</span>)
-            .<span class="kw">await</span><span class="question-mark">?</span>;
-        <span class="kw">let</span> <span class="ident">txn_info</span> <span class="op">=</span> <span class="ident">TransactionInfo</span> {
-            <span class="ident">accounts</span>: <span class="ident">xfr_info</span>.<span class="ident">owner_addresses</span>,
-            <span class="ident">memos</span>,
-            <span class="ident">sig</span>,
-            <span class="ident">freeze_outputs</span>: <span class="macro">vec!</span>[],
-            <span class="ident">history</span>: <span class="prelude-val">Some</span>(<span class="ident">xfr_info</span>.<span class="ident">history</span>),
-            <span class="ident">uid</span>: <span class="prelude-val">None</span>,
-            <span class="ident">inputs</span>: <span class="ident">xfr_info</span>.<span class="ident">inputs</span>,
-            <span class="ident">outputs</span>: <span class="ident">xfr_info</span>.<span class="ident">outputs</span>,
-        };
-        <span class="self">self</span>.<span class="ident">submit_cap</span>(<span class="ident">TransactionNote::Transfer</span>(<span class="ident">Box::new</span>(<span class="ident">xfr_info</span>.<span class="ident">note</span>)), <span class="ident">txn_info</span>)
+        <span class="self">self</span>.<span class="ident">submit_cap</span>(<span class="ident">TransactionNote::Transfer</span>(<span class="ident">Box::new</span>(<span class="ident">note</span>)), <span class="ident">info</span>)
             .<span class="kw">await</span>
     }
 
     <span class="doccomment">/// Build a transfer with full customization.</span>
+    <span class="doccomment">///</span>
+    <span class="doccomment">/// `receivers`: list of (receiver address, amount, burn)</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">build_transfer</span>(
         <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>,
         <span class="ident">account</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="kw-2">&amp;</span><span class="ident">UserAddress</span><span class="op">&gt;</span>,
         <span class="ident">asset</span>: <span class="kw-2">&amp;</span><span class="ident">AssetCode</span>,
-        <span class="ident">receivers</span>: <span class="kw-2">&amp;</span>[(<span class="ident">UserAddress</span>, <span class="ident">u64</span>)],
+        <span class="ident">receivers</span>: <span class="kw-2">&amp;</span>[(<span class="ident">UserAddress</span>, <span class="ident">u64</span>, <span class="ident">bool</span>)],
         <span class="ident">fee</span>: <span class="ident">u64</span>,
         <span class="ident">bound_data</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span>,
         <span class="ident">xfr_size_requirement</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span>(<span class="ident">usize</span>, <span class="ident">usize</span>)<span class="op">&gt;</span>,
-    ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">TransferInfo</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span>, <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
+    ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(<span class="ident">TransferNote</span>, <span class="ident">TransactionInfo</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span>), <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
         <span class="kw">let</span> <span class="ident">WalletSharedState</span> { <span class="ident">state</span>, <span class="ident">session</span>, .. } <span class="op">=</span> <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="kw-2">*</span><span class="self">self</span>.<span class="ident">mutex</span>.<span class="ident">lock</span>().<span class="kw">await</span>;
         <span class="kw">let</span> <span class="ident">receivers</span> <span class="op">=</span> <span class="ident">iter</span>(<span class="ident">receivers</span>)
-            .<span class="ident">then</span>(<span class="op">|</span>(<span class="ident">addr</span>, <span class="ident">amt</span>)<span class="op">|</span> {
+            .<span class="ident">then</span>(<span class="op">|</span>(<span class="ident">addr</span>, <span class="ident">amt</span>, <span class="ident">burn</span>)<span class="op">|</span> {
                 <span class="kw">let</span> <span class="ident">session</span> <span class="op">=</span> <span class="kw-2">&amp;</span><span class="ident">session</span>;
                 <span class="kw">async</span> <span class="kw">move</span> {
-                    <span class="prelude-val">Ok</span>::<span class="op">&lt;</span>(<span class="ident">UserPubKey</span>, <span class="ident">u64</span>), <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span>((
+                    <span class="prelude-val">Ok</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span>((
                         <span class="ident">session</span>.<span class="ident">backend</span>.<span class="ident">get_public_key</span>(<span class="ident">addr</span>).<span class="kw">await</span><span class="question-mark">?</span>,
                         <span class="kw-2">*</span><span class="ident">amt</span>,
+                        <span class="kw-2">*</span><span class="ident">burn</span>,
                     ))
                 }
             })
@@ -5217,16 +5173,6 @@
             <span class="ident">xfr_size_requirement</span>,
         };
         <span class="ident">state</span>.<span class="ident">build_transfer</span>(<span class="ident">session</span>, <span class="ident">spec</span>)
-    }
-
-    <span class="doccomment">/// Generate and sign owner memos for the given records.</span>
-    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">generate_memos</span>(
-        <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>,
-        <span class="ident">records</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">RecordOpening</span><span class="op">&gt;</span>,
-        <span class="ident">sig_key_pair</span>: <span class="kw-2">&amp;</span><span class="ident">SigKeyPair</span>,
-    ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(<span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">ReceiverMemo</span><span class="op">&gt;</span>, <span class="ident">Signature</span>), <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
-        <span class="kw">let</span> <span class="ident">WalletSharedState</span> { <span class="ident">state</span>, <span class="ident">session</span>, .. } <span class="op">=</span> <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="kw-2">*</span><span class="self">self</span>.<span class="ident">mutex</span>.<span class="ident">lock</span>().<span class="kw">await</span>;
-        <span class="ident">state</span>.<span class="ident">generate_memos</span>(<span class="ident">session</span>, <span class="ident">records</span>, <span class="ident">sig_key_pair</span>)
     }
 
     <span class="doccomment">/// Submit a transaction to be validated.</span>
