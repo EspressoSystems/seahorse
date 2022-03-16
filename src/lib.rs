@@ -1692,7 +1692,7 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
         fee: u64,
         asset_code: &AssetCode,
         amount: u64,
-        owner: UserAddress,
+        receiver: UserAddress,
     ) -> Result<(MintNote, TransactionInfo<L>), WalletError<L>> {
         let asset = self
             .assets
@@ -1712,7 +1712,7 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
                 fee,
                 &(asset.definition.clone(), seed, description),
                 amount,
-                session.backend.get_public_key(&owner).await?,
+                session.backend.get_public_key(&receiver).await?,
                 &mut session.rng,
             )
             .context(TransactionError)
@@ -2612,11 +2612,11 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
         fee: u64,
         asset_code: &AssetCode,
         amount: u64,
-        owner: UserAddress,
+        receiver: UserAddress,
     ) -> Result<(MintNote, TransactionInfo<L>), WalletError<L>> {
         let WalletSharedState { state, session, .. } = &mut *self.mutex.lock().await;
         state
-            .build_mint(session, account, fee, asset_code, amount, owner)
+            .build_mint(session, account, fee, asset_code, amount, receiver)
             .await
     }
 
