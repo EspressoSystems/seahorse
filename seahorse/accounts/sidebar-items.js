@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["Account","The persistent representation of an account."],["AccountInfo","An account bundled with all of its related information."]],"trait":[["KeyPair","Keys with a public part."]]});

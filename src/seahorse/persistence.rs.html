@@ -778,44 +778,6 @@
 <span id="778">778</span>
 <span id="779">779</span>
 <span id="780">780</span>
-<span id="781">781</span>
-<span id="782">782</span>
-<span id="783">783</span>
-<span id="784">784</span>
-<span id="785">785</span>
-<span id="786">786</span>
-<span id="787">787</span>
-<span id="788">788</span>
-<span id="789">789</span>
-<span id="790">790</span>
-<span id="791">791</span>
-<span id="792">792</span>
-<span id="793">793</span>
-<span id="794">794</span>
-<span id="795">795</span>
-<span id="796">796</span>
-<span id="797">797</span>
-<span id="798">798</span>
-<span id="799">799</span>
-<span id="800">800</span>
-<span id="801">801</span>
-<span id="802">802</span>
-<span id="803">803</span>
-<span id="804">804</span>
-<span id="805">805</span>
-<span id="806">806</span>
-<span id="807">807</span>
-<span id="808">808</span>
-<span id="809">809</span>
-<span id="810">810</span>
-<span id="811">811</span>
-<span id="812">812</span>
-<span id="813">813</span>
-<span id="814">814</span>
-<span id="815">815</span>
-<span id="816">816</span>
-<span id="817">817</span>
-<span id="818">818</span>
 </pre><pre class="rust"><code><span class="comment">// Copyright (c) 2022 Espresso Systems (espressosys.com)</span>
 <span class="comment">// This file is part of the Seahorse library.</span>
 
@@ -825,13 +787,14 @@
 
 <span class="doccomment">//! Ledger-agnostic implementation of [WalletStorage].</span>
 <span class="kw">use</span> <span class="kw">crate</span>::{
+    <span class="ident">accounts::Account</span>,
     <span class="ident">asset_library</span>::{<span class="ident">AssetInfo</span>, <span class="ident">AssetLibrary</span>},
     <span class="ident">encryption::Cipher</span>,
     <span class="ident">hd::KeyTree</span>,
     <span class="ident">loader::WalletLoader</span>,
     <span class="ident">txn_builder::TransactionState</span>,
-    <span class="ident">BackgroundKeyScan</span>, <span class="ident">KeyPair</span>, <span class="ident">KeyStreamState</span>, <span class="ident">RoleKeyPair</span>, <span class="ident">TransactionHistoryEntry</span>, <span class="ident">WalletError</span>,
-    <span class="ident">WalletState</span>, <span class="ident">WalletStorage</span>,
+    <span class="ident">BackgroundKeyScan</span>, <span class="ident">KeyStreamState</span>, <span class="ident">TransactionHistoryEntry</span>, <span class="ident">WalletError</span>, <span class="ident">WalletState</span>,
+    <span class="ident">WalletStorage</span>,
 };
 <span class="kw">use</span> <span class="ident">arbitrary</span>::{<span class="ident">Arbitrary</span>, <span class="ident">Unstructured</span>};
 <span class="kw">use</span> <span class="ident">async_std::sync::Arc</span>;
@@ -842,12 +805,12 @@
     <span class="ident">AppendLog</span>, <span class="ident">AtomicStore</span>, <span class="ident">AtomicStoreLoader</span>, <span class="ident">RollingLog</span>,
 };
 <span class="kw">use</span> <span class="ident">espresso_macros::ser_test</span>;
+<span class="kw">use</span> <span class="ident">jf_cap::keys</span>::{<span class="ident">AuditorKeyPair</span>, <span class="ident">FreezerKeyPair</span>, <span class="ident">UserKeyPair</span>};
 <span class="kw">use</span> <span class="ident">key_set</span>::{<span class="ident">OrderByOutputs</span>, <span class="ident">ProverKeySet</span>};
 <span class="kw">use</span> <span class="ident">rand_chacha</span>::{<span class="ident">rand_core::SeedableRng</span>, <span class="ident">ChaChaRng</span>};
 <span class="kw">use</span> <span class="ident">reef</span>::<span class="kw-2">*</span>;
 <span class="kw">use</span> <span class="ident">serde</span>::{<span class="ident">de::DeserializeOwned</span>, <span class="ident">Deserialize</span>, <span class="ident">Serialize</span>};
 <span class="kw">use</span> <span class="ident">snafu::ResultExt</span>;
-<span class="kw">use</span> <span class="ident">std::collections::HashMap</span>;
 
 <span class="comment">// Serialization intermediate for the static part of a WalletState.</span>
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Deserialize</span>, <span class="ident">Serialize</span>)]</span>
@@ -897,6 +860,9 @@
     <span class="ident">txn_state</span>: <span class="ident">TransactionState</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span>,
     <span class="ident">key_scans</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">BackgroundKeyScan</span><span class="op">&gt;</span>,
     <span class="ident">key_state</span>: <span class="ident">KeyStreamState</span>,
+    <span class="ident">viewing_accounts</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">Account</span><span class="op">&lt;</span><span class="ident">AuditorKeyPair</span><span class="op">&gt;</span><span class="op">&gt;</span>,
+    <span class="ident">freezing_accounts</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">Account</span><span class="op">&lt;</span><span class="ident">FreezerKeyPair</span><span class="op">&gt;</span><span class="op">&gt;</span>,
+    <span class="ident">sending_accounts</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">Account</span><span class="op">&lt;</span><span class="ident">UserKeyPair</span><span class="op">&gt;</span><span class="op">&gt;</span>,
 }
 
 <span class="kw">impl</span><span class="op">&lt;</span><span class="ident">L</span>: <span class="ident">Ledger</span><span class="op">&gt;</span> <span class="ident">PartialEq</span><span class="op">&lt;</span><span class="self">Self</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">WalletSnapshot</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span> {
@@ -904,6 +870,9 @@
         <span class="self">self</span>.<span class="ident">txn_state</span> <span class="op">=</span><span class="op">=</span> <span class="ident">other</span>.<span class="ident">txn_state</span>
             <span class="op">&amp;&amp;</span> <span class="self">self</span>.<span class="ident">key_scans</span> <span class="op">=</span><span class="op">=</span> <span class="ident">other</span>.<span class="ident">key_scans</span>
             <span class="op">&amp;&amp;</span> <span class="self">self</span>.<span class="ident">key_state</span> <span class="op">=</span><span class="op">=</span> <span class="ident">other</span>.<span class="ident">key_state</span>
+            <span class="op">&amp;&amp;</span> <span class="self">self</span>.<span class="ident">viewing_accounts</span> <span class="op">=</span><span class="op">=</span> <span class="ident">other</span>.<span class="ident">viewing_accounts</span>
+            <span class="op">&amp;&amp;</span> <span class="self">self</span>.<span class="ident">freezing_accounts</span> <span class="op">=</span><span class="op">=</span> <span class="ident">other</span>.<span class="ident">freezing_accounts</span>
+            <span class="op">&amp;&amp;</span> <span class="self">self</span>.<span class="ident">sending_accounts</span> <span class="op">=</span><span class="op">=</span> <span class="ident">other</span>.<span class="ident">sending_accounts</span>
     }
 }
 
@@ -913,6 +882,9 @@
             <span class="ident">txn_state</span>: <span class="ident">w</span>.<span class="ident">txn_state</span>.<span class="ident">clone</span>(),
             <span class="ident">key_scans</span>: <span class="ident">w</span>.<span class="ident">key_scans</span>.<span class="ident">values</span>().<span class="ident">cloned</span>().<span class="ident">collect</span>(),
             <span class="ident">key_state</span>: <span class="ident">w</span>.<span class="ident">key_state</span>.<span class="ident">clone</span>(),
+            <span class="ident">viewing_accounts</span>: <span class="ident">w</span>.<span class="ident">viewing_accounts</span>.<span class="ident">values</span>().<span class="ident">cloned</span>().<span class="ident">collect</span>(),
+            <span class="ident">freezing_accounts</span>: <span class="ident">w</span>.<span class="ident">freezing_accounts</span>.<span class="ident">values</span>().<span class="ident">cloned</span>().<span class="ident">collect</span>(),
+            <span class="ident">sending_accounts</span>: <span class="ident">w</span>.<span class="ident">sending_accounts</span>.<span class="ident">values</span>().<span class="ident">cloned</span>().<span class="ident">collect</span>(),
         }
     }
 }
@@ -926,6 +898,9 @@
             <span class="ident">txn_state</span>: <span class="ident">u</span>.<span class="ident">arbitrary</span>()<span class="question-mark">?</span>,
             <span class="ident">key_scans</span>: <span class="ident">u</span>.<span class="ident">arbitrary</span>()<span class="question-mark">?</span>,
             <span class="ident">key_state</span>: <span class="ident">u</span>.<span class="ident">arbitrary</span>()<span class="question-mark">?</span>,
+            <span class="ident">viewing_accounts</span>: <span class="ident">u</span>.<span class="ident">arbitrary</span>()<span class="question-mark">?</span>,
+            <span class="ident">freezing_accounts</span>: <span class="ident">u</span>.<span class="ident">arbitrary</span>()<span class="question-mark">?</span>,
+            <span class="ident">sending_accounts</span>: <span class="ident">u</span>.<span class="ident">arbitrary</span>()<span class="question-mark">?</span>,
         })
     }
 }
@@ -1000,8 +975,6 @@
     <span class="ident">assets_dirty</span>: <span class="ident">bool</span>,
     <span class="ident">txn_history</span>: <span class="ident">AppendLog</span><span class="op">&lt;</span><span class="ident">EncryptingResourceAdapter</span><span class="op">&lt;</span><span class="ident">TransactionHistoryEntry</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span><span class="op">&gt;</span>,
     <span class="ident">txn_history_dirty</span>: <span class="ident">bool</span>,
-    <span class="ident">keys</span>: <span class="ident">AppendLog</span><span class="op">&lt;</span><span class="ident">EncryptingResourceAdapter</span><span class="op">&lt;</span><span class="ident">RoleKeyPair</span><span class="op">&gt;</span><span class="op">&gt;</span>,
-    <span class="ident">keys_dirty</span>: <span class="ident">bool</span>,
     <span class="ident">wallet_key_tree</span>: <span class="ident">KeyTree</span>,
 }
 
@@ -1076,13 +1049,6 @@
             <span class="ident">file_fill_size</span>,
         )
         .<span class="ident">context</span>(<span class="ident"><span class="kw">crate</span>::PersistenceError</span>)<span class="question-mark">?</span>;
-        <span class="kw">let</span> <span class="ident">keys</span> <span class="op">=</span> <span class="ident">AppendLog::load</span>(
-            <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">atomic_loader</span>,
-            <span class="ident">adaptor</span>.<span class="ident">cast</span>(),
-            <span class="string">&quot;wallet_keys&quot;</span>,
-            <span class="ident">file_fill_size</span>,
-        )
-        .<span class="ident">context</span>(<span class="ident"><span class="kw">crate</span>::PersistenceError</span>)<span class="question-mark">?</span>;
         <span class="kw">let</span> <span class="ident">store</span> <span class="op">=</span> <span class="ident">AtomicStore::open</span>(<span class="ident">atomic_loader</span>).<span class="ident">context</span>(<span class="ident"><span class="kw">crate</span>::PersistenceError</span>)<span class="question-mark">?</span>;
 
         <span class="prelude-val">Ok</span>(<span class="self">Self</span> {
@@ -1098,8 +1064,6 @@
             <span class="ident">assets_dirty</span>: <span class="bool-val">false</span>,
             <span class="ident">txn_history</span>,
             <span class="ident">txn_history_dirty</span>: <span class="bool-val">false</span>,
-            <span class="ident">keys</span>,
-            <span class="ident">keys_dirty</span>: <span class="bool-val">false</span>,
             <span class="ident">wallet_key_tree</span>: <span class="ident">key</span>.<span class="ident">derive_sub_tree</span>(<span class="string">&quot;wallet&quot;</span>.<span class="ident">as_bytes</span>()),
         })
     }
@@ -1140,20 +1104,6 @@
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">key_stream</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">KeyTree</span> {
         <span class="self">self</span>.<span class="ident">wallet_key_tree</span>.<span class="ident">clone</span>()
     }
-
-    <span class="kw">fn</span> <span class="ident">load_keys</span><span class="op">&lt;</span><span class="ident">K</span>: <span class="ident">KeyPair</span><span class="op">&gt;</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">HashMap</span><span class="op">&lt;</span><span class="ident">K::PubKey</span>, <span class="ident">K</span><span class="op">&gt;</span> {
-        <span class="self">self</span>.<span class="ident">keys</span>
-            .<span class="ident">iter</span>()
-            .<span class="ident">filter_map</span>(<span class="op">|</span><span class="ident">res</span><span class="op">|</span> {
-                <span class="ident">res</span>.<span class="ident">ok</span>()
-                    <span class="comment">// Convert from type-erased RoleKey to strongly typed key, filtering out</span>
-                    <span class="comment">// RoleKeys of the wrong type.</span>
-                    .<span class="ident">and_then</span>(<span class="op">|</span><span class="ident">role_key</span><span class="op">|</span> <span class="ident">K::try_from</span>(<span class="ident">role_key</span>).<span class="ident">ok</span>())
-                    <span class="comment">// Convert to (pub_key, key_pair) mapping.</span>
-                    .<span class="ident">map</span>(<span class="op">|</span><span class="ident">key</span><span class="op">|</span> (<span class="ident">key</span>.<span class="ident">pub_key</span>(), <span class="ident">key</span>))
-            })
-            .<span class="ident">collect</span>()
-    }
 }
 
 <span class="attribute">#[<span class="ident">async_trait</span>]</span>
@@ -1178,7 +1128,6 @@
             .<span class="ident">load_latest</span>()
             .<span class="ident">context</span>(<span class="ident"><span class="kw">crate</span>::PersistenceError</span>)<span class="question-mark">?</span>;
         <span class="kw">let</span> <span class="ident">assets</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">assets</span>.<span class="ident">iter</span>().<span class="ident">filter_map</span>(<span class="op">|</span><span class="ident">res</span><span class="op">|</span> <span class="ident">res</span>.<span class="ident">ok</span>()).<span class="ident">collect</span>();
-        <span class="kw">let</span> <span class="ident">audit_keys</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">load_keys</span>();
 
         <span class="prelude-val">Ok</span>(<span class="ident">WalletState</span> {
             <span class="comment">// Static state</span>
@@ -1194,10 +1143,29 @@
             <span class="ident">key_state</span>: <span class="ident">dynamic_state</span>.<span class="ident">key_state</span>,
 
             <span class="comment">// Monotonic state</span>
-            <span class="ident">assets</span>: <span class="ident">AssetLibrary::new</span>(<span class="ident">assets</span>, <span class="ident">audit_keys</span>.<span class="ident">keys</span>().<span class="ident">cloned</span>().<span class="ident">collect</span>()),
-            <span class="ident">audit_keys</span>,
-            <span class="ident">freeze_keys</span>: <span class="self">self</span>.<span class="ident">load_keys</span>(),
-            <span class="ident">user_keys</span>: <span class="self">self</span>.<span class="ident">load_keys</span>(),
+            <span class="ident">assets</span>: <span class="ident">AssetLibrary::new</span>(
+                <span class="ident">assets</span>,
+                <span class="ident">dynamic_state</span>
+                    .<span class="ident">viewing_accounts</span>
+                    .<span class="ident">iter</span>()
+                    .<span class="ident">map</span>(<span class="op">|</span><span class="ident">account</span><span class="op">|</span> <span class="ident">account</span>.<span class="ident">key</span>.<span class="ident">pub_key</span>())
+                    .<span class="ident">collect</span>(),
+            ),
+            <span class="ident">viewing_accounts</span>: <span class="ident">dynamic_state</span>
+                .<span class="ident">viewing_accounts</span>
+                .<span class="ident">into_iter</span>()
+                .<span class="ident">map</span>(<span class="op">|</span><span class="ident">account</span><span class="op">|</span> (<span class="ident">account</span>.<span class="ident">key</span>.<span class="ident">pub_key</span>(), <span class="ident">account</span>))
+                .<span class="ident">collect</span>(),
+            <span class="ident">freezing_accounts</span>: <span class="ident">dynamic_state</span>
+                .<span class="ident">freezing_accounts</span>
+                .<span class="ident">into_iter</span>()
+                .<span class="ident">map</span>(<span class="op">|</span><span class="ident">account</span><span class="op">|</span> (<span class="ident">account</span>.<span class="ident">key</span>.<span class="ident">pub_key</span>(), <span class="ident">account</span>))
+                .<span class="ident">collect</span>(),
+            <span class="ident">sending_accounts</span>: <span class="ident">dynamic_state</span>
+                .<span class="ident">sending_accounts</span>
+                .<span class="ident">into_iter</span>()
+                .<span class="ident">map</span>(<span class="op">|</span><span class="ident">account</span><span class="op">|</span> (<span class="ident">account</span>.<span class="ident">key</span>.<span class="ident">address</span>(), <span class="ident">account</span>))
+                .<span class="ident">collect</span>(),
         })
     }
 
@@ -1214,14 +1182,6 @@
             .<span class="ident">store_resource</span>(<span class="ident">asset</span>)
             .<span class="ident">context</span>(<span class="ident"><span class="kw">crate</span>::PersistenceError</span>)<span class="question-mark">?</span>;
         <span class="self">self</span>.<span class="ident">assets_dirty</span> <span class="op">=</span> <span class="bool-val">true</span>;
-        <span class="prelude-val">Ok</span>(())
-    }
-
-    <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">store_key</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">key</span>: <span class="kw-2">&amp;</span><span class="ident">RoleKeyPair</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(), <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
-        <span class="self">self</span>.<span class="ident">keys</span>
-            .<span class="ident">store_resource</span>(<span class="ident">key</span>)
-            .<span class="ident">context</span>(<span class="ident"><span class="kw">crate</span>::PersistenceError</span>)<span class="question-mark">?</span>;
-        <span class="self">self</span>.<span class="ident">keys_dirty</span> <span class="op">=</span> <span class="bool-val">true</span>;
         <span class="prelude-val">Ok</span>(())
     }
 
@@ -1276,12 +1236,6 @@
             } <span class="kw">else</span> {
                 <span class="self">self</span>.<span class="ident">txn_history</span>.<span class="ident">skip_version</span>().<span class="ident">unwrap</span>();
             }
-
-            <span class="kw">if</span> <span class="self">self</span>.<span class="ident">keys_dirty</span> {
-                <span class="self">self</span>.<span class="ident">keys</span>.<span class="ident">commit_version</span>().<span class="ident">unwrap</span>();
-            } <span class="kw">else</span> {
-                <span class="self">self</span>.<span class="ident">keys</span>.<span class="ident">skip_version</span>().<span class="ident">unwrap</span>();
-            }
         }
 
         <span class="self">self</span>.<span class="ident">store</span>.<span class="ident">commit_version</span>().<span class="ident">unwrap</span>();
@@ -1291,7 +1245,6 @@
         <span class="self">self</span>.<span class="ident">dynamic_state_dirty</span> <span class="op">=</span> <span class="bool-val">false</span>;
         <span class="self">self</span>.<span class="ident">assets_dirty</span> <span class="op">=</span> <span class="bool-val">false</span>;
         <span class="self">self</span>.<span class="ident">txn_history_dirty</span> <span class="op">=</span> <span class="bool-val">false</span>;
-        <span class="self">self</span>.<span class="ident">keys_dirty</span> <span class="op">=</span> <span class="bool-val">false</span>;
     }
 
     <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">revert</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>) {
@@ -1299,7 +1252,6 @@
         <span class="self">self</span>.<span class="ident">static_data</span>.<span class="ident">revert_version</span>().<span class="ident">unwrap</span>();
         <span class="self">self</span>.<span class="ident">dynamic_state</span>.<span class="ident">revert_version</span>().<span class="ident">unwrap</span>();
         <span class="self">self</span>.<span class="ident">assets</span>.<span class="ident">revert_version</span>().<span class="ident">unwrap</span>();
-        <span class="self">self</span>.<span class="ident">keys</span>.<span class="ident">revert_version</span>().<span class="ident">unwrap</span>();
         <span class="self">self</span>.<span class="ident">txn_history</span>.<span class="ident">revert_version</span>().<span class="ident">unwrap</span>();
     }
 }
@@ -1316,7 +1268,7 @@
     <span class="kw">use</span> <span class="ident">chrono::Local</span>;
     <span class="kw">use</span> <span class="ident">commit::Commitment</span>;
     <span class="kw">use</span> <span class="ident">jf_cap</span>::{
-        <span class="ident">keys</span>::{<span class="ident">AuditorKeyPair</span>, <span class="ident">FreezerKeyPair</span>, <span class="ident">UserKeyPair</span>},
+        <span class="ident">keys</span>::{<span class="ident">AuditorKeyPair</span>, <span class="ident">UserKeyPair</span>},
         <span class="ident">sign_receiver_memos</span>,
         <span class="ident">structs</span>::{
             <span class="ident">AssetCode</span>, <span class="ident">AssetDefinition</span>, <span class="ident">FreezeFlag</span>, <span class="ident">ReceiverMemo</span>, <span class="ident">RecordCommitment</span>, <span class="ident">RecordOpening</span>,
@@ -1444,9 +1396,9 @@
             <span class="ident">key_scans</span>: <span class="ident">Default::default</span>(),
             <span class="ident">key_state</span>: <span class="ident">Default::default</span>(),
             <span class="ident">assets</span>: <span class="ident">Default::default</span>(),
-            <span class="ident">audit_keys</span>: <span class="ident">Default::default</span>(),
-            <span class="ident">freeze_keys</span>: <span class="ident">Default::default</span>(),
-            <span class="ident">user_keys</span>: <span class="ident">Default::default</span>(),
+            <span class="ident">viewing_accounts</span>: <span class="ident">Default::default</span>(),
+            <span class="ident">freezing_accounts</span>: <span class="ident">Default::default</span>(),
+            <span class="ident">sending_accounts</span>: <span class="ident">Default::default</span>(),
         };
 
         <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">loader</span> <span class="op">=</span> <span class="ident">MockWalletLoader</span> {
@@ -1521,36 +1473,20 @@
         <span class="comment">// Append to monotonic state and then reload.</span>
         <span class="kw">let</span> <span class="ident">definition</span> <span class="op">=</span>
             <span class="ident">AssetDefinition::new</span>(<span class="ident">AssetCode::random</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">rng</span>).<span class="number">0</span>, <span class="ident">Default::default</span>()).<span class="ident">unwrap</span>();
-        <span class="kw">let</span> <span class="ident">audit_key</span> <span class="op">=</span> <span class="ident">AuditorKeyPair::generate</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">rng</span>);
-        <span class="kw">let</span> <span class="ident">freeze_key</span> <span class="op">=</span> <span class="ident">FreezerKeyPair::generate</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">rng</span>);
         <span class="kw">let</span> <span class="ident">asset</span> <span class="op">=</span> <span class="ident">AssetInfo::from</span>(<span class="ident">definition</span>);
+        <span class="kw">let</span> <span class="ident">audit_key</span> <span class="op">=</span> <span class="ident">AuditorKeyPair::generate</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">rng</span>);
         <span class="ident">stored</span>.<span class="ident">assets</span>.<span class="ident">insert</span>(<span class="ident">asset</span>.<span class="ident">clone</span>());
         <span class="ident">stored</span>.<span class="ident">assets</span>.<span class="ident">add_audit_key</span>(<span class="ident">audit_key</span>.<span class="ident">pub_key</span>());
-        <span class="ident">stored</span>
-            .<span class="ident">audit_keys</span>
-            .<span class="ident">insert</span>(<span class="ident">audit_key</span>.<span class="ident">pub_key</span>(), <span class="ident">audit_key</span>.<span class="ident">clone</span>());
-        <span class="ident">stored</span>
-            .<span class="ident">freeze_keys</span>
-            .<span class="ident">insert</span>(<span class="ident">freeze_key</span>.<span class="ident">pub_key</span>(), <span class="ident">freeze_key</span>.<span class="ident">clone</span>());
-        <span class="ident">stored</span>
-            .<span class="ident">user_keys</span>
-            .<span class="ident">insert</span>(<span class="ident">user_key</span>.<span class="ident">address</span>(), <span class="ident">user_key</span>.<span class="ident">clone</span>());
+        <span class="comment">// Audit keys for the asset library get persisted with the audit accounts.</span>
+        <span class="ident">stored</span>.<span class="ident">viewing_accounts</span>.<span class="ident">insert</span>(
+            <span class="ident">audit_key</span>.<span class="ident">pub_key</span>(),
+            <span class="ident">Account::new</span>(<span class="ident">audit_key</span>, <span class="string">&quot;viewing_account&quot;</span>.<span class="ident">into</span>()),
+        );
         {
             <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">storage</span> <span class="op">=</span>
                 <span class="ident">AtomicWalletStorage</span>::<span class="op">&lt;</span><span class="ident">cap::Ledger</span>, <span class="kw">_</span><span class="op">&gt;</span><span class="ident">::new</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">loader</span>, <span class="number">1024</span>).<span class="ident">unwrap</span>();
+            <span class="ident">storage</span>.<span class="ident">store_snapshot</span>(<span class="kw-2">&amp;</span><span class="ident">stored</span>).<span class="kw">await</span>.<span class="ident">unwrap</span>();
             <span class="ident">storage</span>.<span class="ident">store_asset</span>(<span class="kw-2">&amp;</span><span class="ident">asset</span>).<span class="kw">await</span>.<span class="ident">unwrap</span>();
-            <span class="ident">storage</span>
-                .<span class="ident">store_key</span>(<span class="kw-2">&amp;</span><span class="ident">RoleKeyPair::Auditor</span>(<span class="ident">audit_key</span>))
-                .<span class="kw">await</span>
-                .<span class="ident">unwrap</span>();
-            <span class="ident">storage</span>
-                .<span class="ident">store_key</span>(<span class="kw-2">&amp;</span><span class="ident">RoleKeyPair::Freezer</span>(<span class="ident">freeze_key</span>))
-                .<span class="kw">await</span>
-                .<span class="ident">unwrap</span>();
-            <span class="ident">storage</span>
-                .<span class="ident">store_key</span>(<span class="kw-2">&amp;</span><span class="ident">RoleKeyPair::User</span>(<span class="ident">user_key</span>))
-                .<span class="kw">await</span>
-                .<span class="ident">unwrap</span>();
             <span class="ident">storage</span>.<span class="ident">commit</span>().<span class="kw">await</span>;
         }
         <span class="kw">let</span> <span class="ident">loaded</span> <span class="op">=</span> {
@@ -1593,18 +1529,6 @@
             <span class="ident">stored</span>.<span class="ident">txn_state</span>.<span class="ident">records</span>.<span class="ident">insert</span>(<span class="ident">ro</span>, <span class="number">0</span>, <span class="kw-2">&amp;</span><span class="ident">user_key</span>);
             <span class="ident">storage</span>.<span class="ident">store_snapshot</span>(<span class="kw-2">&amp;</span><span class="ident">stored</span>).<span class="kw">await</span>.<span class="ident">unwrap</span>();
             <span class="ident">storage</span>.<span class="ident">store_asset</span>(<span class="kw-2">&amp;</span><span class="ident">AssetInfo::native</span>()).<span class="kw">await</span>.<span class="ident">unwrap</span>();
-            <span class="ident">storage</span>
-                .<span class="ident">store_key</span>(<span class="kw-2">&amp;</span><span class="ident">RoleKeyPair::Auditor</span>(<span class="ident">AuditorKeyPair::generate</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">rng</span>)))
-                .<span class="kw">await</span>
-                .<span class="ident">unwrap</span>();
-            <span class="ident">storage</span>
-                .<span class="ident">store_key</span>(<span class="kw-2">&amp;</span><span class="ident">RoleKeyPair::Freezer</span>(<span class="ident">FreezerKeyPair::generate</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">rng</span>)))
-                .<span class="kw">await</span>
-                .<span class="ident">unwrap</span>();
-            <span class="ident">storage</span>
-                .<span class="ident">store_key</span>(<span class="kw-2">&amp;</span><span class="ident">RoleKeyPair::User</span>(<span class="ident">user_key</span>.<span class="ident">clone</span>()))
-                .<span class="kw">await</span>
-                .<span class="ident">unwrap</span>();
             <span class="ident">storage</span>
                 .<span class="ident">store_transaction</span>(<span class="ident">TransactionHistoryEntry</span> {
                     <span class="ident">time</span>: <span class="ident">Local::now</span>(),

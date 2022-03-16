@@ -2846,6 +2846,75 @@
 <span id="2846">2846</span>
 <span id="2847">2847</span>
 <span id="2848">2848</span>
+<span id="2849">2849</span>
+<span id="2850">2850</span>
+<span id="2851">2851</span>
+<span id="2852">2852</span>
+<span id="2853">2853</span>
+<span id="2854">2854</span>
+<span id="2855">2855</span>
+<span id="2856">2856</span>
+<span id="2857">2857</span>
+<span id="2858">2858</span>
+<span id="2859">2859</span>
+<span id="2860">2860</span>
+<span id="2861">2861</span>
+<span id="2862">2862</span>
+<span id="2863">2863</span>
+<span id="2864">2864</span>
+<span id="2865">2865</span>
+<span id="2866">2866</span>
+<span id="2867">2867</span>
+<span id="2868">2868</span>
+<span id="2869">2869</span>
+<span id="2870">2870</span>
+<span id="2871">2871</span>
+<span id="2872">2872</span>
+<span id="2873">2873</span>
+<span id="2874">2874</span>
+<span id="2875">2875</span>
+<span id="2876">2876</span>
+<span id="2877">2877</span>
+<span id="2878">2878</span>
+<span id="2879">2879</span>
+<span id="2880">2880</span>
+<span id="2881">2881</span>
+<span id="2882">2882</span>
+<span id="2883">2883</span>
+<span id="2884">2884</span>
+<span id="2885">2885</span>
+<span id="2886">2886</span>
+<span id="2887">2887</span>
+<span id="2888">2888</span>
+<span id="2889">2889</span>
+<span id="2890">2890</span>
+<span id="2891">2891</span>
+<span id="2892">2892</span>
+<span id="2893">2893</span>
+<span id="2894">2894</span>
+<span id="2895">2895</span>
+<span id="2896">2896</span>
+<span id="2897">2897</span>
+<span id="2898">2898</span>
+<span id="2899">2899</span>
+<span id="2900">2900</span>
+<span id="2901">2901</span>
+<span id="2902">2902</span>
+<span id="2903">2903</span>
+<span id="2904">2904</span>
+<span id="2905">2905</span>
+<span id="2906">2906</span>
+<span id="2907">2907</span>
+<span id="2908">2908</span>
+<span id="2909">2909</span>
+<span id="2910">2910</span>
+<span id="2911">2911</span>
+<span id="2912">2912</span>
+<span id="2913">2913</span>
+<span id="2914">2914</span>
+<span id="2915">2915</span>
+<span id="2916">2916</span>
+<span id="2917">2917</span>
 </pre><pre class="rust"><code><span class="comment">// Copyright (c) 2022 Espresso Systems (espressosys.com)</span>
 <span class="comment">// This file is part of the Seahorse library.</span>
 
@@ -2866,6 +2935,7 @@
 <span class="doccomment">//!</span>
 <span class="doccomment">//! Users should also be familiar with [reef], which provides traits to adapt a particular CAP</span>
 <span class="doccomment">//! ledger to the ledger-agnostic interfaces defined here.</span>
+<span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">accounts</span>;
 <span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">asset_library</span>;
 <span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">cli</span>;
 <span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">encryption</span>;
@@ -2885,6 +2955,7 @@
 <span class="kw">pub</span> <span class="kw">use</span> <span class="ident">reef</span>;
 
 <span class="kw">use</span> <span class="kw">crate</span>::{
+    <span class="ident">accounts</span>::{<span class="ident">Account</span>, <span class="ident">AccountInfo</span>},
     <span class="ident">asset_library</span>::{<span class="ident">AssetLibrary</span>, <span class="ident">VerifiedAssetLibrary</span>},
     <span class="ident">events</span>::{<span class="ident">EventIndex</span>, <span class="ident">EventSource</span>, <span class="ident">LedgerEvent</span>},
     <span class="ident">txn_builder</span>::<span class="kw-2">*</span>,
@@ -3192,102 +3263,15 @@
     <span class="doccomment">/// assets, including the asset description and the private asset code seed.</span>
     <span class="kw">pub</span> <span class="ident">assets</span>: <span class="ident">AssetLibrary</span>,
     <span class="doccomment">/// Viewing keys.</span>
-    <span class="kw">pub</span> <span class="ident">audit_keys</span>: <span class="ident">HashMap</span><span class="op">&lt;</span><span class="ident">AuditorPubKey</span>, <span class="ident">AuditorKeyPair</span><span class="op">&gt;</span>,
+    <span class="kw">pub</span> <span class="ident">viewing_accounts</span>: <span class="ident">HashMap</span><span class="op">&lt;</span><span class="ident">AuditorPubKey</span>, <span class="ident">Account</span><span class="op">&lt;</span><span class="ident">AuditorKeyPair</span><span class="op">&gt;</span><span class="op">&gt;</span>,
     <span class="doccomment">/// Freezing keys.</span>
-    <span class="kw">pub</span> <span class="ident">freeze_keys</span>: <span class="ident">HashMap</span><span class="op">&lt;</span><span class="ident">FreezerPubKey</span>, <span class="ident">FreezerKeyPair</span><span class="op">&gt;</span>,
+    <span class="kw">pub</span> <span class="ident">freezing_accounts</span>: <span class="ident">HashMap</span><span class="op">&lt;</span><span class="ident">FreezerPubKey</span>, <span class="ident">Account</span><span class="op">&lt;</span><span class="ident">FreezerKeyPair</span><span class="op">&gt;</span><span class="op">&gt;</span>,
     <span class="doccomment">/// Sending keys, for spending owned records and receiving new records.</span>
     <span class="doccomment">///</span>
     <span class="doccomment">/// Each public key in this set also includes a [UserAddress], which can be used to sign</span>
     <span class="doccomment">/// outgoing transactions, as well as an encryption public key used by other users to encrypt</span>
     <span class="doccomment">/// owner memos when sending records to this wallet.</span>
-    <span class="kw">pub</span> <span class="ident">user_keys</span>: <span class="ident">HashMap</span><span class="op">&lt;</span><span class="ident">UserAddress</span>, <span class="ident">UserKeyPair</span><span class="op">&gt;</span>,
-}
-
-<span class="comment">// Type erasure for key pairs so that backend components like storage that don&#39;t care about the</span>
-<span class="comment">// detailed properties of different kinds of keys can just implement a single heterogeneous key</span>
-<span class="comment">// store.</span>
-<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Clone</span>, <span class="ident">Debug</span>, <span class="ident">Serialize</span>, <span class="ident">Deserialize</span>)]</span>
-<span class="kw">pub</span> <span class="kw">enum</span> <span class="ident">RoleKeyPair</span> {
-    <span class="ident">Auditor</span>(<span class="ident">AuditorKeyPair</span>),
-    <span class="ident">Freezer</span>(<span class="ident">FreezerKeyPair</span>),
-    <span class="ident">User</span>(<span class="ident">UserKeyPair</span>),
-}
-
-<span class="kw">impl</span> <span class="ident">From</span><span class="op">&lt;</span><span class="ident">AuditorKeyPair</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">RoleKeyPair</span> {
-    <span class="kw">fn</span> <span class="ident">from</span>(<span class="ident">key</span>: <span class="ident">AuditorKeyPair</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span> {
-        <span class="ident"><span class="self">Self</span>::Auditor</span>(<span class="ident">key</span>)
-    }
-}
-
-<span class="kw">impl</span> <span class="ident">From</span><span class="op">&lt;</span><span class="ident">FreezerKeyPair</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">RoleKeyPair</span> {
-    <span class="kw">fn</span> <span class="ident">from</span>(<span class="ident">key</span>: <span class="ident">FreezerKeyPair</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span> {
-        <span class="ident"><span class="self">Self</span>::Freezer</span>(<span class="ident">key</span>)
-    }
-}
-
-<span class="kw">impl</span> <span class="ident">From</span><span class="op">&lt;</span><span class="ident">UserKeyPair</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">RoleKeyPair</span> {
-    <span class="kw">fn</span> <span class="ident">from</span>(<span class="ident">key</span>: <span class="ident">UserKeyPair</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span> {
-        <span class="ident"><span class="self">Self</span>::User</span>(<span class="ident">key</span>)
-    }
-}
-
-<span class="kw">trait</span> <span class="ident">KeyPair</span>: <span class="ident">Clone</span> <span class="op">+</span> <span class="ident">Into</span><span class="op">&lt;</span><span class="ident">RoleKeyPair</span><span class="op">&gt;</span> <span class="op">+</span> <span class="ident">TryFrom</span><span class="op">&lt;</span><span class="ident">RoleKeyPair</span><span class="op">&gt;</span> <span class="op">+</span> <span class="ident">Send</span> <span class="op">+</span> <span class="ident">Sync</span> {
-    <span class="kw">type</span> <span class="ident">PubKey</span>: <span class="ident">std::hash::Hash</span> <span class="op">+</span> <span class="ident">Eq</span>;
-    <span class="kw">fn</span> <span class="ident">pub_key</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident"><span class="self">Self</span>::PubKey</span>;
-}
-
-<span class="kw">impl</span> <span class="ident">TryFrom</span><span class="op">&lt;</span><span class="ident">RoleKeyPair</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">AuditorKeyPair</span> {
-    <span class="kw">type</span> <span class="ident">Error</span> <span class="op">=</span> ();
-    <span class="kw">fn</span> <span class="ident">try_from</span>(<span class="ident">key</span>: <span class="ident">RoleKeyPair</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="self">Self</span>, ()<span class="op">&gt;</span> {
-        <span class="kw">match</span> <span class="ident">key</span> {
-            <span class="ident">RoleKeyPair::Auditor</span>(<span class="ident">key</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Ok</span>(<span class="ident">key</span>),
-            <span class="kw">_</span> <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Err</span>(()),
-        }
-    }
-}
-
-<span class="kw">impl</span> <span class="ident">KeyPair</span> <span class="kw">for</span> <span class="ident">AuditorKeyPair</span> {
-    <span class="kw">type</span> <span class="ident">PubKey</span> <span class="op">=</span> <span class="ident">AuditorPubKey</span>;
-    <span class="kw">fn</span> <span class="ident">pub_key</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident"><span class="self">Self</span>::PubKey</span> {
-        <span class="self">self</span>.<span class="ident">pub_key</span>()
-    }
-}
-
-<span class="kw">impl</span> <span class="ident">TryFrom</span><span class="op">&lt;</span><span class="ident">RoleKeyPair</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">FreezerKeyPair</span> {
-    <span class="kw">type</span> <span class="ident">Error</span> <span class="op">=</span> ();
-    <span class="kw">fn</span> <span class="ident">try_from</span>(<span class="ident">key</span>: <span class="ident">RoleKeyPair</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="self">Self</span>, ()<span class="op">&gt;</span> {
-        <span class="kw">match</span> <span class="ident">key</span> {
-            <span class="ident">RoleKeyPair::Freezer</span>(<span class="ident">key</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Ok</span>(<span class="ident">key</span>),
-            <span class="kw">_</span> <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Err</span>(()),
-        }
-    }
-}
-
-<span class="kw">impl</span> <span class="ident">KeyPair</span> <span class="kw">for</span> <span class="ident">FreezerKeyPair</span> {
-    <span class="kw">type</span> <span class="ident">PubKey</span> <span class="op">=</span> <span class="ident">FreezerPubKey</span>;
-    <span class="kw">fn</span> <span class="ident">pub_key</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident"><span class="self">Self</span>::PubKey</span> {
-        <span class="self">self</span>.<span class="ident">pub_key</span>()
-    }
-}
-
-<span class="kw">impl</span> <span class="ident">TryFrom</span><span class="op">&lt;</span><span class="ident">RoleKeyPair</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">UserKeyPair</span> {
-    <span class="kw">type</span> <span class="ident">Error</span> <span class="op">=</span> ();
-    <span class="kw">fn</span> <span class="ident">try_from</span>(<span class="ident">key</span>: <span class="ident">RoleKeyPair</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="self">Self</span>, ()<span class="op">&gt;</span> {
-        <span class="kw">match</span> <span class="ident">key</span> {
-            <span class="ident">RoleKeyPair::User</span>(<span class="ident">key</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Ok</span>(<span class="ident">key</span>),
-            <span class="kw">_</span> <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Err</span>(()),
-        }
-    }
-}
-
-<span class="kw">impl</span> <span class="ident">KeyPair</span> <span class="kw">for</span> <span class="ident">UserKeyPair</span> {
-    <span class="comment">// The PubKey here is supposed to be a conceptual &quot;primary key&quot; for looking up UserKeyPairs. We</span>
-    <span class="comment">// typically want to look up UserKeyPairs by Address, not PubKey, because if we have a PubKey we</span>
-    <span class="comment">// can always get and Address to do the lookup.</span>
-    <span class="kw">type</span> <span class="ident">PubKey</span> <span class="op">=</span> <span class="ident">UserAddress</span>;
-    <span class="kw">fn</span> <span class="ident">pub_key</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident"><span class="self">Self</span>::PubKey</span> {
-        <span class="self">self</span>.<span class="ident">address</span>()
-    }
+    <span class="kw">pub</span> <span class="ident">sending_accounts</span>: <span class="ident">HashMap</span><span class="op">&lt;</span><span class="ident">UserAddress</span>, <span class="ident">Account</span><span class="op">&lt;</span><span class="ident">UserKeyPair</span><span class="op">&gt;</span><span class="op">&gt;</span>,
 }
 
 <span class="doccomment">/// The interface required by the wallet from the persistence layer.</span>
@@ -3313,8 +3297,8 @@
 <span class="doccomment">///</span>
 <span class="doccomment">/// 3. Monotonic data. This is data which grows monotonically and never shrinks.</span>
 <span class="doccomment">///</span>
-<span class="doccomment">///    The monotonic data of a wallet is the set of assets types in the asset library, the sets</span>
-<span class="doccomment">///    of keys owned by this wallet, and the transaction history.</span>
+<span class="doccomment">///    The monotonic data of a wallet is the set of assets types in the asset library and the</span>
+<span class="doccomment">///    transaction history.</span>
 <span class="doccomment">///</span>
 <span class="doccomment">/// The storage layer must provide a transactional interface. Updates to the individual storage</span>
 <span class="doccomment">/// categories have no observable affects (that is, their results will not affect the next call to</span>
@@ -3342,9 +3326,6 @@
 
     <span class="doccomment">/// Append a new asset to the growing asset library.</span>
     <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">store_asset</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">asset</span>: <span class="kw-2">&amp;</span><span class="ident">AssetInfo</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(), <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span>;
-
-    <span class="doccomment">/// Add a key to the wallet&#39;s key set.</span>
-    <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">store_key</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">key</span>: <span class="kw-2">&amp;</span><span class="ident">RoleKeyPair</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(), <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span>;
 
     <span class="doccomment">/// Add a transaction to the transaction history.</span>
     <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">store_transaction</span>(
@@ -3410,18 +3391,6 @@
 
         <span class="kw">if</span> <span class="op">!</span><span class="self">self</span>.<span class="ident">cancelled</span> {
             <span class="kw">let</span> <span class="ident">res</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">storage</span>().<span class="kw">await</span>.<span class="ident">store_asset</span>(<span class="ident">asset</span>).<span class="kw">await</span>;
-            <span class="kw">if</span> <span class="ident">res</span>.<span class="ident">is_err</span>() {
-                <span class="self">self</span>.<span class="ident">cancel</span>().<span class="kw">await</span>;
-            }
-            <span class="ident">res</span>
-        } <span class="kw">else</span> {
-            <span class="prelude-val">Ok</span>(())
-        }
-    }
-
-    <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">store_key</span><span class="op">&lt;</span><span class="ident">K</span>: <span class="ident">KeyPair</span><span class="op">&gt;</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">key</span>: <span class="kw-2">&amp;</span><span class="ident">K</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(), <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
-        <span class="kw">if</span> <span class="op">!</span><span class="self">self</span>.<span class="ident">cancelled</span> {
-            <span class="kw">let</span> <span class="ident">res</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">storage</span>().<span class="kw">await</span>.<span class="ident">store_key</span>(<span class="kw-2">&amp;</span><span class="ident">key</span>.<span class="ident">clone</span>().<span class="ident">into</span>()).<span class="kw">await</span>;
             <span class="kw">if</span> <span class="ident">res</span>.<span class="ident">is_err</span>() {
                 <span class="self">self</span>.<span class="ident">cancel</span>().<span class="kw">await</span>;
             }
@@ -3648,11 +3617,17 @@
 
 <span class="kw">impl</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span>: <span class="lifetime">&#39;static</span> <span class="op">+</span> <span class="ident">Ledger</span><span class="op">&gt;</span> <span class="ident">WalletState</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span><span class="op">&gt;</span> {
     <span class="kw">fn</span> <span class="ident">key_pairs</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">UserKeyPair</span><span class="op">&gt;</span> {
-        <span class="self">self</span>.<span class="ident">user_keys</span>.<span class="ident">values</span>().<span class="ident">cloned</span>().<span class="ident">collect</span>::<span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="kw">_</span><span class="op">&gt;</span><span class="op">&gt;</span>()
+        <span class="self">self</span>.<span class="ident">sending_accounts</span>
+            .<span class="ident">values</span>()
+            .<span class="ident">map</span>(<span class="op">|</span><span class="ident">account</span><span class="op">|</span> <span class="ident">account</span>.<span class="ident">key</span>.<span class="ident">clone</span>())
+            .<span class="ident">collect</span>::<span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="kw">_</span><span class="op">&gt;</span><span class="op">&gt;</span>()
     }
 
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">pub_keys</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">UserPubKey</span><span class="op">&gt;</span> {
-        <span class="self">self</span>.<span class="ident">user_keys</span>.<span class="ident">values</span>().<span class="ident">map</span>(<span class="op">|</span><span class="ident">key</span><span class="op">|</span> <span class="ident">key</span>.<span class="ident">pub_key</span>()).<span class="ident">collect</span>()
+        <span class="self">self</span>.<span class="ident">sending_accounts</span>
+            .<span class="ident">values</span>()
+            .<span class="ident">map</span>(<span class="op">|</span><span class="ident">account</span><span class="op">|</span> <span class="ident">account</span>.<span class="ident">key</span>.<span class="ident">pub_key</span>())
+            .<span class="ident">collect</span>()
     }
 
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">balance</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">asset</span>: <span class="kw-2">&amp;</span><span class="ident">AssetCode</span>, <span class="ident">frozen</span>: <span class="ident">FreezeFlag</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">u64</span> {
@@ -3665,12 +3640,14 @@
 
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">balance_breakdown</span>(
         <span class="kw-2">&amp;</span><span class="self">self</span>,
-        <span class="ident">account</span>: <span class="kw-2">&amp;</span><span class="ident">UserAddress</span>,
+        <span class="ident">address</span>: <span class="kw-2">&amp;</span><span class="ident">UserAddress</span>,
         <span class="ident">asset</span>: <span class="kw-2">&amp;</span><span class="ident">AssetCode</span>,
         <span class="ident">frozen</span>: <span class="ident">FreezeFlag</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">u64</span> {
-        <span class="kw">match</span> <span class="self">self</span>.<span class="ident">user_keys</span>.<span class="ident">get</span>(<span class="ident">account</span>) {
-            <span class="prelude-val">Some</span>(<span class="ident">key</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="self">self</span>.<span class="ident">txn_state</span>.<span class="ident">balance</span>(<span class="ident">asset</span>, <span class="kw-2">&amp;</span><span class="ident">key</span>.<span class="ident">pub_key</span>(), <span class="ident">frozen</span>),
+        <span class="kw">match</span> <span class="self">self</span>.<span class="ident">sending_accounts</span>.<span class="ident">get</span>(<span class="ident">address</span>) {
+            <span class="prelude-val">Some</span>(<span class="ident">account</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="self">self</span>
+                .<span class="ident">txn_state</span>
+                .<span class="ident">balance</span>(<span class="ident">asset</span>, <span class="kw-2">&amp;</span><span class="ident">account</span>.<span class="ident">key</span>.<span class="ident">pub_key</span>(), <span class="ident">frozen</span>),
             <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> <span class="number">0</span>,
         }
     }
@@ -3697,7 +3674,7 @@
                     <span class="comment">// has not been spent, then either it was rejected, or it&#39;s someone else&#39;s</span>
                     <span class="comment">// transaction that we haven&#39;t been tracking through the lifecycle.</span>
                     <span class="kw">for</span> <span class="ident">submitter</span> <span class="kw">in</span> <span class="kw-2">&amp;</span><span class="ident">receipt</span>.<span class="ident">submitters</span> {
-                        <span class="kw">if</span> <span class="op">!</span><span class="self">self</span>.<span class="ident">user_keys</span>.<span class="ident">contains_key</span>(<span class="ident">submitter</span>) {
+                        <span class="kw">if</span> <span class="op">!</span><span class="self">self</span>.<span class="ident">sending_accounts</span>.<span class="ident">contains_key</span>(<span class="ident">submitter</span>) {
                             <span class="kw">return</span> <span class="prelude-val">Ok</span>(<span class="ident">TransactionStatus::Unknown</span>);
                         }
                     }
@@ -3916,17 +3893,17 @@
                 <span class="ident">summary</span>
                     .<span class="ident">received_memos</span>
                     .<span class="ident">extend</span>(<span class="ident">outputs</span>.<span class="ident">iter</span>().<span class="ident">map</span>(<span class="op">|</span>(<span class="ident">memo</span>, <span class="kw">_</span>, <span class="ident">uid</span>, <span class="kw">_</span>)<span class="op">|</span> (<span class="ident">memo</span>.<span class="ident">clone</span>(), <span class="kw-2">*</span><span class="ident">uid</span>)));
-                <span class="kw">for</span> <span class="ident">key_pair</span> <span class="kw">in</span> <span class="self">self</span>.<span class="ident">user_keys</span>.<span class="ident">values</span>().<span class="ident">cloned</span>().<span class="ident">collect</span>::<span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="kw">_</span><span class="op">&gt;</span><span class="op">&gt;</span>() {
+                <span class="kw">for</span> <span class="ident">account</span> <span class="kw">in</span> <span class="self">self</span>.<span class="ident">sending_accounts</span>.<span class="ident">values</span>().<span class="ident">cloned</span>().<span class="ident">collect</span>::<span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="kw">_</span><span class="op">&gt;</span><span class="op">&gt;</span>() {
                     <span class="kw">let</span> <span class="ident">records</span> <span class="op">=</span> <span class="self">self</span>
                         .<span class="ident">try_open_memos</span>(
                             <span class="ident">session</span>,
-                            <span class="kw-2">&amp;</span><span class="ident">key_pair</span>,
+                            <span class="kw-2">&amp;</span><span class="ident">account</span>.<span class="ident">key</span>,
                             <span class="kw-2">&amp;</span><span class="ident">outputs</span>,
                             <span class="ident">transaction</span>.<span class="ident">clone</span>(),
                             <span class="op">!</span><span class="ident">self_published</span>,
                         )
                         .<span class="kw">await</span>;
-                    <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">add_records</span>(<span class="ident">session</span>, <span class="kw-2">&amp;</span><span class="ident">key_pair</span>, <span class="ident">records</span>).<span class="kw">await</span> {
+                    <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">add_records</span>(<span class="ident">session</span>, <span class="kw-2">&amp;</span><span class="ident">account</span>.<span class="ident">key</span>, <span class="ident">records</span>).<span class="kw">await</span> {
                         <span class="macro">println!</span>(<span class="string">&quot;error saving received records: {}&quot;</span>, <span class="ident">err</span>);
                     }
                 }
@@ -4093,7 +4070,7 @@
         <span class="kw">let</span> <span class="ident">records</span> <span class="op">=</span> <span class="ident">txn</span>.<span class="ident">output_openings</span>().<span class="ident">into_iter</span>().<span class="ident">flatten</span>().<span class="ident">zip</span>(<span class="ident">uids</span>);
         <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">my_records</span> <span class="op">=</span> <span class="macro">vec!</span>[];
         <span class="kw">for</span> (<span class="ident">ro</span>, (<span class="ident">uid</span>, <span class="ident">remember</span>)) <span class="kw">in</span> <span class="ident">records</span> {
-            <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">key_pair</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">user_keys</span>.<span class="ident">get</span>(<span class="kw-2">&amp;</span><span class="ident">ro</span>.<span class="ident">pub_key</span>.<span class="ident">address</span>()).<span class="ident">cloned</span>() {
+            <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">account</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">sending_accounts</span>.<span class="ident">get</span>(<span class="kw-2">&amp;</span><span class="ident">ro</span>.<span class="ident">pub_key</span>.<span class="ident">address</span>()).<span class="ident">cloned</span>() {
                 <span class="comment">// If this record is for us, add it to the wallet and include it in the</span>
                 <span class="comment">// list of received records for created a received transaction history</span>
                 <span class="comment">// entry.</span>
@@ -4101,10 +4078,18 @@
                 <span class="comment">// Add the asset type if it is not already in the asset library.</span>
                 <span class="self">self</span>.<span class="ident">import_asset</span>(<span class="ident">session</span>, <span class="ident">AssetInfo::from</span>(<span class="ident">ro</span>.<span class="ident">asset_def</span>.<span class="ident">clone</span>()))
                     .<span class="kw">await</span><span class="question-mark">?</span>;
-                <span class="self">self</span>.<span class="ident">txn_state</span>.<span class="ident">records</span>.<span class="ident">insert</span>(<span class="ident">ro</span>.<span class="ident">clone</span>(), <span class="kw-2">*</span><span class="ident">uid</span>, <span class="kw-2">&amp;</span><span class="ident">key_pair</span>);
+                <span class="comment">// Mark the account receiving the records used.</span>
+                <span class="self">self</span>.<span class="ident">sending_accounts</span>
+                    .<span class="ident">get_mut</span>(<span class="kw-2">&amp;</span><span class="ident">account</span>.<span class="ident">key</span>.<span class="ident">address</span>())
+                    .<span class="ident">unwrap</span>()
+                    .<span class="ident">used</span> <span class="op">=</span> <span class="bool-val">true</span>;
+                <span class="comment">// Add the record.</span>
+                <span class="self">self</span>.<span class="ident">txn_state</span>
+                    .<span class="ident">records</span>
+                    .<span class="ident">insert</span>(<span class="ident">ro</span>.<span class="ident">clone</span>(), <span class="kw-2">*</span><span class="ident">uid</span>, <span class="kw-2">&amp;</span><span class="ident">account</span>.<span class="ident">key</span>);
                 <span class="ident">my_records</span>.<span class="ident">push</span>(<span class="ident">ro</span>);
-            } <span class="kw">else</span> <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">key_pair</span>) <span class="op">=</span> <span class="self">self</span>
-                .<span class="ident">freeze_keys</span>
+            } <span class="kw">else</span> <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">account</span>) <span class="op">=</span> <span class="self">self</span>
+                .<span class="ident">freezing_accounts</span>
                 .<span class="ident">get</span>(<span class="ident">ro</span>.<span class="ident">asset_def</span>.<span class="ident">policy_ref</span>().<span class="ident">freezer_pub_key</span>())
                 .<span class="ident">cloned</span>()
             {
@@ -4115,7 +4100,15 @@
                 <span class="comment">// Add the asset type if it is not already in the asset library.</span>
                 <span class="self">self</span>.<span class="ident">import_asset</span>(<span class="ident">session</span>, <span class="ident">AssetInfo::from</span>(<span class="ident">ro</span>.<span class="ident">asset_def</span>.<span class="ident">clone</span>()))
                     .<span class="kw">await</span><span class="question-mark">?</span>;
-                <span class="self">self</span>.<span class="ident">txn_state</span>.<span class="ident">records</span>.<span class="ident">insert_freezable</span>(<span class="ident">ro</span>, <span class="kw-2">*</span><span class="ident">uid</span>, <span class="kw-2">&amp;</span><span class="ident">key_pair</span>);
+                <span class="comment">// Mark the freezing account which is tracking the record used.</span>
+                <span class="self">self</span>.<span class="ident">freezing_accounts</span>
+                    .<span class="ident">get_mut</span>(<span class="kw-2">&amp;</span><span class="ident">account</span>.<span class="ident">key</span>.<span class="ident">pub_key</span>())
+                    .<span class="ident">unwrap</span>()
+                    .<span class="ident">used</span> <span class="op">=</span> <span class="bool-val">true</span>;
+                <span class="comment">// Add the record.</span>
+                <span class="self">self</span>.<span class="ident">txn_state</span>
+                    .<span class="ident">records</span>
+                    .<span class="ident">insert_freezable</span>(<span class="ident">ro</span>, <span class="kw-2">*</span><span class="ident">uid</span>, <span class="kw-2">&amp;</span><span class="ident">account</span>.<span class="ident">key</span>);
             }
         }
 
@@ -4210,6 +4203,11 @@
             <span class="comment">// Add the asset type if it is not already in the asset library.</span>
             <span class="self">self</span>.<span class="ident">import_asset</span>(<span class="ident">session</span>, <span class="ident">AssetInfo::from</span>(<span class="ident">record</span>.<span class="ident">asset_def</span>.<span class="ident">clone</span>()))
                 .<span class="kw">await</span><span class="question-mark">?</span>;
+            <span class="comment">// Mark the account receiving the record as used.</span>
+            <span class="self">self</span>.<span class="ident">sending_accounts</span>
+                .<span class="ident">get_mut</span>(<span class="kw-2">&amp;</span><span class="ident">key_pair</span>.<span class="ident">address</span>())
+                .<span class="ident">unwrap</span>()
+                .<span class="ident">used</span> <span class="op">=</span> <span class="bool-val">true</span>;
             <span class="comment">// Save the record.</span>
             <span class="self">self</span>.<span class="ident">txn_state</span>.<span class="ident">records</span>.<span class="ident">insert</span>(<span class="ident">record</span>, <span class="ident">uid</span>, <span class="ident">key_pair</span>);
         }
@@ -4224,18 +4222,18 @@
         <span class="ident">uid</span>: <span class="ident">u64</span>,
         <span class="ident">proof</span>: <span class="ident">MerklePath</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(), <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
-        <span class="kw">for</span> <span class="ident">key</span> <span class="kw">in</span> <span class="self">self</span>.<span class="ident">user_keys</span>.<span class="ident">values</span>().<span class="ident">cloned</span>().<span class="ident">collect</span>::<span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="kw">_</span><span class="op">&gt;</span><span class="op">&gt;</span>() {
+        <span class="kw">for</span> <span class="ident">account</span> <span class="kw">in</span> <span class="self">self</span>.<span class="ident">sending_accounts</span>.<span class="ident">values</span>().<span class="ident">cloned</span>().<span class="ident">collect</span>::<span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="kw">_</span><span class="op">&gt;</span><span class="op">&gt;</span>() {
             <span class="kw">let</span> <span class="ident">records</span> <span class="op">=</span> <span class="self">self</span>
                 .<span class="ident">try_open_memos</span>(
                     <span class="ident">session</span>,
-                    <span class="kw-2">&amp;</span><span class="ident">key</span>,
+                    <span class="kw-2">&amp;</span><span class="ident">account</span>.<span class="ident">key</span>,
                     <span class="kw-2">&amp;</span>[(<span class="ident">memo</span>.<span class="ident">clone</span>(), <span class="ident">comm</span>, <span class="ident">uid</span>, <span class="ident">proof</span>.<span class="ident">clone</span>())],
                     <span class="prelude-val">None</span>,
                     <span class="bool-val">false</span>,
                 )
                 .<span class="kw">await</span>;
             <span class="kw">if</span> <span class="op">!</span><span class="ident">records</span>.<span class="ident">is_empty</span>() {
-                <span class="kw">return</span> <span class="self">self</span>.<span class="ident">add_records</span>(<span class="ident">session</span>, <span class="kw-2">&amp;</span><span class="ident">key</span>, <span class="ident">records</span>).<span class="kw">await</span>;
+                <span class="kw">return</span> <span class="self">self</span>.<span class="ident">add_records</span>(<span class="ident">session</span>, <span class="kw-2">&amp;</span><span class="ident">account</span>.<span class="ident">key</span>, <span class="ident">records</span>).<span class="kw">await</span>;
             }
         }
 
@@ -4261,7 +4259,7 @@
                     <span class="self">self</span>.<span class="ident">txn_state</span>.<span class="ident">records</span>.<span class="ident">insert_freezable</span>(
                         <span class="ident">ro</span>.<span class="ident">clone</span>(),
                         <span class="kw-2">*</span><span class="ident">uid</span>,
-                        <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">freeze_keys</span>[<span class="ident">ro</span>.<span class="ident">asset_def</span>.<span class="ident">policy_ref</span>().<span class="ident">freezer_pub_key</span>()],
+                        <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">freezing_accounts</span>[<span class="ident">ro</span>.<span class="ident">asset_def</span>.<span class="ident">policy_ref</span>().<span class="ident">freezer_pub_key</span>()].<span class="ident">key</span>,
                     );
                     <span class="kw-2">*</span><span class="ident">remember</span> <span class="op">=</span> <span class="bool-val">true</span>;
                 }
@@ -4280,8 +4278,20 @@
         <span class="macro">println!</span>(<span class="string">&quot;auditing transaction {} {:?}&quot;</span>, <span class="ident">txn</span>.<span class="ident">kind</span>(), <span class="ident">uids</span>);
 
         <span class="comment">// Try to decrypt auditor memos.</span>
-        <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Ok</span>(<span class="ident">memo</span>) <span class="op">=</span> <span class="ident">txn</span>.<span class="ident">open_audit_memo</span>(<span class="self">self</span>.<span class="ident">assets</span>.<span class="ident">auditable</span>(), <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">audit_keys</span>) {
-            <span class="macro">println!</span>(<span class="string">&quot;opened memo {}&quot;</span>, <span class="ident">memo</span>.<span class="ident">outputs</span>.<span class="ident">len</span>());
+        <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Ok</span>(<span class="ident">memo</span>) <span class="op">=</span> <span class="ident">txn</span>.<span class="ident">open_audit_memo</span>(
+            <span class="self">self</span>.<span class="ident">assets</span>.<span class="ident">auditable</span>(),
+            <span class="kw-2">&amp;</span><span class="self">self</span>
+                .<span class="ident">viewing_accounts</span>
+                .<span class="ident">iter</span>()
+                .<span class="ident">map</span>(<span class="op">|</span>(<span class="ident">pub_key</span>, <span class="ident">account</span>)<span class="op">|</span> (<span class="ident">pub_key</span>.<span class="ident">clone</span>(), <span class="ident">account</span>.<span class="ident">key</span>.<span class="ident">clone</span>()))
+                .<span class="ident">collect</span>(),
+        ) {
+            <span class="comment">// Mark the auditing account used.</span>
+            <span class="self">self</span>.<span class="ident">viewing_accounts</span>
+                .<span class="ident">get_mut</span>(<span class="ident">memo</span>.<span class="ident">asset</span>.<span class="ident">policy_ref</span>().<span class="ident">auditor_pub_key</span>())
+                .<span class="ident">unwrap</span>()
+                .<span class="ident">used</span> <span class="op">=</span> <span class="bool-val">true</span>;
+
             <span class="comment">//todo !jeb.bearer eventually, we will probably want to save all the audit memos for</span>
             <span class="comment">// the whole transaction (inputs and outputs) regardless of whether any of the outputs</span>
             <span class="comment">// are freezeable, just for general auditing purposes.</span>
@@ -4299,10 +4309,13 @@
                     <span class="macro">println!</span>(<span class="string">&quot;opened output {}&quot;</span>, <span class="ident">uid</span>);
                     <span class="comment">// If the audit memo contains all the information we need to potentially freeze</span>
                     <span class="comment">// this record, save it in our database for later freezing.</span>
-                    <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">freeze_key</span>) <span class="op">=</span> <span class="self">self</span>
-                        .<span class="ident">freeze_keys</span>
-                        .<span class="ident">get</span>(<span class="ident">memo</span>.<span class="ident">asset</span>.<span class="ident">policy_ref</span>().<span class="ident">freezer_pub_key</span>())
+                    <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">account</span>) <span class="op">=</span> <span class="self">self</span>
+                        .<span class="ident">freezing_accounts</span>
+                        .<span class="ident">get_mut</span>(<span class="ident">memo</span>.<span class="ident">asset</span>.<span class="ident">policy_ref</span>().<span class="ident">freezer_pub_key</span>())
                     {
+                        <span class="comment">// Mark the freezing account that is tracking the record used.</span>
+                        <span class="ident">account</span>.<span class="ident">used</span> <span class="op">=</span> <span class="bool-val">true</span>;
+
                         <span class="kw">let</span> <span class="ident">record_opening</span> <span class="op">=</span> <span class="ident">RecordOpening</span> {
                             <span class="ident">amount</span>,
                             <span class="ident">asset_def</span>: <span class="ident">memo</span>.<span class="ident">asset</span>.<span class="ident">clone</span>(),
@@ -4312,7 +4325,7 @@
                         };
                         <span class="self">self</span>.<span class="ident">txn_state</span>
                             .<span class="ident">records</span>
-                            .<span class="ident">insert_freezable</span>(<span class="ident">record_opening</span>, <span class="kw-2">*</span><span class="ident">uid</span>, <span class="ident">freeze_key</span>);
+                            .<span class="ident">insert_freezable</span>(<span class="ident">record_opening</span>, <span class="kw-2">*</span><span class="ident">uid</span>, <span class="kw-2">&amp;</span><span class="ident">account</span>.<span class="ident">key</span>);
                         <span class="kw-2">*</span><span class="ident">remember</span> <span class="op">=</span> <span class="bool-val">true</span>;
                     }
                 }
@@ -4423,6 +4436,7 @@
         <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>,
         <span class="ident">session</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">WalletSession</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span>, <span class="kw">impl</span> <span class="ident">WalletBackend</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span>,
         <span class="ident">user_key</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">UserKeyPair</span><span class="op">&gt;</span>,
+        <span class="ident">description</span>: <span class="ident">String</span>,
         <span class="ident">scan_from</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">EventIndex</span><span class="op">&gt;</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>
         (
@@ -4431,10 +4445,9 @@
         ),
         <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span>,
     <span class="op">&gt;</span> {
-        <span class="kw">let</span> <span class="ident">generated</span> <span class="op">=</span> <span class="ident">user_key</span>.<span class="ident">is_none</span>();
         <span class="kw">let</span> (<span class="ident">user_key</span>, <span class="ident">revert_key_state</span>) <span class="op">=</span> <span class="kw">match</span> <span class="ident">user_key</span> {
             <span class="prelude-val">Some</span>(<span class="ident">user_key</span>) <span class="op">=</span><span class="op">&gt;</span> {
-                <span class="kw">if</span> <span class="self">self</span>.<span class="ident">user_keys</span>.<span class="ident">contains_key</span>(<span class="kw-2">&amp;</span><span class="ident">user_key</span>.<span class="ident">address</span>()) {
+                <span class="kw">if</span> <span class="self">self</span>.<span class="ident">sending_accounts</span>.<span class="ident">contains_key</span>(<span class="kw-2">&amp;</span><span class="ident">user_key</span>.<span class="ident">address</span>()) {
                     <span class="comment">// For other key types, adding a key that already exists is a no-op. However,</span>
                     <span class="comment">// because of the background ledger scans associated with user keys, we want to</span>
                     <span class="comment">// report an error, since the user may have attempted to add the same key with</span>
@@ -4460,7 +4473,7 @@
                         .<span class="ident">user_key_stream</span>
                         .<span class="ident">derive_user_key_pair</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">key_state</span>.<span class="ident">user</span>.<span class="ident">to_le_bytes</span>());
                     <span class="self">self</span>.<span class="ident">key_state</span>.<span class="ident">user</span> <span class="op">+</span><span class="op">=</span> <span class="number">1</span>;
-                    <span class="kw">if</span> <span class="op">!</span><span class="self">self</span>.<span class="ident">user_keys</span>.<span class="ident">contains_key</span>(<span class="kw-2">&amp;</span><span class="ident">user_key</span>.<span class="ident">address</span>()) {
+                    <span class="kw">if</span> <span class="op">!</span><span class="self">self</span>.<span class="ident">sending_accounts</span>.<span class="ident">contains_key</span>(<span class="kw-2">&amp;</span><span class="ident">user_key</span>.<span class="ident">address</span>()) {
                         <span class="kw">break</span> <span class="ident">user_key</span>;
                     }
                 };
@@ -4491,20 +4504,15 @@
                 .<span class="ident">is_none</span>());
         }
 
-        <span class="comment">// Add the new key to our set of keys and update our persistent data structures and remote</span>
-        <span class="comment">// services.</span>
+        <span class="kw">let</span> <span class="ident">account</span> <span class="op">=</span> <span class="ident">Account::new</span>(<span class="ident">user_key</span>.<span class="ident">clone</span>(), <span class="ident">description</span>);
+
+        <span class="comment">// Add the new account to our set of accounts and update our persistent data structures and</span>
+        <span class="comment">// remote services.</span>
+        <span class="self">self</span>.<span class="ident">sending_accounts</span>.<span class="ident">insert</span>(<span class="ident">user_key</span>.<span class="ident">address</span>(), <span class="ident">account</span>);
         <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span> <span class="ident">session</span>
             .<span class="ident">backend</span>
             .<span class="ident">store</span>(<span class="op">|</span><span class="kw-2">mut</span> <span class="ident">t</span><span class="op">|</span> <span class="kw">async</span> {
-                <span class="ident">t</span>.<span class="ident">store_key</span>(<span class="kw-2">&amp;</span><span class="ident">user_key</span>).<span class="kw">await</span><span class="question-mark">?</span>;
-
-                <span class="comment">// We store a new version of the dynamic state if we have registered a new key scan,</span>
-                <span class="comment">// or if the new key is generated from our HD key stream (in which case the</span>
-                <span class="comment">// `key_state` has been updated).</span>
-                <span class="kw">if</span> <span class="ident">scan_from</span>.<span class="ident">is_some</span>() <span class="op">|</span><span class="op">|</span> <span class="ident">generated</span> {
-                    <span class="ident">t</span>.<span class="ident">store_snapshot</span>(<span class="self">self</span>).<span class="kw">await</span><span class="question-mark">?</span>;
-                }
-
+                <span class="ident">t</span>.<span class="ident">store_snapshot</span>(<span class="self">self</span>).<span class="kw">await</span><span class="question-mark">?</span>;
                 <span class="comment">// If we successfully updated our data structures, register the key with the</span>
                 <span class="comment">// network. The storage transaction will revert if this fails.</span>
                 <span class="ident">t</span>.<span class="ident">backend</span>.<span class="ident">register_user_key</span>(<span class="kw-2">&amp;</span><span class="ident">user_key</span>).<span class="kw">await</span><span class="question-mark">?</span>;
@@ -4518,12 +4526,9 @@
             <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">old_key_state</span>) <span class="op">=</span> <span class="ident">revert_key_state</span> {
                 <span class="self">self</span>.<span class="ident">key_state</span>.<span class="ident">user</span> <span class="op">=</span> <span class="ident">old_key_state</span>;
             }
+            <span class="self">self</span>.<span class="ident">sending_accounts</span>.<span class="ident">remove</span>(<span class="kw-2">&amp;</span><span class="ident">user_key</span>.<span class="ident">address</span>());
             <span class="kw">return</span> <span class="prelude-val">Err</span>(<span class="ident">err</span>);
         }
-
-        <span class="comment">// If we succeeded, we can add the key to our local, in-memory state to reflect the changes</span>
-        <span class="comment">// to persistent storage.</span>
-        <span class="self">self</span>.<span class="ident">user_keys</span>.<span class="ident">insert</span>(<span class="ident">user_key</span>.<span class="ident">address</span>(), <span class="ident">user_key</span>.<span class="ident">clone</span>());
 
         <span class="comment">// Return the stream of events for the background scan worker task to process, if applicable.</span>
         <span class="kw">let</span> <span class="ident">events</span> <span class="op">=</span> <span class="kw">match</span> <span class="ident">scan_from</span> {
@@ -4542,9 +4547,25 @@
         <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>,
         <span class="ident">session</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">WalletSession</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span>, <span class="kw">impl</span> <span class="ident">WalletBackend</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span>,
         <span class="ident">audit_key</span>: <span class="ident">AuditorKeyPair</span>,
+        <span class="ident">description</span>: <span class="ident">String</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(), <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
-        <span class="ident"><span class="self">Self</span>::add_key</span>(<span class="ident">session</span>, <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>.<span class="ident">audit_keys</span>, <span class="ident">audit_key</span>.<span class="ident">clone</span>()).<span class="kw">await</span><span class="question-mark">?</span>;
+        <span class="kw">if</span> <span class="self">self</span>.<span class="ident">viewing_accounts</span>.<span class="ident">contains_key</span>(<span class="kw-2">&amp;</span><span class="ident">audit_key</span>.<span class="ident">pub_key</span>()) {
+            <span class="kw">return</span> <span class="prelude-val">Ok</span>(());
+        }
+
         <span class="self">self</span>.<span class="ident">assets</span>.<span class="ident">add_audit_key</span>(<span class="ident">audit_key</span>.<span class="ident">pub_key</span>());
+        <span class="self">self</span>.<span class="ident">viewing_accounts</span>.<span class="ident">insert</span>(
+            <span class="ident">audit_key</span>.<span class="ident">pub_key</span>(),
+            <span class="ident">Account::new</span>(<span class="ident">audit_key</span>.<span class="ident">clone</span>(), <span class="ident">description</span>),
+        );
+        <span class="ident">session</span>
+            .<span class="ident">backend</span>
+            .<span class="ident">store</span>(<span class="op">|</span><span class="kw-2">mut</span> <span class="ident">t</span><span class="op">|</span> <span class="kw">async</span> {
+                <span class="ident">t</span>.<span class="ident">store_snapshot</span>(<span class="self">self</span>).<span class="kw">await</span><span class="question-mark">?</span>;
+                <span class="prelude-val">Ok</span>(<span class="ident">t</span>)
+            })
+            .<span class="kw">await</span><span class="question-mark">?</span>;
+
         <span class="prelude-val">Ok</span>(())
     }
 
@@ -4552,27 +4573,22 @@
         <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>,
         <span class="ident">session</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">WalletSession</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span>, <span class="kw">impl</span> <span class="ident">WalletBackend</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span>,
         <span class="ident">freeze_key</span>: <span class="ident">FreezerKeyPair</span>,
+        <span class="ident">description</span>: <span class="ident">String</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(), <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
-        <span class="ident"><span class="self">Self</span>::add_key</span>(<span class="ident">session</span>, <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>.<span class="ident">freeze_keys</span>, <span class="ident">freeze_key</span>).<span class="kw">await</span>
-    }
-
-    <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">add_key</span><span class="op">&lt;</span><span class="ident">K</span>: <span class="ident">KeyPair</span><span class="op">&gt;</span>(
-        <span class="ident">session</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">WalletSession</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span>, <span class="kw">impl</span> <span class="ident">WalletBackend</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span>,
-        <span class="ident">keys</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">HashMap</span><span class="op">&lt;</span><span class="ident">K::PubKey</span>, <span class="ident">K</span><span class="op">&gt;</span>,
-        <span class="ident">key</span>: <span class="ident">K</span>,
-    ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(), <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
-        <span class="kw">if</span> <span class="ident">keys</span>.<span class="ident">contains_key</span>(<span class="kw-2">&amp;</span><span class="ident">key</span>.<span class="ident">pub_key</span>()) {
+        <span class="kw">if</span> <span class="self">self</span>.<span class="ident">freezing_accounts</span>.<span class="ident">contains_key</span>(<span class="kw-2">&amp;</span><span class="ident">freeze_key</span>.<span class="ident">pub_key</span>()) {
             <span class="kw">return</span> <span class="prelude-val">Ok</span>(());
         }
 
+        <span class="self">self</span>.<span class="ident">freezing_accounts</span>
+            .<span class="ident">insert</span>(<span class="ident">freeze_key</span>.<span class="ident">pub_key</span>(), <span class="ident">Account::new</span>(<span class="ident">freeze_key</span>, <span class="ident">description</span>));
         <span class="ident">session</span>
             .<span class="ident">backend</span>
             .<span class="ident">store</span>(<span class="op">|</span><span class="kw-2">mut</span> <span class="ident">t</span><span class="op">|</span> <span class="kw">async</span> {
-                <span class="ident">t</span>.<span class="ident">store_key</span>(<span class="kw-2">&amp;</span><span class="ident">key</span>).<span class="kw">await</span><span class="question-mark">?</span>;
+                <span class="ident">t</span>.<span class="ident">store_snapshot</span>(<span class="self">self</span>).<span class="kw">await</span><span class="question-mark">?</span>;
                 <span class="prelude-val">Ok</span>(<span class="ident">t</span>)
             })
             .<span class="kw">await</span><span class="question-mark">?</span>;
-        <span class="ident">keys</span>.<span class="ident">insert</span>(<span class="ident">key</span>.<span class="ident">pub_key</span>(), <span class="ident">key</span>);
+
         <span class="prelude-val">Ok</span>(())
     }
 
@@ -4623,7 +4639,7 @@
     <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">build_freeze</span>(
         <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>,
         <span class="ident">session</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">WalletSession</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span>, <span class="kw">impl</span> <span class="ident">WalletBackend</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span>,
-        <span class="ident">account</span>: <span class="kw-2">&amp;</span><span class="ident">UserAddress</span>,
+        <span class="ident">fee_address</span>: <span class="kw-2">&amp;</span><span class="ident">UserAddress</span>,
         <span class="ident">fee</span>: <span class="ident">u64</span>,
         <span class="ident">asset</span>: <span class="kw-2">&amp;</span><span class="ident">AssetCode</span>,
         <span class="ident">amount</span>: <span class="ident">u64</span>,
@@ -4634,14 +4650,17 @@
             <span class="prelude-val">Some</span>(<span class="ident">asset</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">asset</span>.<span class="ident">definition</span>.<span class="ident">clone</span>(),
             <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> <span class="kw">return</span> <span class="prelude-val">Err</span>(<span class="ident">WalletError</span>::<span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="ident">::UndefinedAsset</span> { <span class="ident">asset</span>: <span class="kw-2">*</span><span class="ident">asset</span> }),
         };
-        <span class="kw">let</span> <span class="ident">freeze_key</span> <span class="op">=</span> <span class="kw">match</span> <span class="self">self</span>.<span class="ident">freeze_keys</span>.<span class="ident">get</span>(<span class="ident">asset</span>.<span class="ident">policy_ref</span>().<span class="ident">freezer_pub_key</span>()) {
-            <span class="prelude-val">Some</span>(<span class="ident">key</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">key</span>,
+        <span class="kw">let</span> <span class="ident">freeze_key</span> <span class="op">=</span> <span class="kw">match</span> <span class="self">self</span>
+            .<span class="ident">freezing_accounts</span>
+            .<span class="ident">get</span>(<span class="ident">asset</span>.<span class="ident">policy_ref</span>().<span class="ident">freezer_pub_key</span>())
+        {
+            <span class="prelude-val">Some</span>(<span class="ident">account</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="kw-2">&amp;</span><span class="ident">account</span>.<span class="ident">key</span>,
             <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> <span class="kw">return</span> <span class="prelude-val">Err</span>(<span class="ident">WalletError</span>::<span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="ident">::AssetNotFreezable</span> { <span class="ident">asset</span> }),
         };
 
         <span class="self">self</span>.<span class="ident">txn_state</span>
             .<span class="ident">freeze_or_unfreeze</span>(
-                <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">account_key_pair</span>(<span class="ident">account</span>)<span class="question-mark">?</span>.<span class="ident">clone</span>(),
+                <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">account_key_pair</span>(<span class="ident">fee_address</span>)<span class="question-mark">?</span>.<span class="ident">clone</span>(),
                 <span class="ident">freeze_key</span>,
                 <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">proving_keys</span>.<span class="ident">freeze</span>,
                 <span class="ident">fee</span>,
@@ -4744,12 +4763,12 @@
 
     <span class="kw">fn</span> <span class="ident">account_key_pair</span>(
         <span class="kw-2">&amp;</span><span class="lifetime">&#39;_</span> <span class="self">self</span>,
-        <span class="ident">account</span>: <span class="kw-2">&amp;</span><span class="ident">UserAddress</span>,
+        <span class="ident">address</span>: <span class="kw-2">&amp;</span><span class="ident">UserAddress</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="kw-2">&amp;</span><span class="lifetime">&#39;_</span> <span class="ident">UserKeyPair</span>, <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
-        <span class="kw">match</span> <span class="self">self</span>.<span class="ident">user_keys</span>.<span class="ident">get</span>(<span class="ident">account</span>) {
-            <span class="prelude-val">Some</span>(<span class="ident">key_pair</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Ok</span>(<span class="ident">key_pair</span>),
+        <span class="kw">match</span> <span class="self">self</span>.<span class="ident">sending_accounts</span>.<span class="ident">get</span>(<span class="ident">address</span>) {
+            <span class="prelude-val">Some</span>(<span class="ident">account</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Ok</span>(<span class="kw-2">&amp;</span><span class="ident">account</span>.<span class="ident">key</span>),
             <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Err</span>(<span class="ident">WalletError</span>::<span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="ident">::NoSuchAccount</span> {
-                <span class="ident">address</span>: <span class="ident">account</span>.<span class="ident">clone</span>(),
+                <span class="ident">address</span>: <span class="ident">address</span>.<span class="ident">clone</span>(),
             }),
         }
     }
@@ -5003,25 +5022,25 @@
     <span class="doccomment">/// List viewing keys.</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">auditor_pub_keys</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">AuditorPubKey</span><span class="op">&gt;</span> {
         <span class="kw">let</span> <span class="ident">WalletSharedState</span> { <span class="ident">state</span>, .. } <span class="op">=</span> <span class="kw-2">&amp;</span><span class="kw-2">*</span><span class="self">self</span>.<span class="ident">mutex</span>.<span class="ident">lock</span>().<span class="kw">await</span>;
-        <span class="ident">state</span>.<span class="ident">audit_keys</span>.<span class="ident">keys</span>().<span class="ident">cloned</span>().<span class="ident">collect</span>()
+        <span class="ident">state</span>.<span class="ident">viewing_accounts</span>.<span class="ident">keys</span>().<span class="ident">cloned</span>().<span class="ident">collect</span>()
     }
 
     <span class="doccomment">/// List freezing keys.</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">freezer_pub_keys</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">FreezerPubKey</span><span class="op">&gt;</span> {
         <span class="kw">let</span> <span class="ident">WalletSharedState</span> { <span class="ident">state</span>, .. } <span class="op">=</span> <span class="kw-2">&amp;</span><span class="kw-2">*</span><span class="self">self</span>.<span class="ident">mutex</span>.<span class="ident">lock</span>().<span class="kw">await</span>;
-        <span class="ident">state</span>.<span class="ident">freeze_keys</span>.<span class="ident">keys</span>().<span class="ident">cloned</span>().<span class="ident">collect</span>()
+        <span class="ident">state</span>.<span class="ident">freezing_accounts</span>.<span class="ident">keys</span>().<span class="ident">cloned</span>().<span class="ident">collect</span>()
     }
 
     <span class="doccomment">/// Get sending private key</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">get_user_private_key</span>(
         <span class="kw-2">&amp;</span><span class="self">self</span>,
-        <span class="ident">account</span>: <span class="kw-2">&amp;</span><span class="ident">UserAddress</span>,
+        <span class="ident">address</span>: <span class="kw-2">&amp;</span><span class="ident">UserAddress</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">UserKeyPair</span>, <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
         <span class="kw">let</span> <span class="ident">WalletSharedState</span> { <span class="ident">state</span>, .. } <span class="op">=</span> <span class="kw-2">&amp;</span><span class="kw-2">*</span><span class="self">self</span>.<span class="ident">mutex</span>.<span class="ident">lock</span>().<span class="kw">await</span>;
-        <span class="kw">match</span> <span class="ident">state</span>.<span class="ident">user_keys</span>.<span class="ident">get</span>(<span class="ident">account</span>) {
-            <span class="prelude-val">Some</span>(<span class="ident">key_pair</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Ok</span>(<span class="ident">key_pair</span>.<span class="ident">clone</span>()),
+        <span class="kw">match</span> <span class="ident">state</span>.<span class="ident">sending_accounts</span>.<span class="ident">get</span>(<span class="ident">address</span>) {
+            <span class="prelude-val">Some</span>(<span class="ident">account</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Ok</span>(<span class="ident">account</span>.<span class="ident">key</span>.<span class="ident">clone</span>()),
             <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Err</span>(<span class="ident">WalletError</span>::<span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="ident">::InvalidAddress</span> {
-                <span class="ident">address</span>: <span class="ident">account</span>.<span class="ident">clone</span>(),
+                <span class="ident">address</span>: <span class="ident">address</span>.<span class="ident">clone</span>(),
             }),
         }
     }
@@ -5032,8 +5051,8 @@
         <span class="ident">pub_key</span>: <span class="kw-2">&amp;</span><span class="ident">FreezerPubKey</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">FreezerKeyPair</span>, <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
         <span class="kw">let</span> <span class="ident">WalletSharedState</span> { <span class="ident">state</span>, .. } <span class="op">=</span> <span class="kw-2">&amp;</span><span class="kw-2">*</span><span class="self">self</span>.<span class="ident">mutex</span>.<span class="ident">lock</span>().<span class="kw">await</span>;
-        <span class="kw">match</span> <span class="ident">state</span>.<span class="ident">freeze_keys</span>.<span class="ident">get</span>(<span class="ident">pub_key</span>) {
-            <span class="prelude-val">Some</span>(<span class="ident">key_pair</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Ok</span>(<span class="ident">key_pair</span>.<span class="ident">clone</span>()),
+        <span class="kw">match</span> <span class="ident">state</span>.<span class="ident">freezing_accounts</span>.<span class="ident">get</span>(<span class="ident">pub_key</span>) {
+            <span class="prelude-val">Some</span>(<span class="ident">account</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Ok</span>(<span class="ident">account</span>.<span class="ident">key</span>.<span class="ident">clone</span>()),
             <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Err</span>(<span class="ident">WalletError</span>::<span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="ident">::InvalidFreezerKey</span> {
                 <span class="ident">key</span>: <span class="ident">pub_key</span>.<span class="ident">clone</span>(),
             }),
@@ -5046,12 +5065,119 @@
         <span class="ident">pub_key</span>: <span class="kw-2">&amp;</span><span class="ident">AuditorPubKey</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">AuditorKeyPair</span>, <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
         <span class="kw">let</span> <span class="ident">WalletSharedState</span> { <span class="ident">state</span>, .. } <span class="op">=</span> <span class="kw-2">&amp;</span><span class="kw-2">*</span><span class="self">self</span>.<span class="ident">mutex</span>.<span class="ident">lock</span>().<span class="kw">await</span>;
-        <span class="kw">match</span> <span class="ident">state</span>.<span class="ident">audit_keys</span>.<span class="ident">get</span>(<span class="ident">pub_key</span>) {
-            <span class="prelude-val">Some</span>(<span class="ident">key_pair</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Ok</span>(<span class="ident">key_pair</span>.<span class="ident">clone</span>()),
+        <span class="kw">match</span> <span class="ident">state</span>.<span class="ident">viewing_accounts</span>.<span class="ident">get</span>(<span class="ident">pub_key</span>) {
+            <span class="prelude-val">Some</span>(<span class="ident">account</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Ok</span>(<span class="ident">account</span>.<span class="ident">key</span>.<span class="ident">clone</span>()),
             <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Err</span>(<span class="ident">WalletError</span>::<span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="ident">::InvalidAuditorKey</span> {
                 <span class="ident">key</span>: <span class="ident">pub_key</span>.<span class="ident">clone</span>(),
             }),
         }
+    }
+
+    <span class="doccomment">/// Get information about a sending account.</span>
+    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">sending_account</span>(
+        <span class="kw-2">&amp;</span><span class="self">self</span>,
+        <span class="ident">address</span>: <span class="kw-2">&amp;</span><span class="ident">UserAddress</span>,
+    ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">AccountInfo</span><span class="op">&lt;</span><span class="ident">UserKeyPair</span><span class="op">&gt;</span>, <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
+        <span class="kw">let</span> <span class="ident">WalletSharedState</span> { <span class="ident">state</span>, .. } <span class="op">=</span> <span class="kw-2">&amp;</span><span class="kw-2">*</span><span class="self">self</span>.<span class="ident">mutex</span>.<span class="ident">lock</span>().<span class="kw">await</span>;
+        <span class="kw">let</span> <span class="ident">account</span> <span class="op">=</span> <span class="ident">state</span>.<span class="ident">sending_accounts</span>.<span class="ident">get</span>(<span class="ident">address</span>).<span class="ident">cloned</span>().<span class="ident">ok_or</span>(
+            <span class="ident">WalletError</span>::<span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="ident">::InvalidAddress</span> {
+                <span class="ident">address</span>: <span class="ident">address</span>.<span class="ident">clone</span>(),
+            },
+        )<span class="question-mark">?</span>;
+        <span class="kw">let</span> <span class="ident">records</span> <span class="op">=</span> <span class="ident">state</span>
+            .<span class="ident">txn_state</span>
+            .<span class="ident">records</span>
+            .<span class="ident">iter</span>()
+            .<span class="ident">filter</span>(<span class="op">|</span><span class="ident">rec</span><span class="op">|</span> <span class="ident">rec</span>.<span class="ident">ro</span>.<span class="ident">pub_key</span>.<span class="ident">address</span>() <span class="op">=</span><span class="op">=</span> <span class="kw-2">*</span><span class="ident">address</span> <span class="op">&amp;&amp;</span> <span class="ident">rec</span>.<span class="ident">ro</span>.<span class="ident">amount</span> <span class="op">&gt;</span> <span class="number">0</span>)
+            .<span class="ident">cloned</span>()
+            .<span class="ident">collect</span>::<span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="kw">_</span><span class="op">&gt;</span><span class="op">&gt;</span>();
+        <span class="kw">let</span> <span class="ident">assets</span> <span class="op">=</span> <span class="ident">records</span>
+            .<span class="ident">iter</span>()
+            .<span class="ident">map</span>(<span class="op">|</span><span class="ident">rec</span><span class="op">|</span> <span class="ident">state</span>.<span class="ident">assets</span>.<span class="ident">get</span>(<span class="ident">rec</span>.<span class="ident">ro</span>.<span class="ident">asset_def</span>.<span class="ident">code</span>).<span class="ident">unwrap</span>().<span class="ident">clone</span>())
+            .<span class="ident">collect</span>();
+        <span class="prelude-val">Ok</span>(<span class="ident">AccountInfo::new</span>(<span class="ident">account</span>, <span class="ident">assets</span>, <span class="ident">records</span>))
+    }
+
+    <span class="doccomment">/// Get information about a viewing account.</span>
+    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">viewing_account</span>(
+        <span class="kw-2">&amp;</span><span class="self">self</span>,
+        <span class="ident">address</span>: <span class="kw-2">&amp;</span><span class="ident">AuditorPubKey</span>,
+    ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">AccountInfo</span><span class="op">&lt;</span><span class="ident">AuditorKeyPair</span><span class="op">&gt;</span>, <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
+        <span class="kw">let</span> <span class="ident">WalletSharedState</span> { <span class="ident">state</span>, .. } <span class="op">=</span> <span class="kw-2">&amp;</span><span class="kw-2">*</span><span class="self">self</span>.<span class="ident">mutex</span>.<span class="ident">lock</span>().<span class="kw">await</span>;
+        <span class="kw">let</span> <span class="ident">account</span> <span class="op">=</span> <span class="ident">state</span>.<span class="ident">viewing_accounts</span>.<span class="ident">get</span>(<span class="ident">address</span>).<span class="ident">cloned</span>().<span class="ident">ok_or</span>(
+            <span class="ident">WalletError</span>::<span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="ident">::InvalidAuditorKey</span> {
+                <span class="ident">key</span>: <span class="ident">address</span>.<span class="ident">clone</span>(),
+            },
+        )<span class="question-mark">?</span>;
+        <span class="kw">let</span> <span class="ident">records</span> <span class="op">=</span> <span class="ident">state</span>
+            .<span class="ident">txn_state</span>
+            .<span class="ident">records</span>
+            .<span class="ident">iter</span>()
+            .<span class="ident">filter</span>(<span class="op">|</span><span class="ident">rec</span><span class="op">|</span> {
+                <span class="ident">rec</span>.<span class="ident">ro</span>.<span class="ident">asset_def</span>.<span class="ident">policy_ref</span>().<span class="ident">auditor_pub_key</span>() <span class="op">=</span><span class="op">=</span> <span class="ident">address</span> <span class="op">&amp;&amp;</span> <span class="ident">rec</span>.<span class="ident">ro</span>.<span class="ident">amount</span> <span class="op">&gt;</span> <span class="number">0</span>
+            })
+            .<span class="ident">cloned</span>()
+            .<span class="ident">collect</span>::<span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="kw">_</span><span class="op">&gt;</span><span class="op">&gt;</span>();
+        <span class="kw">let</span> <span class="ident">assets</span> <span class="op">=</span> <span class="ident">records</span>
+            .<span class="ident">iter</span>()
+            <span class="comment">// Get assets which are currently viewable.</span>
+            .<span class="ident">map</span>(<span class="op">|</span><span class="ident">rec</span><span class="op">|</span> <span class="ident">state</span>.<span class="ident">assets</span>.<span class="ident">get</span>(<span class="ident">rec</span>.<span class="ident">ro</span>.<span class="ident">asset_def</span>.<span class="ident">code</span>).<span class="ident">unwrap</span>().<span class="ident">clone</span>())
+            <span class="comment">// Get known assets which list this key as a viewer.</span>
+            .<span class="ident">chain</span>(<span class="ident">state</span>.<span class="ident">assets</span>.<span class="ident">iter</span>().<span class="ident">filter_map</span>(<span class="op">|</span><span class="ident">asset</span><span class="op">|</span> {
+                <span class="kw">if</span> <span class="ident">asset</span>.<span class="ident">definition</span>.<span class="ident">policy_ref</span>().<span class="ident">auditor_pub_key</span>() <span class="op">=</span><span class="op">=</span> <span class="ident">address</span> {
+                    <span class="prelude-val">Some</span>(<span class="ident">asset</span>.<span class="ident">clone</span>())
+                } <span class="kw">else</span> {
+                    <span class="prelude-val">None</span>
+                }
+            }))
+            <span class="comment">// Deduplicate</span>
+            .<span class="ident">map</span>(<span class="op">|</span><span class="ident">asset</span><span class="op">|</span> (<span class="ident">asset</span>.<span class="ident">definition</span>.<span class="ident">code</span>, <span class="ident">asset</span>))
+            .<span class="ident">collect</span>::<span class="op">&lt;</span><span class="ident">HashMap</span><span class="op">&lt;</span><span class="kw">_</span>, <span class="kw">_</span><span class="op">&gt;</span><span class="op">&gt;</span>()
+            .<span class="ident">into_values</span>()
+            .<span class="ident">collect</span>();
+        <span class="prelude-val">Ok</span>(<span class="ident">AccountInfo::new</span>(<span class="ident">account</span>, <span class="ident">assets</span>, <span class="ident">records</span>))
+    }
+
+    <span class="doccomment">/// Get information about a freezing account.</span>
+    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">freezing_account</span>(
+        <span class="kw-2">&amp;</span><span class="self">self</span>,
+        <span class="ident">address</span>: <span class="kw-2">&amp;</span><span class="ident">FreezerPubKey</span>,
+    ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">AccountInfo</span><span class="op">&lt;</span><span class="ident">FreezerKeyPair</span><span class="op">&gt;</span>, <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
+        <span class="kw">let</span> <span class="ident">WalletSharedState</span> { <span class="ident">state</span>, .. } <span class="op">=</span> <span class="kw-2">&amp;</span><span class="kw-2">*</span><span class="self">self</span>.<span class="ident">mutex</span>.<span class="ident">lock</span>().<span class="kw">await</span>;
+        <span class="kw">let</span> <span class="ident">account</span> <span class="op">=</span> <span class="ident">state</span>.<span class="ident">freezing_accounts</span>.<span class="ident">get</span>(<span class="ident">address</span>).<span class="ident">cloned</span>().<span class="ident">ok_or</span>(
+            <span class="ident">WalletError</span>::<span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="ident">::InvalidFreezerKey</span> {
+                <span class="ident">key</span>: <span class="ident">address</span>.<span class="ident">clone</span>(),
+            },
+        )<span class="question-mark">?</span>;
+        <span class="kw">let</span> <span class="ident">records</span> <span class="op">=</span> <span class="ident">state</span>
+            .<span class="ident">txn_state</span>
+            .<span class="ident">records</span>
+            .<span class="ident">iter</span>()
+            .<span class="ident">filter</span>(<span class="op">|</span><span class="ident">rec</span><span class="op">|</span> {
+                <span class="ident">rec</span>.<span class="ident">ro</span>.<span class="ident">asset_def</span>.<span class="ident">policy_ref</span>().<span class="ident">freezer_pub_key</span>() <span class="op">=</span><span class="op">=</span> <span class="ident">address</span>
+                    <span class="op">&amp;&amp;</span> <span class="ident">rec</span>.<span class="ident">ro</span>.<span class="ident">amount</span> <span class="op">&gt;</span> <span class="number">0</span>
+                    <span class="op">&amp;&amp;</span> <span class="ident">rec</span>.<span class="ident">ro</span>.<span class="ident">freeze_flag</span> <span class="op">=</span><span class="op">=</span> <span class="ident">FreezeFlag::Unfrozen</span>
+            })
+            .<span class="ident">cloned</span>()
+            .<span class="ident">collect</span>::<span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="kw">_</span><span class="op">&gt;</span><span class="op">&gt;</span>();
+        <span class="kw">let</span> <span class="ident">assets</span> <span class="op">=</span> <span class="ident">records</span>
+            .<span class="ident">iter</span>()
+            <span class="comment">// Get assets which are currently freezable.</span>
+            .<span class="ident">map</span>(<span class="op">|</span><span class="ident">rec</span><span class="op">|</span> <span class="ident">state</span>.<span class="ident">assets</span>.<span class="ident">get</span>(<span class="ident">rec</span>.<span class="ident">ro</span>.<span class="ident">asset_def</span>.<span class="ident">code</span>).<span class="ident">unwrap</span>().<span class="ident">clone</span>())
+            <span class="comment">// Get known assets which list this key as a freezer.</span>
+            .<span class="ident">chain</span>(<span class="ident">state</span>.<span class="ident">assets</span>.<span class="ident">iter</span>().<span class="ident">filter_map</span>(<span class="op">|</span><span class="ident">asset</span><span class="op">|</span> {
+                <span class="kw">if</span> <span class="ident">asset</span>.<span class="ident">definition</span>.<span class="ident">policy_ref</span>().<span class="ident">freezer_pub_key</span>() <span class="op">=</span><span class="op">=</span> <span class="ident">address</span> {
+                    <span class="prelude-val">Some</span>(<span class="ident">asset</span>.<span class="ident">clone</span>())
+                } <span class="kw">else</span> {
+                    <span class="prelude-val">None</span>
+                }
+            }))
+            <span class="comment">// Deduplicate</span>
+            .<span class="ident">map</span>(<span class="op">|</span><span class="ident">asset</span><span class="op">|</span> (<span class="ident">asset</span>.<span class="ident">definition</span>.<span class="ident">code</span>, <span class="ident">asset</span>))
+            .<span class="ident">collect</span>::<span class="op">&lt;</span><span class="ident">HashMap</span><span class="op">&lt;</span><span class="kw">_</span>, <span class="kw">_</span><span class="op">&gt;</span><span class="op">&gt;</span>()
+            .<span class="ident">into_values</span>()
+            .<span class="ident">collect</span>();
+        <span class="prelude-val">Ok</span>(<span class="ident">AccountInfo::new</span>(<span class="ident">account</span>, <span class="ident">assets</span>, <span class="ident">records</span>))
     }
 
     <span class="doccomment">/// Compute the spendable balance of the given asset type owned by all addresses.</span>
@@ -5251,19 +5377,21 @@
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">add_audit_key</span><span class="op">&lt;</span><span class="lifetime">&#39;l</span><span class="op">&gt;</span>(
         <span class="kw-2">&amp;</span><span class="lifetime">&#39;l</span> <span class="kw-2">mut</span> <span class="self">self</span>,
         <span class="ident">audit_key</span>: <span class="ident">AuditorKeyPair</span>,
+        <span class="ident">description</span>: <span class="ident">String</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">std::pin::Pin</span><span class="op">&lt;</span><span class="ident">Box</span><span class="op">&lt;</span><span class="kw">dyn</span> <span class="ident">SendFuture</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="prelude-ty">Result</span><span class="op">&lt;</span>(), <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span><span class="op">&gt;</span> <span class="op">+</span> <span class="lifetime">&#39;l</span><span class="op">&gt;</span><span class="op">&gt;</span>
     <span class="kw">where</span>
         <span class="lifetime">&#39;a</span>: <span class="lifetime">&#39;l</span>,
     {
         <span class="ident">Box::pin</span>(<span class="kw">async</span> <span class="kw">move</span> {
             <span class="kw">let</span> <span class="ident">WalletSharedState</span> { <span class="ident">state</span>, <span class="ident">session</span>, .. } <span class="op">=</span> <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="kw-2">*</span><span class="self">self</span>.<span class="ident">mutex</span>.<span class="ident">lock</span>().<span class="kw">await</span>;
-            <span class="ident">state</span>.<span class="ident">add_audit_key</span>(<span class="ident">session</span>, <span class="ident">audit_key</span>).<span class="kw">await</span>
+            <span class="ident">state</span>.<span class="ident">add_audit_key</span>(<span class="ident">session</span>, <span class="ident">audit_key</span>, <span class="ident">description</span>).<span class="kw">await</span>
         })
     }
 
     <span class="doccomment">/// Generate a new viewing key and add it to the wallet&#39;s key set.</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">generate_audit_key</span><span class="op">&lt;</span><span class="lifetime">&#39;l</span><span class="op">&gt;</span>(
         <span class="kw-2">&amp;</span><span class="lifetime">&#39;l</span> <span class="kw-2">mut</span> <span class="self">self</span>,
+        <span class="ident">description</span>: <span class="ident">String</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">std::pin::Pin</span><span class="op">&lt;</span><span class="ident">Box</span><span class="op">&lt;</span><span class="kw">dyn</span> <span class="ident">SendFuture</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">AuditorPubKey</span>, <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span><span class="op">&gt;</span> <span class="op">+</span> <span class="lifetime">&#39;l</span><span class="op">&gt;</span><span class="op">&gt;</span>
     <span class="kw">where</span>
         <span class="lifetime">&#39;a</span>: <span class="lifetime">&#39;l</span>,
@@ -5274,7 +5402,9 @@
                 .<span class="ident">auditor_key_stream</span>
                 .<span class="ident">derive_auditor_key_pair</span>(<span class="kw-2">&amp;</span><span class="ident">state</span>.<span class="ident">key_state</span>.<span class="ident">auditor</span>.<span class="ident">to_le_bytes</span>());
             <span class="ident">state</span>.<span class="ident">key_state</span>.<span class="ident">auditor</span> <span class="op">+</span><span class="op">=</span> <span class="number">1</span>;
-            <span class="ident">state</span>.<span class="ident">add_audit_key</span>(<span class="ident">session</span>, <span class="ident">audit_key</span>.<span class="ident">clone</span>()).<span class="kw">await</span><span class="question-mark">?</span>;
+            <span class="ident">state</span>
+                .<span class="ident">add_audit_key</span>(<span class="ident">session</span>, <span class="ident">audit_key</span>.<span class="ident">clone</span>(), <span class="ident">description</span>)
+                .<span class="kw">await</span><span class="question-mark">?</span>;
             <span class="prelude-val">Ok</span>(<span class="ident">audit_key</span>.<span class="ident">pub_key</span>())
         })
     }
@@ -5283,19 +5413,21 @@
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">add_freeze_key</span><span class="op">&lt;</span><span class="lifetime">&#39;l</span><span class="op">&gt;</span>(
         <span class="kw-2">&amp;</span><span class="lifetime">&#39;l</span> <span class="kw-2">mut</span> <span class="self">self</span>,
         <span class="ident">freeze_key</span>: <span class="ident">FreezerKeyPair</span>,
+        <span class="ident">description</span>: <span class="ident">String</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">std::pin::Pin</span><span class="op">&lt;</span><span class="ident">Box</span><span class="op">&lt;</span><span class="kw">dyn</span> <span class="ident">SendFuture</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="prelude-ty">Result</span><span class="op">&lt;</span>(), <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span><span class="op">&gt;</span> <span class="op">+</span> <span class="lifetime">&#39;l</span><span class="op">&gt;</span><span class="op">&gt;</span>
     <span class="kw">where</span>
         <span class="lifetime">&#39;a</span>: <span class="lifetime">&#39;l</span>,
     {
         <span class="ident">Box::pin</span>(<span class="kw">async</span> <span class="kw">move</span> {
             <span class="kw">let</span> <span class="ident">WalletSharedState</span> { <span class="ident">state</span>, <span class="ident">session</span>, .. } <span class="op">=</span> <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="kw-2">*</span><span class="self">self</span>.<span class="ident">mutex</span>.<span class="ident">lock</span>().<span class="kw">await</span>;
-            <span class="ident">state</span>.<span class="ident">add_freeze_key</span>(<span class="ident">session</span>, <span class="ident">freeze_key</span>).<span class="kw">await</span>
+            <span class="ident">state</span>.<span class="ident">add_freeze_key</span>(<span class="ident">session</span>, <span class="ident">freeze_key</span>, <span class="ident">description</span>).<span class="kw">await</span>
         })
     }
 
     <span class="doccomment">/// Generate a new freezing key and add it to the wallet&#39;s key set.</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">generate_freeze_key</span><span class="op">&lt;</span><span class="lifetime">&#39;l</span><span class="op">&gt;</span>(
         <span class="kw-2">&amp;</span><span class="lifetime">&#39;l</span> <span class="kw-2">mut</span> <span class="self">self</span>,
+        <span class="ident">description</span>: <span class="ident">String</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">std::pin::Pin</span><span class="op">&lt;</span><span class="ident">Box</span><span class="op">&lt;</span><span class="kw">dyn</span> <span class="ident">SendFuture</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">FreezerPubKey</span>, <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span><span class="op">&gt;</span> <span class="op">+</span> <span class="lifetime">&#39;l</span><span class="op">&gt;</span><span class="op">&gt;</span>
     <span class="kw">where</span>
         <span class="lifetime">&#39;a</span>: <span class="lifetime">&#39;l</span>,
@@ -5306,7 +5438,9 @@
                 .<span class="ident">freezer_key_stream</span>
                 .<span class="ident">derive_freezer_key_pair</span>(<span class="kw-2">&amp;</span><span class="ident">state</span>.<span class="ident">key_state</span>.<span class="ident">freezer</span>.<span class="ident">to_le_bytes</span>());
             <span class="ident">state</span>.<span class="ident">key_state</span>.<span class="ident">freezer</span> <span class="op">+</span><span class="op">=</span> <span class="number">1</span>;
-            <span class="ident">state</span>.<span class="ident">add_freeze_key</span>(<span class="ident">session</span>, <span class="ident">freeze_key</span>.<span class="ident">clone</span>()).<span class="kw">await</span><span class="question-mark">?</span>;
+            <span class="ident">state</span>
+                .<span class="ident">add_freeze_key</span>(<span class="ident">session</span>, <span class="ident">freeze_key</span>.<span class="ident">clone</span>(), <span class="ident">description</span>)
+                .<span class="kw">await</span><span class="question-mark">?</span>;
             <span class="prelude-val">Ok</span>(<span class="ident">freeze_key</span>.<span class="ident">pub_key</span>())
         })
     }
@@ -5319,6 +5453,7 @@
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">add_user_key</span><span class="op">&lt;</span><span class="lifetime">&#39;l</span><span class="op">&gt;</span>(
         <span class="kw-2">&amp;</span><span class="lifetime">&#39;l</span> <span class="kw-2">mut</span> <span class="self">self</span>,
         <span class="ident">user_key</span>: <span class="ident">UserKeyPair</span>,
+        <span class="ident">description</span>: <span class="ident">String</span>,
         <span class="ident">scan_from</span>: <span class="ident">EventIndex</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">std::pin::Pin</span><span class="op">&lt;</span><span class="ident">Box</span><span class="op">&lt;</span><span class="kw">dyn</span> <span class="ident">SendFuture</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="prelude-ty">Result</span><span class="op">&lt;</span>(), <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span><span class="op">&gt;</span> <span class="op">+</span> <span class="lifetime">&#39;l</span><span class="op">&gt;</span><span class="op">&gt;</span>
     <span class="kw">where</span>
@@ -5328,7 +5463,7 @@
             <span class="kw">let</span> (<span class="ident">user_key</span>, <span class="ident">events</span>) <span class="op">=</span> {
                 <span class="kw">let</span> <span class="ident">WalletSharedState</span> { <span class="ident">state</span>, <span class="ident">session</span>, .. } <span class="op">=</span> <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="kw-2">*</span><span class="self">self</span>.<span class="ident">mutex</span>.<span class="ident">lock</span>().<span class="kw">await</span>;
                 <span class="ident">state</span>
-                    .<span class="ident">add_user_key</span>(<span class="ident">session</span>, <span class="prelude-val">Some</span>(<span class="ident">user_key</span>), <span class="prelude-val">Some</span>(<span class="ident">scan_from</span>))
+                    .<span class="ident">add_user_key</span>(<span class="ident">session</span>, <span class="prelude-val">Some</span>(<span class="ident">user_key</span>), <span class="ident">description</span>, <span class="prelude-val">Some</span>(<span class="ident">scan_from</span>))
                     .<span class="kw">await</span><span class="question-mark">?</span>
             };
 
@@ -5349,6 +5484,7 @@
     <span class="doccomment">/// belonging to the new key.</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">generate_user_key</span><span class="op">&lt;</span><span class="lifetime">&#39;l</span><span class="op">&gt;</span>(
         <span class="kw-2">&amp;</span><span class="lifetime">&#39;l</span> <span class="kw-2">mut</span> <span class="self">self</span>,
+        <span class="ident">description</span>: <span class="ident">String</span>,
         <span class="ident">scan_from</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">EventIndex</span><span class="op">&gt;</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">std::pin::Pin</span><span class="op">&lt;</span><span class="ident">Box</span><span class="op">&lt;</span><span class="kw">dyn</span> <span class="ident">SendFuture</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">UserPubKey</span>, <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span><span class="op">&gt;</span> <span class="op">+</span> <span class="lifetime">&#39;l</span><span class="op">&gt;</span><span class="op">&gt;</span>
     <span class="kw">where</span>
@@ -5357,7 +5493,9 @@
         <span class="ident">Box::pin</span>(<span class="kw">async</span> <span class="kw">move</span> {
             <span class="kw">let</span> (<span class="ident">user_key</span>, <span class="ident">events</span>) <span class="op">=</span> {
                 <span class="kw">let</span> <span class="ident">WalletSharedState</span> { <span class="ident">state</span>, <span class="ident">session</span>, .. } <span class="op">=</span> <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="kw-2">*</span><span class="self">self</span>.<span class="ident">mutex</span>.<span class="ident">lock</span>().<span class="kw">await</span>;
-                <span class="ident">state</span>.<span class="ident">add_user_key</span>(<span class="ident">session</span>, <span class="prelude-val">None</span>, <span class="ident">scan_from</span>).<span class="kw">await</span><span class="question-mark">?</span>
+                <span class="ident">state</span>
+                    .<span class="ident">add_user_key</span>(<span class="ident">session</span>, <span class="prelude-val">None</span>, <span class="ident">description</span>, <span class="ident">scan_from</span>)
+                    .<span class="kw">await</span><span class="question-mark">?</span>
             };
 
             <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">events</span>) <span class="op">=</span> <span class="ident">events</span> {
@@ -5552,7 +5690,7 @@
             <span class="kw">if</span> <span class="ident">receipt</span>
                 .<span class="ident">submitters</span>
                 .<span class="ident">iter</span>()
-                .<span class="ident">all</span>(<span class="op">|</span><span class="ident">key</span><span class="op">|</span> <span class="ident">state</span>.<span class="ident">user_keys</span>.<span class="ident">contains_key</span>(<span class="ident">key</span>))
+                .<span class="ident">all</span>(<span class="op">|</span><span class="ident">key</span><span class="op">|</span> <span class="ident">state</span>.<span class="ident">sending_accounts</span>.<span class="ident">contains_key</span>(<span class="ident">key</span>))
             {
                 <span class="comment">// If we submitted this transaction, we have all the information we need to track it</span>
                 <span class="comment">// through the lifecycle based on its uid alone.</span>

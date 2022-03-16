@@ -1414,6 +1414,14 @@
 <span id="1414">1414</span>
 <span id="1415">1415</span>
 <span id="1416">1416</span>
+<span id="1417">1417</span>
+<span id="1418">1418</span>
+<span id="1419">1419</span>
+<span id="1420">1420</span>
+<span id="1421">1421</span>
+<span id="1422">1422</span>
+<span id="1423">1423</span>
+<span id="1424">1424</span>
 </pre><pre class="rust"><code><span class="comment">// Copyright (c) 2022 Espresso Systems (espressosys.com)</span>
 <span class="comment">// This file is part of the Seahorse library.</span>
 
@@ -2105,17 +2113,19 @@
             <span class="ident">gen_key</span>,
             <span class="string">&quot;generate new keys&quot;</span>,
             <span class="ident">C</span>,
-            <span class="op">|</span><span class="ident">io</span>, <span class="ident">wallet</span>, <span class="ident">key_type</span>: <span class="ident">KeyType</span>; <span class="ident">scan_from</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">EventIndex</span><span class="op">&gt;</span>, <span class="ident">wait</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">bool</span><span class="op">&gt;</span><span class="op">|</span> {
+            <span class="op">|</span><span class="ident">io</span>, <span class="ident">wallet</span>, <span class="ident">key_type</span>: <span class="ident">KeyType</span>;
+             <span class="ident">description</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">String</span><span class="op">&gt;</span>, <span class="ident">scan_from</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">EventIndex</span><span class="op">&gt;</span>, <span class="ident">wait</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">bool</span><span class="op">&gt;</span><span class="op">|</span> {
+                <span class="kw">let</span> <span class="ident">description</span> <span class="op">=</span> <span class="ident">description</span>.<span class="ident">unwrap_or_default</span>();
                 <span class="kw">match</span> <span class="ident">key_type</span> {
-                    <span class="ident">KeyType::Viewing</span> <span class="op">=</span><span class="op">&gt;</span> <span class="kw">match</span> <span class="ident">wallet</span>.<span class="ident">generate_audit_key</span>().<span class="kw">await</span> {
+                    <span class="ident">KeyType::Viewing</span> <span class="op">=</span><span class="op">&gt;</span> <span class="kw">match</span> <span class="ident">wallet</span>.<span class="ident">generate_audit_key</span>(<span class="ident">description</span>).<span class="kw">await</span> {
                         <span class="prelude-val">Ok</span>(<span class="ident">pub_key</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="macro">cli_writeln!</span>(<span class="ident">io</span>, <span class="string">&quot;{}&quot;</span>, <span class="ident">pub_key</span>),
                         <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="macro">cli_writeln!</span>(<span class="ident">io</span>, <span class="string">&quot;Error generating viewing key: {}&quot;</span>, <span class="ident">err</span>),
                     },
-                    <span class="ident">KeyType::Freezing</span> <span class="op">=</span><span class="op">&gt;</span> <span class="kw">match</span> <span class="ident">wallet</span>.<span class="ident">generate_freeze_key</span>().<span class="kw">await</span> {
+                    <span class="ident">KeyType::Freezing</span> <span class="op">=</span><span class="op">&gt;</span> <span class="kw">match</span> <span class="ident">wallet</span>.<span class="ident">generate_freeze_key</span>(<span class="ident">description</span>).<span class="kw">await</span> {
                         <span class="prelude-val">Ok</span>(<span class="ident">pub_key</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="macro">cli_writeln!</span>(<span class="ident">io</span>, <span class="string">&quot;{}&quot;</span>, <span class="ident">pub_key</span>),
                         <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="macro">cli_writeln!</span>(<span class="ident">io</span>, <span class="string">&quot;Error generating freezing key: {}&quot;</span>, <span class="ident">err</span>),
                     },
-                    <span class="ident">KeyType::Spending</span> <span class="op">=</span><span class="op">&gt;</span> <span class="kw">match</span> <span class="ident">wallet</span>.<span class="ident">generate_user_key</span>(<span class="ident">scan_from</span>).<span class="kw">await</span> {
+                    <span class="ident">KeyType::Sending</span> <span class="op">=</span><span class="op">&gt;</span> <span class="kw">match</span> <span class="ident">wallet</span>.<span class="ident">generate_user_key</span>(<span class="ident">description</span>, <span class="ident">scan_from</span>).<span class="kw">await</span> {
                         <span class="prelude-val">Ok</span>(<span class="ident">pub_key</span>) <span class="op">=</span><span class="op">&gt;</span> {
                             <span class="kw">if</span> <span class="ident">wait</span> <span class="op">=</span><span class="op">=</span> <span class="prelude-val">Some</span>(<span class="bool-val">true</span>) {
                                 <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span> <span class="ident">wallet</span>.<span class="ident">await_key_scan</span>(<span class="kw-2">&amp;</span><span class="ident">pub_key</span>.<span class="ident">address</span>()).<span class="kw">await</span> {
@@ -2124,7 +2134,7 @@
                             }
                             <span class="macro">cli_writeln!</span>(<span class="ident">io</span>, <span class="string">&quot;{}&quot;</span>, <span class="ident">UserAddress</span>(<span class="ident">pub_key</span>.<span class="ident">address</span>()));
                         }
-                        <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="macro">cli_writeln!</span>(<span class="ident">io</span>, <span class="string">&quot;Error generating spending key: {}&quot;</span>, <span class="ident">err</span>),
+                        <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="macro">cli_writeln!</span>(<span class="ident">io</span>, <span class="string">&quot;Error generating sending key: {}&quot;</span>, <span class="ident">err</span>),
                     },
                 }
             }
@@ -2133,7 +2143,8 @@
             <span class="ident">load_key</span>,
             <span class="string">&quot;load a key from a file&quot;</span>,
             <span class="ident">C</span>,
-            <span class="op">|</span><span class="ident">io</span>, <span class="ident">wallet</span>, <span class="ident">key_type</span>: <span class="ident">KeyType</span>, <span class="ident">path</span>: <span class="ident">PathBuf</span>; <span class="ident">scan_from</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">EventIndex</span><span class="op">&gt;</span>, <span class="ident">wait</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">bool</span><span class="op">&gt;</span><span class="op">|</span> {
+            <span class="op">|</span><span class="ident">io</span>, <span class="ident">wallet</span>, <span class="ident">key_type</span>: <span class="ident">KeyType</span>, <span class="ident">path</span>: <span class="ident">PathBuf</span>;
+             <span class="ident">description</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">String</span><span class="op">&gt;</span>, <span class="ident">scan_from</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">EventIndex</span><span class="op">&gt;</span>, <span class="ident">wait</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">bool</span><span class="op">&gt;</span><span class="op">|</span> {
                 <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">file</span> <span class="op">=</span> <span class="kw">match</span> <span class="ident">File::open</span>(<span class="ident">path</span>.<span class="ident">clone</span>()) {
                     <span class="prelude-val">Ok</span>(<span class="ident">file</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">file</span>,
                     <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span><span class="op">&gt;</span> {
@@ -2147,9 +2158,10 @@
                     <span class="kw">return</span>;
                 }
 
+                <span class="kw">let</span> <span class="ident">description</span> <span class="op">=</span> <span class="ident">description</span>.<span class="ident">unwrap_or_default</span>();
                 <span class="kw">match</span> <span class="ident">key_type</span> {
                     <span class="ident">KeyType::Viewing</span> <span class="op">=</span><span class="op">&gt;</span> <span class="kw">match</span> <span class="ident">bincode::deserialize</span>::<span class="op">&lt;</span><span class="ident">AuditorKeyPair</span><span class="op">&gt;</span>(<span class="kw-2">&amp;</span><span class="ident">bytes</span>) {
-                        <span class="prelude-val">Ok</span>(<span class="ident">key</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="kw">match</span> <span class="ident">wallet</span>.<span class="ident">add_audit_key</span>(<span class="ident">key</span>.<span class="ident">clone</span>()).<span class="kw">await</span> {
+                        <span class="prelude-val">Ok</span>(<span class="ident">key</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="kw">match</span> <span class="ident">wallet</span>.<span class="ident">add_audit_key</span>(<span class="ident">key</span>.<span class="ident">clone</span>(), <span class="ident">description</span>).<span class="kw">await</span> {
                             <span class="prelude-val">Ok</span>(()) <span class="op">=</span><span class="op">&gt;</span> <span class="macro">cli_writeln!</span>(<span class="ident">io</span>, <span class="string">&quot;{}&quot;</span>, <span class="ident">key</span>.<span class="ident">pub_key</span>()),
                             <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="macro">cli_writeln!</span>(<span class="ident">io</span>, <span class="string">&quot;Error saving viewing key: {}&quot;</span>, <span class="ident">err</span>),
                         },
@@ -2158,7 +2170,7 @@
                         }
                     },
                     <span class="ident">KeyType::Freezing</span> <span class="op">=</span><span class="op">&gt;</span> <span class="kw">match</span> <span class="ident">bincode::deserialize</span>::<span class="op">&lt;</span><span class="ident">FreezerKeyPair</span><span class="op">&gt;</span>(<span class="kw-2">&amp;</span><span class="ident">bytes</span>) {
-                        <span class="prelude-val">Ok</span>(<span class="ident">key</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="kw">match</span> <span class="ident">wallet</span>.<span class="ident">add_freeze_key</span>(<span class="ident">key</span>.<span class="ident">clone</span>()).<span class="kw">await</span> {
+                        <span class="prelude-val">Ok</span>(<span class="ident">key</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="kw">match</span> <span class="ident">wallet</span>.<span class="ident">add_freeze_key</span>(<span class="ident">key</span>.<span class="ident">clone</span>(), <span class="ident">description</span>).<span class="kw">await</span> {
                             <span class="prelude-val">Ok</span>(()) <span class="op">=</span><span class="op">&gt;</span> <span class="macro">cli_writeln!</span>(<span class="ident">io</span>, <span class="string">&quot;{}&quot;</span>, <span class="ident">key</span>.<span class="ident">pub_key</span>()),
                             <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="macro">cli_writeln!</span>(<span class="ident">io</span>, <span class="string">&quot;Error saving freezing key: {}&quot;</span>, <span class="ident">err</span>),
                         },
@@ -2166,9 +2178,10 @@
                             <span class="macro">cli_writeln!</span>(<span class="ident">io</span>, <span class="string">&quot;Error loading freezing key: {}&quot;</span>, <span class="ident">err</span>);
                         }
                     },
-                    <span class="ident">KeyType::Spending</span> <span class="op">=</span><span class="op">&gt;</span> <span class="kw">match</span> <span class="ident">bincode::deserialize</span>::<span class="op">&lt;</span><span class="ident">UserKeyPair</span><span class="op">&gt;</span>(<span class="kw-2">&amp;</span><span class="ident">bytes</span>) {
+                    <span class="ident">KeyType::Sending</span> <span class="op">=</span><span class="op">&gt;</span> <span class="kw">match</span> <span class="ident">bincode::deserialize</span>::<span class="op">&lt;</span><span class="ident">UserKeyPair</span><span class="op">&gt;</span>(<span class="kw-2">&amp;</span><span class="ident">bytes</span>) {
                         <span class="prelude-val">Ok</span>(<span class="ident">key</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="kw">match</span> <span class="ident">wallet</span>.<span class="ident">add_user_key</span>(
                             <span class="ident">key</span>.<span class="ident">clone</span>(),
+                            <span class="ident">description</span>,
                             <span class="ident">scan_from</span>.<span class="ident">unwrap_or_default</span>(),
                         ).<span class="kw">await</span> {
                             <span class="prelude-val">Ok</span>(()) <span class="op">=</span><span class="op">&gt;</span> {
@@ -2185,10 +2198,10 @@
                                     <span class="macro">cli_writeln!</span>(<span class="ident">io</span>, <span class="string">&quot;{}&quot;</span>, <span class="ident">UserAddress</span>(<span class="ident">key</span>.<span class="ident">address</span>()));
                                 }
                             }
-                            <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="macro">cli_writeln!</span>(<span class="ident">io</span>, <span class="string">&quot;Error saving spending key: {}&quot;</span>, <span class="ident">err</span>),
+                            <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="macro">cli_writeln!</span>(<span class="ident">io</span>, <span class="string">&quot;Error saving sending key: {}&quot;</span>, <span class="ident">err</span>),
                         },
                         <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span><span class="op">&gt;</span> {
-                            <span class="macro">cli_writeln!</span>(<span class="ident">io</span>, <span class="string">&quot;Error loading spending key: {}&quot;</span>, <span class="ident">err</span>);
+                            <span class="macro">cli_writeln!</span>(<span class="ident">io</span>, <span class="string">&quot;Error loading sending key: {}&quot;</span>, <span class="ident">err</span>);
                         }
                     },
                 };
@@ -2290,24 +2303,27 @@
 }
 
 <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">print_keys</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">C</span>: <span class="ident">CLI</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span><span class="op">&gt;</span><span class="op">&gt;</span>(<span class="ident">io</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">SharedIO</span>, <span class="ident">wallet</span>: <span class="kw-2">&amp;</span><span class="ident">Wallet</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">C</span><span class="op">&gt;</span>) {
-    <span class="macro">cli_writeln!</span>(<span class="ident">io</span>, <span class="string">&quot;Spending keys:&quot;</span>);
+    <span class="macro">cli_writeln!</span>(<span class="ident">io</span>, <span class="string">&quot;Sending keys:&quot;</span>);
     <span class="kw">for</span> <span class="ident">key</span> <span class="kw">in</span> <span class="ident">wallet</span>.<span class="ident">pub_keys</span>().<span class="kw">await</span> {
-        <span class="macro">cli_writeln!</span>(<span class="ident">io</span>, <span class="string">&quot;  {}&quot;</span>, <span class="ident">key</span>);
+        <span class="kw">let</span> <span class="ident">account</span> <span class="op">=</span> <span class="ident">wallet</span>.<span class="ident">sending_account</span>(<span class="kw-2">&amp;</span><span class="ident">key</span>.<span class="ident">address</span>()).<span class="kw">await</span>.<span class="ident">unwrap</span>();
+        <span class="macro">cli_writeln!</span>(<span class="ident">io</span>, <span class="string">&quot;  {} {}&quot;</span>, <span class="ident">key</span>, <span class="ident">account</span>.<span class="ident">description</span>);
     }
     <span class="macro">cli_writeln!</span>(<span class="ident">io</span>, <span class="string">&quot;Viewing keys:&quot;</span>);
     <span class="kw">for</span> <span class="ident">key</span> <span class="kw">in</span> <span class="ident">wallet</span>.<span class="ident">auditor_pub_keys</span>().<span class="kw">await</span> {
-        <span class="macro">cli_writeln!</span>(<span class="ident">io</span>, <span class="string">&quot;  {}&quot;</span>, <span class="ident">key</span>);
+        <span class="kw">let</span> <span class="ident">account</span> <span class="op">=</span> <span class="ident">wallet</span>.<span class="ident">viewing_account</span>(<span class="kw-2">&amp;</span><span class="ident">key</span>).<span class="kw">await</span>.<span class="ident">unwrap</span>();
+        <span class="macro">cli_writeln!</span>(<span class="ident">io</span>, <span class="string">&quot;  {} {}&quot;</span>, <span class="ident">key</span>, <span class="ident">account</span>.<span class="ident">description</span>);
     }
     <span class="macro">cli_writeln!</span>(<span class="ident">io</span>, <span class="string">&quot;Freezing keys:&quot;</span>);
     <span class="kw">for</span> <span class="ident">key</span> <span class="kw">in</span> <span class="ident">wallet</span>.<span class="ident">freezer_pub_keys</span>().<span class="kw">await</span> {
-        <span class="macro">cli_writeln!</span>(<span class="ident">io</span>, <span class="string">&quot;  {}&quot;</span>, <span class="ident">key</span>);
+        <span class="kw">let</span> <span class="ident">account</span> <span class="op">=</span> <span class="ident">wallet</span>.<span class="ident">freezing_account</span>(<span class="kw-2">&amp;</span><span class="ident">key</span>).<span class="kw">await</span>.<span class="ident">unwrap</span>();
+        <span class="macro">cli_writeln!</span>(<span class="ident">io</span>, <span class="string">&quot;  {} {}&quot;</span>, <span class="ident">key</span>, <span class="ident">account</span>.<span class="ident">description</span>);
     }
 }
 
 <span class="kw">pub</span> <span class="kw">enum</span> <span class="ident">KeyType</span> {
     <span class="ident">Viewing</span>,
     <span class="ident">Freezing</span>,
-    <span class="ident">Spending</span>,
+    <span class="ident">Sending</span>,
 }
 
 <span class="kw">impl</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">C</span>: <span class="ident">CLI</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span><span class="op">&gt;</span><span class="op">&gt;</span> <span class="ident">CLIInput</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">C</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">KeyType</span> {
@@ -2315,7 +2331,7 @@
         <span class="kw">match</span> <span class="ident">s</span> {
             <span class="string">&quot;view&quot;</span> <span class="op">|</span> <span class="string">&quot;viewing&quot;</span> <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Some</span>(<span class="ident"><span class="self">Self</span>::Viewing</span>),
             <span class="string">&quot;freeze&quot;</span> <span class="op">|</span> <span class="string">&quot;freezing&quot;</span> <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Some</span>(<span class="ident"><span class="self">Self</span>::Freezing</span>),
-            <span class="string">&quot;spend&quot;</span> <span class="op">|</span> <span class="string">&quot;spending&quot;</span> <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Some</span>(<span class="ident"><span class="self">Self</span>::Spending</span>),
+            <span class="string">&quot;send&quot;</span> <span class="op">|</span> <span class="string">&quot;sending&quot;</span> <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Some</span>(<span class="ident"><span class="self">Self</span>::Sending</span>),
             <span class="kw">_</span> <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">None</span>,
         }
     }
@@ -2620,7 +2636,7 @@
             <span class="ident">create_wallet</span>(<span class="ident">ledger</span>, <span class="ident">key_streams</span>[<span class="number">2</span>].<span class="ident">clone</span>());
 
         <span class="comment">// Get the viewer&#39;s funded address.</span>
-        <span class="macro">writeln!</span>(<span class="ident">viewer_input</span>, <span class="string">&quot;gen_key spending scan_from=start wait=true&quot;</span>).<span class="ident">unwrap</span>();
+        <span class="macro">writeln!</span>(<span class="ident">viewer_input</span>, <span class="string">&quot;gen_key sending scan_from=start wait=true&quot;</span>).<span class="ident">unwrap</span>();
         <span class="kw">let</span> <span class="ident">matches</span> <span class="op">=</span> <span class="ident">match_output</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">viewer_output</span>, <span class="kw-2">&amp;</span>[<span class="string">&quot;(?P&lt;addr&gt;ADDR~.*)&quot;</span>]);
         <span class="kw">let</span> <span class="ident">viewer_address</span> <span class="op">=</span> <span class="ident">matches</span>.<span class="ident">get</span>(<span class="string">&quot;addr&quot;</span>);
         <span class="macro">writeln!</span>(<span class="ident">viewer_input</span>, <span class="string">&quot;balance 0&quot;</span>).<span class="ident">unwrap</span>();
@@ -2630,7 +2646,7 @@
         );
 
         <span class="comment">// Get the sender&#39;s funded address.</span>
-        <span class="macro">writeln!</span>(<span class="ident">sender_input</span>, <span class="string">&quot;gen_key spending scan_from=start wait=true&quot;</span>).<span class="ident">unwrap</span>();
+        <span class="macro">writeln!</span>(<span class="ident">sender_input</span>, <span class="string">&quot;gen_key sending scan_from=start wait=true&quot;</span>).<span class="ident">unwrap</span>();
         <span class="kw">let</span> <span class="ident">matches</span> <span class="op">=</span> <span class="ident">match_output</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">sender_output</span>, <span class="kw-2">&amp;</span>[<span class="string">&quot;(?P&lt;addr&gt;ADDR~.*)&quot;</span>]);
         <span class="kw">let</span> <span class="ident">sender_address</span> <span class="op">=</span> <span class="ident">matches</span>.<span class="ident">get</span>(<span class="string">&quot;addr&quot;</span>);
         <span class="macro">writeln!</span>(<span class="ident">sender_input</span>, <span class="string">&quot;balance 0&quot;</span>).<span class="ident">unwrap</span>();
@@ -2640,7 +2656,7 @@
         );
 
         <span class="comment">// Get the receiver&#39;s (unfunded) address.</span>
-        <span class="macro">writeln!</span>(<span class="ident">receiver_input</span>, <span class="string">&quot;gen_key spending&quot;</span>).<span class="ident">unwrap</span>();
+        <span class="macro">writeln!</span>(<span class="ident">receiver_input</span>, <span class="string">&quot;gen_key sending&quot;</span>).<span class="ident">unwrap</span>();
         <span class="kw">let</span> <span class="ident">matches</span> <span class="op">=</span> <span class="ident">match_output</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">receiver_output</span>, <span class="kw-2">&amp;</span>[<span class="string">&quot;(?P&lt;addr&gt;ADDR~.*)&quot;</span>]);
         <span class="kw">let</span> <span class="ident">receiver_address</span> <span class="op">=</span> <span class="ident">matches</span>.<span class="ident">get</span>(<span class="string">&quot;addr&quot;</span>);
 
