@@ -14,7 +14,7 @@ use crate::{
     hd,
     testing::{MockEventSource, MockNetwork as _},
     txn_builder::{PendingTransaction, TransactionHistoryEntry, TransactionInfo, TransactionState},
-    CryptoError, RoleKeyPair, WalletBackend, WalletError, WalletState, WalletStorage,
+    CryptoError, WalletBackend, WalletError, WalletState, WalletStorage,
 };
 use async_std::sync::{Arc, Mutex, MutexGuard};
 use async_trait::async_trait;
@@ -58,6 +58,14 @@ impl<'a> WalletStorage<'a, cap::Ledger> for MockStorage<'a> {
             working.txn_state = state.txn_state.clone();
             working.key_scans = state.key_scans.clone();
             working.key_state = state.key_state.clone();
+
+            // Store updated accounts.
+            working.viewing_accounts = state.viewing_accounts.clone();
+            working.freezing_accounts = state.freezing_accounts.clone();
+            working.sending_accounts = state.sending_accounts.clone();
+            for account in working.viewing_accounts.values() {
+                working.assets.add_audit_key(account.key.pub_key());
+            }
         }
         Ok(())
     }
@@ -65,24 +73,6 @@ impl<'a> WalletStorage<'a, cap::Ledger> for MockStorage<'a> {
     async fn store_asset(&mut self, asset: &AssetInfo) -> Result<(), WalletError<cap::Ledger>> {
         if let Some(working) = &mut self.working {
             working.assets.insert(asset.clone());
-        }
-        Ok(())
-    }
-
-    async fn store_key(&mut self, key: &RoleKeyPair) -> Result<(), WalletError<cap::Ledger>> {
-        if let Some(working) = &mut self.working {
-            match key {
-                RoleKeyPair::Auditor(key) => {
-                    working.audit_keys.insert(key.pub_key(), key.clone());
-                    working.assets.add_audit_key(key.pub_key());
-                }
-                RoleKeyPair::Freezer(key) => {
-                    working.freeze_keys.insert(key.pub_key(), key.clone());
-                }
-                RoleKeyPair::User(key) => {
-                    working.user_keys.insert(key.address(), key.clone());
-                }
-            }
         }
         Ok(())
     }
@@ -340,9 +330,9 @@ impl<'a> WalletBackend<'a, cap::Ledger> for MockBackend<'a> {
                 key_state: Default::default(),
                 key_scans: Default::default(),
                 assets: Default::default(),
-                audit_keys: Default::default(),
-                freeze_keys: Default::default(),
-                user_keys: Default::default(),
+                viewing_accounts: Default::default(),
+                freezing_accounts: Default::default(),
+                sending_accounts: Default::default(),
             }
         };
 

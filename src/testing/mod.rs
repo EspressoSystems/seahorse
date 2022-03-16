@@ -197,14 +197,9 @@ pub fn assert_wallet_states_eq<'a, L: Ledger>(w1: &WalletState<'a, L>, w2: &Wall
     assert_eq!(w1.txn_state.records, w2.txn_state.records);
     assert_eq!(w1.key_state, w2.key_state);
     assert_eq!(w1.assets, w2.assets);
-    assert_eq!(
-        w1.audit_keys.keys().collect::<Vec<_>>(),
-        w2.audit_keys.keys().collect::<Vec<_>>()
-    );
-    assert_eq!(
-        w1.freeze_keys.keys().collect::<Vec<_>>(),
-        w2.freeze_keys.keys().collect::<Vec<_>>()
-    );
+    assert_eq!(w1.viewing_accounts, w2.viewing_accounts);
+    assert_eq!(w1.freezing_accounts, w2.freezing_accounts);
+    assert_eq!(w1.sending_accounts, w2.sending_accounts);
     assert_eq!(w1.txn_state.nullifiers, w2.txn_state.nullifiers);
     assert_eq!(
         w1.txn_state.record_mt.commitment(),
@@ -373,7 +368,7 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
             for key_pair in key_pairs.clone() {
                 assert_eq!(
                     wallet
-                        .generate_user_key(Some(EventIndex::default()))
+                        .generate_user_key("".into(), Some(EventIndex::default()))
                         .await
                         .unwrap(),
                     key_pair.pub_key()
