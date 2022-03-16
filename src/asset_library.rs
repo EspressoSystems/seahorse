@@ -19,18 +19,149 @@
 //! provides the mechanisms and interfaces for creating and consuming verified asset libraries. It
 //! does not define any specific libraries or verification keys, as these are application-specific
 //! and thus should be defined in clients of this crate.
+use arbitrary::{Arbitrary, Unstructured};
+use ark_serialize::*;
+use espresso_macros::ser_test;
+use image::{imageops, ImageFormat, ImageResult, RgbImage};
 use jf_cap::{
     keys::AuditorPubKey,
     structs::{AssetCode, AssetCodeSeed, AssetDefinition},
     BaseField, KeyPair, Signature, VerKey,
 };
+use jf_utils::tagged_blob;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fmt::{self, Display, Formatter};
+use std::io::{BufRead, Seek};
 use std::iter::FromIterator;
 use std::ops::Index;
 use std::str::FromStr;
 use tagged_base64::TaggedBase64;
+
+const ICON_WIDTH: u32 = 64;
+const ICON_HEIGHT: u32 = 64;
+
+/// A small icon to display with an asset in a GUI interface.
+#[ser_test(arbitrary)]
+#[tagged_blob("ICON")]
+#[derive(Clone, Debug, PartialEq)]
+pub struct Icon(RgbImage);
+
+impl CanonicalSerialize for Icon {
+    fn serialize<W: Write>(&self, mut writer: W) -> Result<(), SerializationError> {
+        // The serialization format we will use is very simple: write the width as a u32, the height
+        // as a u32, and then the raw data.
+        writer
+            .write_all(&self.width().to_le_bytes())
+            .map_err(SerializationError::IoError)?;
+        writer
+            .write_all(&self.height().to_le_bytes())
+            .map_err(SerializationError::IoError)?;
+        writer
+            .write_all(self.0.as_raw())
+            .map_err(SerializationError::IoError)
+    }
+
+    fn serialized_size(&self) -> usize {
+        // 8 bytes for the width and height (4 bytes each) plus 3 bytes for each RGB pixel.
+        8 + 3 * self.0.as_raw().len()
+    }
+}
+
+impl CanonicalDeserialize for Icon {
+    fn deserialize<R: Read>(mut reader: R) -> Result<Self, SerializationError> {
+        // Read the width and height so we can figure out how much raw data there is.
+        let mut width_buf = [0; 4];
+        let mut height_buf = [0; 4];
+        reader
+            .read_exact(&mut width_buf)
+            .map_err(SerializationError::IoError)?;
+        reader
+            .read_exact(&mut height_buf)
+            .map_err(SerializationError::IoError)?;
+        // The raw buffer has size 3*width*height, since each RGB pixel takes 3 bytes.
+        let width = u32::from_le_bytes(width_buf);
+        let height = u32::from_le_bytes(height_buf);
+        let mut image_buf = vec![0; (width as usize) * (height as usize) * 3];
+        reader
+            .read_exact(&mut image_buf)
+            .map_err(SerializationError::IoError)?;
+        Ok(Self(RgbImage::from_raw(width, height, image_buf).unwrap()))
+    }
+}
+
+impl<'a> Arbitrary<'a> for Icon {
+    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
+        let width = u.arbitrary_len::<[u8; 3]>()?;
+        let height = u.arbitrary_len::<Vec<[u8; 3]>>()?;
+        let mut buf = vec![0; width * height * 3];
+        u.fill_buffer(&mut buf)?;
+        Ok(Self(
+            RgbImage::from_raw(width as u32, height as u32, buf).unwrap(),
+        ))
+    }
+}
+
+impl Icon {
+    /// Resize the icon.
+    ///
+    /// A cubic filter is used to interpolate pixels in the resized image.
+    pub fn resize(&mut self, width: u32, height: u32) {
+        // CatmullRom is a cubic filter which offers a good balance of performance and quality.
+        self.0 = imageops::resize(&self.0, width, height, imageops::FilterType::CatmullRom);
+    }
+
+    /// Get the size `(width, height)` of the image.
+    pub fn size(&self) -> (u32, u32) {
+        (self.width(), self.height())
+    }
+
+    /// The icon width in pixels
+    pub fn width(&self) -> u32 {
+        self.0.width()
+    }
+
+    /// The icon height in pixels.
+    pub fn height(&self) -> u32 {
+        self.0.height()
+    }
+
+    /// Load from a byte stream.
+    pub fn load(r: impl BufRead + Seek, format: ImageFormat) -> ImageResult<Self> {
+        Ok(Self(image::load(r, format)?.into_rgb8()))
+    }
+
+    /// Load from a PNG byte stream.
+    pub fn load_png(r: impl BufRead + Seek) -> ImageResult<Self> {
+        Self::load(r, ImageFormat::Png)
+    }
+
+    /// Load from a JPEG byte stream.
+    pub fn load_jpeg(r: impl BufRead + Seek) -> ImageResult<Self> {
+        Self::load(r, ImageFormat::Jpeg)
+    }
+
+    /// Write to a byte stream.
+    pub fn write(&self, mut w: impl Write + Seek, format: ImageFormat) -> ImageResult<()> {
+        self.0.write_to(&mut w, format)
+    }
+
+    /// Write to a byte stream using the PNG format.
+    pub fn write_png(&self, w: impl Write + Seek) -> ImageResult<()> {
+        self.write(w, ImageFormat::Png)
+    }
+
+    /// Write to a byte stream using the JPEG format.
+    pub fn write_jpeg(&self, w: impl Write + Seek) -> ImageResult<()> {
+        self.write(w, ImageFormat::Jpeg)
+    }
+}
+
+impl From<RgbImage> for Icon {
+    fn from(image: RgbImage) -> Self {
+        Self(image)
+    }
+}
 
 /// Details about an asset type.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -55,6 +186,13 @@ pub struct AssetInfo {
     /// agree on the description for an asset if both wallets have imported that asset with the same
     /// description.
     pub description: Option<String>,
+    /// Icon used when displaying this asset in a GUI.
+    ///
+    /// The icon is purely for display purposes. It is not bound to anything in the CAP protocol,
+    /// and will not be populated when a wallet discovers an asset, only when a user manually
+    /// imports or creates that asset with a particular icon. Two wallets will only agree on the
+    /// icon for an asset if both wallets have imported that asset with the same icon.
+    pub icon: Option<Icon>,
     /// Secret information required to mint an asset.
     pub mint_info: Option<MintInfo>,
     /// This asset is included in a [VerifiedAssetLibrary].
@@ -71,6 +209,7 @@ impl AssetInfo {
             definition,
             name: None,
             description: None,
+            icon: None,
             mint_info: Some(mint_info),
             verified: false,
             temporary: false,
@@ -99,6 +238,13 @@ impl AssetInfo {
 
     pub fn with_description(mut self, description: String) -> Self {
         self.description = Some(description);
+        self
+    }
+
+    pub fn with_icon(mut self, image: impl Into<Icon>) -> Self {
+        let mut icon = image.into();
+        icon.resize(ICON_WIDTH, ICON_HEIGHT);
+        self.icon = Some(icon);
         self
     }
 
@@ -133,6 +279,9 @@ impl AssetInfo {
             if let Some(description) = info.description {
                 self.description = Some(description);
             }
+            if let Some(icon) = info.icon {
+                self.icon = Some(icon);
+            }
         }
         self.temporary &= info.temporary;
         self.verified |= info.verified;
@@ -145,6 +294,7 @@ impl From<AssetDefinition> for AssetInfo {
             definition,
             name: None,
             description: None,
+            icon: None,
             mint_info: None,
             verified: false,
             temporary: false,
@@ -243,6 +393,7 @@ impl FromStr for AssetInfo {
             definition,
             name,
             description,
+            icon: None,
             mint_info,
             temporary,
             verified: false,

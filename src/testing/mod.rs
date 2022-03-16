@@ -487,7 +487,7 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
                     .into_iter()
                     .filter(|asset| !asset.temporary)
                     .collect(),
-                state.audit_keys.keys().cloned().collect(),
+                state.viewing_accounts.keys().cloned().collect(),
             );
 
             // The in-memory state is allowed to differ from the persisted state in the details of
@@ -509,7 +509,7 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
                     .into_iter()
                     .filter(|asset| !verified.contains(&asset.definition.code))
                     .collect(),
-                state.audit_keys.keys().cloned().collect(),
+                state.viewing_accounts.keys().cloned().collect(),
             );
             loaded.assets = AssetLibrary::new(
                 loaded
@@ -517,7 +517,7 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
                     .into_iter()
                     .filter(|asset| !verified.contains(&asset.definition.code))
                     .collect(),
-                loaded.audit_keys.keys().cloned().collect(),
+                loaded.viewing_accounts.keys().cloned().collect(),
             );
 
             assert_wallet_states_eq(&state, &loaded);

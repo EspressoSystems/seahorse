@@ -31,10 +31,15 @@ impl<L: Ledger> PartialEq<Self> for TxnHistoryWithTimeTolerantEq<L> {
 #[generic_tests]
 pub mod generic_wallet_tests {
     use super::*;
+    use crate::asset_library::Icon;
     use async_std::task::block_on;
     use jf_cap::KeyPair;
     use proptest::{collection::vec, strategy::Strategy, test_runner, test_runner::TestRunner};
+    use std::fs::File;
+    use std::io::{BufReader, Cursor};
     use std::iter::once;
+    use std::path::{Path, PathBuf};
+    use tempdir::TempDir;
 
     /*
      * Test idea: simulate two wallets transferring funds back and forth. After initial
@@ -2082,6 +2087,7 @@ pub mod generic_wallet_tests {
                 definition: asset1.clone(),
                 name: None,
                 description: None,
+                icon: None,
                 mint_info: None,
                 verified: true,
                 temporary: true,
@@ -2093,6 +2099,7 @@ pub mod generic_wallet_tests {
                 definition: asset2.clone(),
                 name: None,
                 description: None,
+                icon: None,
                 mint_info: None,
                 verified: true,
                 temporary: true,
@@ -2124,6 +2131,7 @@ pub mod generic_wallet_tests {
                 definition: asset2.clone(),
                 name: None,
                 description: None,
+                icon: None,
                 mint_info: None,
                 verified: true,
                 temporary: true,
@@ -2154,6 +2162,7 @@ pub mod generic_wallet_tests {
                 definition: asset2.clone(),
                 name: None,
                 description: None,
+                icon: None,
                 mint_info: Some(mint_info2),
                 verified: true,
                 temporary: false,
@@ -2297,6 +2306,7 @@ pub mod generic_wallet_tests {
         let viewable_asset = wallets[0]
             .0
             .define_asset(
+                "asset1".into(),
                 "asset1".as_bytes(),
                 AssetPolicy::default()
                     .set_auditor_pub_key(viewing_key.clone())
@@ -2308,6 +2318,7 @@ pub mod generic_wallet_tests {
         let freezable_asset = wallets[0]
             .0
             .define_asset(
+                "asset2".into(),
                 "asset2".as_bytes(),
                 AssetPolicy::default()
                     .set_auditor_pub_key(viewing_key.clone())
@@ -2497,5 +2508,40 @@ pub mod generic_wallet_tests {
             Some("asset2_verified_new description".into())
         );
         t.check_storage(&ledger, &wallets).await;
+    }
+
+    #[async_std::test]
+    pub async fn test_asset_icon<'a, T: SystemUnderTest<'a>>() {
+        let mut t = T::default();
+        let mut now = Instant::now();
+        let (_, mut wallets) = t.create_test_network(&[(2, 2)], vec![0], &mut now).await;
+
+        let jpeg_bytes = include_bytes!("icons/espresso.jpeg");
+        let icon = Icon::load_jpeg(Cursor::new(jpeg_bytes)).unwrap();
+        // Check that the icon is not the expected size, so we can check the resizing behavior.
+        assert_ne!(icon.size(), (64, 64));
+
+        wallets[0]
+            .0
+            .import_asset(AssetInfo::native().with_icon(icon))
+            .await
+            .unwrap();
+        let icon = wallets[0]
+            .0
+            .asset(AssetCode::native())
+            .await
+            .unwrap()
+            .icon
+            .unwrap();
+        assert_eq!(icon.size(), (64, 64));
+
+        // Test format conversion.
+        let dir = TempDir::new("icon_test").unwrap();
+        let path = &[dir.path(), Path::new("espresso_resized.png")]
+            .iter()
+            .collect::<PathBuf>();
+        icon.write_png(File::create(path).unwrap()).unwrap();
+        let loaded = Icon::load_png(BufReader::new(File::open(path).unwrap())).unwrap();
+        assert_eq!(loaded, icon);
     }
 }
