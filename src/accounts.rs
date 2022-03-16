@@ -1,3 +1,4 @@
+/// Keys and associated data.
 use crate::{txn_builder::RecordInfo, AssetInfo};
 use arbitrary::{Arbitrary, Unstructured};
 use arbitrary_wrappers::{ArbitraryAuditorKeyPair, ArbitraryFreezerKeyPair, ArbitraryUserKeyPair};
@@ -7,6 +8,7 @@ use jf_cap::keys::{
 };
 use serde::{Deserialize, Serialize};
 
+/// The persistent representation of an account.
 #[ser_test(
     arbitrary,
     ark(false),
@@ -70,6 +72,7 @@ impl<'a> Arbitrary<'a> for Account<UserKeyPair> {
     }
 }
 
+/// An account bundled with all of its related information.
 #[derive(Clone, Debug)]
 pub struct AccountInfo<Key: KeyPair> {
     pub address: Key::PubKey,
@@ -104,6 +107,7 @@ impl<Key: KeyPair> PartialEq<Self> for AccountInfo<Key> {
     }
 }
 
+/// Keys with a public part.
 pub trait KeyPair: Clone + Send + Sync {
     type PubKey: std::hash::Hash + Eq;
     fn pub_key(&self) -> Self::PubKey;

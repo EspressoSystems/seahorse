@@ -18,7 +18,7 @@
 //!
 //! Users should also be familiar with [reef], which provides traits to adapt a particular CAP
 //! ledger to the ledger-agnostic interfaces defined here.
-mod accounts;
+pub mod accounts;
 pub mod asset_library;
 pub mod cli;
 pub mod encryption;
