@@ -827,7 +827,7 @@ pub struct TransferSpec<'a> {
     ///
     /// The list may contain multiple key_pairs, or only one key_pair in which case only the
     /// associated records can be transferred.
-    pub owner_key_pairs: &'a Vec<UserKeyPair>,
+    pub sender_key_pairs: &'a Vec<UserKeyPair>,
     pub asset: &'a AssetCode,
     pub receivers: &'a [(UserPubKey, u64, bool)],
     pub fee: u64,
@@ -1015,7 +1015,7 @@ impl<L: Ledger> TransactionState<L> {
         // find input records which account for at least the total amount, and possibly some change.
         let records = self.find_records(
             &AssetCode::native(),
-            spec.owner_key_pairs,
+            spec.sender_key_pairs,
             FreezeFlag::Unfrozen,
             total_output_amount,
             None,
@@ -1098,7 +1098,7 @@ impl<L: Ledger> TransactionState<L> {
 
         // Build auxiliary info.
         let owner_addresses = spec
-            .owner_key_pairs
+            .sender_key_pairs
             .iter()
             .map(|key_pair| key_pair.address())
             .collect::<Vec<UserAddress>>();
@@ -1148,7 +1148,7 @@ impl<L: Ledger> TransactionState<L> {
         // find input records of the asset type to spend (this does not include the fee input)
         let records = self.find_records(
             spec.asset,
-            spec.owner_key_pairs,
+            spec.sender_key_pairs,
             FreezeFlag::Unfrozen,
             total_output_amount,
             None,
@@ -1272,7 +1272,7 @@ impl<L: Ledger> TransactionState<L> {
 
         // Build auxiliary info.
         let owner_addresses = spec
-            .owner_key_pairs
+            .sender_key_pairs
             .iter()
             .map(|key_pair| key_pair.address())
             .collect::<Vec<UserAddress>>();
@@ -1338,7 +1338,7 @@ impl<L: Ledger> TransactionState<L> {
     #[allow(clippy::too_many_arguments)]
     pub fn mint<'a>(
         &mut self,
-        owner_key_pair: &UserKeyPair,
+        minter_key_pair: &UserKeyPair,
         proving_key: &MintProvingKey<'a>,
         fee: u64,
         asset: &(AssetDefinition, AssetCodeSeed, Vec<u8>),
@@ -1355,7 +1355,7 @@ impl<L: Ledger> TransactionState<L> {
             blind: BlindFactor::rand(rng),
         };
 
-        let fee_input = self.find_fee_input(owner_key_pair, fee)?;
+        let fee_input = self.find_fee_input(minter_key_pair, fee)?;
         let fee_rec = fee_input.ro.clone();
         let (fee_info, fee_out_rec) = TxnFeeInfo::new(rng, fee_input, fee).unwrap();
         let rng = rng;
@@ -1376,14 +1376,14 @@ impl<L: Ledger> TransactionState<L> {
             time: Local::now(),
             asset: asset_def.code,
             kind: TransactionKind::<L>::mint(),
-            senders: vec![owner_key_pair.address()],
+            senders: vec![minter_key_pair.address()],
             receivers: vec![(receiver.address(), amount)],
             receipt: None,
         };
         Ok((
             note,
             TransactionInfo {
-                accounts: vec![owner_key_pair.address()],
+                accounts: vec![minter_key_pair.address()],
                 memos,
                 sig,
                 freeze_outputs: vec![],

@@ -1688,11 +1688,11 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
     async fn build_mint(
         &mut self,
         session: &mut WalletSession<'a, L, impl WalletBackend<'a, L>>,
-        account: &UserAddress,
+        minter: &UserAddress,
         fee: u64,
         asset_code: &AssetCode,
         amount: u64,
-        owner: UserAddress,
+        receiver: UserAddress,
     ) -> Result<(MintNote, TransactionInfo<L>), WalletError<L>> {
         let asset = self
             .assets
@@ -1707,12 +1707,12 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
                 })?;
         self.txn_state
             .mint(
-                &self.account_key_pair(account)?.clone(),
+                &self.account_key_pair(minter)?.clone(),
                 &self.proving_keys.mint,
                 fee,
                 &(asset.definition.clone(), seed, description),
                 amount,
-                session.backend.get_public_key(&owner).await?,
+                session.backend.get_public_key(&receiver).await?,
                 &mut session.rng,
             )
             .context(TransactionError)
@@ -2319,13 +2319,13 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
     /// To add transfer size requirement, call [Wallet::build_transfer] with a specified
     /// `xfr_size_requirement`.
     ///
-    /// `account`
+    /// `sender`
     /// * If provided, only this address will be used to transfer the asset.
     /// * Otherwise, all the owned addresses can be used for the transfer.
     ///
     pub async fn transfer(
         &mut self,
-        account: Option<&UserAddress>,
+        sender: Option<&UserAddress>,
         asset: &AssetCode,
         receivers: &[(UserAddress, u64)],
         fee: u64,
@@ -2335,7 +2335,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
             .map(|(addr, amount)| (addr.clone(), *amount, false))
             .collect::<Vec<_>>();
         let (note, info) = self
-            .build_transfer(account, asset, &receivers, fee, vec![], None)
+            .build_transfer(sender, asset, &receivers, fee, vec![], None)
             .await?;
         self.submit_cap(TransactionNote::Transfer(Box::new(note)), info)
             .await
@@ -2346,7 +2346,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
     /// `receivers`: list of (receiver address, amount, burn)
     pub async fn build_transfer(
         &mut self,
-        account: Option<&UserAddress>,
+        sender: Option<&UserAddress>,
         asset: &AssetCode,
         receivers: &[(UserAddress, u64, bool)],
         fee: u64,
@@ -2367,14 +2367,14 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
             })
             .try_collect::<Vec<_>>()
             .await?;
-        let owner_key_pairs = match account {
+        let sender_key_pairs = match sender {
             Some(addr) => {
                 vec![state.account_key_pair(addr)?.clone()]
             }
             None => state.key_pairs(),
         };
         let spec = TransferSpec {
-            owner_key_pairs: &owner_key_pairs,
+            sender_key_pairs: &sender_key_pairs,
             asset,
             receivers: &receivers,
             fee,
@@ -2608,15 +2608,15 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
     /// Create a mint note that assigns an asset to an owner.
     pub async fn build_mint(
         &mut self,
-        account: &UserAddress,
+        minter: &UserAddress,
         fee: u64,
         asset_code: &AssetCode,
         amount: u64,
-        owner: UserAddress,
+        receiver: UserAddress,
     ) -> Result<(MintNote, TransactionInfo<L>), WalletError<L>> {
         let WalletSharedState { state, session, .. } = &mut *self.mutex.lock().await;
         state
-            .build_mint(session, account, fee, asset_code, amount, owner)
+            .build_mint(session, minter, fee, asset_code, amount, receiver)
             .await
     }
 
@@ -2625,14 +2625,14 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
     /// See [Wallet::build_mint].
     pub async fn mint(
         &mut self,
-        account: &UserAddress,
+        minter: &UserAddress,
         fee: u64,
         asset_code: &AssetCode,
         amount: u64,
-        owner: UserAddress,
+        receiver: UserAddress,
     ) -> Result<TransactionReceipt<L>, WalletError<L>> {
         let (note, info) = self
-            .build_mint(account, fee, asset_code, amount, owner)
+            .build_mint(minter, fee, asset_code, amount, receiver)
             .await?;
         self.submit_cap(TransactionNote::Mint(Box::new(note)), info)
             .await
@@ -2659,7 +2659,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
     ///   make exact change with the freezable records we have.
     pub async fn build_freeze(
         &mut self,
-        account: &UserAddress,
+        freezer: &UserAddress,
         fee: u64,
         asset: &AssetCode,
         amount: u64,
@@ -2669,7 +2669,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
         state
             .build_freeze(
                 session,
-                account,
+                freezer,
                 fee,
                 asset,
                 amount,
@@ -2684,14 +2684,14 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
     /// See [Wallet::build_freeze].    
     pub async fn freeze(
         &mut self,
-        account: &UserAddress,
+        freezer: &UserAddress,
         fee: u64,
         asset: &AssetCode,
         amount: u64,
         owner: UserAddress,
     ) -> Result<TransactionReceipt<L>, WalletError<L>> {
         let (note, info) = self
-            .build_freeze(account, fee, asset, amount, owner)
+            .build_freeze(freezer, fee, asset, amount, owner)
             .await?;
         self.submit_cap(TransactionNote::Freeze(Box::new(note)), info)
             .await
@@ -2703,7 +2703,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
     /// of the target's assets.
     pub async fn build_unfreeze(
         &mut self,
-        account: &UserAddress,
+        freezer: &UserAddress,
         fee: u64,
         asset: &AssetCode,
         amount: u64,
@@ -2713,7 +2713,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
         state
             .build_freeze(
                 session,
-                account,
+                freezer,
                 fee,
                 asset,
                 amount,
@@ -2728,14 +2728,14 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
     /// See [Wallet::build_unfreeze].
     pub async fn unfreeze(
         &mut self,
-        account: &UserAddress,
+        freezer: &UserAddress,
         fee: u64,
         asset: &AssetCode,
         amount: u64,
         owner: UserAddress,
     ) -> Result<TransactionReceipt<L>, WalletError<L>> {
         let (note, info) = self
-            .build_unfreeze(account, fee, asset, amount, owner)
+            .build_unfreeze(freezer, fee, asset, amount, owner)
             .await?;
         self.submit_cap(TransactionNote::Freeze(Box::new(note)), info)
             .await
