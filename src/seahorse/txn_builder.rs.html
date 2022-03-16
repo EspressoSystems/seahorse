@@ -1817,6 +1817,10 @@
 <span id="1817">1817</span>
 <span id="1818">1818</span>
 <span id="1819">1819</span>
+<span id="1820">1820</span>
+<span id="1821">1821</span>
+<span id="1822">1822</span>
+<span id="1823">1823</span>
 </pre><pre class="rust"><code><span class="comment">// Copyright (c) 2022 Espresso Systems (espressosys.com)</span>
 <span class="comment">// This file is part of the Seahorse library.</span>
 
@@ -2908,10 +2912,11 @@
             .<span class="ident">into_iter</span>()
             .<span class="ident">chain</span>(<span class="ident">outputs</span>.<span class="ident">into_iter</span>())
             .<span class="ident">collect</span>();
-        <span class="comment">// Always generate a memo for the fee change. Generate memos for the receiver outputs if</span>
-        <span class="comment">// they are not to be burned.</span>
         <span class="kw">let</span> <span class="ident">gen_memos</span> <span class="op">=</span>
-            <span class="ident">std::iter::once</span>(<span class="bool-val">true</span>).<span class="ident">chain</span>(<span class="ident">spec</span>.<span class="ident">receivers</span>.<span class="ident">iter</span>().<span class="ident">map</span>(<span class="op">|</span>(<span class="kw">_</span>, <span class="kw">_</span>, <span class="ident">burn</span>)<span class="op">|</span> <span class="op">!</span><span class="kw-2">*</span><span class="ident">burn</span>));
+            <span class="comment">// Always generate a memo for the fee change.</span>
+            <span class="ident">std::iter::once</span>(<span class="bool-val">true</span>)
+            <span class="comment">// Generate memos for the receiver outputs if they are not to be burned.</span>
+            .<span class="ident">chain</span>(<span class="ident">spec</span>.<span class="ident">receivers</span>.<span class="ident">iter</span>().<span class="ident">map</span>(<span class="op">|</span>(<span class="kw">_</span>, <span class="kw">_</span>, <span class="ident">burn</span>)<span class="op">|</span> <span class="op">!</span><span class="kw-2">*</span><span class="ident">burn</span>));
         <span class="kw">let</span> (<span class="ident">memos</span>, <span class="ident">sig</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">generate_memos</span>(<span class="kw-2">&amp;</span><span class="ident">outputs</span>, <span class="ident">gen_memos</span>, <span class="ident">rng</span>, <span class="kw-2">&amp;</span><span class="ident">kp</span>)<span class="question-mark">?</span>;
 
         <span class="comment">// Build auxiliary info.</span>
@@ -3130,7 +3135,10 @@
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(<span class="ident">Vec</span><span class="op">&lt;</span><span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">ReceiverMemo</span><span class="op">&gt;</span><span class="op">&gt;</span>, <span class="ident">Signature</span>), <span class="ident">TransactionError</span><span class="op">&gt;</span> {
         <span class="kw">let</span> <span class="ident">memos</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="kw">_</span><span class="op">&gt;</span> <span class="op">=</span> <span class="ident">records</span>
             .<span class="ident">iter</span>()
-            .<span class="ident">zip</span>(<span class="ident">include</span>)
+            <span class="comment">// Any remaining outputs beyond the length of `include` are dummy outputs. We do want to</span>
+            <span class="comment">// generate memos for these, as not doing so could reveal to observers that these</span>
+            <span class="comment">// outputs are dummies, which is supposed to be private information.</span>
+            .<span class="ident">zip</span>(<span class="ident">include</span>.<span class="ident">into_iter</span>().<span class="ident">chain</span>(<span class="ident">std::iter::repeat</span>(<span class="bool-val">true</span>)))
             .<span class="ident">map</span>(<span class="op">|</span>(<span class="ident">ro</span>, <span class="ident">include</span>)<span class="op">|</span> {
                 <span class="kw">if</span> <span class="ident">include</span> {
                     <span class="prelude-val">Ok</span>(<span class="prelude-val">Some</span>(
