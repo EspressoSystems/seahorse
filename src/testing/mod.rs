@@ -476,7 +476,51 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         let ledger = ledger.lock().await;
         for ((wallet, _), storage) in wallets.iter().zip(&ledger.storage) {
             let WalletSharedState { state, .. } = &*wallet.mutex.lock().await;
-            assert_wallet_states_eq(state, &storage.lock().await.load().await.unwrap());
+
+            let mut state = state.clone();
+            let mut loaded = storage.lock().await.load().await.unwrap();
+
+            // The persisted state should not include any temporary assets.
+            state.assets = AssetLibrary::new(
+                state
+                    .assets
+                    .into_iter()
+                    .filter(|asset| !asset.temporary)
+                    .collect(),
+                state.viewing_accounts.keys().cloned().collect(),
+            );
+
+            // The in-memory state is allowed to differ from the persisted state in the details of
+            // verified assets, so filter those out of the comparison.
+            let verified = state
+                .assets
+                .iter()
+                .filter_map(|asset| {
+                    if asset.verified {
+                        Some(asset.definition.code)
+                    } else {
+                        None
+                    }
+                })
+                .collect::<HashSet<_>>();
+            state.assets = AssetLibrary::new(
+                state
+                    .assets
+                    .into_iter()
+                    .filter(|asset| !verified.contains(&asset.definition.code))
+                    .collect(),
+                state.viewing_accounts.keys().cloned().collect(),
+            );
+            loaded.assets = AssetLibrary::new(
+                loaded
+                    .assets
+                    .into_iter()
+                    .filter(|asset| !verified.contains(&asset.definition.code))
+                    .collect(),
+                loaded.viewing_accounts.keys().cloned().collect(),
+            );
+
+            assert_wallet_states_eq(&state, &loaded);
         }
     }
 }

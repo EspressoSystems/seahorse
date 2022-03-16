@@ -6,8 +6,8 @@
 // You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use ark_serialize::CanonicalDeserialize;
-use jf_cap::{structs::AssetDefinition, KeyPair};
-use seahorse::asset_library::VerifiedAssetLibrary;
+use jf_cap::KeyPair;
+use seahorse::asset_library::{AssetInfo, VerifiedAssetLibrary};
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, Write};
 use std::path::PathBuf;
@@ -26,7 +26,7 @@ struct Options {
     #[structopt(short = "n", long)]
     include_native: bool,
 
-    /// Include asset definitions in the library by reading them from IN (separated by newlines).
+    /// Include assets in the library by reading them from IN (separated by newlines).
     #[structopt(short, long, name = "IN")]
     input: Vec<PathBuf>,
 
@@ -39,7 +39,7 @@ struct Options {
     key: String,
 
     /// Optional list of assets to include, passed on the command line rather than using --input.
-    assets: Vec<AssetDefinition>,
+    assets: Vec<AssetInfo>,
 }
 
 fn main() -> io::Result<()> {
@@ -64,13 +64,13 @@ fn main() -> io::Result<()> {
     // 	* literal assets given on the command line
     let mut assets = vec![];
     if opt.include_native {
-        assets.push(AssetDefinition::native());
+        assets.push(AssetInfo::native());
     }
     for path in opt.input {
         let file = BufReader::new(File::open(&path)?);
         for line in file.lines() {
             let line = line?;
-            let asset = match AssetDefinition::from_str(&line) {
+            let asset = match AssetInfo::from_str(&line) {
                 Ok(asset) => asset,
                 Err(err) => {
                     eprintln!("invalid asset {} in file {:?}: {}", line, path, err);
