@@ -1089,10 +1089,11 @@ impl<L: Ledger> TransactionState<L> {
             .into_iter()
             .chain(outputs.into_iter())
             .collect();
-        // Always generate a memo for the fee change. Generate memos for the receiver outputs if
-        // they are not to be burned.
         let gen_memos =
-            std::iter::once(true).chain(spec.receivers.iter().map(|(_, _, burn)| !*burn));
+            // Always generate a memo for the fee change.
+            std::iter::once(true)
+            // Generate memos for the receiver outputs if they are not to be burned.
+            .chain(spec.receivers.iter().map(|(_, _, burn)| !*burn));
         let (memos, sig) = self.generate_memos(&outputs, gen_memos, rng, &kp)?;
 
         // Build auxiliary info.
@@ -1311,7 +1312,10 @@ impl<L: Ledger> TransactionState<L> {
     ) -> Result<(Vec<Option<ReceiverMemo>>, Signature), TransactionError> {
         let memos: Vec<_> = records
             .iter()
-            .zip(include)
+            // Any remaining outputs beyond the length of `include` are dummy outputs. We do want to
+            // generate memos for these, as not doing so could reveal to observers that these
+            // outputs are dummies, which is supposed to be private information.
+            .zip(include.into_iter().chain(std::iter::repeat(true)))
             .map(|(ro, include)| {
                 if include {
                     Ok(Some(
