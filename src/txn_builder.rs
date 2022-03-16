@@ -827,7 +827,7 @@ pub struct TransferSpec<'a> {
     ///
     /// The list may contain multiple key_pairs, or only one key_pair in which case only the
     /// associated records can be transferred.
-    pub owner_key_pairs: &'a Vec<UserKeyPair>,
+    pub sender_key_pairs: &'a Vec<UserKeyPair>,
     pub asset: &'a AssetCode,
     pub receivers: &'a [(UserPubKey, u64, bool)],
     pub fee: u64,
@@ -1015,7 +1015,7 @@ impl<L: Ledger> TransactionState<L> {
         // find input records which account for at least the total amount, and possibly some change.
         let records = self.find_records(
             &AssetCode::native(),
-            spec.owner_key_pairs,
+            spec.sender_key_pairs,
             FreezeFlag::Unfrozen,
             total_output_amount,
             None,
@@ -1097,7 +1097,7 @@ impl<L: Ledger> TransactionState<L> {
 
         // Build auxiliary info.
         let owner_addresses = spec
-            .owner_key_pairs
+            .sender_key_pairs
             .iter()
             .map(|key_pair| key_pair.address())
             .collect::<Vec<UserAddress>>();
@@ -1147,7 +1147,7 @@ impl<L: Ledger> TransactionState<L> {
         // find input records of the asset type to spend (this does not include the fee input)
         let records = self.find_records(
             spec.asset,
-            spec.owner_key_pairs,
+            spec.sender_key_pairs,
             FreezeFlag::Unfrozen,
             total_output_amount,
             None,
@@ -1271,7 +1271,7 @@ impl<L: Ledger> TransactionState<L> {
 
         // Build auxiliary info.
         let owner_addresses = spec
-            .owner_key_pairs
+            .sender_key_pairs
             .iter()
             .map(|key_pair| key_pair.address())
             .collect::<Vec<UserAddress>>();
