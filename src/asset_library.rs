@@ -92,7 +92,10 @@ impl CanonicalDeserialize for Icon {
 
 impl<'a> Arbitrary<'a> for Icon {
     fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
+        // Each row in the image is an array of pixels, which are each 3 u8's.
         let width = u.arbitrary_len::<[u8; 3]>()?;
+        // The height corresponds to the length of an array of rows; that is, a container whose
+        // elements are arrays (`Vec`) of pixels (`[u8; 3]`), hence `Vec<[u8; 3]>`.
         let height = u.arbitrary_len::<Vec<[u8; 3]>>()?;
         let mut buf = vec![0; width * height * 3];
         u.fill_buffer(&mut buf)?;
