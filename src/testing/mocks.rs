@@ -106,7 +106,7 @@ pub struct MockNetwork<'a> {
     records: MerkleTree,
     committed_blocks: Vec<(cap::Block, Vec<Vec<u64>>)>,
     proving_keys: Arc<ProverKeySet<'a, key_set::OrderByOutputs>>,
-    pub address_map: HashMap<UserAddress, UserPubKey>,
+    address_map: HashMap<UserAddress, UserPubKey>,
     events: MockEventSource<cap::Ledger>,
 }
 
