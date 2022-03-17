@@ -1931,7 +1931,7 @@
             <span class="ident">create_asset</span>,
             <span class="string">&quot;create a new asset&quot;</span>,
             <span class="ident">C</span>,
-            <span class="op">|</span><span class="ident">io</span>, <span class="ident">wallet</span>, <span class="ident">desc</span>: <span class="ident">String</span>; <span class="ident">viewing_key</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">AuditorPubKey</span><span class="op">&gt;</span>,
+            <span class="op">|</span><span class="ident">io</span>, <span class="ident">wallet</span>, <span class="ident">desc</span>: <span class="ident">String</span>; <span class="ident">name</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">String</span><span class="op">&gt;</span>, <span class="ident">viewing_key</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">AuditorPubKey</span><span class="op">&gt;</span>,
              <span class="ident">freezing_key</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">FreezerPubKey</span><span class="op">&gt;</span>, <span class="ident">view_amount</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">bool</span><span class="op">&gt;</span>,
              <span class="ident">view_address</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">bool</span><span class="op">&gt;</span>, <span class="ident">view_blind</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">bool</span><span class="op">&gt;</span>, <span class="ident">viewing_threshold</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">u64</span><span class="op">&gt;</span><span class="op">|</span>
             {
@@ -1972,7 +1972,7 @@
                 <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">viewing_threshold</span>) <span class="op">=</span> <span class="ident">viewing_threshold</span> {
                     <span class="ident">policy</span> <span class="op">=</span> <span class="ident">policy</span>.<span class="ident">set_reveal_threshold</span>(<span class="ident">viewing_threshold</span>);
                 }
-                <span class="kw">match</span> <span class="ident">wallet</span>.<span class="ident">define_asset</span>(<span class="ident">desc</span>.<span class="ident">as_bytes</span>(), <span class="ident">policy</span>).<span class="kw">await</span> {
+                <span class="kw">match</span> <span class="ident">wallet</span>.<span class="ident">define_asset</span>(<span class="ident">name</span>.<span class="ident">unwrap_or_default</span>(), <span class="ident">desc</span>.<span class="ident">as_bytes</span>(), <span class="ident">policy</span>).<span class="kw">await</span> {
                     <span class="prelude-val">Ok</span>(<span class="ident">def</span>) <span class="op">=</span><span class="op">&gt;</span> {
                         <span class="macro">cli_writeln!</span>(<span class="ident">io</span>, <span class="string">&quot;{}&quot;</span>, <span class="ident">def</span>.<span class="ident">code</span>);
                     }
@@ -2828,7 +2828,7 @@
         <span class="comment">// Update later with mint info.</span>
         <span class="macro">writeln!</span>(
             <span class="ident">input</span>,
-            <span class="string">&quot;import_asset definition:{},seed:{},description:my_asset&quot;</span>,
+            <span class="string">&quot;import_asset definition:{},seed:{},mint_description:my_asset&quot;</span>,
             <span class="ident">definition</span>, <span class="ident">seed</span>
         )
         .<span class="ident">unwrap</span>();
