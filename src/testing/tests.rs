@@ -1976,7 +1976,9 @@ pub mod generic_wallet_tests {
             .unwrap();
         t.sync(&ledger, &wallets).await;
 
-        // Import an asset (we'll use `wallets[1]` to define it).
+        // Import an asset (we'll use `wallets[1]` to define it). As an added check, we will
+        // "maliciously" mark the imported `AssetInfo` as `verified`, to check that the wallet does
+        // not actually consider this a verified asset without a signature check.
         let imported_asset = wallets[1]
             .0
             .define_asset(
@@ -1986,11 +1988,9 @@ pub mod generic_wallet_tests {
             )
             .await
             .unwrap();
-        wallets[0]
-            .0
-            .import_asset(AssetInfo::from(imported_asset.clone()))
-            .await
-            .unwrap();
+        let mut import_info = AssetInfo::from(imported_asset.clone());
+        import_info.verified = true;
+        wallets[0].0.import_asset(import_info).await.unwrap();
 
         // Now check that all expected asset types appear in wallets[0]'s asset library.
         let get_asset = |code| {
@@ -2015,18 +2015,21 @@ pub mod generic_wallet_tests {
             get_asset(defined_asset.code).await.description.unwrap(),
             "defined_asset description"
         );
+        assert!(!get_asset(defined_asset.code).await.verified);
         assert_eq!(
             get_asset(minted_asset.code).await,
             AssetInfo::from(minted_asset.clone())
         );
         assert_eq!(get_asset(minted_asset.code).await.name, None);
         assert_eq!(get_asset(minted_asset.code).await.description, None);
+        assert!(!get_asset(minted_asset.code).await.verified);
         assert_eq!(
             get_asset(imported_asset.code).await,
             AssetInfo::from(imported_asset.clone())
         );
         assert_eq!(get_asset(imported_asset.code).await.name, None);
         assert_eq!(get_asset(imported_asset.code).await.description, None);
+        assert!(!get_asset(imported_asset.code).await.verified);
     }
 
     #[async_std::test]
