@@ -35,6 +35,7 @@ pub mod generic_wallet_tests {
     use async_std::task::block_on;
     use jf_cap::KeyPair;
     use proptest::{collection::vec, strategy::Strategy, test_runner, test_runner::TestRunner};
+    use reef::traits::TransactionKind as _;
     use std::fs::File;
     use std::io::{BufReader, Cursor};
     use std::iter::once;
@@ -1565,7 +1566,9 @@ pub mod generic_wallet_tests {
     pub async fn test_generate_user_key<'a, T: SystemUnderTest<'a>>() {
         let mut t = T::default();
         let mut now = Instant::now();
-        let (ledger, mut wallets) = t.create_test_network(&[(3, 4)], vec![0, 8], &mut now).await;
+        let (ledger, mut wallets) = t
+            .create_test_network(&[(3, 4)], vec![0, 100], &mut now)
+            .await;
 
         // Figure out the next key in `wallets[0]`s deterministic key stream without adding it to
         // the wallet. We will use this to create a record owned by this key, _and then_ generate
@@ -1607,7 +1610,41 @@ pub mod generic_wallet_tests {
             0
         );
 
-        // Now add the key and check that the scan discovers the existing record.
+        // Generate a lot of events to slow down the key scan.
+        for _ in 0..10 {
+            wallets[1]
+                .0
+                .transfer(
+                    Some(&send_addr),
+                    &AssetCode::native(),
+                    &[(send_addr.clone(), 1)],
+                    1,
+                )
+                .await
+                .unwrap();
+            t.sync(&ledger, wallets.as_slice()).await;
+        }
+
+        // Pre-compute a transaction to release after the key scan starts, so that the Merkle root
+        // when the key scan ends will be different from when it started, and we can check if it
+        // updates its Merkle paths correctly.
+        {
+            let mut ledger = ledger.lock().await;
+            ledger.set_block_size(1).unwrap();
+            ledger.hold_next_transaction();
+        }
+        wallets[1]
+            .0
+            .transfer(
+                Some(&send_addr),
+                &AssetCode::native(),
+                &[(send_addr.clone(), 1)],
+                1,
+            )
+            .await
+            .unwrap();
+
+        // Now add the key and start a scan from event 0.
         assert_eq!(
             key.pub_key(),
             wallets[0]
@@ -1616,7 +1653,17 @@ pub mod generic_wallet_tests {
                 .await
                 .unwrap()
         );
+
+        // Immediately change the Merkle root.
+        {
+            ledger.lock().await.release_held_transaction();
+        }
+        t.sync(&ledger, &wallets).await;
+
+        // Check that the scan is persisted, so it would restart if the wallet crashed.
         t.check_storage(&ledger, &wallets).await;
+
+        // Check that the scan discovered the existing record.
         wallets[0].0.await_key_scan(&key.address()).await.unwrap();
         assert_eq!(
             wallets[0]
@@ -1627,7 +1674,7 @@ pub mod generic_wallet_tests {
         );
 
         // Now check that the regular event handling loop discovers records owned by this key going
-        //forwards.
+        // forwards.
         wallets[1]
             .0
             .transfer(

@@ -17,6 +17,7 @@
 /// test suite for the generic wallet interface, which is instantiated for each ledger/backend.
 use super::*;
 use async_std::sync::{Arc, Mutex};
+use chrono::Local;
 use futures::channel::mpsc;
 use jf_cap::structs::NoteType;
 use jf_cap::utils::compute_universal_param_size;
@@ -24,7 +25,7 @@ use jf_cap::{proof::UniversalParam, MerkleTree, Signature, TransactionVerifyingK
 use key_set::{KeySet, OrderByOutputs, ProverKeySet, VerifierKeySet};
 use lazy_static::lazy_static;
 use rand_chacha::rand_core::RngCore;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::pin::Pin;
 use std::time::Instant;
 
@@ -73,11 +74,12 @@ pub struct MockLedger<'a, L: Ledger, N: MockNetwork<'a, L>, S: WalletStorage<'a,
     storage: Vec<Arc<Mutex<S>>>,
     missing_memos: usize,
     sync_index: EventIndex,
+    initial_records: MerkleTree,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
 
 impl<'a, L: Ledger, N: MockNetwork<'a, L>, S: WalletStorage<'a, L>> MockLedger<'a, L, N, S> {
-    pub fn new(network: N) -> Self {
+    pub fn new(network: N, records: MerkleTree) -> Self {
         Self {
             network,
             current_block: Block::<L>::new(vec![]),
@@ -88,6 +90,7 @@ impl<'a, L: Ledger, N: MockNetwork<'a, L>, S: WalletStorage<'a, L>> MockLedger<'
             storage: Default::default(),
             missing_memos: 0,
             sync_index: Default::default(),
+            initial_records: records,
             _phantom: Default::default(),
         }
     }
@@ -180,6 +183,13 @@ impl<'a, L: Ledger, N: MockNetwork<'a, L>, S: WalletStorage<'a, L>> MockLedger<'
             self.flush()?;
         }
         Ok(())
+    }
+
+    pub fn get_initial_scan_state(
+        &self,
+        _from: EventIndex,
+    ) -> Result<(MerkleTree, EventIndex), WalletError<L>> {
+        Ok((self.initial_records.clone(), EventIndex::default()))
     }
 }
 
@@ -345,6 +355,7 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
                 initial_records,
             )
             .await,
+            record_merkle_tree.clone(),
         )));
 
         // Create a wallet for each user based on the validator and the per-user information
