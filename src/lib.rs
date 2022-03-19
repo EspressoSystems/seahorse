@@ -2304,12 +2304,17 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
     }
 
     /// List past transactions involving this wallet.
-    pub async fn transaction_history(
-        &self,
-    ) -> Result<Vec<TransactionHistoryEntry<L>>, WalletError<L>> {
-        let WalletSharedState { session, .. } = &mut *self.mutex.lock().await;
-        let mut storage = session.backend.storage().await;
-        storage.transaction_history().await
+    #[allow(clippy::type_complexity)]
+    pub fn transaction_history<'l>(
+        &'l self,
+    ) -> std::pin::Pin<
+        Box<dyn SendFuture<'a, Result<Vec<TransactionHistoryEntry<L>>, WalletError<L>>> + 'l>,
+    > {
+        Box::pin(async move {
+            let WalletSharedState { session, .. } = &mut *self.mutex.lock().await;
+            let mut storage = session.backend.storage().await;
+            storage.transaction_history().await
+        })
     }
 
     /// Basic transfer without customization.
