@@ -2922,6 +2922,16 @@
 <span id="2922">2922</span>
 <span id="2923">2923</span>
 <span id="2924">2924</span>
+<span id="2925">2925</span>
+<span id="2926">2926</span>
+<span id="2927">2927</span>
+<span id="2928">2928</span>
+<span id="2929">2929</span>
+<span id="2930">2930</span>
+<span id="2931">2931</span>
+<span id="2932">2932</span>
+<span id="2933">2933</span>
+<span id="2934">2934</span>
 </pre><pre class="rust"><code><span class="comment">// Copyright (c) 2022 Espresso Systems (espressosys.com)</span>
 <span class="comment">// This file is part of the Seahorse library.</span>
 
@@ -5236,12 +5246,17 @@
     }
 
     <span class="doccomment">/// List past transactions involving this wallet.</span>
-    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">transaction_history</span>(
-        <span class="kw-2">&amp;</span><span class="self">self</span>,
-    ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">TransactionHistoryEntry</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span>, <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
-        <span class="kw">let</span> <span class="ident">WalletSharedState</span> { <span class="ident">session</span>, .. } <span class="op">=</span> <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="kw-2">*</span><span class="self">self</span>.<span class="ident">mutex</span>.<span class="ident">lock</span>().<span class="kw">await</span>;
-        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">storage</span> <span class="op">=</span> <span class="ident">session</span>.<span class="ident">backend</span>.<span class="ident">storage</span>().<span class="kw">await</span>;
-        <span class="ident">storage</span>.<span class="ident">transaction_history</span>().<span class="kw">await</span>
+    <span class="attribute">#[<span class="ident">allow</span>(<span class="ident">clippy::type_complexity</span>)]</span>
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">transaction_history</span><span class="op">&lt;</span><span class="lifetime">&#39;l</span><span class="op">&gt;</span>(
+        <span class="kw-2">&amp;</span><span class="lifetime">&#39;l</span> <span class="self">self</span>,
+    ) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">std::pin::Pin</span><span class="op">&lt;</span>
+        <span class="ident">Box</span><span class="op">&lt;</span><span class="kw">dyn</span> <span class="ident">SendFuture</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">TransactionHistoryEntry</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span>, <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span><span class="op">&gt;</span> <span class="op">+</span> <span class="lifetime">&#39;l</span><span class="op">&gt;</span>,
+    <span class="op">&gt;</span> {
+        <span class="ident">Box::pin</span>(<span class="kw">async</span> <span class="kw">move</span> {
+            <span class="kw">let</span> <span class="ident">WalletSharedState</span> { <span class="ident">session</span>, .. } <span class="op">=</span> <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="kw-2">*</span><span class="self">self</span>.<span class="ident">mutex</span>.<span class="ident">lock</span>().<span class="kw">await</span>;
+            <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">storage</span> <span class="op">=</span> <span class="ident">session</span>.<span class="ident">backend</span>.<span class="ident">storage</span>().<span class="kw">await</span>;
+            <span class="ident">storage</span>.<span class="ident">transaction_history</span>().<span class="kw">await</span>
+        })
     }
 
     <span class="doccomment">/// Basic transfer without customization.</span>
@@ -5351,7 +5366,12 @@
     }
 
     <span class="doccomment">/// Add an asset to the asset library.</span>
-    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">import_asset</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">asset</span>: <span class="ident">AssetInfo</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(), <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
+    <span class="doccomment">///</span>
+    <span class="doccomment">/// Note that this function cannot be used to import verified assets. If the `verified` flag is</span>
+    <span class="doccomment">/// set on `asset`, it will simply be ignored. Verified assets can only be imported using</span>
+    <span class="doccomment">/// [Wallet::verify_assets], conditional on a signature check.</span>
+    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">import_asset</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="kw-2">mut</span> <span class="ident">asset</span>: <span class="ident">AssetInfo</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(), <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
+        <span class="ident">asset</span>.<span class="ident">verified</span> <span class="op">=</span> <span class="bool-val">false</span>;
         <span class="kw">let</span> <span class="ident">WalletSharedState</span> { <span class="ident">state</span>, <span class="ident">session</span>, .. } <span class="op">=</span> <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="kw-2">*</span><span class="self">self</span>.<span class="ident">mutex</span>.<span class="ident">lock</span>().<span class="kw">await</span>;
         <span class="ident">state</span>.<span class="ident">import_asset</span>(<span class="ident">session</span>, <span class="ident">asset</span>).<span class="kw">await</span>
     }
