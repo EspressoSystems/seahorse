@@ -46,6 +46,7 @@ commit = { git = "https://github.com/EspressoSystems/commit.git", tag = "0.1.0" 
 key-set = { git = "https://github.com/EspressoSystems/key-set.git" }
 espresso-macros = { git = "https://github.com/EspressoSystems/espresso-macros.git" }
 jf-cap = { features=["std"], git = "https://github.com/EspressoSystems/cap.git" }
+jf-primitives = { features=["std"], git = "https://github.com/EspressoSystems/jellyfish.git" }
 jf-utils = { features=["std"], git = "https://github.com/EspressoSystems/jellyfish.git" }
 arbitrary-wrappers = { git = "https://github.com/EspressoSystems/arbitrary-wrappers.git" }
 net = { git = "https://github.com/EspressoSystems/net.git" }

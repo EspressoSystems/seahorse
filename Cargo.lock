@@ -3218,6 +3218,7 @@ dependencies = [
  "image",
  "itertools",
  "jf-cap",
+ "jf-primitives",
  "jf-utils",
  "key-set",
  "lazy_static",

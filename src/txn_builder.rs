@@ -137,7 +137,7 @@ pub struct RecordDatabase {
     // record (size, uid) indexed by asset type, owner, and freeze status, for easy allocation as
     // transfer or freeze inputs. The records for each asset are ordered by increasing size, which
     // makes it easy to implement a worst-fit allocator that minimizes fragmentation.
-    asset_records: HashMap<(AssetCode, UserPubKey, FreezeFlag), BTreeSet<(u64, u64)>>,
+    asset_records: HashMap<(AssetCode, UserAddress, FreezeFlag), BTreeSet<(u64, u64)>>,
     // record uids indexed by nullifier, for easy removal when confirmed as transfer inputs
     nullifier_records: HashMap<Nullifier, u64>,
 }
@@ -150,7 +150,7 @@ impl RecordDatabase {
             assert_eq!(*uid, record.uid);
             assert!(self.asset_records[&(
                 record.ro.asset_def.code,
-                record.ro.pub_key.clone(),
+                record.ro.pub_key.address(),
                 record.ro.freeze_flag
             )]
                 .contains(&(record.ro.amount, *uid)));
@@ -174,7 +174,7 @@ impl RecordDatabase {
     pub fn input_records<'a>(
         &'a self,
         asset: &AssetCode,
-        owner: &UserPubKey,
+        owner: &UserAddress,
         frozen: FreezeFlag,
         now: u64,
     ) -> impl Iterator<Item = &'a RecordInfo> {
@@ -198,7 +198,7 @@ impl RecordDatabase {
     pub fn input_record_with_amount(
         &self,
         asset: &AssetCode,
-        owner: &UserPubKey,
+        owner: &UserAddress,
         frozen: FreezeFlag,
         amount: u64,
         now: u64,
@@ -260,7 +260,7 @@ impl RecordDatabase {
         self.asset_records
             .entry((
                 rec.ro.asset_def.code,
-                rec.ro.pub_key.clone(),
+                rec.ro.pub_key.address(),
                 rec.ro.freeze_flag,
             ))
             .or_insert_with(BTreeSet::new)
@@ -279,7 +279,7 @@ impl RecordDatabase {
             // empty, remove the whole collection.
             let asset_key = &(
                 record.ro.asset_def.code,
-                record.ro.pub_key.clone(),
+                record.ro.pub_key.address(),
                 record.ro.freeze_flag,
             );
             let asset_records = self.asset_records.get_mut(asset_key).unwrap();
@@ -896,7 +896,7 @@ where
 impl<L: Ledger> TransactionState<L> {
     pub fn balance(&self, asset: &AssetCode, pub_key: &UserPubKey, frozen: FreezeFlag) -> u64 {
         self.records
-            .input_records(asset, pub_key, frozen, self.validator.now())
+            .input_records(asset, &pub_key.address(), frozen, self.validator.now())
             .map(|record| record.ro.amount)
             .sum()
     }
@@ -1404,7 +1404,7 @@ impl<L: Ledger> TransactionState<L> {
         fee: u64,
         asset: &AssetDefinition,
         amount: u64,
-        target: UserPubKey,
+        owner: UserAddress,
         outputs_frozen: FreezeFlag,
         rng: &mut ChaChaRng,
     ) -> Result<(FreezeNote, TransactionInfo<L>), TransactionError> {
@@ -1415,7 +1415,7 @@ impl<L: Ledger> TransactionState<L> {
         };
         let (input_records, _) = self.find_records_with_pub_key(
             &asset.code,
-            &target,
+            &owner,
             inputs_frozen,
             amount,
             None,
@@ -1457,7 +1457,7 @@ impl<L: Ledger> TransactionState<L> {
                 FreezeFlag::Unfrozen => TransactionKind::<L>::unfreeze(),
             },
             senders: vec![fee_key_pair.address()],
-            receivers: vec![(target.address(), amount)],
+            receivers: vec![(owner, amount)],
             receipt: None,
         };
         Ok((
@@ -1520,15 +1520,15 @@ impl<L: Ledger> TransactionState<L> {
     /// Returns a list of record openings and UIDs, and the change amount.
     ///
     /// `allow_insufficient`
-    /// * If true, the change amount may be negative, meaning the address owned by the provided
-    /// public key doesn't have sufficient balance, which isn't necessarily an error since a total
-    /// balance can be aggragated by multiple addresses.
+    /// * If true, the change amount may be negative, meaning the provided address doesn't have
+    /// sufficient balance, which isn't necessarily an error since a total balance can be
+    /// aggragated by multiple addresses.
     /// * Otherwise, the change amount must be nonnegative.
     #[allow(clippy::type_complexity)]
     fn find_records_with_pub_key(
         &self,
         asset: &AssetCode,
-        owner: &UserPubKey,
+        owner: &UserAddress,
         frozen: FreezeFlag,
         amount: u64,
         max_records: Option<usize>,
@@ -1607,7 +1607,7 @@ impl<L: Ledger> TransactionState<L> {
         for owner_key_pair in owner_key_pairs {
             let (input_records, change) = self.find_records_with_pub_key(
                 asset,
-                &owner_key_pair.pub_key(),
+                &owner_key_pair.pub_key().address(),
                 frozen,
                 target_amount,
                 max_records.map(|max| max - records.len()),
@@ -1640,7 +1640,7 @@ impl<L: Ledger> TransactionState<L> {
         let (ro, uid) = self
             .find_records_with_pub_key(
                 &AssetCode::native(),
-                &owner_key_pair.pub_key(),
+                &owner_key_pair.pub_key().address(),
                 FreezeFlag::Unfrozen,
                 fee,
                 Some(1),

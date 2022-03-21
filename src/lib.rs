@@ -72,6 +72,7 @@ use jf_cap::{
     transfer::TransferNote,
     MerkleLeafProof, MerklePath, TransactionNote, VerKey,
 };
+use jf_primitives::aead;
 use key_set::ProverKeySet;
 use rand_chacha::rand_core::SeedableRng;
 use rand_chacha::ChaChaRng;
@@ -1381,7 +1382,14 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
             // that one
             for ((uid, remember), output) in uids.iter_mut().skip(1).zip(memo.outputs) {
                 let pub_key = match output.user_address {
-                    Some(address) => session.backend.get_public_key(&address).await.ok(),
+                    Some(address) => Some(match session.backend.get_public_key(&address).await {
+                        Ok(key) => key,
+                        // If the address isn't found in the backend, it may not be registered. In
+                        // this case, use the address and a default encryption key to construct a
+                        // public key. The encryption key is only a placeholder since it won't be
+                        // used to compute the record commitment.
+                        Err(_) => UserPubKey::new(address, aead::EncKey::default()),
+                    }),
                     None => None,
                 };
                 if let (Some(pub_key), Some(amount), Some(blind)) =
@@ -1747,7 +1755,7 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
                 fee,
                 &asset,
                 amount,
-                session.backend.get_public_key(&owner).await?,
+                owner,
                 outputs_frozen,
                 &mut session.rng,
             )

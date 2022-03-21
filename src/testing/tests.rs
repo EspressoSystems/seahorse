@@ -6,6 +6,7 @@
 // You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use super::*;
+use crate::testing::mocks::MockSystem;
 use chrono::Duration;
 use espresso_macros::generic_tests;
 
@@ -25,6 +26,138 @@ impl<L: Ledger> PartialEq<Self> for TxnHistoryWithTimeTolerantEq<L> {
             && self.0.kind == other.0.kind
             && self.0.receivers == other.0.receivers
             && self.0.receipt == other.0.receipt
+    }
+}
+
+#[async_std::test]
+pub async fn test_wallet_freeze_unregistered() -> std::io::Result<()> {
+    let mut t = MockSystem::default();
+    let mut now = Instant::now();
+
+    // Wallets[0], [1] and [2] will act as the sender, receiver and freezer, respectively.
+    let (ledger, mut wallets) = t
+        .create_test_network(&[(3, 3)], vec![2, 0, 6], &mut now)
+        .await;
+
+    // Set `block_size` to `1` so we don't have to explicitly flush the ledger after each
+    // transaction submission.
+    ledger.lock().await.set_block_size(1).unwrap();
+
+    let asset = {
+        let mut rng = ChaChaRng::from_seed([42u8; 32]);
+        let audit_key = AuditorKeyPair::generate(&mut rng);
+        let freeze_key = FreezerKeyPair::generate(&mut rng);
+        let policy = AssetPolicy::default()
+            .set_auditor_pub_key(audit_key.pub_key())
+            .set_freezer_pub_key(freeze_key.pub_key())
+            .reveal_record_opening()
+            .unwrap();
+        wallets[2]
+            .0
+            .add_audit_key(audit_key, "audit_key".into())
+            .await
+            .unwrap();
+        wallets[2]
+            .0
+            .add_freeze_key(freeze_key, "freeze_key".into())
+            .await
+            .unwrap();
+        let asset = wallets[2]
+            .0
+            .define_asset("test".into(), "test asset".as_bytes(), policy)
+            .await
+            .unwrap();
+
+        // The first address of wallets[0] gets 1 coin to transfer to wallets[1].
+        let src = wallets[2].1[0].clone();
+        let dst = wallets[0].1[0].clone();
+        wallets[2]
+            .0
+            .mint(&src, 1, &asset.code, 1, dst)
+            .await
+            .unwrap();
+        t.sync(&ledger, wallets.as_slice()).await;
+
+        asset
+    };
+
+    // Check the balance after minting.
+    assert_eq!(
+        wallets[0]
+            .0
+            .balance_breakdown(&wallets[0].1[0], &asset.code)
+            .await,
+        1
+    );
+    assert_eq!(
+        wallets[0]
+            .0
+            .frozen_balance_breakdown(&wallets[0].1[0], &asset.code)
+            .await,
+        0
+    );
+
+    // Unregister wallets[0]'s first address by removing it from the address map.
+    ledger
+        .lock()
+        .await
+        .network()
+        .address_map
+        .remove(&wallets[0].1[0]);
+
+    // Freeze wallets[0]'s record.
+    println!(
+        "generating a freeze transaction: {}s",
+        now.elapsed().as_secs_f32()
+    );
+    now = Instant::now();
+    let src = wallets[2].1[0].clone();
+    let dst = wallets[0].1[0].clone();
+    ledger.lock().await.hold_next_transaction();
+    wallets[2]
+        .0
+        .freeze(&src, 1, &asset.code, 1, dst.clone())
+        .await
+        .unwrap();
+
+    // Check the balance after freezing.
+    ledger.lock().await.release_held_transaction();
+    t.sync(&ledger, wallets.as_slice()).await;
+    assert_eq!(
+        wallets[0]
+            .0
+            .balance_breakdown(&wallets[0].1[0], &asset.code)
+            .await,
+        0
+    );
+    assert_eq!(
+        wallets[0]
+            .0
+            .frozen_balance_breakdown(&wallets[0].1[0], &asset.code)
+            .await,
+        1
+    );
+
+    // Check that trying to transfer fails due to frozen balance.
+    println!("generating a transfer: {}s", now.elapsed().as_secs_f32());
+    now = Instant::now();
+    let src = wallets[0].1[0].clone();
+    let dst = wallets[1].1[0].clone();
+    match wallets[0]
+        .0
+        .transfer(Some(&src), &asset.code, &[(dst, 1)], 1)
+        .await
+    {
+        Err(WalletError::TransactionError {
+            source: TransactionError::InsufficientBalance { .. },
+        }) => {
+            println!(
+                "transfer correctly failed due to frozen balance: {}s",
+                now.elapsed().as_secs_f32()
+            );
+            Ok(())
+        }
+        ret => panic!("expected InsufficientBalance, got {:?}", ret.map(|_| ())),
     }
 }
 
