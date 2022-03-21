@@ -78,7 +78,7 @@ mod serde_ark_unchecked {
 #[serde(bound = "")]
 struct WalletSnapshot<L: Ledger> {
     txn_state: TransactionState<L>,
-    key_scans: Vec<BackgroundKeyScan>,
+    key_scans: Vec<BackgroundKeyScan<L>>,
     key_state: KeyStreamState,
     viewing_accounts: Vec<Account<AuditorKeyPair>>,
     freezing_accounts: Vec<Account<FreezerKeyPair>>,
@@ -112,6 +112,7 @@ impl<'a, L: Ledger> From<&WalletState<'a, L>> for WalletSnapshot<L> {
 impl<'a, L: Ledger> Arbitrary<'a> for WalletSnapshot<L>
 where
     TransactionState<L>: Arbitrary<'a>,
+    TransactionHash<L>: Arbitrary<'a>,
 {
     fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
         Ok(Self {
@@ -358,7 +359,7 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> WalletStorage<'a,
             key_scans: dynamic_state
                 .key_scans
                 .into_iter()
-                .map(|scan| (scan.key.address(), scan))
+                .map(|scan| (scan.address(), scan))
                 .collect(),
             key_state: dynamic_state.key_state,
 

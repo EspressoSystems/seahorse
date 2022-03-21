@@ -715,6 +715,7 @@ where
     }
 }
 
+#[ser_test(arbitrary, ark(false), types(cap::Ledger))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct TransactionHistoryEntry<L: Ledger> {
@@ -736,8 +737,34 @@ impl<L: Ledger> PartialEq<Self> for TransactionHistoryEntry<L> {
         self.time == other.time
             && self.asset == other.asset
             && self.kind == other.kind
+            && self.senders == other.senders
             && self.receivers == other.receivers
             && self.receipt == other.receipt
+    }
+}
+
+impl<'a, L: Ledger> Arbitrary<'a> for TransactionHistoryEntry<L>
+where
+    TransactionHash<L>: Arbitrary<'a>,
+{
+    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
+        Ok(Self {
+            time: Local::now(),
+            asset: AssetCode::native(),
+            kind: TransactionKind::<L>::send(),
+            senders: u
+                .arbitrary_iter::<ArbitraryUserAddress>()?
+                .map(|a| Ok(a?.into()))
+                .collect::<Result<_, _>>()?,
+            receivers: u
+                .arbitrary_iter::<(ArbitraryUserAddress, u64)>()?
+                .map(|r| {
+                    let (addr, amt) = r?;
+                    Ok((addr.into(), amt))
+                })
+                .collect::<Result<_, _>>()?,
+            receipt: u.arbitrary()?,
+        })
     }
 }
 
