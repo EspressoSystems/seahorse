@@ -1960,7 +1960,7 @@
     <span class="comment">// record (size, uid) indexed by asset type, owner, and freeze status, for easy allocation as</span>
     <span class="comment">// transfer or freeze inputs. The records for each asset are ordered by increasing size, which</span>
     <span class="comment">// makes it easy to implement a worst-fit allocator that minimizes fragmentation.</span>
-    <span class="ident">asset_records</span>: <span class="ident">HashMap</span><span class="op">&lt;</span>(<span class="ident">AssetCode</span>, <span class="ident">UserPubKey</span>, <span class="ident">FreezeFlag</span>), <span class="ident">BTreeSet</span><span class="op">&lt;</span>(<span class="ident">u64</span>, <span class="ident">u64</span>)<span class="op">&gt;</span><span class="op">&gt;</span>,
+    <span class="ident">asset_records</span>: <span class="ident">HashMap</span><span class="op">&lt;</span>(<span class="ident">AssetCode</span>, <span class="ident">UserAddress</span>, <span class="ident">FreezeFlag</span>), <span class="ident">BTreeSet</span><span class="op">&lt;</span>(<span class="ident">u64</span>, <span class="ident">u64</span>)<span class="op">&gt;</span><span class="op">&gt;</span>,
     <span class="comment">// record uids indexed by nullifier, for easy removal when confirmed as transfer inputs</span>
     <span class="ident">nullifier_records</span>: <span class="ident">HashMap</span><span class="op">&lt;</span><span class="ident">Nullifier</span>, <span class="ident">u64</span><span class="op">&gt;</span>,
 }
@@ -1973,7 +1973,7 @@
             <span class="macro">assert_eq!</span>(<span class="kw-2">*</span><span class="ident">uid</span>, <span class="ident">record</span>.<span class="ident">uid</span>);
             <span class="macro">assert!</span>(<span class="self">self</span>.<span class="ident">asset_records</span>[<span class="kw-2">&amp;</span>(
                 <span class="ident">record</span>.<span class="ident">ro</span>.<span class="ident">asset_def</span>.<span class="ident">code</span>,
-                <span class="ident">record</span>.<span class="ident">ro</span>.<span class="ident">pub_key</span>.<span class="ident">clone</span>(),
+                <span class="ident">record</span>.<span class="ident">ro</span>.<span class="ident">pub_key</span>.<span class="ident">address</span>(),
                 <span class="ident">record</span>.<span class="ident">ro</span>.<span class="ident">freeze_flag</span>
             )]
                 .<span class="ident">contains</span>(<span class="kw-2">&amp;</span>(<span class="ident">record</span>.<span class="ident">ro</span>.<span class="ident">amount</span>, <span class="kw-2">*</span><span class="ident">uid</span>)));
@@ -1997,7 +1997,7 @@
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">input_records</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span><span class="op">&gt;</span>(
         <span class="kw-2">&amp;</span><span class="lifetime">&#39;a</span> <span class="self">self</span>,
         <span class="ident">asset</span>: <span class="kw-2">&amp;</span><span class="ident">AssetCode</span>,
-        <span class="ident">owner</span>: <span class="kw-2">&amp;</span><span class="ident">UserPubKey</span>,
+        <span class="ident">owner</span>: <span class="kw-2">&amp;</span><span class="ident">UserAddress</span>,
         <span class="ident">frozen</span>: <span class="ident">FreezeFlag</span>,
         <span class="ident">now</span>: <span class="ident">u64</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="kw">impl</span> <span class="ident">Iterator</span><span class="op">&lt;</span><span class="ident">Item</span> <span class="op">=</span> <span class="kw-2">&amp;</span><span class="lifetime">&#39;a</span> <span class="ident">RecordInfo</span><span class="op">&gt;</span> {
@@ -2021,7 +2021,7 @@
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">input_record_with_amount</span>(
         <span class="kw-2">&amp;</span><span class="self">self</span>,
         <span class="ident">asset</span>: <span class="kw-2">&amp;</span><span class="ident">AssetCode</span>,
-        <span class="ident">owner</span>: <span class="kw-2">&amp;</span><span class="ident">UserPubKey</span>,
+        <span class="ident">owner</span>: <span class="kw-2">&amp;</span><span class="ident">UserAddress</span>,
         <span class="ident">frozen</span>: <span class="ident">FreezeFlag</span>,
         <span class="ident">amount</span>: <span class="ident">u64</span>,
         <span class="ident">now</span>: <span class="ident">u64</span>,
@@ -2083,7 +2083,7 @@
         <span class="self">self</span>.<span class="ident">asset_records</span>
             .<span class="ident">entry</span>((
                 <span class="ident">rec</span>.<span class="ident">ro</span>.<span class="ident">asset_def</span>.<span class="ident">code</span>,
-                <span class="ident">rec</span>.<span class="ident">ro</span>.<span class="ident">pub_key</span>.<span class="ident">clone</span>(),
+                <span class="ident">rec</span>.<span class="ident">ro</span>.<span class="ident">pub_key</span>.<span class="ident">address</span>(),
                 <span class="ident">rec</span>.<span class="ident">ro</span>.<span class="ident">freeze_flag</span>,
             ))
             .<span class="ident">or_insert_with</span>(<span class="ident">BTreeSet::new</span>)
@@ -2102,7 +2102,7 @@
             <span class="comment">// empty, remove the whole collection.</span>
             <span class="kw">let</span> <span class="ident">asset_key</span> <span class="op">=</span> <span class="kw-2">&amp;</span>(
                 <span class="ident">record</span>.<span class="ident">ro</span>.<span class="ident">asset_def</span>.<span class="ident">code</span>,
-                <span class="ident">record</span>.<span class="ident">ro</span>.<span class="ident">pub_key</span>.<span class="ident">clone</span>(),
+                <span class="ident">record</span>.<span class="ident">ro</span>.<span class="ident">pub_key</span>.<span class="ident">address</span>(),
                 <span class="ident">record</span>.<span class="ident">ro</span>.<span class="ident">freeze_flag</span>,
             );
             <span class="kw">let</span> <span class="ident">asset_records</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">asset_records</span>.<span class="ident">get_mut</span>(<span class="ident">asset_key</span>).<span class="ident">unwrap</span>();
@@ -2719,7 +2719,7 @@
 <span class="kw">impl</span><span class="op">&lt;</span><span class="ident">L</span>: <span class="ident">Ledger</span><span class="op">&gt;</span> <span class="ident">TransactionState</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span> {
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">balance</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">asset</span>: <span class="kw-2">&amp;</span><span class="ident">AssetCode</span>, <span class="ident">pub_key</span>: <span class="kw-2">&amp;</span><span class="ident">UserPubKey</span>, <span class="ident">frozen</span>: <span class="ident">FreezeFlag</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">u64</span> {
         <span class="self">self</span>.<span class="ident">records</span>
-            .<span class="ident">input_records</span>(<span class="ident">asset</span>, <span class="ident">pub_key</span>, <span class="ident">frozen</span>, <span class="self">self</span>.<span class="ident">validator</span>.<span class="ident">now</span>())
+            .<span class="ident">input_records</span>(<span class="ident">asset</span>, <span class="kw-2">&amp;</span><span class="ident">pub_key</span>.<span class="ident">address</span>(), <span class="ident">frozen</span>, <span class="self">self</span>.<span class="ident">validator</span>.<span class="ident">now</span>())
             .<span class="ident">map</span>(<span class="op">|</span><span class="ident">record</span><span class="op">|</span> <span class="ident">record</span>.<span class="ident">ro</span>.<span class="ident">amount</span>)
             .<span class="ident">sum</span>()
     }
@@ -3227,7 +3227,7 @@
         <span class="ident">fee</span>: <span class="ident">u64</span>,
         <span class="ident">asset</span>: <span class="kw-2">&amp;</span><span class="ident">AssetDefinition</span>,
         <span class="ident">amount</span>: <span class="ident">u64</span>,
-        <span class="ident">target</span>: <span class="ident">UserPubKey</span>,
+        <span class="ident">owner</span>: <span class="ident">UserAddress</span>,
         <span class="ident">outputs_frozen</span>: <span class="ident">FreezeFlag</span>,
         <span class="ident">rng</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">ChaChaRng</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(<span class="ident">FreezeNote</span>, <span class="ident">TransactionInfo</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span>), <span class="ident">TransactionError</span><span class="op">&gt;</span> {
@@ -3238,7 +3238,7 @@
         };
         <span class="kw">let</span> (<span class="ident">input_records</span>, <span class="kw">_</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">find_records_with_pub_key</span>(
             <span class="kw-2">&amp;</span><span class="ident">asset</span>.<span class="ident">code</span>,
-            <span class="kw-2">&amp;</span><span class="ident">target</span>,
+            <span class="kw-2">&amp;</span><span class="ident">owner</span>,
             <span class="ident">inputs_frozen</span>,
             <span class="ident">amount</span>,
             <span class="prelude-val">None</span>,
@@ -3280,7 +3280,7 @@
                 <span class="ident">FreezeFlag::Unfrozen</span> <span class="op">=</span><span class="op">&gt;</span> <span class="ident">TransactionKind</span>::<span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="ident">::unfreeze</span>(),
             },
             <span class="ident">senders</span>: <span class="macro">vec!</span>[<span class="ident">fee_key_pair</span>.<span class="ident">address</span>()],
-            <span class="ident">receivers</span>: <span class="macro">vec!</span>[(<span class="ident">target</span>.<span class="ident">address</span>(), <span class="ident">amount</span>)],
+            <span class="ident">receivers</span>: <span class="macro">vec!</span>[(<span class="ident">owner</span>, <span class="ident">amount</span>)],
             <span class="ident">receipt</span>: <span class="prelude-val">None</span>,
         };
         <span class="prelude-val">Ok</span>((
@@ -3343,15 +3343,15 @@
     <span class="doccomment">/// Returns a list of record openings and UIDs, and the change amount.</span>
     <span class="doccomment">///</span>
     <span class="doccomment">/// `allow_insufficient`</span>
-    <span class="doccomment">/// * If true, the change amount may be negative, meaning the address owned by the provided</span>
-    <span class="doccomment">/// public key doesn&#39;t have sufficient balance, which isn&#39;t necessarily an error since a total</span>
-    <span class="doccomment">/// balance can be aggragated by multiple addresses.</span>
+    <span class="doccomment">/// * If true, the change amount may be negative, meaning the provided address doesn&#39;t have</span>
+    <span class="doccomment">/// sufficient balance, which isn&#39;t necessarily an error since a total balance can be</span>
+    <span class="doccomment">/// aggragated by multiple addresses.</span>
     <span class="doccomment">/// * Otherwise, the change amount must be nonnegative.</span>
     <span class="attribute">#[<span class="ident">allow</span>(<span class="ident">clippy::type_complexity</span>)]</span>
     <span class="kw">fn</span> <span class="ident">find_records_with_pub_key</span>(
         <span class="kw-2">&amp;</span><span class="self">self</span>,
         <span class="ident">asset</span>: <span class="kw-2">&amp;</span><span class="ident">AssetCode</span>,
-        <span class="ident">owner</span>: <span class="kw-2">&amp;</span><span class="ident">UserPubKey</span>,
+        <span class="ident">owner</span>: <span class="kw-2">&amp;</span><span class="ident">UserAddress</span>,
         <span class="ident">frozen</span>: <span class="ident">FreezeFlag</span>,
         <span class="ident">amount</span>: <span class="ident">u64</span>,
         <span class="ident">max_records</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">usize</span><span class="op">&gt;</span>,
@@ -3430,7 +3430,7 @@
         <span class="kw">for</span> <span class="ident">owner_key_pair</span> <span class="kw">in</span> <span class="ident">owner_key_pairs</span> {
             <span class="kw">let</span> (<span class="ident">input_records</span>, <span class="ident">change</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">find_records_with_pub_key</span>(
                 <span class="ident">asset</span>,
-                <span class="kw-2">&amp;</span><span class="ident">owner_key_pair</span>.<span class="ident">pub_key</span>(),
+                <span class="kw-2">&amp;</span><span class="ident">owner_key_pair</span>.<span class="ident">pub_key</span>().<span class="ident">address</span>(),
                 <span class="ident">frozen</span>,
                 <span class="ident">target_amount</span>,
                 <span class="ident">max_records</span>.<span class="ident">map</span>(<span class="op">|</span><span class="ident">max</span><span class="op">|</span> <span class="ident">max</span> <span class="op">-</span> <span class="ident">records</span>.<span class="ident">len</span>()),
@@ -3463,7 +3463,7 @@
         <span class="kw">let</span> (<span class="ident">ro</span>, <span class="ident">uid</span>) <span class="op">=</span> <span class="self">self</span>
             .<span class="ident">find_records_with_pub_key</span>(
                 <span class="kw-2">&amp;</span><span class="ident">AssetCode::native</span>(),
-                <span class="kw-2">&amp;</span><span class="ident">owner_key_pair</span>.<span class="ident">pub_key</span>(),
+                <span class="kw-2">&amp;</span><span class="ident">owner_key_pair</span>.<span class="ident">pub_key</span>().<span class="ident">address</span>(),
                 <span class="ident">FreezeFlag::Unfrozen</span>,
                 <span class="ident">fee</span>,
                 <span class="prelude-val">Some</span>(<span class="number">1</span>),
