@@ -2312,12 +2312,17 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
     }
 
     /// List past transactions involving this wallet.
-    pub async fn transaction_history(
-        &self,
-    ) -> Result<Vec<TransactionHistoryEntry<L>>, WalletError<L>> {
-        let WalletSharedState { session, .. } = &mut *self.mutex.lock().await;
-        let mut storage = session.backend.storage().await;
-        storage.transaction_history().await
+    #[allow(clippy::type_complexity)]
+    pub fn transaction_history<'l>(
+        &'l self,
+    ) -> std::pin::Pin<
+        Box<dyn SendFuture<'a, Result<Vec<TransactionHistoryEntry<L>>, WalletError<L>>> + 'l>,
+    > {
+        Box::pin(async move {
+            let WalletSharedState { session, .. } = &mut *self.mutex.lock().await;
+            let mut storage = session.backend.storage().await;
+            storage.transaction_history().await
+        })
     }
 
     /// Basic transfer without customization.
@@ -2427,7 +2432,12 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
     }
 
     /// Add an asset to the asset library.
-    pub async fn import_asset(&mut self, asset: AssetInfo) -> Result<(), WalletError<L>> {
+    ///
+    /// Note that this function cannot be used to import verified assets. If the `verified` flag is
+    /// set on `asset`, it will simply be ignored. Verified assets can only be imported using
+    /// [Wallet::verify_assets], conditional on a signature check.
+    pub async fn import_asset(&mut self, mut asset: AssetInfo) -> Result<(), WalletError<L>> {
+        asset.verified = false;
         let WalletSharedState { state, session, .. } = &mut *self.mutex.lock().await;
         state.import_asset(session, asset).await
     }
