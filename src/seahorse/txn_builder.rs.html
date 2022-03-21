@@ -1821,6 +1821,33 @@
 <span id="1821">1821</span>
 <span id="1822">1822</span>
 <span id="1823">1823</span>
+<span id="1824">1824</span>
+<span id="1825">1825</span>
+<span id="1826">1826</span>
+<span id="1827">1827</span>
+<span id="1828">1828</span>
+<span id="1829">1829</span>
+<span id="1830">1830</span>
+<span id="1831">1831</span>
+<span id="1832">1832</span>
+<span id="1833">1833</span>
+<span id="1834">1834</span>
+<span id="1835">1835</span>
+<span id="1836">1836</span>
+<span id="1837">1837</span>
+<span id="1838">1838</span>
+<span id="1839">1839</span>
+<span id="1840">1840</span>
+<span id="1841">1841</span>
+<span id="1842">1842</span>
+<span id="1843">1843</span>
+<span id="1844">1844</span>
+<span id="1845">1845</span>
+<span id="1846">1846</span>
+<span id="1847">1847</span>
+<span id="1848">1848</span>
+<span id="1849">1849</span>
+<span id="1850">1850</span>
 </pre><pre class="rust"><code><span class="comment">// Copyright (c) 2022 Espresso Systems (espressosys.com)</span>
 <span class="comment">// This file is part of the Seahorse library.</span>
 
@@ -2538,6 +2565,7 @@
     }
 }
 
+<span class="attribute">#[<span class="ident">ser_test</span>(<span class="ident">arbitrary</span>, <span class="ident">ark</span>(<span class="bool-val">false</span>), <span class="ident">types</span>(<span class="ident">cap::Ledger</span>))]</span>
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Clone</span>, <span class="ident">Debug</span>, <span class="ident">Serialize</span>, <span class="ident">Deserialize</span>)]</span>
 <span class="attribute">#[<span class="ident">serde</span>(<span class="ident">bound</span> <span class="op">=</span> <span class="string">&quot;&quot;</span>)]</span>
 <span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">TransactionHistoryEntry</span><span class="op">&lt;</span><span class="ident">L</span>: <span class="ident">Ledger</span><span class="op">&gt;</span> {
@@ -2559,8 +2587,34 @@
         <span class="self">self</span>.<span class="ident">time</span> <span class="op">=</span><span class="op">=</span> <span class="ident">other</span>.<span class="ident">time</span>
             <span class="op">&amp;&amp;</span> <span class="self">self</span>.<span class="ident">asset</span> <span class="op">=</span><span class="op">=</span> <span class="ident">other</span>.<span class="ident">asset</span>
             <span class="op">&amp;&amp;</span> <span class="self">self</span>.<span class="ident">kind</span> <span class="op">=</span><span class="op">=</span> <span class="ident">other</span>.<span class="ident">kind</span>
+            <span class="op">&amp;&amp;</span> <span class="self">self</span>.<span class="ident">senders</span> <span class="op">=</span><span class="op">=</span> <span class="ident">other</span>.<span class="ident">senders</span>
             <span class="op">&amp;&amp;</span> <span class="self">self</span>.<span class="ident">receivers</span> <span class="op">=</span><span class="op">=</span> <span class="ident">other</span>.<span class="ident">receivers</span>
             <span class="op">&amp;&amp;</span> <span class="self">self</span>.<span class="ident">receipt</span> <span class="op">=</span><span class="op">=</span> <span class="ident">other</span>.<span class="ident">receipt</span>
+    }
+}
+
+<span class="kw">impl</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span>: <span class="ident">Ledger</span><span class="op">&gt;</span> <span class="ident">Arbitrary</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">TransactionHistoryEntry</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span>
+<span class="kw">where</span>
+    <span class="ident">TransactionHash</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span>: <span class="ident">Arbitrary</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span><span class="op">&gt;</span>,
+{
+    <span class="kw">fn</span> <span class="ident">arbitrary</span>(<span class="ident">u</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">Unstructured</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span><span class="op">&gt;</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">arbitrary::Result</span><span class="op">&lt;</span><span class="self">Self</span><span class="op">&gt;</span> {
+        <span class="prelude-val">Ok</span>(<span class="self">Self</span> {
+            <span class="ident">time</span>: <span class="ident">Local::now</span>(),
+            <span class="ident">asset</span>: <span class="ident">AssetCode::native</span>(),
+            <span class="ident">kind</span>: <span class="ident">TransactionKind</span>::<span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="ident">::send</span>(),
+            <span class="ident">senders</span>: <span class="ident">u</span>
+                .<span class="ident">arbitrary_iter</span>::<span class="op">&lt;</span><span class="ident">ArbitraryUserAddress</span><span class="op">&gt;</span>()<span class="question-mark">?</span>
+                .<span class="ident">map</span>(<span class="op">|</span><span class="ident">a</span><span class="op">|</span> <span class="prelude-val">Ok</span>(<span class="ident">a</span><span class="question-mark">?</span>.<span class="ident">into</span>()))
+                .<span class="ident">collect</span>::<span class="op">&lt;</span><span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="kw">_</span>, <span class="kw">_</span><span class="op">&gt;</span><span class="op">&gt;</span>()<span class="question-mark">?</span>,
+            <span class="ident">receivers</span>: <span class="ident">u</span>
+                .<span class="ident">arbitrary_iter</span>::<span class="op">&lt;</span>(<span class="ident">ArbitraryUserAddress</span>, <span class="ident">u64</span>)<span class="op">&gt;</span>()<span class="question-mark">?</span>
+                .<span class="ident">map</span>(<span class="op">|</span><span class="ident">r</span><span class="op">|</span> {
+                    <span class="kw">let</span> (<span class="ident">addr</span>, <span class="ident">amt</span>) <span class="op">=</span> <span class="ident">r</span><span class="question-mark">?</span>;
+                    <span class="prelude-val">Ok</span>((<span class="ident">addr</span>.<span class="ident">into</span>(), <span class="ident">amt</span>))
+                })
+                .<span class="ident">collect</span>::<span class="op">&lt;</span><span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="kw">_</span>, <span class="kw">_</span><span class="op">&gt;</span><span class="op">&gt;</span>()<span class="question-mark">?</span>,
+            <span class="ident">receipt</span>: <span class="ident">u</span>.<span class="ident">arbitrary</span>()<span class="question-mark">?</span>,
+        })
     }
 }
 
