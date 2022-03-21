@@ -185,10 +185,7 @@ impl<'a, L: Ledger, N: MockNetwork<'a, L>, S: WalletStorage<'a, L>> MockLedger<'
         Ok(())
     }
 
-    pub fn get_initial_scan_state(
-        &self,
-        _from: EventIndex,
-    ) -> Result<(MerkleTree, EventIndex), WalletError<L>> {
+    pub fn get_initial_scan_state(&self) -> Result<(MerkleTree, EventIndex), WalletError<L>> {
         Ok((self.initial_records.clone(), EventIndex::default()))
     }
 }

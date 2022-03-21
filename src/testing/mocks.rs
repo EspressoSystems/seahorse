@@ -368,9 +368,9 @@ impl<'a> WalletBackend<'a, cap::Ledger> for MockBackend<'a> {
 
     async fn get_initial_scan_state(
         &self,
-        from: EventIndex,
+        _from: EventIndex,
     ) -> Result<(MerkleTree, EventIndex), WalletError<cap::Ledger>> {
-        self.ledger.lock().await.get_initial_scan_state(from)
+        self.ledger.lock().await.get_initial_scan_state()
     }
 
     async fn get_nullifier_proof(
