@@ -191,6 +191,16 @@ impl<L: Ledger> BackgroundKeyScan<L> {
         self.next_event
     }
 
+    /// The status of a ledger scan.
+    ///
+    /// Returns (`next_event`, `to_event`) where `next_event` is the index of the next event to be
+    /// scanned and `to_event` is the index of the last event in the scan's range of interest. Note
+    /// that the `next_event` may be greater than `to_event`, since the scan will not complete until
+    /// it has caught with the main event loop, which may have advanced past `to_event`.
+    pub fn status(&self) -> (EventIndex, EventIndex) {
+        (self.next_event, self.to_event)
+    }
+
     pub fn handle_event(&mut self, event: LedgerEvent<L>, source: EventSource) {
         if self.from_event.index(source) <= self.next_event.index(source)
             && self.next_event.index(source) < self.to_event.index(source)

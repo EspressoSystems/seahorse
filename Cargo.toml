@@ -17,6 +17,7 @@ bincode = "1.3.3"
 bip0039 = "0.10"
 chacha20 = "0.8.1"
 chrono = "0.4.19"
+derivative = "2.2"
 futures = "0.3.16"
 generic-array = { version = "0.14.4", features = ["serde"] }
 hmac = "0.11.0"

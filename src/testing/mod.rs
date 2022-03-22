@@ -213,7 +213,6 @@ pub fn assert_wallet_states_eq<'a, L: Ledger>(w1: &WalletState<'a, L>, w2: &Wall
         w2.txn_state.record_mt.commitment()
     );
     assert_eq!(w1.txn_state.transactions, w2.txn_state.transactions);
-    assert_eq!(w1.key_scans, w2.key_scans);
 }
 
 #[async_trait]
