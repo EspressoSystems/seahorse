@@ -253,9 +253,6 @@ pub struct WalletState<'a, L: Ledger> {
     ////////////////////////////////////////////////////////////////////////////////////////////////
     // Monotonic data
     //
-    // Note: the sets of keys should be moved to the txn state
-    // (https://github.com/spectrum-eco/spectrum/issues/6).
-    //
     /// Asset library.
     ///
     /// This contains information about all of the asset types imported or discovered by this
