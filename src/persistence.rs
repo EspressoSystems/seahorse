@@ -13,8 +13,7 @@ use crate::{
     hd::KeyTree,
     loader::WalletLoader,
     txn_builder::TransactionState,
-    BackgroundKeyScan, KeyStreamState, TransactionHistoryEntry, WalletError, WalletState,
-    WalletStorage,
+    KeyStreamState, TransactionHistoryEntry, WalletError, WalletState, WalletStorage,
 };
 use arbitrary::{Arbitrary, Unstructured};
 use async_std::sync::Arc;
@@ -78,17 +77,15 @@ mod serde_ark_unchecked {
 #[serde(bound = "")]
 struct WalletSnapshot<L: Ledger> {
     txn_state: TransactionState<L>,
-    key_scans: Vec<BackgroundKeyScan<L>>,
     key_state: KeyStreamState,
-    viewing_accounts: Vec<Account<AuditorKeyPair>>,
-    freezing_accounts: Vec<Account<FreezerKeyPair>>,
-    sending_accounts: Vec<Account<UserKeyPair>>,
+    viewing_accounts: Vec<Account<L, AuditorKeyPair>>,
+    freezing_accounts: Vec<Account<L, FreezerKeyPair>>,
+    sending_accounts: Vec<Account<L, UserKeyPair>>,
 }
 
 impl<L: Ledger> PartialEq<Self> for WalletSnapshot<L> {
     fn eq(&self, other: &Self) -> bool {
         self.txn_state == other.txn_state
-            && self.key_scans == other.key_scans
             && self.key_state == other.key_state
             && self.viewing_accounts == other.viewing_accounts
             && self.freezing_accounts == other.freezing_accounts
@@ -100,7 +97,6 @@ impl<'a, L: Ledger> From<&WalletState<'a, L>> for WalletSnapshot<L> {
     fn from(w: &WalletState<'a, L>) -> Self {
         Self {
             txn_state: w.txn_state.clone(),
-            key_scans: w.key_scans.values().cloned().collect(),
             key_state: w.key_state.clone(),
             viewing_accounts: w.viewing_accounts.values().cloned().collect(),
             freezing_accounts: w.freezing_accounts.values().cloned().collect(),
@@ -117,7 +113,6 @@ where
     fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
         Ok(Self {
             txn_state: u.arbitrary()?,
-            key_scans: u.arbitrary()?,
             key_state: u.arbitrary()?,
             viewing_accounts: u.arbitrary()?,
             freezing_accounts: u.arbitrary()?,
@@ -356,11 +351,6 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> WalletStorage<'a,
 
             // Dynamic state
             txn_state: dynamic_state.txn_state,
-            key_scans: dynamic_state
-                .key_scans
-                .into_iter()
-                .map(|scan| (scan.address(), scan))
-                .collect(),
             key_state: dynamic_state.key_state,
 
             // Monotonic state
@@ -614,7 +604,6 @@ mod tests {
                 merkle_leaf_to_forget: None,
                 transactions: Default::default(),
             },
-            key_scans: Default::default(),
             key_state: Default::default(),
             assets: Default::default(),
             viewing_accounts: Default::default(),

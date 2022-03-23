@@ -2427,6 +2427,7 @@ pub mod generic_wallet_tests {
                 assets: vec![],
                 records: vec![],
                 balance: 0,
+                scan_status: None,
             }
         );
         t.check_storage(&ledger, &wallets).await;
@@ -2470,6 +2471,7 @@ pub mod generic_wallet_tests {
                 assets: vec![],
                 records: vec![],
                 balance: 0,
+                scan_status: None,
             }
         );
         assert_eq!(
@@ -2481,6 +2483,7 @@ pub mod generic_wallet_tests {
                 assets: vec![],
                 records: vec![],
                 balance: 0,
+                scan_status: None,
             }
         );
         t.check_storage(&ledger, &wallets).await;

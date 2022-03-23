@@ -237,16 +237,21 @@ pub struct WalletState<'a, L: Ledger> {
     ///
     /// Everything we need to know about the state of the ledger in order to build transactions.
     pub txn_state: TransactionState<L>,
-    /// Background scans triggered by the addition of new keys.
-    pub key_scans: HashMap<UserAddress, BackgroundKeyScan<L>>,
     /// HD key generation state.
     pub key_state: KeyStreamState,
+    /// Viewing keys.
+    pub viewing_accounts: HashMap<AuditorPubKey, Account<L, AuditorKeyPair>>,
+    /// Freezing keys.
+    pub freezing_accounts: HashMap<FreezerPubKey, Account<L, FreezerKeyPair>>,
+    /// Sending keys, for spending owned records and receiving new records.
+    ///
+    /// Each public key in this set also includes a [UserAddress], which can be used to sign
+    /// outgoing transactions, as well as an encryption public key used by other users to encrypt
+    /// owner memos when sending records to this wallet.
+    pub sending_accounts: HashMap<UserAddress, Account<L, UserKeyPair>>,
 
     ////////////////////////////////////////////////////////////////////////////////////////////////
     // Monotonic data
-    //
-    // Note: the sets of keys should be moved to the txn state
-    // (https://github.com/spectrum-eco/spectrum/issues/6).
     //
     /// Asset library.
     ///
@@ -254,16 +259,6 @@ pub struct WalletState<'a, L: Ledger> {
     /// wallet. For assets created by this wallets, in includes information needed to mint the
     /// assets, including the asset description and the private asset code seed.
     pub assets: AssetLibrary,
-    /// Viewing keys.
-    pub viewing_accounts: HashMap<AuditorPubKey, Account<AuditorKeyPair>>,
-    /// Freezing keys.
-    pub freezing_accounts: HashMap<FreezerPubKey, Account<FreezerKeyPair>>,
-    /// Sending keys, for spending owned records and receiving new records.
-    ///
-    /// Each public key in this set also includes a [UserAddress], which can be used to sign
-    /// outgoing transactions, as well as an encryption public key used by other users to encrypt
-    /// owner memos when sending records to this wallet.
-    pub sending_accounts: HashMap<UserAddress, Account<UserKeyPair>>,
 }
 
 /// The interface required by the wallet from the persistence layer.
@@ -1399,36 +1394,26 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
             }
         };
 
-        let events = if let Some(scan_from) = scan_from {
+        let (scan, events) = if let Some(scan_from) = scan_from {
             // Get the stream of events for the background scan worker task to process.
             let (frontier, next_event) = session.backend.get_initial_scan_state(scan_from).await?;
             let events = session.backend.subscribe(next_event, None).await;
 
-            // Register a background scan of the ledger to import records belonging to this key.
-            //
-            // Note that there cannot already be a key scan registered for this key (hence the
-            // assert) since we have already checked that we don't yet have this key. This is
-            // important for the rollback logic below, in the case where we fail to persist the
-            // update.
-            assert!(self
-                .key_scans
-                .insert(
-                    user_key.address(),
-                    BackgroundKeyScan::new(
-                        user_key.clone(),
-                        next_event,
-                        scan_from,
-                        self.txn_state.now,
-                        frontier
-                    ),
-                )
-                .is_none());
-            Some(events)
+            // Create a background scan of the ledger to import records belonging to this key.
+            let scan = BackgroundKeyScan::new(
+                user_key.clone(),
+                next_event,
+                scan_from,
+                self.txn_state.now,
+                frontier,
+            );
+            (Some(scan), Some(events))
         } else {
-            None
+            (None, None)
         };
 
-        let account = Account::new(user_key.clone(), description);
+        let mut account = Account::new(user_key.clone(), description);
+        account.scan = scan;
 
         // Add the new account to our set of accounts and update our persistent data structures and
         // remote services.
@@ -1446,7 +1431,6 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
         {
             // If anything went wrong, no storage transaction was committed. Revert our changes to
             // in-memory data structures before returning the error.
-            self.key_scans.remove(&user_key.address());
             if let Some(old_key_state) = revert_key_state {
                 self.key_state.user = old_key_state;
             }
@@ -1773,11 +1757,13 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
         let mut state = backend.load().await?;
         let mut events = backend.subscribe(state.txn_state.now, None).await;
         let mut key_scans = vec![];
-        for scan in state.key_scans.values() {
-            key_scans.push((
-                scan.address(),
-                backend.subscribe(scan.next_event(), None).await,
-            ));
+        for account in state.viewing_accounts.values() {
+            if let Some(scan) = &account.scan {
+                key_scans.push((
+                    scan.address(),
+                    backend.subscribe(scan.next_event(), None).await,
+                ));
+            }
         }
         let key_tree = backend.key_stream();
         let mut session = WalletSession {
@@ -2704,43 +2690,42 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
                         pending_key_scans,
                         ..
                     } = &mut *mutex.lock().await;
-                    let mut scan = state.key_scans.remove(&address).unwrap();
-                    scan.handle_event(event, source);
-                    // Check if the scan is complete.
-                    let finished = match scan.finalize(state.txn_state.record_mt.commitment()) {
-                        Ok((key, ScanOutputs { records, history })) => {
-                            if let Err(err) = state.add_records(session, &key, records).await {
-                                println!("Error saving records from key scan {}: {}", address, err);
-                            }
-                            if let Err(err) = session
-                                .backend
-                                .store(|mut t| async {
-                                    for h in history {
-                                        t.store_transaction(h).await?;
-                                    }
-                                    Ok(t)
-                                })
-                                .await
-                            {
-                                println!(
-                                    "Error saving tranaction history from key scan {}: {}",
-                                    address, err
-                                );
-                            }
-
-                            // Signal anyone waiting for a notification that this scan finished.
-                            for sender in pending_key_scans.remove(&address).into_iter().flatten() {
-                                // Ignore errors, it just means the receiving end of the channel has
-                                // been dropped.
-                                sender.send(()).ok();
-                            }
-
-                            true
+                    let finished = if let Some((key, ScanOutputs { records, history })) = state
+                        .sending_accounts
+                        .get_mut(&address)
+                        .unwrap()
+                        .update_scan(event, source, state.txn_state.record_mt.commitment())
+                        .await
+                    {
+                        if let Err(err) = state.add_records(session, &key, records).await {
+                            println!("Error saving records from key scan {}: {}", address, err);
                         }
-                        Err(scan) => {
-                            state.key_scans.insert(address.clone(), scan);
-                            false
+                        if let Err(err) = session
+                            .backend
+                            .store(|mut t| async {
+                                for h in history {
+                                    t.store_transaction(h).await?;
+                                }
+                                Ok(t)
+                            })
+                            .await
+                        {
+                            println!(
+                                "Error saving tranaction history from key scan {}: {}",
+                                address, err
+                            );
                         }
+
+                        // Signal anyone waiting for a notification that this scan finished.
+                        for sender in pending_key_scans.remove(&address).into_iter().flatten() {
+                            // Ignore errors, it just means the receiving end of the channel has
+                            // been dropped.
+                            sender.send(()).ok();
+                        }
+
+                        true
+                    } else {
+                        false
                     };
 
                     session
