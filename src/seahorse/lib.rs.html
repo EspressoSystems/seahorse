@@ -2754,21 +2754,6 @@
 <span id="2754">2754</span>
 <span id="2755">2755</span>
 <span id="2756">2756</span>
-<span id="2757">2757</span>
-<span id="2758">2758</span>
-<span id="2759">2759</span>
-<span id="2760">2760</span>
-<span id="2761">2761</span>
-<span id="2762">2762</span>
-<span id="2763">2763</span>
-<span id="2764">2764</span>
-<span id="2765">2765</span>
-<span id="2766">2766</span>
-<span id="2767">2767</span>
-<span id="2768">2768</span>
-<span id="2769">2769</span>
-<span id="2770">2770</span>
-<span id="2771">2771</span>
 </pre><pre class="rust"><code><span class="comment">// Copyright (c) 2022 Espresso Systems (espressosys.com)</span>
 <span class="comment">// This file is part of the Seahorse library.</span>
 
@@ -3008,16 +2993,21 @@
     <span class="doccomment">///</span>
     <span class="doccomment">/// Everything we need to know about the state of the ledger in order to build transactions.</span>
     <span class="kw">pub</span> <span class="ident">txn_state</span>: <span class="ident">TransactionState</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span>,
-    <span class="doccomment">/// Background scans triggered by the addition of new keys.</span>
-    <span class="kw">pub</span> <span class="ident">key_scans</span>: <span class="ident">HashMap</span><span class="op">&lt;</span><span class="ident">UserAddress</span>, <span class="ident">BackgroundKeyScan</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span>,
     <span class="doccomment">/// HD key generation state.</span>
     <span class="kw">pub</span> <span class="ident">key_state</span>: <span class="ident">KeyStreamState</span>,
+    <span class="doccomment">/// Viewing keys.</span>
+    <span class="kw">pub</span> <span class="ident">viewing_accounts</span>: <span class="ident">HashMap</span><span class="op">&lt;</span><span class="ident">AuditorPubKey</span>, <span class="ident">Account</span><span class="op">&lt;</span><span class="ident">L</span>, <span class="ident">AuditorKeyPair</span><span class="op">&gt;</span><span class="op">&gt;</span>,
+    <span class="doccomment">/// Freezing keys.</span>
+    <span class="kw">pub</span> <span class="ident">freezing_accounts</span>: <span class="ident">HashMap</span><span class="op">&lt;</span><span class="ident">FreezerPubKey</span>, <span class="ident">Account</span><span class="op">&lt;</span><span class="ident">L</span>, <span class="ident">FreezerKeyPair</span><span class="op">&gt;</span><span class="op">&gt;</span>,
+    <span class="doccomment">/// Sending keys, for spending owned records and receiving new records.</span>
+    <span class="doccomment">///</span>
+    <span class="doccomment">/// Each public key in this set also includes a [UserAddress], which can be used to sign</span>
+    <span class="doccomment">/// outgoing transactions, as well as an encryption public key used by other users to encrypt</span>
+    <span class="doccomment">/// owner memos when sending records to this wallet.</span>
+    <span class="kw">pub</span> <span class="ident">sending_accounts</span>: <span class="ident">HashMap</span><span class="op">&lt;</span><span class="ident">UserAddress</span>, <span class="ident">Account</span><span class="op">&lt;</span><span class="ident">L</span>, <span class="ident">UserKeyPair</span><span class="op">&gt;</span><span class="op">&gt;</span>,
 
     <span class="comment">////////////////////////////////////////////////////////////////////////////////////////////////</span>
     <span class="comment">// Monotonic data</span>
-    <span class="comment">//</span>
-    <span class="comment">// Note: the sets of keys should be moved to the txn state</span>
-    <span class="comment">// (https://github.com/spectrum-eco/spectrum/issues/6).</span>
     <span class="comment">//</span>
     <span class="doccomment">/// Asset library.</span>
     <span class="doccomment">///</span>
@@ -3025,16 +3015,6 @@
     <span class="doccomment">/// wallet. For assets created by this wallets, in includes information needed to mint the</span>
     <span class="doccomment">/// assets, including the asset description and the private asset code seed.</span>
     <span class="kw">pub</span> <span class="ident">assets</span>: <span class="ident">AssetLibrary</span>,
-    <span class="doccomment">/// Viewing keys.</span>
-    <span class="kw">pub</span> <span class="ident">viewing_accounts</span>: <span class="ident">HashMap</span><span class="op">&lt;</span><span class="ident">AuditorPubKey</span>, <span class="ident">Account</span><span class="op">&lt;</span><span class="ident">AuditorKeyPair</span><span class="op">&gt;</span><span class="op">&gt;</span>,
-    <span class="doccomment">/// Freezing keys.</span>
-    <span class="kw">pub</span> <span class="ident">freezing_accounts</span>: <span class="ident">HashMap</span><span class="op">&lt;</span><span class="ident">FreezerPubKey</span>, <span class="ident">Account</span><span class="op">&lt;</span><span class="ident">FreezerKeyPair</span><span class="op">&gt;</span><span class="op">&gt;</span>,
-    <span class="doccomment">/// Sending keys, for spending owned records and receiving new records.</span>
-    <span class="doccomment">///</span>
-    <span class="doccomment">/// Each public key in this set also includes a [UserAddress], which can be used to sign</span>
-    <span class="doccomment">/// outgoing transactions, as well as an encryption public key used by other users to encrypt</span>
-    <span class="doccomment">/// owner memos when sending records to this wallet.</span>
-    <span class="kw">pub</span> <span class="ident">sending_accounts</span>: <span class="ident">HashMap</span><span class="op">&lt;</span><span class="ident">UserAddress</span>, <span class="ident">Account</span><span class="op">&lt;</span><span class="ident">UserKeyPair</span><span class="op">&gt;</span><span class="op">&gt;</span>,
 }
 
 <span class="doccomment">/// The interface required by the wallet from the persistence layer.</span>
@@ -4170,36 +4150,26 @@
             }
         };
 
-        <span class="kw">let</span> <span class="ident">events</span> <span class="op">=</span> <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">scan_from</span>) <span class="op">=</span> <span class="ident">scan_from</span> {
+        <span class="kw">let</span> (<span class="ident">scan</span>, <span class="ident">events</span>) <span class="op">=</span> <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">scan_from</span>) <span class="op">=</span> <span class="ident">scan_from</span> {
             <span class="comment">// Get the stream of events for the background scan worker task to process.</span>
             <span class="kw">let</span> (<span class="ident">frontier</span>, <span class="ident">next_event</span>) <span class="op">=</span> <span class="ident">session</span>.<span class="ident">backend</span>.<span class="ident">get_initial_scan_state</span>(<span class="ident">scan_from</span>).<span class="kw">await</span><span class="question-mark">?</span>;
             <span class="kw">let</span> <span class="ident">events</span> <span class="op">=</span> <span class="ident">session</span>.<span class="ident">backend</span>.<span class="ident">subscribe</span>(<span class="ident">next_event</span>, <span class="prelude-val">None</span>).<span class="kw">await</span>;
 
-            <span class="comment">// Register a background scan of the ledger to import records belonging to this key.</span>
-            <span class="comment">//</span>
-            <span class="comment">// Note that there cannot already be a key scan registered for this key (hence the</span>
-            <span class="comment">// assert) since we have already checked that we don&#39;t yet have this key. This is</span>
-            <span class="comment">// important for the rollback logic below, in the case where we fail to persist the</span>
-            <span class="comment">// update.</span>
-            <span class="macro">assert!</span>(<span class="self">self</span>
-                .<span class="ident">key_scans</span>
-                .<span class="ident">insert</span>(
-                    <span class="ident">user_key</span>.<span class="ident">address</span>(),
-                    <span class="ident">BackgroundKeyScan::new</span>(
-                        <span class="ident">user_key</span>.<span class="ident">clone</span>(),
-                        <span class="ident">next_event</span>,
-                        <span class="ident">scan_from</span>,
-                        <span class="self">self</span>.<span class="ident">txn_state</span>.<span class="ident">now</span>,
-                        <span class="ident">frontier</span>
-                    ),
-                )
-                .<span class="ident">is_none</span>());
-            <span class="prelude-val">Some</span>(<span class="ident">events</span>)
+            <span class="comment">// Create a background scan of the ledger to import records belonging to this key.</span>
+            <span class="kw">let</span> <span class="ident">scan</span> <span class="op">=</span> <span class="ident">BackgroundKeyScan::new</span>(
+                <span class="ident">user_key</span>.<span class="ident">clone</span>(),
+                <span class="ident">next_event</span>,
+                <span class="ident">scan_from</span>,
+                <span class="self">self</span>.<span class="ident">txn_state</span>.<span class="ident">now</span>,
+                <span class="ident">frontier</span>,
+            );
+            (<span class="prelude-val">Some</span>(<span class="ident">scan</span>), <span class="prelude-val">Some</span>(<span class="ident">events</span>))
         } <span class="kw">else</span> {
-            <span class="prelude-val">None</span>
+            (<span class="prelude-val">None</span>, <span class="prelude-val">None</span>)
         };
 
-        <span class="kw">let</span> <span class="ident">account</span> <span class="op">=</span> <span class="ident">Account::new</span>(<span class="ident">user_key</span>.<span class="ident">clone</span>(), <span class="ident">description</span>);
+        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">account</span> <span class="op">=</span> <span class="ident">Account::new</span>(<span class="ident">user_key</span>.<span class="ident">clone</span>(), <span class="ident">description</span>);
+        <span class="ident">account</span>.<span class="ident">scan</span> <span class="op">=</span> <span class="ident">scan</span>;
 
         <span class="comment">// Add the new account to our set of accounts and update our persistent data structures and</span>
         <span class="comment">// remote services.</span>
@@ -4217,7 +4187,6 @@
         {
             <span class="comment">// If anything went wrong, no storage transaction was committed. Revert our changes to</span>
             <span class="comment">// in-memory data structures before returning the error.</span>
-            <span class="self">self</span>.<span class="ident">key_scans</span>.<span class="ident">remove</span>(<span class="kw-2">&amp;</span><span class="ident">user_key</span>.<span class="ident">address</span>());
             <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">old_key_state</span>) <span class="op">=</span> <span class="ident">revert_key_state</span> {
                 <span class="self">self</span>.<span class="ident">key_state</span>.<span class="ident">user</span> <span class="op">=</span> <span class="ident">old_key_state</span>;
             }
@@ -4544,11 +4513,13 @@
         <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">state</span> <span class="op">=</span> <span class="ident">backend</span>.<span class="ident">load</span>().<span class="kw">await</span><span class="question-mark">?</span>;
         <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">events</span> <span class="op">=</span> <span class="ident">backend</span>.<span class="ident">subscribe</span>(<span class="ident">state</span>.<span class="ident">txn_state</span>.<span class="ident">now</span>, <span class="prelude-val">None</span>).<span class="kw">await</span>;
         <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">key_scans</span> <span class="op">=</span> <span class="macro">vec!</span>[];
-        <span class="kw">for</span> <span class="ident">scan</span> <span class="kw">in</span> <span class="ident">state</span>.<span class="ident">key_scans</span>.<span class="ident">values</span>() {
-            <span class="ident">key_scans</span>.<span class="ident">push</span>((
-                <span class="ident">scan</span>.<span class="ident">address</span>(),
-                <span class="ident">backend</span>.<span class="ident">subscribe</span>(<span class="ident">scan</span>.<span class="ident">next_event</span>(), <span class="prelude-val">None</span>).<span class="kw">await</span>,
-            ));
+        <span class="kw">for</span> <span class="ident">account</span> <span class="kw">in</span> <span class="ident">state</span>.<span class="ident">viewing_accounts</span>.<span class="ident">values</span>() {
+            <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">scan</span>) <span class="op">=</span> <span class="kw-2">&amp;</span><span class="ident">account</span>.<span class="ident">scan</span> {
+                <span class="ident">key_scans</span>.<span class="ident">push</span>((
+                    <span class="ident">scan</span>.<span class="ident">address</span>(),
+                    <span class="ident">backend</span>.<span class="ident">subscribe</span>(<span class="ident">scan</span>.<span class="ident">next_event</span>(), <span class="prelude-val">None</span>).<span class="kw">await</span>,
+                ));
+            }
         }
         <span class="kw">let</span> <span class="ident">key_tree</span> <span class="op">=</span> <span class="ident">backend</span>.<span class="ident">key_stream</span>();
         <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">session</span> <span class="op">=</span> <span class="ident">WalletSession</span> {
@@ -5475,43 +5446,42 @@
                         <span class="ident">pending_key_scans</span>,
                         ..
                     } <span class="op">=</span> <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="kw-2">*</span><span class="ident">mutex</span>.<span class="ident">lock</span>().<span class="kw">await</span>;
-                    <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">scan</span> <span class="op">=</span> <span class="ident">state</span>.<span class="ident">key_scans</span>.<span class="ident">remove</span>(<span class="kw-2">&amp;</span><span class="ident">address</span>).<span class="ident">unwrap</span>();
-                    <span class="ident">scan</span>.<span class="ident">handle_event</span>(<span class="ident">event</span>, <span class="ident">source</span>);
-                    <span class="comment">// Check if the scan is complete.</span>
-                    <span class="kw">let</span> <span class="ident">finished</span> <span class="op">=</span> <span class="kw">match</span> <span class="ident">scan</span>.<span class="ident">finalize</span>(<span class="ident">state</span>.<span class="ident">txn_state</span>.<span class="ident">record_mt</span>.<span class="ident">commitment</span>()) {
-                        <span class="prelude-val">Ok</span>((<span class="ident">key</span>, <span class="ident">ScanOutputs</span> { <span class="ident">records</span>, <span class="ident">history</span> })) <span class="op">=</span><span class="op">&gt;</span> {
-                            <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span> <span class="ident">state</span>.<span class="ident">add_records</span>(<span class="ident">session</span>, <span class="kw-2">&amp;</span><span class="ident">key</span>, <span class="ident">records</span>).<span class="kw">await</span> {
-                                <span class="macro">println!</span>(<span class="string">&quot;Error saving records from key scan {}: {}&quot;</span>, <span class="ident">address</span>, <span class="ident">err</span>);
-                            }
-                            <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span> <span class="ident">session</span>
-                                .<span class="ident">backend</span>
-                                .<span class="ident">store</span>(<span class="op">|</span><span class="kw-2">mut</span> <span class="ident">t</span><span class="op">|</span> <span class="kw">async</span> {
-                                    <span class="kw">for</span> <span class="ident">h</span> <span class="kw">in</span> <span class="ident">history</span> {
-                                        <span class="ident">t</span>.<span class="ident">store_transaction</span>(<span class="ident">h</span>).<span class="kw">await</span><span class="question-mark">?</span>;
-                                    }
-                                    <span class="prelude-val">Ok</span>(<span class="ident">t</span>)
-                                })
-                                .<span class="kw">await</span>
-                            {
-                                <span class="macro">println!</span>(
-                                    <span class="string">&quot;Error saving tranaction history from key scan {}: {}&quot;</span>,
-                                    <span class="ident">address</span>, <span class="ident">err</span>
-                                );
-                            }
-
-                            <span class="comment">// Signal anyone waiting for a notification that this scan finished.</span>
-                            <span class="kw">for</span> <span class="ident">sender</span> <span class="kw">in</span> <span class="ident">pending_key_scans</span>.<span class="ident">remove</span>(<span class="kw-2">&amp;</span><span class="ident">address</span>).<span class="ident">into_iter</span>().<span class="ident">flatten</span>() {
-                                <span class="comment">// Ignore errors, it just means the receiving end of the channel has</span>
-                                <span class="comment">// been dropped.</span>
-                                <span class="ident">sender</span>.<span class="ident">send</span>(()).<span class="ident">ok</span>();
-                            }
-
-                            <span class="bool-val">true</span>
+                    <span class="kw">let</span> <span class="ident">finished</span> <span class="op">=</span> <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>((<span class="ident">key</span>, <span class="ident">ScanOutputs</span> { <span class="ident">records</span>, <span class="ident">history</span> })) <span class="op">=</span> <span class="ident">state</span>
+                        .<span class="ident">sending_accounts</span>
+                        .<span class="ident">get_mut</span>(<span class="kw-2">&amp;</span><span class="ident">address</span>)
+                        .<span class="ident">unwrap</span>()
+                        .<span class="ident">update_scan</span>(<span class="ident">event</span>, <span class="ident">source</span>, <span class="ident">state</span>.<span class="ident">txn_state</span>.<span class="ident">record_mt</span>.<span class="ident">commitment</span>())
+                        .<span class="kw">await</span>
+                    {
+                        <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span> <span class="ident">state</span>.<span class="ident">add_records</span>(<span class="ident">session</span>, <span class="kw-2">&amp;</span><span class="ident">key</span>, <span class="ident">records</span>).<span class="kw">await</span> {
+                            <span class="macro">println!</span>(<span class="string">&quot;Error saving records from key scan {}: {}&quot;</span>, <span class="ident">address</span>, <span class="ident">err</span>);
                         }
-                        <span class="prelude-val">Err</span>(<span class="ident">scan</span>) <span class="op">=</span><span class="op">&gt;</span> {
-                            <span class="ident">state</span>.<span class="ident">key_scans</span>.<span class="ident">insert</span>(<span class="ident">address</span>.<span class="ident">clone</span>(), <span class="ident">scan</span>);
-                            <span class="bool-val">false</span>
+                        <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span> <span class="ident">session</span>
+                            .<span class="ident">backend</span>
+                            .<span class="ident">store</span>(<span class="op">|</span><span class="kw-2">mut</span> <span class="ident">t</span><span class="op">|</span> <span class="kw">async</span> {
+                                <span class="kw">for</span> <span class="ident">h</span> <span class="kw">in</span> <span class="ident">history</span> {
+                                    <span class="ident">t</span>.<span class="ident">store_transaction</span>(<span class="ident">h</span>).<span class="kw">await</span><span class="question-mark">?</span>;
+                                }
+                                <span class="prelude-val">Ok</span>(<span class="ident">t</span>)
+                            })
+                            .<span class="kw">await</span>
+                        {
+                            <span class="macro">println!</span>(
+                                <span class="string">&quot;Error saving tranaction history from key scan {}: {}&quot;</span>,
+                                <span class="ident">address</span>, <span class="ident">err</span>
+                            );
                         }
+
+                        <span class="comment">// Signal anyone waiting for a notification that this scan finished.</span>
+                        <span class="kw">for</span> <span class="ident">sender</span> <span class="kw">in</span> <span class="ident">pending_key_scans</span>.<span class="ident">remove</span>(<span class="kw-2">&amp;</span><span class="ident">address</span>).<span class="ident">into_iter</span>().<span class="ident">flatten</span>() {
+                            <span class="comment">// Ignore errors, it just means the receiving end of the channel has</span>
+                            <span class="comment">// been dropped.</span>
+                            <span class="ident">sender</span>.<span class="ident">send</span>(()).<span class="ident">ok</span>();
+                        }
+
+                        <span class="bool-val">true</span>
+                    } <span class="kw">else</span> {
+                        <span class="bool-val">false</span>
                     };
 
                     <span class="ident">session</span>
