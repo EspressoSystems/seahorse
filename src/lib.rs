@@ -744,6 +744,7 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
                     }
                     // Insert new records.
                     for o in txn.output_commitments() {
+                        dbg!(self.txn_state.record_mt.commitment());
                         self.txn_state.append_merkle_leaf(o);
                     }
                 }
@@ -2686,6 +2687,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
         address: UserAddress,
         mut events: impl 'a + Stream<Item = (LedgerEvent<L>, EventSource)> + Unpin + Send,
     ) {
+        println!("spawning key scan: {}", &address);
         {
             // Register the key scan in `pending_key_scans` so that `await_key_scan` will work.
             let WalletSharedState {
@@ -2695,9 +2697,20 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
         }
 
         let mutex = self.mutex.clone();
+        println!("starting event scan");
         self.task_scope.spawn_cancellable(
             async move {
-                while let Some((event, source)) = events.next().await {
+                println!("event scan started");
+                let mut first_run = true;
+                let mut finished = false;
+                while !finished {
+                    let next_event = if first_run {
+                        None
+                    } else {
+                        Some(events.next().await.unwrap())
+                    };
+                    first_run = false;
+
                     let WalletSharedState {
                         state,
                         session,
@@ -2705,9 +2718,11 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
                         ..
                     } = &mut *mutex.lock().await;
                     let mut scan = state.key_scans.remove(&address).unwrap();
-                    scan.handle_event(event, source);
+                    if let Some((event, source)) = next_event {
+                        scan.handle_event(event, source);
+                    }
                     // Check if the scan is complete.
-                    let finished = match scan.finalize(state.txn_state.record_mt.commitment()) {
+                    finished = match scan.finalize(state.txn_state.record_mt.commitment()) {
                         Ok((key, ScanOutputs { records, history })) => {
                             if let Err(err) = state.add_records(session, &key, records).await {
                                 println!("Error saving records from key scan {}: {}", address, err);
@@ -2751,15 +2766,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
                         })
                         .await
                         .ok();
-
-                    if finished {
-                        return;
-                    }
                 }
-
-                // We should never get here, we should just keep consuming events until we sync with
-                // the main event thread's Merkle tree.
-                unreachable!();
             },
             || (),
         );
