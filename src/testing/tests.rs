@@ -2736,4 +2736,104 @@ pub mod generic_wallet_tests {
         let loaded = Icon::load_png(BufReader::new(File::open(path).unwrap())).unwrap();
         assert_eq!(loaded, icon);
     }
+
+    #[async_std::test]
+    pub async fn test_txn_history<'a, T: SystemUnderTest<'a>>() {
+        let mut t = T::default();
+        let mut now = Instant::now();
+        let (ledger, mut wallets) = t.create_test_network(&[(2, 2)], vec![4, 0], &mut now).await;
+        {
+            let mut ledger = ledger.lock().await;
+            ledger.set_block_size(1).unwrap();
+            // Hold the transfer so we can observe the pending transaction history entry.
+            ledger.hold_next_transaction();
+        }
+
+        // Submit a transaction.
+        let src = wallets[0].1[0].clone();
+        let dst = wallets[1].1[0].clone();
+        let receipt = wallets[0]
+            .0
+            .transfer(Some(&src), &AssetCode::native(), &[(dst.clone(), 1)], 1)
+            .await
+            .unwrap();
+
+        // The history entry should be added immediately.
+        let expected_entry = TxnHistoryWithTimeTolerantEq(TransactionHistoryEntry {
+            time: Local::now(),
+            asset: AssetCode::native(),
+            kind: TransactionKind::<T::Ledger>::send(),
+            senders: vec![src.clone()],
+            receivers: vec![(dst.clone(), 1)],
+            receipt: Some(receipt.clone()),
+        });
+        let entry = wallets[0]
+            .0
+            .transaction_history()
+            .await
+            .unwrap()
+            .last()
+            .unwrap()
+            .clone();
+        assert_eq!(TxnHistoryWithTimeTolerantEq(entry.clone()), expected_entry);
+
+        // The status of the entry should be pending.
+        assert_eq!(
+            wallets[0]
+                .0
+                .transaction_status(entry.receipt.as_ref().unwrap())
+                .await
+                .unwrap(),
+            TransactionStatus::Pending
+        );
+
+        // Release the transfer so it can finalize.
+        ledger.lock().await.release_held_transaction();
+        await_transaction(&receipt, &wallets[0].0, &[&wallets[1].0]).await;
+
+        // The receiver should have a new entry.
+        let expected_entry = TxnHistoryWithTimeTolerantEq(TransactionHistoryEntry {
+            time: Local::now(),
+            asset: AssetCode::native(),
+            kind: TransactionKind::<T::Ledger>::receive(),
+            senders: vec![],
+            receivers: vec![(dst.clone(), 1)],
+            receipt: None,
+        });
+        assert_eq!(
+            TxnHistoryWithTimeTolerantEq(
+                wallets[1]
+                    .0
+                    .transaction_history()
+                    .await
+                    .unwrap()
+                    .last()
+                    .unwrap()
+                    .clone()
+            ),
+            expected_entry
+        );
+
+        // The sender's entry should be unchanged...
+        assert_eq!(
+            entry,
+            wallets[0]
+                .0
+                .transaction_history()
+                .await
+                .unwrap()
+                .last()
+                .unwrap()
+                .clone()
+        );
+        // ...but the status should be finalized.
+        assert_eq!(
+            wallets[0]
+                .0
+                .transaction_status(entry.receipt.as_ref().unwrap())
+                .await
+                .unwrap(),
+            TransactionStatus::Retired
+        );
+    }
 }
