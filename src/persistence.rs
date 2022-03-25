@@ -147,28 +147,26 @@ impl<T: Serialize + DeserializeOwned> LoadStore for EncryptingResourceAdapter<T>
 
     fn load(&self, stream: &[u8]) -> Result<Self::ParamType, PersistenceError> {
         let ciphertext = bincode::deserialize(stream)
-            .map_err(|source| PersistenceError::BincodeDeError { source })?;
+            .map_err(|source| PersistenceError::BincodeDe { source })?;
         let plaintext =
             self.cipher
                 .decrypt(&ciphertext)
-                .map_err(|err| PersistenceError::OtherLoadError {
+                .map_err(|err| PersistenceError::OtherLoad {
                     inner: Box::new(err),
                 })?;
-        bincode::deserialize(&plaintext)
-            .map_err(|source| PersistenceError::BincodeDeError { source })
+        bincode::deserialize(&plaintext).map_err(|source| PersistenceError::BincodeDe { source })
     }
 
     fn store(&mut self, param: &Self::ParamType) -> Result<Vec<u8>, PersistenceError> {
-        let plaintext = bincode::serialize(param)
-            .map_err(|source| PersistenceError::BincodeSerError { source })?;
+        let plaintext =
+            bincode::serialize(param).map_err(|source| PersistenceError::BincodeSer { source })?;
         let ciphertext =
             self.cipher
                 .encrypt(&plaintext)
-                .map_err(|err| PersistenceError::OtherStoreError {
+                .map_err(|err| PersistenceError::OtherStore {
                     inner: Box::new(err),
                 })?;
-        bincode::serialize(&ciphertext)
-            .map_err(|source| PersistenceError::BincodeSerError { source })
+        bincode::serialize(&ciphertext).map_err(|source| PersistenceError::BincodeSer { source })
     }
 }
 

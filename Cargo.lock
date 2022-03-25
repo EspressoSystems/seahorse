@@ -600,14 +600,14 @@ checksum = "065374052e7df7ee4047b1160cca5e1467a12351a40b3da123c870ba0b8eda2a"
 [[package]]
 name = "atomic_store"
 version = "0.1.0"
-source = "git+https://github.com/EspressoSystems/atomicstore.git#a719ad0ec86831fb9b0cb9d9a4889e1bdf0f91e6"
+source = "git+https://github.com/EspressoSystems/atomicstore.git#b036409be09a472aa2fb54b1a138572df485fa1e"
 dependencies = [
  "ark-serialize",
  "bincode",
  "chrono",
  "glob",
  "serde",
- "snafu 0.6.10",
+ "snafu 0.7.0",
 ]
 
 [[package]]
@@ -2028,7 +2028,7 @@ checksum = "1aab8fc367588b89dcee83ab0fd66b72b50b72fa1904d7095045ace2b0c81c35"
 [[package]]
 name = "jf-cap"
 version = "0.0.1"
-source = "git+https://github.com/EspressoSystems/cap.git#a9489cff402408953bae25d4b27b5cdaa481f9dd"
+source = "git+https://github.com/EspressoSystems/cap.git#f233bdffb89c3e2b86dc366a7dfc886ec4808253"
 dependencies = [
  "anyhow",
  "ark-bn254",
@@ -2064,7 +2064,7 @@ dependencies = [
 [[package]]
 name = "jf-plonk"
 version = "0.1.0"
-source = "git+https://github.com/EspressoSystems/jellyfish.git#a35e021c56c56efd3276e0aa55dd9231f9d70d1f"
+source = "git+https://github.com/EspressoSystems/jellyfish.git#9590fac7466ce955c31d94dc9996854f58f7fe2f"
 dependencies = [
  "ark-bls12-377",
  "ark-bls12-381",
@@ -2093,7 +2093,7 @@ dependencies = [
 [[package]]
 name = "jf-primitives"
 version = "0.1.0"
-source = "git+https://github.com/EspressoSystems/jellyfish.git#a35e021c56c56efd3276e0aa55dd9231f9d70d1f"
+source = "git+https://github.com/EspressoSystems/jellyfish.git#9590fac7466ce955c31d94dc9996854f58f7fe2f"
 dependencies = [
  "ark-ec",
  "ark-ff",
@@ -2115,7 +2115,7 @@ dependencies = [
 [[package]]
 name = "jf-rescue"
 version = "0.1.0"
-source = "git+https://github.com/EspressoSystems/jellyfish.git#a35e021c56c56efd3276e0aa55dd9231f9d70d1f"
+source = "git+https://github.com/EspressoSystems/jellyfish.git#9590fac7466ce955c31d94dc9996854f58f7fe2f"
 dependencies = [
  "ark-bls12-377",
  "ark-bls12-381",
@@ -2140,7 +2140,7 @@ dependencies = [
 [[package]]
 name = "jf-utils"
 version = "0.1.0"
-source = "git+https://github.com/EspressoSystems/jellyfish.git#a35e021c56c56efd3276e0aa55dd9231f9d70d1f"
+source = "git+https://github.com/EspressoSystems/jellyfish.git#9590fac7466ce955c31d94dc9996854f58f7fe2f"
 dependencies = [
  "anyhow",
  "ark-ec",
@@ -2158,7 +2158,7 @@ dependencies = [
 [[package]]
 name = "jf-utils-derive"
 version = "0.1.0"
-source = "git+https://github.com/EspressoSystems/jellyfish.git#a35e021c56c56efd3276e0aa55dd9231f9d70d1f"
+source = "git+https://github.com/EspressoSystems/jellyfish.git#9590fac7466ce955c31d94dc9996854f58f7fe2f"
 dependencies = [
  "ark-std",
  "quote",
@@ -3719,7 +3719,7 @@ dependencies = [
 [[package]]
 name = "tagged-base64"
 version = "0.1.0"
-source = "git+https://github.com/EspressoSystems/tagged-base64.git?branch=main#5295fafb4068c67e271b831a00cd80846a2fd512"
+source = "git+https://github.com/EspressoSystems/tagged-base64.git?branch=main#03b74bacf3e99b1b9504d9b9532ee384c26fbae6"
 dependencies = [
  "base64 0.13.0",
  "console_error_panic_hook",
