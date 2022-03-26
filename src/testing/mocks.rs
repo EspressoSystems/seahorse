@@ -37,9 +37,9 @@ use std::pin::Pin;
 #[derive(Clone, Debug, Derivative)]
 #[derivative(Default(bound = "L: reef::Ledger"))]
 pub struct MockStorage<'a, L: reef::Ledger> {
-    pub(crate) committed: Option<WalletState<'a, L>>,
-    pub(crate) working: Option<WalletState<'a, L>>,
-    pub(crate) txn_history: Vec<TransactionHistoryEntry<L>>,
+    committed: Option<WalletState<'a, L>>,
+    working: Option<WalletState<'a, L>>,
+    txn_history: Vec<TransactionHistoryEntry<L>>,
 }
 
 impl<'a, L: reef::Ledger> MockStorage<'a, L> {
