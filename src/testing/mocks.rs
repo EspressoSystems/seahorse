@@ -18,6 +18,7 @@ use crate::{
 };
 use async_std::sync::{Arc, Mutex, MutexGuard};
 use async_trait::async_trait;
+use derivative::Derivative;
 use futures::stream::Stream;
 use itertools::izip;
 use jf_cap::{
@@ -32,7 +33,6 @@ use reef::{cap, traits::Transaction as _, traits::Validator as _};
 use snafu::ResultExt;
 use std::collections::{HashMap, HashSet};
 use std::pin::Pin;
-use derivative::Derivative;
 
 #[derive(Clone, Debug, Derivative)]
 #[derivative(Default(bound = "L: reef::Ledger"))]
@@ -42,18 +42,21 @@ pub struct MockStorage<'a, L: reef::Ledger> {
     pub(crate) txn_history: Vec<TransactionHistoryEntry<L>>,
 }
 
-impl<'a, L: reef::Ledger> MockStorage<'a,L> {
-
+impl<'a, L: reef::Ledger> MockStorage<'a, L> {
     /// Set up the mock storage. Returns `None` if it has already been
     /// initialized.
-    pub fn initialize(&mut self, committed: WalletState<'a, L>, working: WalletState<'a, L>) -> Option<()> {
-        match (&mut self.committed,&mut self.working) {
-        (None,None) => {
-            self.committed = Some(committed);
-            self.working = Some(working);
-            Some(())
-        },
-        _ => None,
+    pub fn initialize(
+        &mut self,
+        committed: WalletState<'a, L>,
+        working: WalletState<'a, L>,
+    ) -> Option<()> {
+        match (&mut self.committed, &mut self.working) {
+            (None, None) => {
+                self.committed = Some(committed);
+                self.working = Some(working);
+                Some(())
+            }
+            _ => None,
         }
     }
 }
