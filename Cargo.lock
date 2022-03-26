@@ -3236,7 +3236,7 @@ dependencies = [
  "rustyline",
  "serde",
  "sha3 0.9.1",
- "snafu 0.6.10",
+ "snafu 0.7.0",
  "structopt",
  "strum",
  "strum_macros",
