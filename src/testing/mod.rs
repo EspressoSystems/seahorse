@@ -333,7 +333,6 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         let (freeze_prove_key, freeze_verif_key, _) =
             jf_cap::proof::freeze::preprocess(universal_param, 2, Self::Ledger::merkle_height())
                 .unwrap();
-        println!("creating network");
         let ledger = Arc::new(Mutex::new(MockLedger::new(
             self.create_network(
                 VerifierKeySet {
@@ -356,7 +355,6 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
             record_merkle_tree.clone(),
         )));
 
-        println!("creating wallets");
         // Create a wallet for each user based on the validator and the per-user information
         // computed above.
         let mut wallets = Vec::new();
@@ -384,13 +382,11 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
                     key_pair.pub_key()
                 );
 
-                println!("awaiting key scan");
                 // Wait for the wallet to find any records already belonging to this key from the
                 // initial grants.
                 wallet.await_key_scan(&key_pair.address()).await.unwrap();
                 addresses.push(key_pair.address());
             }
-            println!("keys added");
             wallets.push((wallet, addresses));
         }
 

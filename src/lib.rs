@@ -744,7 +744,6 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
                     }
                     // Insert new records.
                     for o in txn.output_commitments() {
-                        dbg!(self.txn_state.record_mt.commitment());
                         self.txn_state.append_merkle_leaf(o);
                     }
                 }
@@ -2687,7 +2686,6 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
         address: UserAddress,
         mut events: impl 'a + Stream<Item = (LedgerEvent<L>, EventSource)> + Unpin + Send,
     ) {
-        println!("spawning key scan: {}", &address);
         {
             // Register the key scan in `pending_key_scans` so that `await_key_scan` will work.
             let WalletSharedState {
@@ -2697,10 +2695,8 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
         }
 
         let mutex = self.mutex.clone();
-        println!("starting event scan");
         self.task_scope.spawn_cancellable(
             async move {
-                println!("event scan started");
                 let mut first_run = true;
                 let mut finished = false;
                 while !finished {

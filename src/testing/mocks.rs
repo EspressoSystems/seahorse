@@ -32,22 +32,28 @@ use reef::{cap, traits::Transaction as _, traits::Validator as _};
 use snafu::ResultExt;
 use std::collections::{HashMap, HashSet};
 use std::pin::Pin;
+use derivative::Derivative;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Derivative)]
+#[derivative(Default(bound = "L: reef::Ledger"))]
 pub struct MockStorage<'a, L: reef::Ledger> {
-    // TODO: these get set at initialization and then stay the same -- do
-    // they need to be pub?
-    pub committed: Option<WalletState<'a, L>>,
-    pub working: Option<WalletState<'a, L>>,
-    pub txn_history: Vec<TransactionHistoryEntry<L>>,
+    pub(crate) committed: Option<WalletState<'a, L>>,
+    pub(crate) working: Option<WalletState<'a, L>>,
+    pub(crate) txn_history: Vec<TransactionHistoryEntry<L>>,
 }
 
-impl<'a, L: reef::Ledger> Default for MockStorage<'a, L> {
-    fn default() -> Self {
-        Self {
-            committed: Default::default(),
-            working: Default::default(),
-            txn_history: Default::default(),
+impl<'a, L: reef::Ledger> MockStorage<'a,L> {
+
+    /// Set up the mock storage. Returns `None` if it has already been
+    /// initialized.
+    pub fn initialize(&mut self, committed: WalletState<'a, L>, working: WalletState<'a, L>) -> Option<()> {
+        match (&mut self.committed,&mut self.working) {
+        (None,None) => {
+            self.committed = Some(committed);
+            self.working = Some(working);
+            Some(())
+        },
+        _ => None,
         }
     }
 }

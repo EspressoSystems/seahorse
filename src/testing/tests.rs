@@ -2392,15 +2392,11 @@ pub mod generic_wallet_tests {
     pub async fn test_accounts<'a, T: SystemUnderTest<'a>>() {
         let mut t = T::default();
         let mut now = Instant::now();
-        println!("creating test network");
         let (ledger, mut wallets) = t
             .create_test_network(&[(2, 2)], vec![10, 0], &mut now)
             .await;
-        println!("a");
         ledger.lock().await.set_block_size(1).unwrap();
-        println!("b");
         t.check_storage(&ledger, &wallets).await;
-        println!("c");
 
         // The default accounts have no name and a balance of the native assets.
         for address in &wallets[0].1 {
