@@ -409,6 +409,12 @@ pub mod generic_wallet_tests {
         freeze: bool,
         timeout: bool,
     ) {
+        if timeout && T::Ledger::record_root_history() > 100 {
+            // Don't run the timeout tests if the timeout threshold is too large. For 100 transfers
+            // per timeout, this test takes roughly 10 minutes.
+            return;
+        }
+
         let mut t = T::default();
 
         assert!(!(native && mint));
@@ -2429,6 +2435,7 @@ pub mod generic_wallet_tests {
                 assets: vec![],
                 records: vec![],
                 balance: 0,
+                scan_status: None,
             }
         );
         t.check_storage(&ledger, &wallets).await;
@@ -2474,6 +2481,7 @@ pub mod generic_wallet_tests {
                 assets: vec![],
                 records: vec![],
                 balance: 0,
+                scan_status: None,
             }
         );
         assert_eq!(
@@ -2485,6 +2493,7 @@ pub mod generic_wallet_tests {
                 assets: vec![],
                 records: vec![],
                 balance: 0,
+                scan_status: None,
             }
         );
         t.check_storage(&ledger, &wallets).await;

@@ -74,7 +74,6 @@ impl<'a, L: reef::Ledger> WalletStorage<'a, L> for MockStorage<'a, L> {
     async fn store_snapshot(&mut self, state: &WalletState<'a, L>) -> Result<(), WalletError<L>> {
         if let Some(working) = &mut self.working {
             working.txn_state = state.txn_state.clone();
-            working.key_scans = state.key_scans.clone();
             working.key_state = state.key_state.clone();
 
             // Store updated accounts.
@@ -348,7 +347,6 @@ impl<'a> WalletBackend<'a, cap::Ledger> for MockBackend<'a> {
                     transactions: Default::default(),
                 },
                 key_state: Default::default(),
-                key_scans: Default::default(),
                 assets: Default::default(),
                 viewing_accounts: Default::default(),
                 freezing_accounts: Default::default(),
