@@ -19,30 +19,12 @@ use super::*;
 use async_std::sync::{Arc, Mutex};
 use chrono::Local;
 use futures::channel::mpsc;
-use jf_cap::structs::NoteType;
-use jf_cap::utils::compute_universal_param_size;
-use jf_cap::{proof::UniversalParam, MerkleTree, Signature, TransactionVerifyingKey};
+use jf_cap::{MerkleTree, Signature, TransactionVerifyingKey};
 use key_set::{KeySet, OrderByOutputs, ProverKeySet, VerifierKeySet};
-use lazy_static::lazy_static;
 use rand_chacha::rand_core::RngCore;
 use std::collections::{BTreeMap, HashSet};
 use std::pin::Pin;
 use std::time::Instant;
-
-lazy_static! {
-    pub static ref UNIVERSAL_PARAM: UniversalParam = {
-        let max_degree =
-            compute_universal_param_size(NoteType::Transfer, 3, 3, cap::Ledger::merkle_height())
-                .unwrap_or_else(|err| {
-                    panic!(
-                        "Error while computing the universal parameter size for Transfer: {}",
-                        err
-                    )
-                });
-        jf_cap::proof::universal_setup(max_degree, &mut ChaChaRng::from_seed([0u8; 32]))
-            .unwrap_or_else(|err| panic!("Error while generating universal param: {}", err))
-    };
-}
 
 #[async_trait]
 pub trait MockNetwork<'a, L: Ledger> {
@@ -222,8 +204,6 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
     type MockNetwork: 'a + MockNetwork<'a, Self::Ledger> + Send;
     type MockStorage: 'a + WalletStorage<'a, Self::Ledger> + Send;
 
-    fn universal_param(&self) -> &'a UniversalParam;
-
     async fn create_backend(
         &mut self,
         ledger: Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork, Self::MockStorage>>>,
@@ -257,7 +237,7 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         )>,
     ) {
         let mut rng = ChaChaRng::from_seed([42u8; 32]);
-        let universal_param = self.universal_param();
+        let universal_param = Self::Ledger::srs();
 
         // Populate the unpruned record merkle tree with an initial record commitment for each
         // non-zero initial grant. Collect user-specific info (keys and record openings
