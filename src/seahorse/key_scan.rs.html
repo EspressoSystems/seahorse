@@ -418,6 +418,7 @@
 <span id="418">418</span>
 <span id="419">419</span>
 <span id="420">420</span>
+<span id="421">421</span>
 </pre><pre class="rust"><code><span class="doccomment">/// Ledger scanning utilities.</span>
 <span class="doccomment">///</span>
 <span class="doccomment">/// This module provides an interface for searching a ledger for records belonging to a particular</span>
@@ -452,6 +453,7 @@
 <span class="doccomment">///</span>
 <span class="doccomment">/// A list of records discovered by the scan and a list of transaction history entries corresponding</span>
 <span class="doccomment">/// to transactions received by the scan&#39;s key during the range of events considered by the scan.</span>
+<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Debug</span>)]</span>
 <span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">ScanOutputs</span><span class="op">&lt;</span><span class="ident">L</span>: <span class="ident">Ledger</span><span class="op">&gt;</span> {
     <span class="kw">pub</span> <span class="ident">records</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">ScannedRecord</span><span class="op">&gt;</span>,
     <span class="kw">pub</span> <span class="ident">history</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">TransactionHistoryEntry</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span>,
