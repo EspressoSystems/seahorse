@@ -2403,9 +2403,11 @@ pub mod generic_wallet_tests {
             .await;
         ledger.lock().await.set_block_size(1).unwrap();
         t.check_storage(&ledger, &wallets).await;
+        println!("Checking accounts");
 
         // The default accounts have no name and a balance of the native assets.
-        for address in &wallets[0].1 {
+        for address in dbg!(&wallets[0].1) {
+            println!("Checking default account {}",address);
             let account = wallets[0].0.sending_account(address).await.unwrap();
             // TODO: fix the "we assume at least one event" assumption,
             // then add an equivalent assert back

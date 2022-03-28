@@ -260,7 +260,7 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         let universal_param = self.universal_param();
 
         // Populate the unpruned record merkle tree with an initial record commitment for each
-        // non-zero initial grant. Collect user-specific println (keys and record openings
+        // non-zero initial grant. Collect user-specific info (keys and record openings
         // corresponding to grants) in `users`, which will be used to create the wallets later.
         let mut record_merkle_tree = MerkleTree::new(Self::Ledger::merkle_height()).unwrap();
         let mut users = vec![];
