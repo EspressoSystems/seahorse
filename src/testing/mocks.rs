@@ -7,7 +7,6 @@
 
 pub use crate::testing::MockLedger;
 
-use super::UNIVERSAL_PARAM;
 use crate::{
     asset_library::AssetInfo,
     events::{EventIndex, EventSource, LedgerEvent},
@@ -23,13 +22,15 @@ use futures::stream::Stream;
 use itertools::izip;
 use jf_cap::{
     keys::{UserAddress, UserKeyPair, UserPubKey},
-    proof::UniversalParam,
     structs::{Nullifier, ReceiverMemo, RecordCommitment, RecordOpening},
     MerkleTree, Signature,
 };
 use key_set::{OrderByOutputs, ProverKeySet, VerifierKeySet};
 use rand_chacha::{rand_core::SeedableRng, ChaChaRng};
-use reef::{cap, traits::Transaction as _, traits::Validator as _};
+use reef::{
+    cap,
+    traits::{Transaction as _, Validator as _},
+};
 use snafu::ResultExt;
 use std::collections::{HashMap, HashSet};
 use std::pin::Pin;
@@ -470,10 +471,6 @@ impl<'a> super::SystemUnderTest<'a> for MockSystem {
         storage: Arc<Mutex<Self::MockStorage>>,
     ) -> Self::MockBackend {
         MockBackend::new(ledger, storage, key_stream)
-    }
-
-    fn universal_param(&self) -> &'a UniversalParam {
-        &*UNIVERSAL_PARAM
     }
 }
 

@@ -468,7 +468,6 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> WalletStorage<'a,
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::testing::UNIVERSAL_PARAM;
     use crate::{
         events::{EventIndex, EventSource},
         testing::assert_wallet_states_eq,
@@ -489,7 +488,7 @@ mod tests {
         rand_core::{RngCore, SeedableRng},
         ChaChaRng,
     };
-    use reef::traits::TransactionKind as _;
+    use reef::{cap, traits::TransactionKind as _};
     use std::iter::repeat_with;
     use std::path::PathBuf;
     use tempdir::TempDir;
@@ -565,11 +564,12 @@ mod tests {
         // serializing and deserializing, but try to choose representative data.
         let xfr_sizes = [(1, 2), (2, 3), (3, 3)];
 
+        let srs = cap::Ledger::srs();
         let mut xfr_prove_keys = vec![];
         let mut xfr_verif_keys = vec![];
         for (num_inputs, num_outputs) in xfr_sizes {
             let (xfr_prove_key, xfr_verif_key, _) = jf_cap::proof::transfer::preprocess(
-                &*UNIVERSAL_PARAM,
+                &*srs,
                 num_inputs,
                 num_outputs,
                 cap::Ledger::merkle_height(),
@@ -579,11 +579,9 @@ mod tests {
             xfr_verif_keys.push(TransactionVerifyingKey::Transfer(xfr_verif_key));
         }
         let (mint_prove_key, _, _) =
-            jf_cap::proof::mint::preprocess(&*UNIVERSAL_PARAM, cap::Ledger::merkle_height())
-                .unwrap();
+            jf_cap::proof::mint::preprocess(&*srs, cap::Ledger::merkle_height()).unwrap();
         let (freeze_prove_key, _, _) =
-            jf_cap::proof::freeze::preprocess(&*UNIVERSAL_PARAM, 2, cap::Ledger::merkle_height())
-                .unwrap();
+            jf_cap::proof::freeze::preprocess(&*srs, 2, cap::Ledger::merkle_height()).unwrap();
         let record_merkle_tree = MerkleTree::new(cap::Ledger::merkle_height()).unwrap();
         let validator = cap::Validator::default();
 

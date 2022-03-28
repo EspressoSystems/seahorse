@@ -31,8 +31,7 @@ use futures::future::BoxFuture;
 use jf_cap::{
     keys::{AuditorKeyPair, AuditorPubKey, FreezerKeyPair, FreezerPubKey, UserKeyPair},
     proof::UniversalParam,
-    structs::{AssetCode, AssetPolicy, FreezeFlag, NoteType, ReceiverMemo, RecordCommitment},
-    utils::compute_universal_param_size,
+    structs::{AssetCode, AssetPolicy, FreezeFlag, ReceiverMemo, RecordCommitment},
 };
 use net::{MerklePath, UserAddress};
 use reef::Ledger;
@@ -1012,30 +1011,7 @@ async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
 
     let mut loader = Loader::new(storage, reader);
 
-    let max_degree = compute_universal_param_size(NoteType::Transfer, 3, 3, L::merkle_height())
-        .unwrap_or_else(|err| {
-            panic!(
-                "Error while computing the universal parameter size for Transfer: {}",
-                err
-            )
-        });
-    // NOTE: since we are currently using fresh SRS (instead of from proper SRS from MPC
-    // ceremony), and deserializing takes longer than generating new SRS, we choose to
-    // generate new one instead of storing and reading from files.
-    // TODO: (alex) use proper SRS for production
-    let universal_param = Box::leak(Box::new(
-        jf_cap::proof::universal_setup(max_degree, &mut loader.rng)
-            .unwrap_or_else(|err| panic!("Error while generating universal param: {}", err)),
-    ));
-
-    // Alternatively, here's how you would store and load SRS from files:
-    // // generate and store SRS in default path
-    // store_universal_parameter_for_demo(max_degree, None);
-    // let universal_param = Box::leak(Box::new(
-    //     jf_cap::parameters::load_universal_parameter(None)
-    //         .unwrap_or_else(|err| panic!("Error while loading universal param from file: {}", err)),
-    // ));
-
+    let universal_param = Box::leak(Box::new(L::srs()));
     let backend = C::init_backend(universal_param, args, &mut loader)?;
 
     // Loading the wallet takes a while. Let the user know that's expected.

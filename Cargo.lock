@@ -2028,7 +2028,7 @@ checksum = "1aab8fc367588b89dcee83ab0fd66b72b50b72fa1904d7095045ace2b0c81c35"
 [[package]]
 name = "jf-cap"
 version = "0.0.1"
-source = "git+https://github.com/EspressoSystems/cap.git#f233bdffb89c3e2b86dc366a7dfc886ec4808253"
+source = "git+https://github.com/EspressoSystems/cap.git#d4d22d8c67178cd17fad3acc9129fbd8a9d5f529"
 dependencies = [
  "anyhow",
  "ark-bn254",
@@ -3002,7 +3002,7 @@ dependencies = [
 [[package]]
 name = "reef"
 version = "0.2.0"
-source = "git+https://github.com/EspressoSystems/reef.git#89f43d9ac455204b40c5ae543b6c106057a362eb"
+source = "git+https://github.com/EspressoSystems/reef.git#e5457f0e078a7f2bc451def9eba2b8b3c35ed80c"
 dependencies = [
  "arbitrary",
  "arbitrary-wrappers",
@@ -3011,6 +3011,8 @@ dependencies = [
  "funty",
  "itertools",
  "jf-cap",
+ "lazy_static",
+ "rand_chacha 0.3.1",
  "serde",
  "snafu 0.6.10",
  "strum_macros",
