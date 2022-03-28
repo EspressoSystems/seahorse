@@ -52,13 +52,12 @@ impl<L: Ledger, Key> Account<L, Key> {
 
     pub(crate) async fn update_scan(
         &mut self,
-        event: Option<(LedgerEvent<L>, EventSource)>,
+        event: LedgerEvent<L>,
+        source: EventSource,
         records_commitment: MerkleCommitment,
     ) -> Option<(UserKeyPair, ScanOutputs<L>)> {
         let mut scan = self.scan.take().unwrap();
-        if let Some((event, source)) = event {
-            scan.handle_event(event, source);
-        }
+        scan.handle_event(event, source);
         // Check if the scan is complete.
         match scan.finalize(records_commitment) {
             Ok(result) => Some(result),
