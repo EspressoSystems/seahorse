@@ -2683,18 +2683,21 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
         let mutex = self.mutex.clone();
         self.task_scope.spawn_cancellable(
             async move {
-                while let Some((event, source)) = events.next().await {
+                let mut finished = false;
+                while !finished {
+                    let (next_event, source) = events.next().await.unwrap();
+
                     let WalletSharedState {
                         state,
                         session,
                         pending_key_scans,
                         ..
                     } = &mut *mutex.lock().await;
-                    let finished = if let Some((key, ScanOutputs { records, history })) = state
+                    finished = if let Some((key, ScanOutputs { records, history })) = state
                         .sending_accounts
                         .get_mut(&address)
                         .unwrap()
-                        .update_scan(event, source, state.txn_state.record_mt.commitment())
+                        .update_scan(next_event, source, state.txn_state.record_mt.commitment())
                         .await
                     {
                         if let Err(err) = state.add_records(session, &key, records).await {
@@ -2736,15 +2739,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
                         })
                         .await
                         .ok();
-
-                    if finished {
-                        return;
-                    }
                 }
-
-                // We should never get here, we should just keep consuming events until we sync with
-                // the main event thread's Merkle tree.
-                unreachable!();
             },
             || (),
         );

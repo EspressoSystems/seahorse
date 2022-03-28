@@ -32,6 +32,7 @@ pub type ScannedRecord = (RecordOpening, u64, MerklePath);
 ///
 /// A list of records discovered by the scan and a list of transaction history entries corresponding
 /// to transactions received by the scan's key during the range of events considered by the scan.
+#[derive(Debug)]
 pub struct ScanOutputs<L: Ledger> {
     pub records: Vec<ScannedRecord>,
     pub history: Vec<TransactionHistoryEntry<L>>,

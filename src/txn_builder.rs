@@ -1609,7 +1609,7 @@ impl<L: Ledger> TransactionState<L> {
         }
 
         if allow_insufficient {
-            Ok((result, (current_amount - amount) as i64))
+            Ok((result, (current_amount as i64 - amount as i64)))
         } else {
             Err(TransactionError::InsufficientBalance {
                 asset: *asset,

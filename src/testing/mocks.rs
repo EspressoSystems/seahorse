@@ -17,6 +17,7 @@ use crate::{
 };
 use async_std::sync::{Arc, Mutex, MutexGuard};
 use async_trait::async_trait;
+use derivative::Derivative;
 use futures::stream::Stream;
 use itertools::izip;
 use jf_cap::{
@@ -34,27 +35,44 @@ use snafu::ResultExt;
 use std::collections::{HashMap, HashSet};
 use std::pin::Pin;
 
-#[derive(Clone, Debug, Default)]
-pub struct MockStorage<'a> {
-    committed: Option<WalletState<'a, cap::Ledger>>,
-    working: Option<WalletState<'a, cap::Ledger>>,
-    txn_history: Vec<TransactionHistoryEntry<cap::Ledger>>,
+#[derive(Clone, Debug, Derivative)]
+#[derivative(Default(bound = "L: reef::Ledger"))]
+pub struct MockStorage<'a, L: reef::Ledger> {
+    committed: Option<WalletState<'a, L>>,
+    working: Option<WalletState<'a, L>>,
+    txn_history: Vec<TransactionHistoryEntry<L>>,
+}
+
+impl<'a, L: reef::Ledger> MockStorage<'a, L> {
+    /// Set up the mock storage. Returns `None` if it has already been
+    /// initialized.
+    pub fn initialize(
+        &mut self,
+        committed: WalletState<'a, L>,
+        working: WalletState<'a, L>,
+    ) -> Option<()> {
+        match (&mut self.committed, &mut self.working) {
+            (None, None) => {
+                self.committed = Some(committed);
+                self.working = Some(working);
+                Some(())
+            }
+            _ => None,
+        }
+    }
 }
 
 #[async_trait]
-impl<'a> WalletStorage<'a, cap::Ledger> for MockStorage<'a> {
+impl<'a, L: reef::Ledger> WalletStorage<'a, L> for MockStorage<'a, L> {
     fn exists(&self) -> bool {
         self.committed.is_some()
     }
 
-    async fn load(&mut self) -> Result<WalletState<'a, cap::Ledger>, WalletError<cap::Ledger>> {
+    async fn load(&mut self) -> Result<WalletState<'a, L>, WalletError<L>> {
         Ok(self.committed.as_ref().unwrap().clone())
     }
 
-    async fn store_snapshot(
-        &mut self,
-        state: &WalletState<'a, cap::Ledger>,
-    ) -> Result<(), WalletError<cap::Ledger>> {
+    async fn store_snapshot(&mut self, state: &WalletState<'a, L>) -> Result<(), WalletError<L>> {
         if let Some(working) = &mut self.working {
             working.txn_state = state.txn_state.clone();
             working.key_state = state.key_state.clone();
@@ -70,7 +88,7 @@ impl<'a> WalletStorage<'a, cap::Ledger> for MockStorage<'a> {
         Ok(())
     }
 
-    async fn store_asset(&mut self, asset: &AssetInfo) -> Result<(), WalletError<cap::Ledger>> {
+    async fn store_asset(&mut self, asset: &AssetInfo) -> Result<(), WalletError<L>> {
         if let Some(working) = &mut self.working {
             working.assets.insert(asset.clone());
         }
@@ -79,15 +97,15 @@ impl<'a> WalletStorage<'a, cap::Ledger> for MockStorage<'a> {
 
     async fn store_transaction(
         &mut self,
-        txn: TransactionHistoryEntry<cap::Ledger>,
-    ) -> Result<(), WalletError<cap::Ledger>> {
+        txn: TransactionHistoryEntry<L>,
+    ) -> Result<(), WalletError<L>> {
         self.txn_history.push(txn);
         Ok(())
     }
 
     async fn transaction_history(
         &mut self,
-    ) -> Result<Vec<TransactionHistoryEntry<cap::Ledger>>, WalletError<cap::Ledger>> {
+    ) -> Result<Vec<TransactionHistoryEntry<L>>, WalletError<L>> {
         Ok(self.txn_history.clone())
     }
 
@@ -270,15 +288,17 @@ impl<'a> super::MockNetwork<'a, cap::Ledger> for MockNetwork<'a> {
 
 #[derive(Clone)]
 pub struct MockBackend<'a> {
-    storage: Arc<Mutex<MockStorage<'a>>>,
-    ledger: Arc<Mutex<MockLedger<'a, cap::Ledger, MockNetwork<'a>, MockStorage<'a>>>>,
+    storage: Arc<Mutex<MockStorage<'a, cap::Ledger>>>,
+    ledger: Arc<Mutex<MockLedger<'a, cap::Ledger, MockNetwork<'a>, MockStorage<'a, cap::Ledger>>>>,
     key_stream: hd::KeyTree,
 }
 
 impl<'a> MockBackend<'a> {
     pub fn new(
-        ledger: Arc<Mutex<MockLedger<'a, cap::Ledger, MockNetwork<'a>, MockStorage<'a>>>>,
-        storage: Arc<Mutex<MockStorage<'a>>>,
+        ledger: Arc<
+            Mutex<MockLedger<'a, cap::Ledger, MockNetwork<'a>, MockStorage<'a, cap::Ledger>>>,
+        >,
+        storage: Arc<Mutex<MockStorage<'a, cap::Ledger>>>,
         key_stream: hd::KeyTree,
     ) -> MockBackend<'a> {
         Self {
@@ -292,7 +312,7 @@ impl<'a> MockBackend<'a> {
 #[async_trait]
 impl<'a> WalletBackend<'a, cap::Ledger> for MockBackend<'a> {
     type EventStream = Pin<Box<dyn Stream<Item = (LedgerEvent<cap::Ledger>, EventSource)> + Send>>;
-    type Storage = MockStorage<'a>;
+    type Storage = MockStorage<'a, cap::Ledger>;
 
     async fn storage<'l>(&'l mut self) -> MutexGuard<'l, Self::Storage> {
         self.storage.lock().await
@@ -426,7 +446,7 @@ impl<'a> super::SystemUnderTest<'a> for MockSystem {
     type Ledger = cap::Ledger;
     type MockBackend = MockBackend<'a>;
     type MockNetwork = MockNetwork<'a>;
-    type MockStorage = MockStorage<'a>;
+    type MockStorage = MockStorage<'a, Self::Ledger>;
 
     async fn create_network(
         &mut self,
