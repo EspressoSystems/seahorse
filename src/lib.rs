@@ -2683,15 +2683,9 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
         let mutex = self.mutex.clone();
         self.task_scope.spawn_cancellable(
             async move {
-                let mut first_run = true;
                 let mut finished = false;
                 while !finished {
-                    let next_event = dbg!(if first_run {
-                        None
-                    } else {
-                        Some(events.next().await.unwrap())
-                    });
-                    first_run = false;
+                    let next_event = events.next().await.unwrap();
 
                     let WalletSharedState {
                         state,
@@ -2699,13 +2693,14 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
                         pending_key_scans,
                         ..
                     } = &mut *mutex.lock().await;
-                    finished = if let Some((key, ScanOutputs { records, history })) = dbg!(state
-                        .sending_accounts
-                        .get_mut(&address)
-                        .unwrap()
-                        .update_scan(next_event, state.txn_state.record_mt.commitment())
-                        .await)
-                    {
+                    finished = if let Some((key, ScanOutputs { records, history })) =
+                        state
+                            .sending_accounts
+                            .get_mut(&address)
+                            .unwrap()
+                            .update_scan(Some(next_event), state.txn_state.record_mt.commitment())
+                            .await
+                     {
                         if let Err(err) = state.add_records(session, &key, records).await {
                             println!("Error saving records from key scan {}: {}", address, err);
                         }

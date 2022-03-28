@@ -165,7 +165,7 @@ impl<L: Ledger> BackgroundKeyScan<L> {
         self,
         merkle_commitment: MerkleCommitment,
     ) -> Result<(UserKeyPair, ScanOutputs<L>), Self> {
-        if dbg!(merkle_commitment) == dbg!(self.records_mt.commitment()) {
+        if merkle_commitment == self.records_mt.commitment() {
             let mt = self.records_mt;
             let records = self
                 .records
