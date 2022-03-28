@@ -2693,14 +2693,13 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
                         pending_key_scans,
                         ..
                     } = &mut *mutex.lock().await;
-                    finished = if let Some((key, ScanOutputs { records, history })) =
-                        state
-                            .sending_accounts
-                            .get_mut(&address)
-                            .unwrap()
-                            .update_scan(Some(next_event), state.txn_state.record_mt.commitment())
-                            .await
-                     {
+                    finished = if let Some((key, ScanOutputs { records, history })) = state
+                        .sending_accounts
+                        .get_mut(&address)
+                        .unwrap()
+                        .update_scan(Some(next_event), state.txn_state.record_mt.commitment())
+                        .await
+                    {
                         if let Err(err) = state.add_records(session, &key, records).await {
                             println!("Error saving records from key scan {}: {}", address, err);
                         }
