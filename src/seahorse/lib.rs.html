@@ -2748,7 +2748,6 @@
 <span id="2748">2748</span>
 <span id="2749">2749</span>
 <span id="2750">2750</span>
-<span id="2751">2751</span>
 </pre><pre class="rust"><code><span class="comment">// Copyright (c) 2022 Espresso Systems (espressosys.com)</span>
 <span class="comment">// This file is part of the Seahorse library.</span>
 
@@ -3725,7 +3724,6 @@
         <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">records</span> <span class="op">=</span> <span class="ident">Vec::new</span>();
         <span class="kw">for</span> (<span class="ident">memo</span>, <span class="ident">comm</span>, <span class="ident">uid</span>, <span class="ident">proof</span>) <span class="kw">in</span> <span class="ident">memos</span> {
             <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Ok</span>(<span class="ident">record_opening</span>) <span class="op">=</span> <span class="ident">memo</span>.<span class="ident">decrypt</span>(<span class="ident">key_pair</span>, <span class="ident">comm</span>, <span class="kw-2">&amp;</span>[]) {
-                <span class="macro">println!</span>(<span class="string">&quot;memo decrypted with key {}&quot;</span>, <span class="ident">key_pair</span>.<span class="ident">pub_key</span>());
                 <span class="kw">if</span> <span class="op">!</span><span class="ident">record_opening</span>.<span class="ident">is_dummy</span>() {
                     <span class="comment">// If this record is for us (i.e. its corresponding memo decrypts under</span>
                     <span class="comment">// our key) and not a dummy, then add it to our owned records.</span>
