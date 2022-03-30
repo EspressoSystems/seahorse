@@ -974,7 +974,6 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
         let mut records = Vec::new();
         for (memo, comm, uid, proof) in memos {
             if let Ok(record_opening) = memo.decrypt(key_pair, comm, &[]) {
-                println!("memo decrypted with key {}", key_pair.pub_key());
                 if !record_opening.is_dummy() {
                     // If this record is for us (i.e. its corresponding memo decrypts under
                     // our key) and not a dummy, then add it to our owned records.
