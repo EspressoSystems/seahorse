@@ -13,7 +13,7 @@ use crate::{
     hd,
     testing::{MockEventSource, MockNetwork as _},
     txn_builder::{PendingTransaction, TransactionHistoryEntry, TransactionInfo, TransactionState},
-    CryptoError, WalletBackend, WalletError, WalletState, WalletStorage,
+    CryptoSnafu, WalletBackend, WalletError, WalletState, WalletStorage,
 };
 use async_std::sync::{Arc, Mutex, MutexGuard};
 use async_trait::async_trait;
@@ -233,7 +233,7 @@ impl<'a> super::MockNetwork<'a, cap::Ledger> for MockNetwork<'a> {
         let uids = block_uids[txn_id as usize].clone();
 
         txn.verify_receiver_memos_signature(&memos, &sig)
-            .context(CryptoError)?;
+            .context(CryptoSnafu)?;
 
         let merkle_paths = uids
             .iter()

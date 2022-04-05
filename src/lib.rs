@@ -90,7 +90,7 @@ use std::iter::repeat;
 use std::sync::Arc;
 
 #[derive(Debug, Snafu)]
-#[snafu(visibility = "pub")]
+#[snafu(visibility(pub))]
 pub enum WalletError<L: Ledger> {
     UndefinedAsset {
         asset: AssetCode,
@@ -1496,7 +1496,7 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
     ) -> Result<(TransferNote, TransactionInfo<L>), WalletError<L>> {
         self.txn_state
             .transfer(spec, &self.proving_keys.xfr, &mut session.rng)
-            .context(TransactionError)
+            .context(TransactionSnafu)
     }
 
     async fn build_mint(
@@ -1529,7 +1529,7 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
                 session.backend.get_public_key(&receiver).await?,
                 &mut session.rng,
             )
-            .context(TransactionError)
+            .context(TransactionSnafu)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1567,7 +1567,7 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
                 outputs_frozen,
                 &mut session.rng,
             )
-            .context(TransactionError)
+            .context(TransactionSnafu)
     }
 
     async fn submit_transaction(
