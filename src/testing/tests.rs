@@ -2411,7 +2411,7 @@ pub mod generic_wallet_tests {
             assert!(account.used);
             assert_eq!(account.address, *address);
             assert_eq!(account.description, "");
-            assert_eq!(account.balance, 5);
+            assert_eq!(account.balances, HashMap::from([(AssetCode::native(), 5)]));
             assert_eq!(account.assets, vec![AssetInfo::native()]);
             assert_eq!(account.records.len(), 1);
             assert_eq!(account.records[0].ro.amount, 5);
@@ -2433,7 +2433,7 @@ pub mod generic_wallet_tests {
                 used: false,
                 assets: vec![],
                 records: vec![],
-                balance: 0,
+                balances: HashMap::<AssetCode, u64>::new(),
                 scan_status: None,
             }
         );
@@ -2450,7 +2450,7 @@ pub mod generic_wallet_tests {
         {
             let account = wallets[0].0.sending_account(&address).await.unwrap();
             assert!(account.used);
-            assert_eq!(account.balance, 2);
+            assert_eq!(account.balances, HashMap::from([(AssetCode::native(), 2)]));
             assert_eq!(account.assets, vec![AssetInfo::native()]);
             assert_eq!(account.records.len(), 1);
             assert_eq!(account.records[0].ro.amount, 2);
@@ -2477,7 +2477,7 @@ pub mod generic_wallet_tests {
                 used: false,
                 assets: vec![],
                 records: vec![],
-                balance: 0,
+                balances: HashMap::<AssetCode, u64>::new(),
                 scan_status: None,
             }
         );
@@ -2489,7 +2489,7 @@ pub mod generic_wallet_tests {
                 used: false,
                 assets: vec![],
                 records: vec![],
-                balance: 0,
+                balances: HashMap::<AssetCode, u64>::new(),
                 scan_status: None,
             }
         );
@@ -2589,13 +2589,19 @@ pub mod generic_wallet_tests {
         await_transaction(&receipt, &wallets[0].0, &[&wallets[1].0]).await;
         {
             let account = wallets[0].0.viewing_account(&viewing_key).await.unwrap();
-            assert_eq!(account.balance, 200);
+            assert_eq!(
+                account.balances,
+                HashMap::from([(freezable_asset.code, 200)])
+            );
             assert_eq!(account.records.len(), 1);
             assert_eq!(account.records[0].ro.asset_def.code, freezable_asset.code);
         }
         {
             let account = wallets[0].0.freezing_account(&freezing_key).await.unwrap();
-            assert_eq!(account.balance, 200);
+            assert_eq!(
+                account.balances,
+                HashMap::from([(freezable_asset.code, 200)])
+            );
             assert_eq!(account.records.len(), 1);
             assert_eq!(account.records[0].ro.asset_def.code, freezable_asset.code);
         }
@@ -2605,7 +2611,7 @@ pub mod generic_wallet_tests {
         // sending account.
         {
             let account = wallets[0].0.sending_account(&address).await.unwrap();
-            assert_eq!(account.balance, 0);
+            assert_eq!(account.balances, HashMap::<AssetCode, u64>::new());
             assert_eq!(account.records.len(), 0);
         }
     }

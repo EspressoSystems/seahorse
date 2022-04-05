@@ -13,10 +13,12 @@ use jf_cap::{
     keys::{
         AuditorKeyPair, AuditorPubKey, FreezerKeyPair, FreezerPubKey, UserAddress, UserKeyPair,
     },
+    structs::AssetCode,
     MerkleCommitment,
 };
 use reef::{Ledger, TransactionHash};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fmt::Debug;
 
 /// The persistent representation of an account.
@@ -129,7 +131,8 @@ pub struct AccountInfo<Key: KeyPair> {
     pub used: bool,
     pub assets: Vec<AssetInfo>,
     pub records: Vec<RecordInfo>,
-    pub balance: u64,
+    /// The table of balances with corresponding asset code.
+    pub balances: HashMap<AssetCode, u64>,
     /// The status of a ledger scan for this account's key.
     ///
     /// If a ledger scan using this account's key is in progress, `scan_status` contains the index
@@ -146,11 +149,15 @@ impl<Key: KeyPair> AccountInfo<Key> {
         assets: Vec<AssetInfo>,
         records: Vec<RecordInfo>,
     ) -> Self {
+        let mut balances = HashMap::new();
+        for rec in &records {
+            *balances.entry(rec.ro.asset_def.code).or_insert(0) += rec.ro.amount;
+        }
         Self {
             address: account.key.pub_key(),
             description: account.description,
             used: account.used,
-            balance: records.iter().map(|rec| rec.ro.amount).sum(),
+            balances,
             assets,
             records,
             scan_status: account.scan.map(|scan| (scan.status())),
@@ -165,7 +172,7 @@ impl<Key: KeyPair> PartialEq<Self> for AccountInfo<Key> {
             && self.used == other.used
             && self.assets == other.assets
             && self.records == other.records
-            && self.balance == other.balance
+            && self.balances == other.balances
             && self.scan_status == other.scan_status
     }
 }
