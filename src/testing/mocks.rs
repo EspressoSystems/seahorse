@@ -13,7 +13,7 @@ use crate::{
     hd,
     testing::{MockEventSource, MockNetwork as _},
     txn_builder::{PendingTransaction, TransactionHistoryEntry, TransactionInfo, TransactionState},
-    CryptoError, WalletBackend, WalletError, WalletState, WalletStorage,
+    CryptoSnafu, WalletBackend, WalletError, WalletState, WalletStorage,
 };
 use async_std::sync::{Arc, Mutex, MutexGuard};
 use async_trait::async_trait;
