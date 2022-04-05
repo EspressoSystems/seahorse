@@ -356,7 +356,7 @@
 <span class="doccomment">//! plugins to the persistence layer. It also provides a generally useful implementation [Loader],</span>
 <span class="doccomment">//! which loads an encrypted wallet from the file system using a mnemonic phrase to generate keys</span>
 <span class="doccomment">//! and a password to provide a more convenient login interface.</span>
-<span class="kw">use</span> <span class="kw">super</span>::{<span class="ident">encryption</span>, <span class="ident">hd</span>, <span class="ident">reader</span>, <span class="ident">EncryptionError</span>, <span class="ident">KeyError</span>, <span class="ident">MnemonicError</span>, <span class="ident">WalletError</span>};
+<span class="kw">use</span> <span class="kw">super</span>::{<span class="ident">encryption</span>, <span class="ident">hd</span>, <span class="ident">reader</span>, <span class="ident">EncryptionSnafu</span>, <span class="ident">KeySnafu</span>, <span class="ident">MnemonicSnafu</span>, <span class="ident">WalletError</span>};
 <span class="kw">use</span> <span class="ident">encryption</span>::{<span class="ident">Cipher</span>, <span class="ident">CipherText</span>, <span class="ident">Salt</span>};
 <span class="kw">use</span> <span class="ident">hd</span>::{<span class="ident">KeyTree</span>, <span class="ident">Mnemonic</span>};
 <span class="kw">use</span> <span class="ident">rand_chacha</span>::{
@@ -485,7 +485,7 @@
             }),
 
             <span class="ident"><span class="self">Self</span>::MnemonicPasswordLiteral</span>(<span class="ident">mnemonic</span>, <span class="kw">_</span>) <span class="op">|</span> <span class="ident"><span class="self">Self</span>::RecoveryLiteral</span>(<span class="ident">mnemonic</span>, <span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> {
-                <span class="ident">Mnemonic::from_phrase</span>(<span class="ident">mnemonic</span>.<span class="ident">as_str</span>()).<span class="ident">context</span>(<span class="ident">MnemonicError</span>)
+                <span class="ident">Mnemonic::from_phrase</span>(<span class="ident">mnemonic</span>.<span class="ident">as_str</span>()).<span class="ident">context</span>(<span class="ident">MnemonicSnafu</span>)
             }
         }
     }
@@ -497,7 +497,7 @@
                 <span class="ident">msg</span>: <span class="ident">String::from</span>(<span class="string">&quot;missing mnemonic phrase&quot;</span>),
             }),
             <span class="ident"><span class="self">Self</span>::MnemonicPasswordLiteral</span>(<span class="ident">mnemonic</span>, <span class="kw">_</span>) <span class="op">|</span> <span class="ident"><span class="self">Self</span>::RecoveryLiteral</span>(<span class="ident">mnemonic</span>, <span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> {
-                <span class="ident">Mnemonic::from_phrase</span>(<span class="ident">mnemonic</span>.<span class="ident">as_str</span>()).<span class="ident">context</span>(<span class="ident">MnemonicError</span>)
+                <span class="ident">Mnemonic::from_phrase</span>(<span class="ident">mnemonic</span>.<span class="ident">as_str</span>()).<span class="ident">context</span>(<span class="ident">MnemonicSnafu</span>)
             }
         }
     }
@@ -585,13 +585,13 @@
 
         <span class="comment">// Encrypt the mnemonic phrase, which we can decrypt on load to check the derived key.</span>
         <span class="kw">let</span> (<span class="ident">encryption_key</span>, <span class="ident">salt</span>) <span class="op">=</span>
-            <span class="ident">KeyTree::from_password</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>.<span class="ident">rng</span>, <span class="ident">password</span>.<span class="ident">as_bytes</span>()).<span class="ident">context</span>(<span class="ident">KeyError</span>)<span class="question-mark">?</span>;
+            <span class="ident">KeyTree::from_password</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>.<span class="ident">rng</span>, <span class="ident">password</span>.<span class="ident">as_bytes</span>()).<span class="ident">context</span>(<span class="ident">KeySnafu</span>)<span class="question-mark">?</span>;
         <span class="kw">let</span> <span class="ident">encrypted_mnemonic</span> <span class="op">=</span> <span class="ident">Cipher::new</span>(
             <span class="ident">encryption_key</span>.<span class="ident">derive_sub_tree</span>(<span class="ident">KEY_CHECK_SUB_TREE</span>.<span class="ident">as_bytes</span>()),
             <span class="ident">ChaChaRng::from_rng</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>.<span class="ident">rng</span>).<span class="ident">unwrap</span>(),
         )
         .<span class="ident">encrypt</span>(<span class="ident">mnemonic</span>.<span class="ident">into_phrase</span>().<span class="ident">as_str</span>().<span class="ident">as_bytes</span>())
-        .<span class="ident">context</span>(<span class="ident">EncryptionError</span>)<span class="question-mark">?</span>;
+        .<span class="ident">context</span>(<span class="ident">EncryptionSnafu</span>)<span class="question-mark">?</span>;
 
         <span class="prelude-val">Ok</span>((<span class="ident">salt</span>, <span class="ident">encrypted_mnemonic</span>))
     }
@@ -618,7 +618,7 @@
             <span class="ident">ChaChaRng::from_rng</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>.<span class="ident">rng</span>).<span class="ident">unwrap</span>(),
         )
         .<span class="ident">encrypt</span>(<span class="kw-2">&amp;</span><span class="ident">bytes</span>)
-        .<span class="ident">context</span>(<span class="ident">EncryptionError</span>)<span class="question-mark">?</span>;
+        .<span class="ident">context</span>(<span class="ident">EncryptionSnafu</span>)<span class="question-mark">?</span>;
 
         <span class="kw">let</span> (<span class="ident">salt</span>, <span class="ident">encrypted_mnemonic</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">create_password</span>(<span class="ident">mnemonic</span>)<span class="question-mark">?</span>;
         <span class="kw">let</span> <span class="ident">meta</span> <span class="op">=</span> <span class="ident">LoaderMetadata</span> {
@@ -637,7 +637,7 @@
                 <span class="comment">// `encrypted_mnemonic`. If we can&#39;t, the key is wrong.</span>
                 <span class="kw">let</span> <span class="ident">decryption_key</span> <span class="op">=</span>
                     <span class="ident">KeyTree::from_password_and_salt</span>(<span class="ident">password</span>.<span class="ident">as_bytes</span>(), <span class="kw-2">&amp;</span><span class="ident">meta</span>.<span class="ident">salt</span>)
-                        .<span class="ident">context</span>(<span class="ident">KeyError</span>)<span class="question-mark">?</span>;
+                        .<span class="ident">context</span>(<span class="ident">KeySnafu</span>)<span class="question-mark">?</span>;
                 <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Ok</span>(<span class="ident">mnemonic_bytes</span>) <span class="op">=</span> <span class="ident">Cipher::new</span>(
                     <span class="ident">decryption_key</span>.<span class="ident">derive_sub_tree</span>(<span class="ident">KEY_CHECK_SUB_TREE</span>.<span class="ident">as_bytes</span>()),
                     <span class="ident">ChaChaRng::from_rng</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>.<span class="ident">rng</span>).<span class="ident">unwrap</span>(),

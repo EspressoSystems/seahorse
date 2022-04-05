@@ -967,7 +967,7 @@
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="self">Self</span>, <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
         <span class="kw">let</span> <span class="ident">directory</span> <span class="op">=</span> <span class="ident">loader</span>.<span class="ident">location</span>();
         <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">atomic_loader</span> <span class="op">=</span>
-            <span class="ident">AtomicStoreLoader::load</span>(<span class="kw-2">&amp;</span><span class="ident">directory</span>, <span class="string">&quot;wallet&quot;</span>).<span class="ident">context</span>(<span class="ident"><span class="kw">crate</span>::PersistenceError</span>)<span class="question-mark">?</span>;
+            <span class="ident">AtomicStoreLoader::load</span>(<span class="kw-2">&amp;</span><span class="ident">directory</span>, <span class="string">&quot;wallet&quot;</span>).<span class="ident">context</span>(<span class="ident"><span class="kw">crate</span>::PersistenceSnafu</span>)<span class="question-mark">?</span>;
 
         <span class="comment">// Load the metadata first so the loader can use it to generate the encryption key needed to</span>
         <span class="comment">// read the rest of the data.</span>
@@ -977,7 +977,7 @@
             <span class="string">&quot;wallet_meta&quot;</span>,
             <span class="number">1024</span>,
         )
-        .<span class="ident">context</span>(<span class="ident"><span class="kw">crate</span>::PersistenceError</span>)<span class="question-mark">?</span>;
+        .<span class="ident">context</span>(<span class="ident"><span class="kw">crate</span>::PersistenceSnafu</span>)<span class="question-mark">?</span>;
         <span class="kw">let</span> (<span class="ident">meta</span>, <span class="ident">key</span>, <span class="ident">meta_dirty</span>) <span class="op">=</span> <span class="kw">match</span> <span class="ident">persisted_meta</span>.<span class="ident">load_latest</span>() {
             <span class="prelude-val">Ok</span>(<span class="kw-2">mut</span> <span class="ident">meta</span>) <span class="op">=</span><span class="op">&gt;</span> {
                 <span class="kw">let</span> <span class="ident">old_meta</span> <span class="op">=</span> <span class="ident">meta</span>.<span class="ident">clone</span>();
@@ -987,7 +987,7 @@
                 <span class="kw">if</span> <span class="ident">meta</span> <span class="op">!</span><span class="op">=</span> <span class="ident">old_meta</span> {
                     <span class="ident">persisted_meta</span>
                         .<span class="ident">store_resource</span>(<span class="kw-2">&amp;</span><span class="ident">meta</span>)
-                        .<span class="ident">context</span>(<span class="ident"><span class="kw">crate</span>::PersistenceError</span>)<span class="question-mark">?</span>;
+                        .<span class="ident">context</span>(<span class="ident"><span class="kw">crate</span>::PersistenceSnafu</span>)<span class="question-mark">?</span>;
                     (<span class="ident">meta</span>, <span class="ident">key</span>, <span class="bool-val">true</span>)
                 } <span class="kw">else</span> {
                     (<span class="ident">meta</span>, <span class="ident">key</span>, <span class="bool-val">false</span>)
@@ -1007,29 +1007,29 @@
             <span class="string">&quot;wallet_static&quot;</span>,
             <span class="ident">file_fill_size</span>,
         )
-        .<span class="ident">context</span>(<span class="ident"><span class="kw">crate</span>::PersistenceError</span>)<span class="question-mark">?</span>;
+        .<span class="ident">context</span>(<span class="ident"><span class="kw">crate</span>::PersistenceSnafu</span>)<span class="question-mark">?</span>;
         <span class="kw">let</span> <span class="ident">dynamic_state</span> <span class="op">=</span> <span class="ident">RollingLog::load</span>(
             <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">atomic_loader</span>,
             <span class="ident">adaptor</span>.<span class="ident">cast</span>(),
             <span class="string">&quot;wallet_dyn&quot;</span>,
             <span class="ident">file_fill_size</span>,
         )
-        .<span class="ident">context</span>(<span class="ident"><span class="kw">crate</span>::PersistenceError</span>)<span class="question-mark">?</span>;
+        .<span class="ident">context</span>(<span class="ident"><span class="kw">crate</span>::PersistenceSnafu</span>)<span class="question-mark">?</span>;
         <span class="kw">let</span> <span class="ident">assets</span> <span class="op">=</span> <span class="ident">AppendLog::load</span>(
             <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">atomic_loader</span>,
             <span class="ident">adaptor</span>.<span class="ident">cast</span>(),
             <span class="string">&quot;wallet_assets&quot;</span>,
             <span class="ident">file_fill_size</span>,
         )
-        .<span class="ident">context</span>(<span class="ident"><span class="kw">crate</span>::PersistenceError</span>)<span class="question-mark">?</span>;
+        .<span class="ident">context</span>(<span class="ident"><span class="kw">crate</span>::PersistenceSnafu</span>)<span class="question-mark">?</span>;
         <span class="kw">let</span> <span class="ident">txn_history</span> <span class="op">=</span> <span class="ident">AppendLog::load</span>(
             <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">atomic_loader</span>,
             <span class="ident">adaptor</span>.<span class="ident">cast</span>(),
             <span class="string">&quot;wallet_txns&quot;</span>,
             <span class="ident">file_fill_size</span>,
         )
-        .<span class="ident">context</span>(<span class="ident"><span class="kw">crate</span>::PersistenceError</span>)<span class="question-mark">?</span>;
-        <span class="kw">let</span> <span class="ident">store</span> <span class="op">=</span> <span class="ident">AtomicStore::open</span>(<span class="ident">atomic_loader</span>).<span class="ident">context</span>(<span class="ident"><span class="kw">crate</span>::PersistenceError</span>)<span class="question-mark">?</span>;
+        .<span class="ident">context</span>(<span class="ident"><span class="kw">crate</span>::PersistenceSnafu</span>)<span class="question-mark">?</span>;
+        <span class="kw">let</span> <span class="ident">store</span> <span class="op">=</span> <span class="ident">AtomicStore::open</span>(<span class="ident">atomic_loader</span>).<span class="ident">context</span>(<span class="ident"><span class="kw">crate</span>::PersistenceSnafu</span>)<span class="question-mark">?</span>;
 
         <span class="prelude-val">Ok</span>(<span class="self">Self</span> {
             <span class="ident">meta</span>,
@@ -1059,12 +1059,12 @@
             <span class="ident">store</span>
                 .<span class="ident">persisted_meta</span>
                 .<span class="ident">store_resource</span>(<span class="kw-2">&amp;</span><span class="ident">store</span>.<span class="ident">meta</span>)
-                .<span class="ident">context</span>(<span class="ident"><span class="kw">crate</span>::PersistenceError</span>)<span class="question-mark">?</span>;
+                .<span class="ident">context</span>(<span class="ident"><span class="kw">crate</span>::PersistenceSnafu</span>)<span class="question-mark">?</span>;
             <span class="ident">store</span>.<span class="ident">meta_dirty</span> <span class="op">=</span> <span class="bool-val">true</span>;
             <span class="ident">store</span>
                 .<span class="ident">static_data</span>
                 .<span class="ident">store_resource</span>(<span class="kw-2">&amp;</span><span class="ident">WalletStaticState::from</span>(<span class="ident">w</span>))
-                .<span class="ident">context</span>(<span class="ident"><span class="kw">crate</span>::PersistenceError</span>)<span class="question-mark">?</span>;
+                .<span class="ident">context</span>(<span class="ident"><span class="kw">crate</span>::PersistenceSnafu</span>)<span class="question-mark">?</span>;
             <span class="ident">store</span>.<span class="ident">static_dirty</span> <span class="op">=</span> <span class="bool-val">true</span>;
             <span class="ident">store</span>.<span class="ident">store_snapshot</span>(<span class="ident">w</span>).<span class="kw">await</span>
         })()
@@ -1102,11 +1102,11 @@
         <span class="kw">let</span> <span class="ident">static_state</span> <span class="op">=</span> <span class="self">self</span>
             .<span class="ident">static_data</span>
             .<span class="ident">load_latest</span>()
-            .<span class="ident">context</span>(<span class="ident"><span class="kw">crate</span>::PersistenceError</span>)<span class="question-mark">?</span>;
+            .<span class="ident">context</span>(<span class="ident"><span class="kw">crate</span>::PersistenceSnafu</span>)<span class="question-mark">?</span>;
         <span class="kw">let</span> <span class="ident">dynamic_state</span> <span class="op">=</span> <span class="self">self</span>
             .<span class="ident">dynamic_state</span>
             .<span class="ident">load_latest</span>()
-            .<span class="ident">context</span>(<span class="ident"><span class="kw">crate</span>::PersistenceError</span>)<span class="question-mark">?</span>;
+            .<span class="ident">context</span>(<span class="ident"><span class="kw">crate</span>::PersistenceSnafu</span>)<span class="question-mark">?</span>;
         <span class="kw">let</span> <span class="ident">assets</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">assets</span>.<span class="ident">iter</span>().<span class="ident">filter_map</span>(<span class="op">|</span><span class="ident">res</span><span class="op">|</span> <span class="ident">res</span>.<span class="ident">ok</span>()).<span class="ident">collect</span>();
 
         <span class="prelude-val">Ok</span>(<span class="ident">WalletState</span> {
@@ -1147,7 +1147,7 @@
     <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">store_snapshot</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">w</span>: <span class="kw-2">&amp;</span><span class="ident">WalletState</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span><span class="op">&gt;</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(), <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
         <span class="self">self</span>.<span class="ident">dynamic_state</span>
             .<span class="ident">store_resource</span>(<span class="kw-2">&amp;</span><span class="ident">WalletSnapshot::from</span>(<span class="ident">w</span>))
-            .<span class="ident">context</span>(<span class="ident"><span class="kw">crate</span>::PersistenceError</span>)<span class="question-mark">?</span>;
+            .<span class="ident">context</span>(<span class="ident"><span class="kw">crate</span>::PersistenceSnafu</span>)<span class="question-mark">?</span>;
         <span class="self">self</span>.<span class="ident">dynamic_state_dirty</span> <span class="op">=</span> <span class="bool-val">true</span>;
         <span class="prelude-val">Ok</span>(())
     }
@@ -1155,7 +1155,7 @@
     <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">store_asset</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">asset</span>: <span class="kw-2">&amp;</span><span class="ident">AssetInfo</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(), <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
         <span class="self">self</span>.<span class="ident">assets</span>
             .<span class="ident">store_resource</span>(<span class="ident">asset</span>)
-            .<span class="ident">context</span>(<span class="ident"><span class="kw">crate</span>::PersistenceError</span>)<span class="question-mark">?</span>;
+            .<span class="ident">context</span>(<span class="ident"><span class="kw">crate</span>::PersistenceSnafu</span>)<span class="question-mark">?</span>;
         <span class="self">self</span>.<span class="ident">assets_dirty</span> <span class="op">=</span> <span class="bool-val">true</span>;
         <span class="prelude-val">Ok</span>(())
     }
@@ -1166,7 +1166,7 @@
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(), <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
         <span class="self">self</span>.<span class="ident">txn_history</span>
             .<span class="ident">store_resource</span>(<span class="kw-2">&amp;</span><span class="ident">txn</span>)
-            .<span class="ident">context</span>(<span class="ident"><span class="kw">crate</span>::PersistenceError</span>)<span class="question-mark">?</span>;
+            .<span class="ident">context</span>(<span class="ident"><span class="kw">crate</span>::PersistenceSnafu</span>)<span class="question-mark">?</span>;
         <span class="self">self</span>.<span class="ident">txn_history_dirty</span> <span class="op">=</span> <span class="bool-val">true</span>;
         <span class="prelude-val">Ok</span>(())
     }
@@ -1176,7 +1176,7 @@
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">TransactionHistoryEntry</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span>, <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
         <span class="self">self</span>.<span class="ident">txn_history</span>
             .<span class="ident">iter</span>()
-            .<span class="ident">map</span>(<span class="op">|</span><span class="ident">res</span><span class="op">|</span> <span class="ident">res</span>.<span class="ident">context</span>(<span class="ident"><span class="kw">crate</span>::PersistenceError</span>))
+            .<span class="ident">map</span>(<span class="op">|</span><span class="ident">res</span><span class="op">|</span> <span class="ident">res</span>.<span class="ident">context</span>(<span class="ident"><span class="kw">crate</span>::PersistenceSnafu</span>))
             .<span class="ident">collect</span>()
     }
 

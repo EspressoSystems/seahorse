@@ -1421,7 +1421,7 @@
     <span class="ident">io::SharedIO</span>,
     <span class="ident">loader</span>::{<span class="ident">Loader</span>, <span class="ident">LoaderMetadata</span>, <span class="ident">WalletLoader</span>},
     <span class="ident">reader::Reader</span>,
-    <span class="ident">AssetInfo</span>, <span class="ident">BincodeError</span>, <span class="ident">IoError</span>, <span class="ident">TransactionReceipt</span>, <span class="ident">TransactionStatus</span>, <span class="ident">WalletBackend</span>,
+    <span class="ident">AssetInfo</span>, <span class="ident">BincodeSnafu</span>, <span class="ident">IoSnafu</span>, <span class="ident">TransactionReceipt</span>, <span class="ident">TransactionStatus</span>, <span class="ident">WalletBackend</span>,
     <span class="ident">WalletError</span>,
 };
 <span class="kw">use</span> <span class="ident">async_std::task::block_on</span>;
@@ -2357,14 +2357,14 @@
 <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">key_gen</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">C</span>: <span class="ident">CLI</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span><span class="op">&gt;</span><span class="op">&gt;</span>(<span class="kw-2">mut</span> <span class="ident">path</span>: <span class="ident">PathBuf</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(), <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">C::Ledger</span><span class="op">&gt;</span><span class="op">&gt;</span> {
     <span class="kw">let</span> <span class="ident">key_pair</span> <span class="op">=</span> <span class="ident"><span class="kw">crate</span>::new_key_pair</span>();
 
-    <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">file</span> <span class="op">=</span> <span class="ident">File::create</span>(<span class="ident">path</span>.<span class="ident">clone</span>()).<span class="ident">context</span>(<span class="ident">IoError</span>)<span class="question-mark">?</span>;
-    <span class="kw">let</span> <span class="ident">bytes</span> <span class="op">=</span> <span class="ident">bincode::serialize</span>(<span class="kw-2">&amp;</span><span class="ident">key_pair</span>).<span class="ident">context</span>(<span class="ident">BincodeError</span>)<span class="question-mark">?</span>;
-    <span class="ident">file</span>.<span class="ident">write_all</span>(<span class="kw-2">&amp;</span><span class="ident">bytes</span>).<span class="ident">context</span>(<span class="ident">IoError</span>)<span class="question-mark">?</span>;
+    <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">file</span> <span class="op">=</span> <span class="ident">File::create</span>(<span class="ident">path</span>.<span class="ident">clone</span>()).<span class="ident">context</span>(<span class="ident">IoSnafu</span>)<span class="question-mark">?</span>;
+    <span class="kw">let</span> <span class="ident">bytes</span> <span class="op">=</span> <span class="ident">bincode::serialize</span>(<span class="kw-2">&amp;</span><span class="ident">key_pair</span>).<span class="ident">context</span>(<span class="ident">BincodeSnafu</span>)<span class="question-mark">?</span>;
+    <span class="ident">file</span>.<span class="ident">write_all</span>(<span class="kw-2">&amp;</span><span class="ident">bytes</span>).<span class="ident">context</span>(<span class="ident">IoSnafu</span>)<span class="question-mark">?</span>;
 
     <span class="ident">path</span>.<span class="ident">set_extension</span>(<span class="string">&quot;pub&quot;</span>);
-    <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">file</span> <span class="op">=</span> <span class="ident">File::create</span>(<span class="ident">path</span>).<span class="ident">context</span>(<span class="ident">IoError</span>)<span class="question-mark">?</span>;
-    <span class="kw">let</span> <span class="ident">bytes</span> <span class="op">=</span> <span class="ident">bincode::serialize</span>(<span class="kw-2">&amp;</span><span class="ident">key_pair</span>.<span class="ident">pub_key</span>()).<span class="ident">context</span>(<span class="ident">BincodeError</span>)<span class="question-mark">?</span>;
-    <span class="ident">file</span>.<span class="ident">write_all</span>(<span class="kw-2">&amp;</span><span class="ident">bytes</span>).<span class="ident">context</span>(<span class="ident">IoError</span>)<span class="question-mark">?</span>;
+    <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">file</span> <span class="op">=</span> <span class="ident">File::create</span>(<span class="ident">path</span>).<span class="ident">context</span>(<span class="ident">IoSnafu</span>)<span class="question-mark">?</span>;
+    <span class="kw">let</span> <span class="ident">bytes</span> <span class="op">=</span> <span class="ident">bincode::serialize</span>(<span class="kw-2">&amp;</span><span class="ident">key_pair</span>.<span class="ident">pub_key</span>()).<span class="ident">context</span>(<span class="ident">BincodeSnafu</span>)<span class="question-mark">?</span>;
+    <span class="ident">file</span>.<span class="ident">write_all</span>(<span class="kw-2">&amp;</span><span class="ident">bytes</span>).<span class="ident">context</span>(<span class="ident">IoSnafu</span>)<span class="question-mark">?</span>;
 
     <span class="prelude-val">Ok</span>(())
 }
@@ -2392,7 +2392,7 @@
             (<span class="ident">dir</span>, <span class="prelude-val">None</span>)
         }
         <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> {
-            <span class="kw">let</span> <span class="ident">tmp_dir</span> <span class="op">=</span> <span class="ident">TempDir::new</span>(<span class="string">&quot;wallet&quot;</span>).<span class="ident">context</span>(<span class="ident">IoError</span>)<span class="question-mark">?</span>;
+            <span class="kw">let</span> <span class="ident">tmp_dir</span> <span class="op">=</span> <span class="ident">TempDir::new</span>(<span class="string">&quot;wallet&quot;</span>).<span class="ident">context</span>(<span class="ident">IoSnafu</span>)<span class="question-mark">?</span>;
             (<span class="ident">PathBuf::from</span>(<span class="ident">tmp_dir</span>.<span class="ident">path</span>()), <span class="prelude-val">Some</span>(<span class="ident">tmp_dir</span>))
         }
     };

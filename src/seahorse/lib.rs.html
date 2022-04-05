@@ -2840,7 +2840,7 @@
 <span class="kw">use</span> <span class="ident">std::sync::Arc</span>;
 
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Debug</span>, <span class="ident">Snafu</span>)]</span>
-<span class="attribute">#[<span class="ident">snafu</span>(<span class="ident">visibility</span> <span class="op">=</span> <span class="string">&quot;pub&quot;</span>)]</span>
+<span class="attribute">#[<span class="ident">snafu</span>(<span class="ident">visibility</span>(<span class="kw">pub</span>))]</span>
 <span class="kw">pub</span> <span class="kw">enum</span> <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span>: <span class="ident">Ledger</span><span class="op">&gt;</span> {
     <span class="ident">UndefinedAsset</span> {
         <span class="ident">asset</span>: <span class="ident">AssetCode</span>,
@@ -4246,7 +4246,7 @@
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(<span class="ident">TransferNote</span>, <span class="ident">TransactionInfo</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span>), <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
         <span class="self">self</span>.<span class="ident">txn_state</span>
             .<span class="ident">transfer</span>(<span class="ident">spec</span>, <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">proving_keys</span>.<span class="ident">xfr</span>, <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">session</span>.<span class="ident">rng</span>)
-            .<span class="ident">context</span>(<span class="ident">TransactionError</span>)
+            .<span class="ident">context</span>(<span class="ident">TransactionSnafu</span>)
     }
 
     <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">build_mint</span>(
@@ -4279,7 +4279,7 @@
                 <span class="ident">session</span>.<span class="ident">backend</span>.<span class="ident">get_public_key</span>(<span class="kw-2">&amp;</span><span class="ident">receiver</span>).<span class="kw">await</span><span class="question-mark">?</span>,
                 <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">session</span>.<span class="ident">rng</span>,
             )
-            .<span class="ident">context</span>(<span class="ident">TransactionError</span>)
+            .<span class="ident">context</span>(<span class="ident">TransactionSnafu</span>)
     }
 
     <span class="attribute">#[<span class="ident">allow</span>(<span class="ident">clippy::too_many_arguments</span>)]</span>
@@ -4317,7 +4317,7 @@
                 <span class="ident">outputs_frozen</span>,
                 <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">session</span>.<span class="ident">rng</span>,
             )
-            .<span class="ident">context</span>(<span class="ident">TransactionError</span>)
+            .<span class="ident">context</span>(<span class="ident">TransactionSnafu</span>)
     }
 
     <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">submit_transaction</span>(
