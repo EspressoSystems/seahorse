@@ -21,7 +21,7 @@ use crate::{
     io::SharedIO,
     loader::{Loader, LoaderMetadata, WalletLoader},
     reader::Reader,
-    AssetInfo, BincodeError, IoError, TransactionReceipt, TransactionStatus, WalletBackend,
+    AssetInfo, BincodeSnafu, IoSnafu, TransactionReceipt, TransactionStatus, WalletBackend,
     WalletError,
 };
 use async_std::task::block_on;
@@ -957,14 +957,14 @@ pub async fn cli_main<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
 pub fn key_gen<'a, C: CLI<'a>>(mut path: PathBuf) -> Result<(), WalletError<C::Ledger>> {
     let key_pair = crate::new_key_pair();
 
-    let mut file = File::create(path.clone()).context(IoError)?;
-    let bytes = bincode::serialize(&key_pair).context(BincodeError)?;
-    file.write_all(&bytes).context(IoError)?;
+    let mut file = File::create(path.clone()).context(IoSnafu)?;
+    let bytes = bincode::serialize(&key_pair).context(BincodeSnafu)?;
+    file.write_all(&bytes).context(IoSnafu)?;
 
     path.set_extension("pub");
-    let mut file = File::create(path).context(IoError)?;
-    let bytes = bincode::serialize(&key_pair.pub_key()).context(BincodeError)?;
-    file.write_all(&bytes).context(IoError)?;
+    let mut file = File::create(path).context(IoSnafu)?;
+    let bytes = bincode::serialize(&key_pair.pub_key()).context(BincodeSnafu)?;
+    file.write_all(&bytes).context(IoSnafu)?;
 
     Ok(())
 }
@@ -992,7 +992,7 @@ async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
             (dir, None)
         }
         None => {
-            let tmp_dir = TempDir::new("wallet").context(IoError)?;
+            let tmp_dir = TempDir::new("wallet").context(IoSnafu)?;
             (PathBuf::from(tmp_dir.path()), Some(tmp_dir))
         }
     };

@@ -233,7 +233,7 @@ impl<'a> super::MockNetwork<'a, cap::Ledger> for MockNetwork<'a> {
         let uids = block_uids[txn_id as usize].clone();
 
         txn.verify_receiver_memos_signature(&memos, &sig)
-            .context(CryptoError)?;
+            .context(CryptoSnafu)?;
 
         let merkle_paths = uids
             .iter()
