@@ -2028,7 +2028,7 @@ checksum = "1aab8fc367588b89dcee83ab0fd66b72b50b72fa1904d7095045ace2b0c81c35"
 [[package]]
 name = "jf-cap"
 version = "0.0.1"
-source = "git+https://github.com/EspressoSystems/cap.git#d4d22d8c67178cd17fad3acc9129fbd8a9d5f529"
+source = "git+https://github.com/EspressoSystems/cap.git#4c879a53fb46c8dec4a00f87c086fb5d29266c96"
 dependencies = [
  "anyhow",
  "ark-bn254",
@@ -2064,7 +2064,7 @@ dependencies = [
 [[package]]
 name = "jf-plonk"
 version = "0.1.0"
-source = "git+https://github.com/EspressoSystems/jellyfish.git#9590fac7466ce955c31d94dc9996854f58f7fe2f"
+source = "git+https://github.com/EspressoSystems/jellyfish.git#1fc9a4861e39175a776dc8da109a0bdc1ebb1c5c"
 dependencies = [
  "ark-bls12-377",
  "ark-bls12-381",
@@ -2093,7 +2093,7 @@ dependencies = [
 [[package]]
 name = "jf-primitives"
 version = "0.1.0"
-source = "git+https://github.com/EspressoSystems/jellyfish.git#9590fac7466ce955c31d94dc9996854f58f7fe2f"
+source = "git+https://github.com/EspressoSystems/jellyfish.git#1fc9a4861e39175a776dc8da109a0bdc1ebb1c5c"
 dependencies = [
  "ark-ec",
  "ark-ff",
@@ -2115,7 +2115,7 @@ dependencies = [
 [[package]]
 name = "jf-rescue"
 version = "0.1.0"
-source = "git+https://github.com/EspressoSystems/jellyfish.git#9590fac7466ce955c31d94dc9996854f58f7fe2f"
+source = "git+https://github.com/EspressoSystems/jellyfish.git#1fc9a4861e39175a776dc8da109a0bdc1ebb1c5c"
 dependencies = [
  "ark-bls12-377",
  "ark-bls12-381",
@@ -2140,7 +2140,7 @@ dependencies = [
 [[package]]
 name = "jf-utils"
 version = "0.1.0"
-source = "git+https://github.com/EspressoSystems/jellyfish.git#9590fac7466ce955c31d94dc9996854f58f7fe2f"
+source = "git+https://github.com/EspressoSystems/jellyfish.git#1fc9a4861e39175a776dc8da109a0bdc1ebb1c5c"
 dependencies = [
  "anyhow",
  "ark-ec",
@@ -2158,7 +2158,7 @@ dependencies = [
 [[package]]
 name = "jf-utils-derive"
 version = "0.1.0"
-source = "git+https://github.com/EspressoSystems/jellyfish.git#9590fac7466ce955c31d94dc9996854f58f7fe2f"
+source = "git+https://github.com/EspressoSystems/jellyfish.git#1fc9a4861e39175a776dc8da109a0bdc1ebb1c5c"
 dependencies = [
  "ark-std",
  "quote",
@@ -3236,7 +3236,7 @@ dependencies = [
  "rustyline",
  "serde",
  "sha3 0.9.1",
- "snafu 0.6.10",
+ "snafu 0.7.0",
  "structopt",
  "strum",
  "strum_macros",
