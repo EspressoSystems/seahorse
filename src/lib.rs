@@ -989,6 +989,7 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
                     block_id,
                     txn_id,
                     kind,
+                    None,
                     &records
                         .iter()
                         .map(|(ro, _, _)| ro.clone())
@@ -1056,7 +1057,7 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
         }
 
         if add_to_history && !my_records.is_empty() {
-            self.add_receive_history(session, block_id, txn_id, txn.kind(), &my_records)
+            self.add_receive_history(session, block_id, txn_id, txn.kind(), Some(txn.hash()), &my_records)
                 .await;
         }
 
@@ -1069,9 +1070,10 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
         block_id: u64,
         txn_id: u64,
         kind: TransactionKind<L>,
+        txn_hash: Option<TransactionHash<L>>,
         records: &[RecordOpening],
     ) {
-        let history = receive_history_entry(block_id, txn_id, kind, records);
+        let history = receive_history_entry(block_id, txn_id, kind, txn_hash, records);
 
         if let Err(err) = session
             .backend

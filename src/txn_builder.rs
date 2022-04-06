@@ -722,6 +722,7 @@ pub struct TransactionHistoryEntry<L: Ledger> {
     pub time: DateTime<Local>,
     pub asset: AssetCode,
     pub kind: TransactionKind<L>,
+    pub hash: Option<TransactionHash<L>>, 
     // If we sent this transaction, `senders` records the addresses of the spending keys used to
     // submit it. If we received this transaction from someone else, we may not know who the senders
     // are and this field may be empty.
@@ -737,6 +738,7 @@ impl<L: Ledger> PartialEq<Self> for TransactionHistoryEntry<L> {
         self.time == other.time
             && self.asset == other.asset
             && self.kind == other.kind
+            && self.hash == other.hash
             && self.senders == other.senders
             && self.receivers == other.receivers
             && self.receipt == other.receipt
@@ -752,6 +754,7 @@ where
             time: Local::now(),
             asset: AssetCode::native(),
             kind: TransactionKind::<L>::send(),
+            hash: u.arbitrary()?,
             senders: u
                 .arbitrary_iter::<ArbitraryUserAddress>()?
                 .map(|a| Ok(a?.into()))
@@ -1133,6 +1136,7 @@ impl<L: Ledger> TransactionState<L> {
             time: Local::now(),
             asset: AssetCode::native(),
             kind: TransactionKind::<L>::send(),
+            hash: None,
             senders: owner_addresses.clone(),
             receivers: spec
                 .receivers
@@ -1307,6 +1311,7 @@ impl<L: Ledger> TransactionState<L> {
             time: Local::now(),
             asset: asset.code,
             kind: TransactionKind::<L>::send(),
+            hash: None,
             senders: owner_addresses.clone(),
             receivers: spec
                 .receivers
@@ -1403,6 +1408,7 @@ impl<L: Ledger> TransactionState<L> {
             time: Local::now(),
             asset: asset_def.code,
             kind: TransactionKind::<L>::mint(),
+            hash: None,
             senders: vec![minter_key_pair.address()],
             receivers: vec![(receiver.address(), amount)],
             receipt: None,
@@ -1483,6 +1489,7 @@ impl<L: Ledger> TransactionState<L> {
                 FreezeFlag::Frozen => TransactionKind::<L>::freeze(),
                 FreezeFlag::Unfrozen => TransactionKind::<L>::unfreeze(),
             },
+            hash: None,
             senders: vec![fee_key_pair.address()],
             receivers: vec![(owner, amount)],
             receipt: None,
