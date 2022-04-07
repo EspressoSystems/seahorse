@@ -273,7 +273,7 @@ impl<L: Ledger> BackgroundKeyScan<L> {
                 }
             }
 
-            LedgerEvent::Memos {  
+            LedgerEvent::Memos {
                 outputs,
                 transaction,
                 ..

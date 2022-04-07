@@ -1057,8 +1057,15 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
         }
 
         if add_to_history && !my_records.is_empty() {
-            self.add_receive_history(session, block_id, txn_id, txn.kind(), Some(txn.hash()), &my_records)
-                .await;
+            self.add_receive_history(
+                session,
+                block_id,
+                txn_id,
+                txn.kind(),
+                Some(txn.hash()),
+                &my_records,
+            )
+            .await;
         }
 
         Ok(())

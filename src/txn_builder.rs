@@ -722,7 +722,7 @@ pub struct TransactionHistoryEntry<L: Ledger> {
     pub time: DateTime<Local>,
     pub asset: AssetCode,
     pub kind: TransactionKind<L>,
-    pub hash: Option<TransactionHash<L>>, 
+    pub hash: Option<TransactionHash<L>>,
     // If we sent this transaction, `senders` records the addresses of the spending keys used to
     // submit it. If we received this transaction from someone else, we may not know who the senders
     // are and this field may be empty.
