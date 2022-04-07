@@ -1633,6 +1633,7 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
                     // updating and resubmitting a failed transaction) add it to the history.
                     if let Some(mut history) = history {
                         history.receipt = Some(receipt.clone());
+                        history.hash = Some(txn.hash());
                         t.store_transaction(history).await?;
                     }
 
