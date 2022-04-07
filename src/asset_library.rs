@@ -633,8 +633,7 @@ impl VerifiedAssetLibrary {
     fn digest(assets: &[AssetInfo]) -> BaseField {
         let bytes = assets
             .iter()
-            .map(|asset| bincode::serialize(asset).unwrap())
-            .flatten()
+            .flat_map(|asset| bincode::serialize(asset).unwrap())
             .collect::<Vec<_>>();
         jf_utils::hash_to_field(bytes)
     }
