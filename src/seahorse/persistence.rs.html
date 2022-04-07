@@ -764,6 +764,7 @@
 <span id="764">764</span>
 <span id="765">765</span>
 <span id="766">766</span>
+<span id="767">767</span>
 </pre><pre class="rust"><code><span class="comment">// Copyright (c) 2022 Espresso Systems (espressosys.com)</span>
 <span class="comment">// This file is part of the Seahorse library.</span>
 
@@ -1506,6 +1507,7 @@
                     <span class="ident">time</span>: <span class="ident">Local::now</span>(),
                     <span class="ident">asset</span>: <span class="ident">AssetCode::native</span>(),
                     <span class="ident">kind</span>: <span class="ident">TransactionKind</span>::<span class="op">&lt;</span><span class="ident">cap::Ledger</span><span class="op">&gt;</span><span class="ident">::send</span>(),
+                    <span class="ident">hash</span>: <span class="prelude-val">None</span>,
                     <span class="ident">senders</span>: <span class="macro">vec!</span>[<span class="ident">user_key</span>.<span class="ident">address</span>()],
                     <span class="ident">receivers</span>: <span class="macro">vec!</span>[],
                     <span class="ident">receipt</span>: <span class="prelude-val">None</span>,

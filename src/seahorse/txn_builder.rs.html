@@ -1848,6 +1848,13 @@
 <span id="1848">1848</span>
 <span id="1849">1849</span>
 <span id="1850">1850</span>
+<span id="1851">1851</span>
+<span id="1852">1852</span>
+<span id="1853">1853</span>
+<span id="1854">1854</span>
+<span id="1855">1855</span>
+<span id="1856">1856</span>
+<span id="1857">1857</span>
 </pre><pre class="rust"><code><span class="comment">// Copyright (c) 2022 Espresso Systems (espressosys.com)</span>
 <span class="comment">// This file is part of the Seahorse library.</span>
 
@@ -2572,6 +2579,7 @@
     <span class="kw">pub</span> <span class="ident">time</span>: <span class="ident">DateTime</span><span class="op">&lt;</span><span class="ident">Local</span><span class="op">&gt;</span>,
     <span class="kw">pub</span> <span class="ident">asset</span>: <span class="ident">AssetCode</span>,
     <span class="kw">pub</span> <span class="ident">kind</span>: <span class="ident">TransactionKind</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span>,
+    <span class="kw">pub</span> <span class="ident">hash</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">TransactionHash</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span>,
     <span class="comment">// If we sent this transaction, `senders` records the addresses of the spending keys used to</span>
     <span class="comment">// submit it. If we received this transaction from someone else, we may not know who the senders</span>
     <span class="comment">// are and this field may be empty.</span>
@@ -2587,6 +2595,7 @@
         <span class="self">self</span>.<span class="ident">time</span> <span class="op">=</span><span class="op">=</span> <span class="ident">other</span>.<span class="ident">time</span>
             <span class="op">&amp;&amp;</span> <span class="self">self</span>.<span class="ident">asset</span> <span class="op">=</span><span class="op">=</span> <span class="ident">other</span>.<span class="ident">asset</span>
             <span class="op">&amp;&amp;</span> <span class="self">self</span>.<span class="ident">kind</span> <span class="op">=</span><span class="op">=</span> <span class="ident">other</span>.<span class="ident">kind</span>
+            <span class="op">&amp;&amp;</span> <span class="self">self</span>.<span class="ident">hash</span> <span class="op">=</span><span class="op">=</span> <span class="ident">other</span>.<span class="ident">hash</span>
             <span class="op">&amp;&amp;</span> <span class="self">self</span>.<span class="ident">senders</span> <span class="op">=</span><span class="op">=</span> <span class="ident">other</span>.<span class="ident">senders</span>
             <span class="op">&amp;&amp;</span> <span class="self">self</span>.<span class="ident">receivers</span> <span class="op">=</span><span class="op">=</span> <span class="ident">other</span>.<span class="ident">receivers</span>
             <span class="op">&amp;&amp;</span> <span class="self">self</span>.<span class="ident">receipt</span> <span class="op">=</span><span class="op">=</span> <span class="ident">other</span>.<span class="ident">receipt</span>
@@ -2602,6 +2611,7 @@
             <span class="ident">time</span>: <span class="ident">Local::now</span>(),
             <span class="ident">asset</span>: <span class="ident">AssetCode::native</span>(),
             <span class="ident">kind</span>: <span class="ident">TransactionKind</span>::<span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="ident">::send</span>(),
+            <span class="ident">hash</span>: <span class="ident">u</span>.<span class="ident">arbitrary</span>()<span class="question-mark">?</span>,
             <span class="ident">senders</span>: <span class="ident">u</span>
                 .<span class="ident">arbitrary_iter</span>::<span class="op">&lt;</span><span class="ident">ArbitraryUserAddress</span><span class="op">&gt;</span>()<span class="question-mark">?</span>
                 .<span class="ident">map</span>(<span class="op">|</span><span class="ident">a</span><span class="op">|</span> <span class="prelude-val">Ok</span>(<span class="ident">a</span><span class="question-mark">?</span>.<span class="ident">into</span>()))
@@ -2983,6 +2993,7 @@
             <span class="ident">time</span>: <span class="ident">Local::now</span>(),
             <span class="ident">asset</span>: <span class="ident">AssetCode::native</span>(),
             <span class="ident">kind</span>: <span class="ident">TransactionKind</span>::<span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="ident">::send</span>(),
+            <span class="ident">hash</span>: <span class="prelude-val">None</span>,
             <span class="ident">senders</span>: <span class="ident">owner_addresses</span>.<span class="ident">clone</span>(),
             <span class="ident">receivers</span>: <span class="ident">spec</span>
                 .<span class="ident">receivers</span>
@@ -3157,6 +3168,7 @@
             <span class="ident">time</span>: <span class="ident">Local::now</span>(),
             <span class="ident">asset</span>: <span class="ident">asset</span>.<span class="ident">code</span>,
             <span class="ident">kind</span>: <span class="ident">TransactionKind</span>::<span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="ident">::send</span>(),
+            <span class="ident">hash</span>: <span class="prelude-val">None</span>,
             <span class="ident">senders</span>: <span class="ident">owner_addresses</span>.<span class="ident">clone</span>(),
             <span class="ident">receivers</span>: <span class="ident">spec</span>
                 .<span class="ident">receivers</span>
@@ -3253,6 +3265,7 @@
             <span class="ident">time</span>: <span class="ident">Local::now</span>(),
             <span class="ident">asset</span>: <span class="ident">asset_def</span>.<span class="ident">code</span>,
             <span class="ident">kind</span>: <span class="ident">TransactionKind</span>::<span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="ident">::mint</span>(),
+            <span class="ident">hash</span>: <span class="prelude-val">None</span>,
             <span class="ident">senders</span>: <span class="macro">vec!</span>[<span class="ident">minter_key_pair</span>.<span class="ident">address</span>()],
             <span class="ident">receivers</span>: <span class="macro">vec!</span>[(<span class="ident">receiver</span>.<span class="ident">address</span>(), <span class="ident">amount</span>)],
             <span class="ident">receipt</span>: <span class="prelude-val">None</span>,
@@ -3333,6 +3346,7 @@
                 <span class="ident">FreezeFlag::Frozen</span> <span class="op">=</span><span class="op">&gt;</span> <span class="ident">TransactionKind</span>::<span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="ident">::freeze</span>(),
                 <span class="ident">FreezeFlag::Unfrozen</span> <span class="op">=</span><span class="op">&gt;</span> <span class="ident">TransactionKind</span>::<span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="ident">::unfreeze</span>(),
             },
+            <span class="ident">hash</span>: <span class="prelude-val">None</span>,
             <span class="ident">senders</span>: <span class="macro">vec!</span>[<span class="ident">fee_key_pair</span>.<span class="ident">address</span>()],
             <span class="ident">receivers</span>: <span class="macro">vec!</span>[(<span class="ident">owner</span>, <span class="ident">amount</span>)],
             <span class="ident">receipt</span>: <span class="prelude-val">None</span>,
