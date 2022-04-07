@@ -740,6 +740,7 @@ mod tests {
                     time: Local::now(),
                     asset: AssetCode::native(),
                     kind: TransactionKind::<cap::Ledger>::send(),
+                    hash: None,
                     senders: vec![user_key.address()],
                     receivers: vec![],
                     receipt: None,
