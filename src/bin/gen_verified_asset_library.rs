@@ -22,10 +22,6 @@ use tagged_base64::TaggedBase64;
     about = "Generate and sign asset libraries."
 )]
 struct Options {
-    /// Include the native asset in the library even if it is not explicitly an input.
-    #[structopt(short = "n", long)]
-    include_native: bool,
-
     /// Include assets in the library by reading them from IN (separated by newlines).
     #[structopt(short, long, name = "IN")]
     input: Vec<PathBuf>,
@@ -58,14 +54,10 @@ fn main() -> io::Result<()> {
         }
     };
 
-    // Collect assets from 3 possible sources:
-    // 	* --include-native, if specified
+    // Collect assets from 2 possible sources:
     // 	* input files given on the command line
     // 	* literal assets given on the command line
     let mut assets = vec![];
-    if opt.include_native {
-        assets.push(AssetInfo::native());
-    }
     for path in opt.input {
         let file = BufReader::new(File::open(&path)?);
         for line in file.lines() {

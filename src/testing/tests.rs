@@ -2195,7 +2195,10 @@ pub mod generic_wallet_tests {
                 asset
             }
         };
-        assert_eq!(get_asset(AssetCode::native()).await, AssetInfo::native());
+        assert_eq!(
+            get_asset(AssetCode::native()).await,
+            AssetInfo::native::<T::Ledger>()
+        );
         assert_eq!(
             get_asset(defined_asset.code).await.definition,
             defined_asset
@@ -2420,7 +2423,7 @@ pub mod generic_wallet_tests {
             assert_eq!(account.address, *address);
             assert_eq!(account.description, "");
             assert_eq!(account.balances, HashMap::from([(AssetCode::native(), 5)]));
-            assert_eq!(account.assets, vec![AssetInfo::native()]);
+            assert_eq!(account.assets, vec![AssetInfo::native::<T::Ledger>()]);
             assert_eq!(account.records.len(), 1);
             assert_eq!(account.records[0].ro.amount, 5);
             assert_eq!(account.records[0].ro.asset_def, AssetDefinition::native());
@@ -2459,7 +2462,7 @@ pub mod generic_wallet_tests {
             let account = wallets[0].0.sending_account(&address).await.unwrap();
             assert!(account.used);
             assert_eq!(account.balances, HashMap::from([(AssetCode::native(), 2)]));
-            assert_eq!(account.assets, vec![AssetInfo::native()]);
+            assert_eq!(account.assets, vec![AssetInfo::native::<T::Ledger>()]);
             assert_eq!(account.records.len(), 1);
             assert_eq!(account.records[0].ro.amount, 2);
             assert_eq!(account.records[0].ro.asset_def, AssetDefinition::native());
@@ -2730,7 +2733,7 @@ pub mod generic_wallet_tests {
 
         wallets[0]
             .0
-            .import_asset(AssetInfo::native().with_icon(icon))
+            .import_asset(AssetInfo::native::<T::Ledger>().with_icon(icon))
             .await
             .unwrap();
         let icon = wallets[0]
