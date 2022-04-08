@@ -711,7 +711,10 @@ mod tests {
         // Make a change to one of the data structures, but revert it.
         let loaded = {
             let mut storage = AtomicWalletStorage::new(&mut loader, 1024).unwrap();
-            storage.store_asset(&AssetInfo::native()).await.unwrap();
+            storage
+                .store_asset(&AssetInfo::native::<cap::Ledger>())
+                .await
+                .unwrap();
             storage.revert().await;
             // Make sure committing after a revert does not commit the reverted changes.
             storage.commit().await;
@@ -734,7 +737,10 @@ mod tests {
             // Store some data.
             stored.txn_state.records.insert(ro, 0, &user_key);
             storage.store_snapshot(&stored).await.unwrap();
-            storage.store_asset(&AssetInfo::native()).await.unwrap();
+            storage
+                .store_asset(&AssetInfo::native::<cap::Ledger>())
+                .await
+                .unwrap();
             storage
                 .store_transaction(TransactionHistoryEntry {
                     time: Local::now(),

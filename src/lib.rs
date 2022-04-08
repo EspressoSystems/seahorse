@@ -1787,7 +1787,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
 
         // Ensure the native asset type is always recognized.
         state
-            .import_asset(&mut session, AssetInfo::native())
+            .import_asset(&mut session, AssetInfo::native::<L>())
             .await?;
 
         let sync_handles = Vec::new();
