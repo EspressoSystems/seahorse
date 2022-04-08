@@ -628,15 +628,14 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                             } else {
                                 txn.asset.to_string()
                             };
-                            let senders;
-                            if !txn.senders.is_empty() {
-                                senders = txn.senders
+                            let senders = if !txn.senders.is_empty() {
+                                txn.senders
                                     .into_iter()
                                     .map(|sender| UserAddress(sender).to_string())
-                                    .collect::<Vec<String>>();
+                                    .collect::<Vec<String>>()
                             } else {
-                                senders = vec![String::from("unknown")];
-                            }
+                                vec![String::from("unknown")]
+                            };
                             cli_write!(
                                 io,
                                 "{} {} {} {} {:?} ",

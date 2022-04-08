@@ -328,8 +328,7 @@ impl<L: Ledger> BackgroundKeyScan<L> {
             for n in block
                 .txns()
                 .into_iter()
-                .map(|txn| txn.input_nullifiers())
-                .flatten()
+                .flat_map(|txn| txn.input_nullifiers())
             {
                 if let Some((_, uid)) = self.records.remove(&n) {
                     // If we removed a record that we had already discovered, prune it's path from
@@ -342,8 +341,7 @@ impl<L: Ledger> BackgroundKeyScan<L> {
             for comm in block
                 .txns()
                 .into_iter()
-                .map(|txn| txn.output_commitments())
-                .flatten()
+                .flat_map(|txn| txn.output_commitments())
             {
                 self.add_commitment(&comm);
             }
