@@ -638,6 +638,7 @@
 <span id="638">638</span>
 <span id="639">639</span>
 <span id="640">640</span>
+<span id="641">641</span>
 </pre><pre class="rust"><code><span class="comment">// Copyright (c) 2022 Espresso Systems (espressosys.com)</span>
 <span class="comment">// This file is part of the Seahorse library.</span>
 
@@ -669,6 +670,7 @@
     <span class="ident">BaseField</span>, <span class="ident">KeyPair</span>, <span class="ident">Signature</span>, <span class="ident">VerKey</span>,
 };
 <span class="kw">use</span> <span class="ident">jf_utils::tagged_blob</span>;
+<span class="kw">use</span> <span class="ident">reef::Ledger</span>;
 <span class="kw">use</span> <span class="ident">serde</span>::{<span class="ident">Deserialize</span>, <span class="ident">Serialize</span>};
 <span class="kw">use</span> <span class="ident">std::collections</span>::{<span class="ident">HashMap</span>, <span class="ident">HashSet</span>};
 <span class="kw">use</span> <span class="ident">std::fmt</span>::{<span class="self">self</span>, <span class="ident">Display</span>, <span class="ident">Formatter</span>};
@@ -892,10 +894,10 @@
     }
 
     <span class="doccomment">/// Details about the native asset type.</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">native</span>() <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span> {
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">native</span><span class="op">&lt;</span><span class="ident">L</span>: <span class="ident">Ledger</span><span class="op">&gt;</span>() <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span> {
         <span class="ident"><span class="self">Self</span>::from</span>(<span class="ident">AssetDefinition::native</span>())
-            .<span class="ident">with_name</span>(<span class="string">&quot;native&quot;</span>.<span class="ident">into</span>())
-            .<span class="ident">with_description</span>(<span class="string">&quot;the native CAP asset type&quot;</span>.<span class="ident">into</span>())
+            .<span class="ident">with_name</span>(<span class="ident">L::name</span>().<span class="ident">to_uppercase</span>())
+            .<span class="ident">with_description</span>(<span class="macro">format!</span>(<span class="string">&quot;The {} native asset type&quot;</span>, <span class="ident">L::name</span>()))
     }
 
     <span class="doccomment">/// Update this info by merging in information from `info`.</span>

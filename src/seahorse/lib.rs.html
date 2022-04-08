@@ -4547,7 +4547,7 @@
 
         <span class="comment">// Ensure the native asset type is always recognized.</span>
         <span class="ident">state</span>
-            .<span class="ident">import_asset</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">session</span>, <span class="ident">AssetInfo::native</span>())
+            .<span class="ident">import_asset</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">session</span>, <span class="ident">AssetInfo::native</span>::<span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span>())
             .<span class="kw">await</span><span class="question-mark">?</span>;
 
         <span class="kw">let</span> <span class="ident">sync_handles</span> <span class="op">=</span> <span class="ident">Vec::new</span>();
