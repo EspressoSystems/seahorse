@@ -255,7 +255,7 @@ impl AssetInfo {
     /// Details about the native asset type.
     pub fn native<L: Ledger>() -> Self {
         Self::from(AssetDefinition::native())
-            .with_name(format!("${}", L::name().to_uppercase()))
+            .with_name(L::name().to_uppercase())
             .with_description(format!("The {} native asset type", L::name()))
     }
 
