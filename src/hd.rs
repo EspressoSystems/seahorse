@@ -202,6 +202,39 @@ impl KeyTree {
     pub fn derive_freezer_key_pair(&self, id: &[u8]) -> FreezerKeyPair {
         derive_key_pair!(self, "freezer key pair", id, FreezerKeyPair)
     }
+
+    /// The sub-tree of the top-level tree used by the wallet to derive sending keys.
+    pub fn sending_key_stream(&self) -> KeyTree {
+        self.derive_sub_tree("wallet".as_bytes())
+            .derive_sub_tree("user".as_bytes())
+    }
+
+    /// The `n`th key pair in a sending key stream.
+    pub fn sending_key(&self, n: u64) -> UserKeyPair {
+        self.derive_user_key_pair(&n.to_le_bytes())
+    }
+
+    /// The sub-tree of the top-level tree used by the wallet to derive viewing keys.
+    pub fn viewing_key_stream(&self) -> KeyTree {
+        self.derive_sub_tree("wallet".as_bytes())
+            .derive_sub_tree("auditor".as_bytes())
+    }
+
+    /// The `n`th key pair in a viewing key stream.
+    pub fn viewing_key(&self, n: u64) -> AuditorKeyPair {
+        self.derive_auditor_key_pair(&n.to_le_bytes())
+    }
+
+    /// The sub-tree of the top-level tree used by the wallet to derive freezing keys.
+    pub fn freezing_key_stream(&self) -> KeyTree {
+        self.derive_sub_tree("wallet".as_bytes())
+            .derive_sub_tree("freezer".as_bytes())
+    }
+
+    /// The `n`th key pair in a freezing key stream.
+    pub fn freezing_key(&self, n: u64) -> FreezerKeyPair {
+        self.derive_freezer_key_pair(&n.to_le_bytes())
+    }
 }
 
 /// A 32-byte pseudo-random key.
