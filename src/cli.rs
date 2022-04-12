@@ -5,24 +5,24 @@
 // This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 // You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-//! The generic CAP Wallet frontend
+//! The generic CAP KeyStore frontend
 //!
 //! This module "frontend" provides a framework for implementing command line interfaces for
-//! ledger-specific instantiations of the [Wallet] type. Similar to the [Wallet] framework itself,
+//! ledger-specific instantiations of the [KeyStore] type. Similar to the [KeyStore] framework itself,
 //! there is are traits which must be implemented to adapt this framework to a particular ledger
 //! type, after which the implementor gains access to the full Seahorse CLI implementation.
 //!
-//! The [CLI] trait must be implemented for a particular ledger type and [WalletBackend]
+//! The [CLI] trait must be implemented for a particular ledger type and [KeyStoreBackend]
 //! implementation. In addition, the [CLIArgs] trait must be implemented to map your command line
 //! arguments to the options and flags required by the general CLI implementation. After that,
 //! [cli_main] can be used to run the CLI interactively.
 use crate::{
     events::EventIndex,
     io::SharedIO,
-    loader::{Loader, LoaderMetadata, WalletLoader},
+    loader::{Loader, LoaderMetadata, KeyStoreLoader},
     reader::Reader,
-    AssetInfo, BincodeError, IoError, TransactionReceipt, TransactionStatus, WalletBackend,
-    WalletError,
+    AssetInfo, BincodeError, IoError, TransactionReceipt, TransactionStatus, KeyStoreBackend,
+    KeyStoreError,
 };
 use async_std::task::block_on;
 use async_trait::async_trait;
@@ -50,8 +50,8 @@ use tempdir::TempDir;
 pub trait CLI<'a> {
     /// The ledger for which we want to instantiate this CLI.
     type Ledger: 'static + Ledger;
-    /// The [WalletBackend] implementation to use for the wallet.
-    type Backend: 'a + WalletBackend<'a, Self::Ledger> + Send + Sync;
+    /// The [KeyStoreBackend] implementation to use for the wallet.
+    type Backend: 'a + KeyStoreBackend<'a, Self::Ledger> + Send + Sync;
     /// The type of command line options for use when configuring the CLI.
     type Args: CLIArgs;
 
@@ -59,8 +59,8 @@ pub trait CLI<'a> {
     fn init_backend(
         universal_param: &'a UniversalParam,
         args: Self::Args,
-        loader: &mut impl WalletLoader<Self::Ledger, Meta = LoaderMetadata>,
-    ) -> Result<Self::Backend, WalletError<Self::Ledger>>;
+        loader: &mut impl KeyStoreLoader<Self::Ledger, Meta = LoaderMetadata>,
+    ) -> Result<Self::Backend, KeyStoreError<Self::Ledger>>;
 
     /// Add extra, ledger-specific commands to the generic CLI interface.
     ///
@@ -96,7 +96,7 @@ pub trait CLIArgs {
     fn use_tmp_storage(&self) -> bool;
 }
 
-pub type Wallet<'a, C> = crate::Wallet<'a, <C as CLI<'a>>::Backend, <C as CLI<'a>>::Ledger>;
+pub type KeyStore<'a, C> = crate::KeyStore<'a, <C as CLI<'a>>::Backend, <C as CLI<'a>>::Ledger>;
 
 /// A REPL command.
 ///
@@ -123,7 +123,7 @@ pub type CommandFunc<'a, C> = Box<
         + Sync
         + for<'l> Fn(
             SharedIO,
-            &'l mut Wallet<'a, C>,
+            &'l mut KeyStore<'a, C>,
             Vec<String>,
             HashMap<String, String>,
         ) -> BoxFuture<'l, ()>,
@@ -143,16 +143,16 @@ impl<'a, C: CLI<'a>> Display for Command<'a, C> {
     }
 }
 
-/// Types which can be parsed from a string relative to a particular [Wallet].Stream
+/// Types which can be parsed from a string relative to a particular [KeyStore].Stream
 pub trait CLIInput<'a, C: CLI<'a>>: Sized {
-    fn parse_for_wallet(wallet: &mut Wallet<'a, C>, s: &str) -> Option<Self>;
+    fn parse_for_wallet(wallet: &mut KeyStore<'a, C>, s: &str) -> Option<Self>;
 }
 
 macro_rules! cli_input_from_str {
     ($($t:ty),*) => {
         $(
             impl<'a, C: CLI<'a>> CLIInput<'a, C> for $t {
-                fn parse_for_wallet(_wallet: &mut Wallet<'a, C>, s: &str) -> Option<Self> {
+                fn parse_for_wallet(_wallet: &mut KeyStore<'a, C>, s: &str) -> Option<Self> {
                     Self::from_str(s).ok()
                 }
             }
@@ -166,7 +166,7 @@ cli_input_from_str! {
 }
 
 impl<'a, C: CLI<'a>, L: Ledger> CLIInput<'a, C> for TransactionReceipt<L> {
-    fn parse_for_wallet(_wallet: &mut Wallet<'a, C>, s: &str) -> Option<Self> {
+    fn parse_for_wallet(_wallet: &mut KeyStore<'a, C>, s: &str) -> Option<Self> {
         Self::from_str(s).ok()
     }
 }
@@ -282,9 +282,9 @@ pub use crate::count;
 /// Types which can be listed in terminal output and parsed from a list index.
 #[async_trait]
 pub trait Listable<'a, C: CLI<'a>>: Sized {
-    async fn list(wallet: &mut Wallet<'a, C>) -> Vec<ListItem<Self>>;
+    async fn list(wallet: &mut KeyStore<'a, C>) -> Vec<ListItem<Self>>;
 
-    fn list_sync(wallet: &mut Wallet<'a, C>) -> Vec<ListItem<Self>> {
+    fn list_sync(wallet: &mut KeyStore<'a, C>) -> Vec<ListItem<Self>> {
         block_on(Self::list(wallet))
     }
 }
@@ -306,7 +306,7 @@ impl<T: Display> Display for ListItem<T> {
 }
 
 impl<'a, C: CLI<'a>, T: Listable<'a, C> + CLIInput<'a, C>> CLIInput<'a, C> for ListItem<T> {
-    fn parse_for_wallet(wallet: &mut Wallet<'a, C>, s: &str) -> Option<Self> {
+    fn parse_for_wallet(wallet: &mut KeyStore<'a, C>, s: &str) -> Option<Self> {
         if let Ok(index) = usize::from_str(s) {
             // If the input looks like a list index, build the list for type T and get an element of
             // type T by indexing.
@@ -329,7 +329,7 @@ impl<'a, C: CLI<'a>, T: Listable<'a, C> + CLIInput<'a, C>> CLIInput<'a, C> for L
 
 #[async_trait]
 impl<'a, C: CLI<'a>> Listable<'a, C> for AssetCode {
-    async fn list(wallet: &mut Wallet<'a, C>) -> Vec<ListItem<Self>> {
+    async fn list(wallet: &mut KeyStore<'a, C>) -> Vec<ListItem<Self>> {
         // Get our viewing and freezing keys so we can check if the asset types are
         // viewable/freezable.
         let viewing_keys = wallet.auditor_pub_keys().await;
@@ -877,7 +877,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
     commands
 }
 
-async fn print_keys<'a, C: CLI<'a>>(io: &mut SharedIO, wallet: &Wallet<'a, C>) {
+async fn print_keys<'a, C: CLI<'a>>(io: &mut SharedIO, wallet: &KeyStore<'a, C>) {
     cli_writeln!(io, "Sending keys:");
     for key in wallet.pub_keys().await {
         let account = wallet.sending_account(&key.address()).await.unwrap();
@@ -902,7 +902,7 @@ pub enum KeyType {
 }
 
 impl<'a, C: CLI<'a>> CLIInput<'a, C> for KeyType {
-    fn parse_for_wallet(_wallet: &mut Wallet<'a, C>, s: &str) -> Option<Self> {
+    fn parse_for_wallet(_wallet: &mut KeyStore<'a, C>, s: &str) -> Option<Self> {
         match s {
             "view" | "viewing" => Some(Self::Viewing),
             "freeze" | "freezing" => Some(Self::Freezing),
@@ -914,8 +914,8 @@ impl<'a, C: CLI<'a>> CLIInput<'a, C> for KeyType {
 
 pub async fn finish_transaction<'a, C: CLI<'a>>(
     io: &mut SharedIO,
-    wallet: &Wallet<'a, C>,
-    result: Result<TransactionReceipt<C::Ledger>, WalletError<C::Ledger>>,
+    wallet: &KeyStore<'a, C>,
+    result: Result<TransactionReceipt<C::Ledger>, KeyStoreError<C::Ledger>>,
     wait: Option<bool>,
     success_state: &str,
 ) {
@@ -946,7 +946,7 @@ pub async fn finish_transaction<'a, C: CLI<'a>>(
 /// Run the CLI based in the provided command line arguments.
 pub async fn cli_main<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
     args: C::Args,
-) -> Result<(), WalletError<L>> {
+) -> Result<(), KeyStoreError<L>> {
     if let Some(path) = args.key_gen_path() {
         key_gen::<C>(path)
     } else {
@@ -954,7 +954,7 @@ pub async fn cli_main<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
     }
 }
 
-pub fn key_gen<'a, C: CLI<'a>>(mut path: PathBuf) -> Result<(), WalletError<C::Ledger>> {
+pub fn key_gen<'a, C: CLI<'a>>(mut path: PathBuf) -> Result<(), KeyStoreError<C::Ledger>> {
     let key_pair = crate::new_key_pair();
 
     let mut file = File::create(path.clone()).context(IoError)?;
@@ -971,11 +971,11 @@ pub fn key_gen<'a, C: CLI<'a>>(mut path: PathBuf) -> Result<(), WalletError<C::L
 
 async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
     args: C::Args,
-) -> Result<(), WalletError<L>> {
+) -> Result<(), KeyStoreError<L>> {
     let (storage, _tmp_dir) = match args.storage_path() {
         Some(storage) => (storage, None),
         None if !args.use_tmp_storage() => {
-            let home = std::env::var("HOME").map_err(|_| WalletError::Failed {
+            let home = std::env::var("HOME").map_err(|_| KeyStoreError::Failed {
                 msg: String::from(
                     "HOME directory is not set. Please set your HOME directory, or specify \
                         a different storage location using --storage.",
@@ -1017,7 +1017,7 @@ async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
     // Loading the wallet takes a while. Let the user know that's expected.
     //todo !jeb.bearer Make it faster
     cli_writeln!(io, "connecting...");
-    let mut wallet = Wallet::<C>::new(backend).await?;
+    let mut wallet = KeyStore::<C>::new(backend).await?;
     cli_writeln!(io, "Type 'help' for a list of commands.");
     let commands = init_commands::<C>();
 
@@ -1117,8 +1117,8 @@ mod test {
         fn init_backend(
             _universal_param: &'a UniversalParam,
             args: Self::Args,
-            _loader: &mut impl WalletLoader<Self::Ledger, Meta = LoaderMetadata>,
-        ) -> Result<Self::Backend, WalletError<Self::Ledger>> {
+            _loader: &mut impl KeyStoreLoader<Self::Ledger, Meta = LoaderMetadata>,
+        ) -> Result<Self::Backend, KeyStoreError<Self::Ledger>> {
             Ok(MockBackend::new(
                 args.ledger.clone(),
                 Default::default(),

@@ -5,15 +5,15 @@
 // This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 // You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-//! Ledger-agnostic implementation of [WalletStorage].
+//! Ledger-agnostic implementation of [KeyStoreStorage].
 use crate::{
     accounts::Account,
     asset_library::{AssetInfo, AssetLibrary},
     encryption::Cipher,
     hd::KeyTree,
-    loader::WalletLoader,
+    loader::KeyStoreLoader,
     txn_builder::TransactionState,
-    KeyStreamState, TransactionHistoryEntry, WalletError, WalletState, WalletStorage,
+    KeyStreamState, TransactionHistoryEntry, KeyStoreError, KeyStoreState, KeyStoreStorage,
 };
 use arbitrary::{Arbitrary, Unstructured};
 use async_std::sync::Arc;
@@ -31,15 +31,15 @@ use reef::*;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use snafu::ResultExt;
 
-// Serialization intermediate for the static part of a WalletState.
+// Serialization intermediate for the static part of a KeyStoreState.
 #[derive(Deserialize, Serialize)]
-struct WalletStaticState<'a> {
+struct KeyStoreStaticState<'a> {
     #[serde(with = "serde_ark_unchecked")]
     proving_keys: Arc<ProverKeySet<'a, OrderByOutputs>>,
 }
 
-impl<'a, L: Ledger> From<&WalletState<'a, L>> for WalletStaticState<'a> {
-    fn from(w: &WalletState<'a, L>) -> Self {
+impl<'a, L: Ledger> From<&KeyStoreState<'a, L>> for KeyStoreStaticState<'a> {
+    fn from(w: &KeyStoreState<'a, L>) -> Self {
         Self {
             proving_keys: w.proving_keys.clone(),
         }
@@ -71,11 +71,11 @@ mod serde_ark_unchecked {
     }
 }
 
-// Serialization intermediate for the dynamic part of a WalletState.
+// Serialization intermediate for the dynamic part of a KeyStoreState.
 #[ser_test(arbitrary, types(cap::Ledger), ark(false))]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(bound = "")]
-struct WalletSnapshot<L: Ledger> {
+struct KeyStoreSnapshot<L: Ledger> {
     txn_state: TransactionState<L>,
     key_state: KeyStreamState,
     viewing_accounts: Vec<Account<L, AuditorKeyPair>>,
@@ -83,7 +83,7 @@ struct WalletSnapshot<L: Ledger> {
     sending_accounts: Vec<Account<L, UserKeyPair>>,
 }
 
-impl<L: Ledger> PartialEq<Self> for WalletSnapshot<L> {
+impl<L: Ledger> PartialEq<Self> for KeyStoreSnapshot<L> {
     fn eq(&self, other: &Self) -> bool {
         self.txn_state == other.txn_state
             && self.key_state == other.key_state
@@ -93,8 +93,8 @@ impl<L: Ledger> PartialEq<Self> for WalletSnapshot<L> {
     }
 }
 
-impl<'a, L: Ledger> From<&WalletState<'a, L>> for WalletSnapshot<L> {
-    fn from(w: &WalletState<'a, L>) -> Self {
+impl<'a, L: Ledger> From<&KeyStoreState<'a, L>> for KeyStoreSnapshot<L> {
+    fn from(w: &KeyStoreState<'a, L>) -> Self {
         Self {
             txn_state: w.txn_state.clone(),
             key_state: w.key_state.clone(),
@@ -105,7 +105,7 @@ impl<'a, L: Ledger> From<&WalletState<'a, L>> for WalletSnapshot<L> {
     }
 }
 
-impl<'a, L: Ledger> Arbitrary<'a> for WalletSnapshot<L>
+impl<'a, L: Ledger> Arbitrary<'a> for KeyStoreSnapshot<L>
 where
     TransactionState<L>: Arbitrary<'a>,
     TransactionHash<L>: Arbitrary<'a>,
@@ -170,7 +170,7 @@ impl<T: Serialize + DeserializeOwned> LoadStore for EncryptingResourceAdapter<T>
     }
 }
 
-pub struct AtomicWalletStorage<'a, L: Ledger, Meta: Serialize + DeserializeOwned> {
+pub struct AtomicKeyStoreStorage<'a, L: Ledger, Meta: Serialize + DeserializeOwned> {
     store: AtomicStore,
     // Metadata given at initialization time that may not have been written to disk yet.
     meta: Meta,
@@ -181,9 +181,9 @@ pub struct AtomicWalletStorage<'a, L: Ledger, Meta: Serialize + DeserializeOwned
     persisted_meta: RollingLog<BincodeLoadStore<Meta>>,
     meta_dirty: bool,
     // Snapshot log with a single entry containing the static data.
-    static_data: RollingLog<EncryptingResourceAdapter<WalletStaticState<'a>>>,
+    static_data: RollingLog<EncryptingResourceAdapter<KeyStoreStaticState<'a>>>,
     static_dirty: bool,
-    dynamic_state: RollingLog<EncryptingResourceAdapter<WalletSnapshot<L>>>,
+    dynamic_state: RollingLog<EncryptingResourceAdapter<KeyStoreSnapshot<L>>>,
     dynamic_state_dirty: bool,
     assets: AppendLog<EncryptingResourceAdapter<AssetInfo>>,
     assets_dirty: bool,
@@ -193,12 +193,12 @@ pub struct AtomicWalletStorage<'a, L: Ledger, Meta: Serialize + DeserializeOwned
 }
 
 impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned + Clone + PartialEq>
-    AtomicWalletStorage<'a, L, Meta>
+    AtomicKeyStoreStorage<'a, L, Meta>
 {
     pub fn new(
-        loader: &mut impl WalletLoader<L, Meta = Meta>,
+        loader: &mut impl KeyStoreLoader<L, Meta = Meta>,
         file_fill_size: u64,
-    ) -> Result<Self, WalletError<L>> {
+    ) -> Result<Self, KeyStoreError<L>> {
         let directory = loader.location();
         let mut atomic_loader =
             AtomicStoreLoader::load(&directory, "wallet").context(crate::PersistenceError)?;
@@ -283,8 +283,8 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned + Clone + PartialE
     }
 }
 
-impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicWalletStorage<'a, L, Meta> {
-    pub async fn create(mut self: &mut Self, w: &WalletState<'a, L>) -> Result<(), WalletError<L>> {
+impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicKeyStoreStorage<'a, L, Meta> {
+    pub async fn create(mut self: &mut Self, w: &KeyStoreState<'a, L>) -> Result<(), KeyStoreError<L>> {
         // Store the initial static and dynamic state, and the metadata. We do this in a closure so
         // that if any operation fails, it will exit the closure but not this function, and we can
         // then commit or revert based on the results of the closure.
@@ -297,7 +297,7 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicWalletStora
             store.meta_dirty = true;
             store
                 .static_data
-                .store_resource(&WalletStaticState::from(w))
+                .store_resource(&KeyStoreStaticState::from(w))
                 .context(crate::PersistenceError)?;
             store.static_dirty = true;
             store.store_snapshot(w).await
@@ -321,14 +321,14 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicWalletStora
 }
 
 #[async_trait]
-impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> WalletStorage<'a, L>
-    for AtomicWalletStorage<'a, L, Meta>
+impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> KeyStoreStorage<'a, L>
+    for AtomicKeyStoreStorage<'a, L, Meta>
 {
     fn exists(&self) -> bool {
         self.persisted_meta.load_latest().is_ok()
     }
 
-    async fn load(&mut self) -> Result<WalletState<'a, L>, WalletError<L>> {
+    async fn load(&mut self) -> Result<KeyStoreState<'a, L>, KeyStoreError<L>> {
         // This function is called once, when the wallet is loaded. It is a good place to persist
         // changes to the metadata that happened during loading.
         self.commit().await;
@@ -343,7 +343,7 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> WalletStorage<'a,
             .context(crate::PersistenceError)?;
         let assets = self.assets.iter().filter_map(|res| res.ok()).collect();
 
-        Ok(WalletState {
+        Ok(KeyStoreState {
             // Static state
             proving_keys: static_state.proving_keys,
 
@@ -378,15 +378,15 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> WalletStorage<'a,
         })
     }
 
-    async fn store_snapshot(&mut self, w: &WalletState<'a, L>) -> Result<(), WalletError<L>> {
+    async fn store_snapshot(&mut self, w: &KeyStoreState<'a, L>) -> Result<(), KeyStoreError<L>> {
         self.dynamic_state
-            .store_resource(&WalletSnapshot::from(w))
+            .store_resource(&KeyStoreSnapshot::from(w))
             .context(crate::PersistenceError)?;
         self.dynamic_state_dirty = true;
         Ok(())
     }
 
-    async fn store_asset(&mut self, asset: &AssetInfo) -> Result<(), WalletError<L>> {
+    async fn store_asset(&mut self, asset: &AssetInfo) -> Result<(), KeyStoreError<L>> {
         self.assets
             .store_resource(asset)
             .context(crate::PersistenceError)?;
@@ -397,7 +397,7 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> WalletStorage<'a,
     async fn store_transaction(
         &mut self,
         txn: TransactionHistoryEntry<L>,
-    ) -> Result<(), WalletError<L>> {
+    ) -> Result<(), KeyStoreError<L>> {
         self.txn_history
             .store_resource(&txn)
             .context(crate::PersistenceError)?;
@@ -407,7 +407,7 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> WalletStorage<'a,
 
     async fn transaction_history(
         &mut self,
-    ) -> Result<Vec<TransactionHistoryEntry<L>>, WalletError<L>> {
+    ) -> Result<Vec<TransactionHistoryEntry<L>>, KeyStoreError<L>> {
         self.txn_history
             .iter()
             .map(|res| res.context(crate::PersistenceError))
@@ -493,23 +493,23 @@ mod tests {
     use std::path::PathBuf;
     use tempdir::TempDir;
 
-    struct MockWalletLoader {
+    struct MockKeyStoreLoader {
         dir: TempDir,
         key: KeyTree,
     }
 
-    impl<L: Ledger> WalletLoader<L> for MockWalletLoader {
+    impl<L: Ledger> KeyStoreLoader<L> for MockKeyStoreLoader {
         type Meta = ();
 
         fn location(&self) -> PathBuf {
             self.dir.path().into()
         }
 
-        fn create(&mut self) -> Result<(Self::Meta, KeyTree), WalletError<L>> {
+        fn create(&mut self) -> Result<(Self::Meta, KeyTree), KeyStoreError<L>> {
             Ok(((), self.key.clone()))
         }
 
-        fn load(&mut self, _meta: &mut Self::Meta) -> Result<KeyTree, WalletError<L>> {
+        fn load(&mut self, _meta: &mut Self::Meta) -> Result<KeyTree, KeyStoreError<L>> {
             Ok(self.key.clone())
         }
     }
@@ -554,8 +554,8 @@ mod tests {
     async fn get_test_state(
         name: &str,
     ) -> (
-        WalletState<'static, cap::Ledger>,
-        MockWalletLoader,
+        KeyStoreState<'static, cap::Ledger>,
+        MockKeyStoreLoader,
         ChaChaRng,
     ) {
         let mut rng = ChaChaRng::from_seed([0x42u8; 32]);
@@ -585,7 +585,7 @@ mod tests {
         let record_merkle_tree = MerkleTree::new(cap::Ledger::merkle_height()).unwrap();
         let validator = cap::Validator::default();
 
-        let state = WalletState {
+        let state = KeyStoreState {
             proving_keys: Arc::new(ProverKeySet {
                 xfr: KeySet::new(xfr_prove_keys.into_iter()).unwrap(),
                 freeze: KeySet::new(vec![freeze_prove_key].into_iter()).unwrap(),
@@ -607,12 +607,12 @@ mod tests {
             sending_accounts: Default::default(),
         };
 
-        let mut loader = MockWalletLoader {
+        let mut loader = MockKeyStoreLoader {
             dir: TempDir::new(name).unwrap(),
             key: KeyTree::random(&mut rng).0,
         };
         {
-            let mut storage = AtomicWalletStorage::new(&mut loader, 1024).unwrap();
+            let mut storage = AtomicKeyStoreStorage::new(&mut loader, 1024).unwrap();
             assert!(!storage.exists());
             storage.create(&state).await.unwrap();
             assert!(storage.exists());
@@ -629,7 +629,7 @@ mod tests {
         // load comes only from persistent storage and not from any in-memory state of the first
         // instance.
         let loaded = {
-            let mut storage = AtomicWalletStorage::new(&mut loader, 1024).unwrap();
+            let mut storage = AtomicKeyStoreStorage::new(&mut loader, 1024).unwrap();
             storage.load().await.unwrap()
         };
         assert_wallet_states_eq(&stored, &loaded);
@@ -666,12 +666,12 @@ mod tests {
 
         // Snapshot the modified dynamic state and then reload.
         {
-            let mut storage = AtomicWalletStorage::new(&mut loader, 1024).unwrap();
+            let mut storage = AtomicKeyStoreStorage::new(&mut loader, 1024).unwrap();
             storage.store_snapshot(&stored).await.unwrap();
             storage.commit().await;
         }
         let loaded = {
-            let mut storage = AtomicWalletStorage::new(&mut loader, 1024).unwrap();
+            let mut storage = AtomicKeyStoreStorage::new(&mut loader, 1024).unwrap();
             storage.load().await.unwrap()
         };
         assert_wallet_states_eq(&stored, &loaded);
@@ -690,13 +690,13 @@ mod tests {
         );
         {
             let mut storage =
-                AtomicWalletStorage::<cap::Ledger, _>::new(&mut loader, 1024).unwrap();
+                AtomicKeyStoreStorage::<cap::Ledger, _>::new(&mut loader, 1024).unwrap();
             storage.store_snapshot(&stored).await.unwrap();
             storage.store_asset(&asset).await.unwrap();
             storage.commit().await;
         }
         let loaded = {
-            let mut storage = AtomicWalletStorage::new(&mut loader, 1024).unwrap();
+            let mut storage = AtomicKeyStoreStorage::new(&mut loader, 1024).unwrap();
             storage.load().await.unwrap()
         };
         assert_wallet_states_eq(&stored, &loaded);
@@ -710,7 +710,7 @@ mod tests {
 
         // Make a change to one of the data structures, but revert it.
         let loaded = {
-            let mut storage = AtomicWalletStorage::new(&mut loader, 1024).unwrap();
+            let mut storage = AtomicKeyStoreStorage::new(&mut loader, 1024).unwrap();
             storage.store_asset(&AssetInfo::native()).await.unwrap();
             storage.revert().await;
             // Make sure committing after a revert does not commit the reverted changes.
@@ -721,7 +721,7 @@ mod tests {
 
         // Change multiple data structures and revert.
         let loaded = {
-            let mut storage = AtomicWalletStorage::new(&mut loader, 1024).unwrap();
+            let mut storage = AtomicKeyStoreStorage::new(&mut loader, 1024).unwrap();
 
             let user_key = UserKeyPair::generate(&mut rng);
             let ro = random_ro(&mut rng, &user_key);

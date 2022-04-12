@@ -335,7 +335,7 @@ impl FromStr for AssetInfo {
         //
         // Recognized fields are "description", "name", "definition", "mint_description", "seed",
         // and "temporary". Note that the `verified` field cannot be set this way. There is only one
-        // way to create verified `AssetInfo`: using [Wallet::verify_assets], which performs a
+        // way to create verified `AssetInfo`: using [KeyStore::verify_assets], which performs a
         // signature check before marking assets verified.
         let mut definition = None;
         let mut name = None;
@@ -583,8 +583,8 @@ impl Index<AssetCode> for AssetLibrary {
 ///    writes it to a file (for example, using [bincode] serialization). The
 ///    `gen_verified_asset_library` executable that ships with this crate can be used to do this.
 /// 3. The application developer distributes this file to users along with the client application.
-/// 4. The application, upon creating a [Wallet](crate::Wallet), deserializes the
-///    [VerifiedAssetLibrary] and calls [Wallet::verify_assets](crate::Wallet::verify_assets) with
+/// 4. The application, upon creating a [KeyStore](crate::KeyStore), deserializes the
+///    [VerifiedAssetLibrary] and calls [KeyStore::verify_assets](crate::KeyStore::verify_assets) with
 ///    the public key from step 1. This key can be hard-coded in the client application.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct VerifiedAssetLibrary {
