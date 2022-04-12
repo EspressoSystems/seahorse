@@ -151,6 +151,7 @@ impl<L: Ledger> BackgroundKeyScan<L> {
             leaf_to_forget,
         }
     }
+}
 
     /// Attempt to finalize a key scan.
     ///
