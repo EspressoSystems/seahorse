@@ -176,7 +176,10 @@ impl<'a, L: Ledger, N: MockNetwork<'a, L>, S: KeyStoreStorage<'a, L>> MockLedger
 // that cannot directly be compared for equality. It is sufficient for tests that want to compare
 // key store states (like round-trip serialization tests) but since it is deterministic, we shouldn't
 // make it into a PartialEq instance.
-pub fn assert_key_store_states_eq<'a, L: Ledger>(w1: &KeyStoreState<'a, L>, w2: &KeyStoreState<'a, L>) {
+pub fn assert_key_store_states_eq<'a, L: Ledger>(
+    w1: &KeyStoreState<'a, L>,
+    w2: &KeyStoreState<'a, L>,
+) {
     assert_eq!(w1.txn_state.now, w2.txn_state.now);
     assert_eq!(
         w1.txn_state.validator.commit(),

@@ -309,7 +309,10 @@ pub trait KeyStoreStorage<'a, L: Ledger> {
     async fn load(&mut self) -> Result<KeyStoreState<'a, L>, KeyStoreError<L>>;
 
     /// Store a snapshot of the keystore's dynamic state.
-    async fn store_snapshot(&mut self, state: &KeyStoreState<'a, L>) -> Result<(), KeyStoreError<L>>;
+    async fn store_snapshot(
+        &mut self,
+        state: &KeyStoreState<'a, L>,
+    ) -> Result<(), KeyStoreError<L>>;
 
     /// Append a new asset to the growing asset library.
     async fn store_asset(&mut self, asset: &AssetInfo) -> Result<(), KeyStoreError<L>>;
@@ -358,7 +361,10 @@ impl<'a, 'l, L: Ledger, Backend: KeyStoreBackend<'a, L> + ?Sized>
         }
     }
 
-    async fn store_snapshot(&mut self, state: &KeyStoreState<'a, L>) -> Result<(), KeyStoreError<L>> {
+    async fn store_snapshot(
+        &mut self,
+        state: &KeyStoreState<'a, L>,
+    ) -> Result<(), KeyStoreError<L>> {
         if !self.cancelled {
             let res = self.storage().await.store_snapshot(state).await;
             if res.is_err() {
@@ -1759,7 +1765,9 @@ impl<'a, L: 'static + Ledger, Backend: 'a + KeyStoreBackend<'a, L> + Send + Sync
     // manually write out the opaque return type so that we can explicitly add the `Send` bound. The
     // difference is that we use dynamic type erasure (Pin<Box<dyn Future>>) instead of static type
     // erasure. I don't know why this doesn't crash the compiler, but it doesn't.
-    pub fn new(backend: Backend) -> BoxFuture<'a, Result<KeyStore<'a, Backend, L>, KeyStoreError<L>>> {
+    pub fn new(
+        backend: Backend,
+    ) -> BoxFuture<'a, Result<KeyStore<'a, Backend, L>, KeyStoreError<L>>> {
         Box::pin(async move { Self::new_impl(backend).await })
     }
     async fn new_impl(mut backend: Backend) -> Result<KeyStore<'a, Backend, L>, KeyStoreError<L>> {

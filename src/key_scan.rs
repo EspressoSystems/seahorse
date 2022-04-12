@@ -231,7 +231,7 @@ impl<L: Ledger> BackgroundKeyScan<L> {
                             self.forget(uid);
                         }
                     }
-                    
+
                     if let Some(records) = txn.output_openings() {
                         // If the transaction exposes its records, add their commitments, and add
                         // the records themselves if they belong to us.

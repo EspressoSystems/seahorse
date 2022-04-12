@@ -72,7 +72,10 @@ impl<'a, L: reef::Ledger> KeyStoreStorage<'a, L> for MockStorage<'a, L> {
         Ok(self.committed.as_ref().unwrap().clone())
     }
 
-    async fn store_snapshot(&mut self, state: &KeyStoreState<'a, L>) -> Result<(), KeyStoreError<L>> {
+    async fn store_snapshot(
+        &mut self,
+        state: &KeyStoreState<'a, L>,
+    ) -> Result<(), KeyStoreError<L>> {
         if let Some(working) = &mut self.working {
             working.txn_state = state.txn_state.clone();
             working.key_state = state.key_state.clone();
@@ -318,7 +321,9 @@ impl<'a> KeyStoreBackend<'a, cap::Ledger> for MockBackend<'a> {
         self.storage.lock().await
     }
 
-    async fn create(&mut self) -> Result<KeyStoreState<'a, cap::Ledger>, KeyStoreError<cap::Ledger>> {
+    async fn create(
+        &mut self,
+    ) -> Result<KeyStoreState<'a, cap::Ledger>, KeyStoreError<cap::Ledger>> {
         let state = {
             let mut ledger = self.ledger.lock().await;
             let network = ledger.network();

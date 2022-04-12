@@ -235,7 +235,10 @@ pub mod generic_key_store_tests {
                 .await,
             alice_grant - alice_grant / 2
         );
-        assert_eq!(key_stores[1].0.balance(&AssetCode::native()).await, bob_grant);
+        assert_eq!(
+            key_stores[1].0.balance(&AssetCode::native()).await,
+            bob_grant
+        );
         assert_eq!(
             key_stores[1]
                 .0
@@ -326,7 +329,10 @@ pub mod generic_key_store_tests {
         ) {
             if native {
                 assert_eq!(
-                    key_store.0.balance_breakdown(&key_store.1[0], &coin.code).await,
+                    key_store
+                        .0
+                        .balance_breakdown(&key_store.1[0], &coin.code)
+                        .await,
                     expected_coin_balance - fees_paid
                 );
             } else {
@@ -346,7 +352,15 @@ pub mod generic_key_store_tests {
             native,
         )
         .await;
-        check_balance(&key_stores[1], 3, bob_initial_native_balance, 0, &coin, native).await;
+        check_balance(
+            &key_stores[1],
+            3,
+            bob_initial_native_balance,
+            0,
+            &coin,
+            native,
+        )
+        .await;
 
         // Check that Bob's key_store has sufficient information to access received funds by
         // transferring some back to Alice.
@@ -377,7 +391,15 @@ pub mod generic_key_store_tests {
             native,
         )
         .await;
-        check_balance(&key_stores[1], 2, bob_initial_native_balance, 1, &coin, native).await;
+        check_balance(
+            &key_stores[1],
+            2,
+            bob_initial_native_balance,
+            1,
+            &coin,
+            native,
+        )
+        .await;
     }
 
     #[async_std::test]
@@ -387,7 +409,8 @@ pub mod generic_key_store_tests {
     }
 
     #[async_std::test]
-    pub async fn test_two_key_stores_non_native<'a, T: SystemUnderTest<'a>>() -> std::io::Result<()> {
+    pub async fn test_two_key_stores_non_native<'a, T: SystemUnderTest<'a>>() -> std::io::Result<()>
+    {
         test_two_key_stores::<T>(false).await;
         Ok(())
     }
@@ -1221,7 +1244,9 @@ pub mod generic_key_store_tests {
                 );
                 for (j, asset) in assets.iter().enumerate() {
                     assert_eq!(
-                        key_store.balance_breakdown(&addresses[0], &asset.code).await,
+                        key_store
+                            .balance_breakdown(&addresses[0], &asset.code)
+                            .await,
                         balance[j + 1]
                     );
                 }
@@ -1506,7 +1531,8 @@ pub mod generic_key_store_tests {
     }
 
     #[async_std::test]
-    pub async fn test_multixfr_key_store_simple<'a, T: SystemUnderTest<'a>>() -> std::io::Result<()> {
+    pub async fn test_multixfr_key_store_simple<'a, T: SystemUnderTest<'a>>() -> std::io::Result<()>
+    {
         let alice_grant = (0, 0, 3); // Alice gets 3 of coin 0 to start
         let bob_grant = (1, 1, 3); // Bob gets 3 of coin 1 to start
         let txns = vec![vec![
@@ -1811,7 +1837,11 @@ pub mod generic_key_store_tests {
         t.check_storage(&ledger, &key_stores).await;
 
         // Check that the scan discovered the existing record.
-        key_stores[0].0.await_key_scan(&key.address()).await.unwrap();
+        key_stores[0]
+            .0
+            .await_key_scan(&key.address())
+            .await
+            .unwrap();
         assert_eq!(
             key_stores[0]
                 .0
@@ -1985,7 +2015,10 @@ pub mod generic_key_store_tests {
                 .await,
             alice_grant - alice_grant / 2
         );
-        assert_eq!(key_stores[1].0.balance(&AssetCode::native()).await, bob_grant);
+        assert_eq!(
+            key_stores[1].0.balance(&AssetCode::native()).await,
+            bob_grant
+        );
         assert_eq!(
             key_stores[1]
                 .0
@@ -2108,8 +2141,14 @@ pub mod generic_key_store_tests {
             key_stores[0].0.balance(&coin.code).await,
             amount - transfer_amount * 2
         );
-        assert_eq!(key_stores[1].0.balance(&AssetCode::native()).await, bob_grant);
-        assert_eq!(key_stores[1].0.balance(&coin.code).await, transfer_amount * 2);
+        assert_eq!(
+            key_stores[1].0.balance(&AssetCode::native()).await,
+            bob_grant
+        );
+        assert_eq!(
+            key_stores[1].0.balance(&coin.code).await,
+            transfer_amount * 2
+        );
     }
 
     #[async_std::test]
@@ -2493,7 +2532,11 @@ pub mod generic_key_store_tests {
             }
         );
         assert_eq!(
-            key_stores[0].0.freezing_account(&freezing_key).await.unwrap(),
+            key_stores[0]
+                .0
+                .freezing_account(&freezing_key)
+                .await
+                .unwrap(),
             AccountInfo {
                 address: freezing_key.clone(),
                 description: "freezing_account".into(),
@@ -2608,7 +2651,11 @@ pub mod generic_key_store_tests {
             assert_eq!(account.records[0].ro.asset_def.code, freezable_asset.code);
         }
         {
-            let account = key_stores[0].0.freezing_account(&freezing_key).await.unwrap();
+            let account = key_stores[0]
+                .0
+                .freezing_account(&freezing_key)
+                .await
+                .unwrap();
             assert_eq!(
                 account.balances,
                 HashMap::from([(freezable_asset.code, 200)])

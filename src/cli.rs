@@ -19,10 +19,10 @@
 use crate::{
     events::EventIndex,
     io::SharedIO,
-    loader::{Loader, LoaderMetadata, KeyStoreLoader},
+    loader::{KeyStoreLoader, Loader, LoaderMetadata},
     reader::Reader,
-    AssetInfo, BincodeSnafu, IoSnafu, TransactionReceipt, TransactionStatus, KeyStoreBackend,
-    KeyStoreError,
+    AssetInfo, BincodeSnafu, IoSnafu, KeyStoreBackend, KeyStoreError, TransactionReceipt,
+    TransactionStatus,
 };
 use async_std::task::block_on;
 use async_trait::async_trait;

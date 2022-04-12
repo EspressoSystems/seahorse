@@ -13,7 +13,7 @@ use crate::{
     hd::KeyTree,
     loader::KeyStoreLoader,
     txn_builder::TransactionState,
-    KeyStreamState, TransactionHistoryEntry, KeyStoreError, KeyStoreState, KeyStoreStorage,
+    KeyStoreError, KeyStoreState, KeyStoreStorage, KeyStreamState, TransactionHistoryEntry,
 };
 use arbitrary::{Arbitrary, Unstructured};
 use async_std::sync::Arc;
@@ -284,7 +284,10 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned + Clone + PartialE
 }
 
 impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicKeyStoreStorage<'a, L, Meta> {
-    pub async fn create(mut self: &mut Self, w: &KeyStoreState<'a, L>) -> Result<(), KeyStoreError<L>> {
+    pub async fn create(
+        mut self: &mut Self,
+        w: &KeyStoreState<'a, L>,
+    ) -> Result<(), KeyStoreError<L>> {
         // Store the initial static and dynamic state, and the metadata. We do this in a closure so
         // that if any operation fails, it will exit the closure but not this function, and we can
         // then commit or revert based on the results of the closure.
