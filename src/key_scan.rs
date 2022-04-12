@@ -151,7 +151,6 @@ impl<L: Ledger> BackgroundKeyScan<L> {
             leaf_to_forget,
         }
     }
-}
 
     /// Attempt to finalize a key scan.
     ///
@@ -231,6 +230,7 @@ impl<L: Ledger> BackgroundKeyScan<L> {
                             // path from the Merkle tree.
                             self.forget(uid);
                         }
+                    }
                     
                     if let Some(records) = txn.output_openings() {
                         // If the transaction exposes its records, add their commitments, and add

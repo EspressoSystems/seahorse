@@ -13,7 +13,7 @@ use crate::{
     hd,
     testing::{MockEventSource, MockNetwork as _},
     txn_builder::{PendingTransaction, TransactionHistoryEntry, TransactionInfo, TransactionState},
-    CryptoSnafu, WalletBackend, WalletError, WalletState, WalletStorage,
+    CryptoSnafu, KeyStoreBackend, KeyStoreError, KeyStoreState, KeyStoreStorage,
 };
 use async_std::sync::{Arc, Mutex, MutexGuard};
 use async_trait::async_trait;
@@ -38,8 +38,8 @@ use std::pin::Pin;
 #[derive(Clone, Debug, Derivative)]
 #[derivative(Default(bound = "L: reef::Ledger"))]
 pub struct MockStorage<'a, L: reef::Ledger> {
-    committed: Option<WalletState<'a, L>>,
-    working: Option<WalletState<'a, L>>,
+    committed: Option<KeyStoreState<'a, L>>,
+    working: Option<KeyStoreState<'a, L>>,
     txn_history: Vec<TransactionHistoryEntry<L>>,
 }
 
@@ -48,8 +48,8 @@ impl<'a, L: reef::Ledger> MockStorage<'a, L> {
     /// initialized.
     pub fn initialize(
         &mut self,
-        committed: WalletState<'a, L>,
-        working: WalletState<'a, L>,
+        committed: KeyStoreState<'a, L>,
+        working: KeyStoreState<'a, L>,
     ) -> Option<()> {
         match (&mut self.committed, &mut self.working) {
             (None, None) => {
@@ -63,16 +63,16 @@ impl<'a, L: reef::Ledger> MockStorage<'a, L> {
 }
 
 #[async_trait]
-impl<'a, L: reef::Ledger> WalletStorage<'a, L> for MockStorage<'a, L> {
+impl<'a, L: reef::Ledger> KeyStoreStorage<'a, L> for MockStorage<'a, L> {
     fn exists(&self) -> bool {
         self.committed.is_some()
     }
 
-    async fn load(&mut self) -> Result<WalletState<'a, L>, WalletError<L>> {
+    async fn load(&mut self) -> Result<KeyStoreState<'a, L>, KeyStoreError<L>> {
         Ok(self.committed.as_ref().unwrap().clone())
     }
 
-    async fn store_snapshot(&mut self, state: &WalletState<'a, L>) -> Result<(), WalletError<L>> {
+    async fn store_snapshot(&mut self, state: &KeyStoreState<'a, L>) -> Result<(), KeyStoreError<L>> {
         if let Some(working) = &mut self.working {
             working.txn_state = state.txn_state.clone();
             working.key_state = state.key_state.clone();
@@ -88,7 +88,7 @@ impl<'a, L: reef::Ledger> WalletStorage<'a, L> for MockStorage<'a, L> {
         Ok(())
     }
 
-    async fn store_asset(&mut self, asset: &AssetInfo) -> Result<(), WalletError<L>> {
+    async fn store_asset(&mut self, asset: &AssetInfo) -> Result<(), KeyStoreError<L>> {
         if let Some(working) = &mut self.working {
             working.assets.insert(asset.clone());
         }
@@ -98,14 +98,14 @@ impl<'a, L: reef::Ledger> WalletStorage<'a, L> for MockStorage<'a, L> {
     async fn store_transaction(
         &mut self,
         txn: TransactionHistoryEntry<L>,
-    ) -> Result<(), WalletError<L>> {
+    ) -> Result<(), KeyStoreError<L>> {
         self.txn_history.push(txn);
         Ok(())
     }
 
     async fn transaction_history(
         &mut self,
-    ) -> Result<Vec<TransactionHistoryEntry<L>>, WalletError<L>> {
+    ) -> Result<Vec<TransactionHistoryEntry<L>>, KeyStoreError<L>> {
         Ok(self.txn_history.clone())
     }
 
@@ -183,7 +183,7 @@ impl<'a> super::MockNetwork<'a, cap::Ledger> for MockNetwork<'a> {
         self.events.now()
     }
 
-    fn submit(&mut self, block: cap::Block) -> Result<(), WalletError<cap::Ledger>> {
+    fn submit(&mut self, block: cap::Block) -> Result<(), KeyStoreError<cap::Ledger>> {
         match self.validator.validate_and_apply(block.clone()) {
             Ok(mut uids) => {
                 // Add nullifiers
@@ -225,7 +225,7 @@ impl<'a> super::MockNetwork<'a, cap::Ledger> for MockNetwork<'a> {
         txn_id: u64,
         memos: Vec<ReceiverMemo>,
         sig: Signature,
-    ) -> Result<(), WalletError<cap::Ledger>> {
+    ) -> Result<(), KeyStoreError<cap::Ledger>> {
         let (block, block_uids) = &self.committed_blocks[block_id as usize];
         let txn = &block[txn_id as usize];
         let kind = txn.kind();
@@ -275,11 +275,11 @@ impl<'a> super::MockNetwork<'a, cap::Ledger> for MockNetwork<'a> {
         &self,
         index: EventIndex,
         source: EventSource,
-    ) -> Result<LedgerEvent<cap::Ledger>, WalletError<cap::Ledger>> {
+    ) -> Result<LedgerEvent<cap::Ledger>, KeyStoreError<cap::Ledger>> {
         if source == EventSource::QueryService {
             self.events.get(index)
         } else {
-            Err(WalletError::Failed {
+            Err(KeyStoreError::Failed {
                 msg: String::from("invalid event source"),
             })
         }
@@ -310,7 +310,7 @@ impl<'a> MockBackend<'a> {
 }
 
 #[async_trait]
-impl<'a> WalletBackend<'a, cap::Ledger> for MockBackend<'a> {
+impl<'a> KeyStoreBackend<'a, cap::Ledger> for MockBackend<'a> {
     type EventStream = Pin<Box<dyn Stream<Item = (LedgerEvent<cap::Ledger>, EventSource)> + Send>>;
     type Storage = MockStorage<'a, cap::Ledger>;
 
@@ -318,7 +318,7 @@ impl<'a> WalletBackend<'a, cap::Ledger> for MockBackend<'a> {
         self.storage.lock().await
     }
 
-    async fn create(&mut self) -> Result<WalletState<'a, cap::Ledger>, WalletError<cap::Ledger>> {
+    async fn create(&mut self) -> Result<KeyStoreState<'a, cap::Ledger>, KeyStoreError<cap::Ledger>> {
         let state = {
             let mut ledger = self.ledger.lock().await;
             let network = ledger.network();
@@ -334,7 +334,7 @@ impl<'a> WalletBackend<'a, cap::Ledger> for MockBackend<'a> {
                 None
             };
 
-            WalletState {
+            KeyStoreState {
                 proving_keys: network.proving_keys.clone(),
                 txn_state: TransactionState {
                     validator: network.validator.clone(),
@@ -375,11 +375,11 @@ impl<'a> WalletBackend<'a, cap::Ledger> for MockBackend<'a> {
     async fn get_public_key(
         &self,
         address: &UserAddress,
-    ) -> Result<UserPubKey, WalletError<cap::Ledger>> {
+    ) -> Result<UserPubKey, KeyStoreError<cap::Ledger>> {
         let mut ledger = self.ledger.lock().await;
         match ledger.network().address_map.get(address) {
             Some(key) => Ok(key.clone()),
-            None => Err(WalletError::<cap::Ledger>::InvalidAddress {
+            None => Err(KeyStoreError::<cap::Ledger>::InvalidAddress {
                 address: address.clone(),
             }),
         }
@@ -388,7 +388,7 @@ impl<'a> WalletBackend<'a, cap::Ledger> for MockBackend<'a> {
     async fn get_initial_scan_state(
         &self,
         _from: EventIndex,
-    ) -> Result<(MerkleTree, EventIndex), WalletError<cap::Ledger>> {
+    ) -> Result<(MerkleTree, EventIndex), KeyStoreError<cap::Ledger>> {
         self.ledger.lock().await.get_initial_scan_state()
     }
 
@@ -396,7 +396,7 @@ impl<'a> WalletBackend<'a, cap::Ledger> for MockBackend<'a> {
         &self,
         _set: &mut cap::NullifierSet,
         nullifier: Nullifier,
-    ) -> Result<(bool, ()), WalletError<cap::Ledger>> {
+    ) -> Result<(bool, ()), KeyStoreError<cap::Ledger>> {
         let mut ledger = self.ledger.lock().await;
         Ok((ledger.network().nullifiers.contains(&nullifier), ()))
     }
@@ -404,7 +404,7 @@ impl<'a> WalletBackend<'a, cap::Ledger> for MockBackend<'a> {
     async fn register_user_key(
         &mut self,
         key_pair: &UserKeyPair,
-    ) -> Result<(), WalletError<cap::Ledger>> {
+    ) -> Result<(), KeyStoreError<cap::Ledger>> {
         let pub_key = key_pair.pub_key();
         let mut ledger = self.ledger.lock().await;
         ledger
@@ -418,7 +418,7 @@ impl<'a> WalletBackend<'a, cap::Ledger> for MockBackend<'a> {
         &mut self,
         txn: cap::Transaction,
         _info: TransactionInfo<cap::Ledger>,
-    ) -> Result<(), WalletError<cap::Ledger>> {
+    ) -> Result<(), KeyStoreError<cap::Ledger>> {
         self.ledger.lock().await.submit(txn)
     }
 

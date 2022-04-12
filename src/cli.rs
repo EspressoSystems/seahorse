@@ -21,7 +21,7 @@ use crate::{
     io::SharedIO,
     loader::{Loader, LoaderMetadata, KeyStoreLoader},
     reader::Reader,
-    AssetInfo, BincodeError, IoError, TransactionReceipt, TransactionStatus, KeyStoreBackend,
+    AssetInfo, BincodeSnafu, IoSnafu, TransactionReceipt, TransactionStatus, KeyStoreBackend,
     KeyStoreError,
 };
 use async_std::task::block_on;

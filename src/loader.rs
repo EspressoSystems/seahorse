@@ -11,7 +11,7 @@
 //! plugins to the persistence layer. It also provides a generally useful implementation [Loader],
 //! which loads an encrypted wallet from the file system using a mnemonic phrase to generate keys
 //! and a password to provide a more convenient login interface.
-use super::{encryption, hd, reader, EncryptionError, KeyError, MnemonicError, KeyStoreError};
+use super::{encryption, hd, reader, EncryptionSnafu, KeySnafu, MnemonicSnafu, KeyStoreError};
 use encryption::{Cipher, CipherText, Salt};
 use hd::{KeyTree, Mnemonic};
 use rand_chacha::{

@@ -34,7 +34,7 @@ pub async fn test_wallet_freeze_unregistered() -> std::io::Result<()> {
     let mut t = crate::testing::mocks::MockSystem::default();
     let mut now = Instant::now();
 
-    // Wallets[0], [1] and [2] will act as the sender, receiver and freezer, respectively.
+    // KeyStores[0], [1] and [2] will act as the sender, receiver and freezer, respectively.
     let (ledger, mut wallets) = t
         .create_test_network(&[(3, 3)], vec![2, 0, 6], &mut now)
         .await;
@@ -148,7 +148,7 @@ pub async fn test_wallet_freeze_unregistered() -> std::io::Result<()> {
         .transfer(Some(&src), &asset.code, &[(dst, 1)], 1)
         .await
     {
-        Err(WalletError::TransactionError {
+        Err(KeyStoreError::TransactionError {
             source: TransactionError::InsufficientBalance { .. },
         }) => {
             println!(
@@ -315,7 +315,7 @@ pub mod generic_wallet_tests {
         // which is longer than we want to borrow `wallets` for).
         async fn check_balance<'b, L: 'static + Ledger>(
             wallet: &(
-                Wallet<'b, impl WalletBackend<'b, L> + Sync + 'b, L>,
+                KeyStore<'b, impl KeyStoreBackend<'b, L> + Sync + 'b, L>,
                 Vec<UserAddress>,
             ),
             expected_coin_balance: u64,
@@ -867,7 +867,7 @@ pub mod generic_wallet_tests {
         // Check that, like transfer inputs, freeze inputs are placed on hold and unusable while a
         // freeze that uses them is pending.
         match wallets[2].0.freeze(&src, 1, &asset.code, 1, dst).await {
-            Err(WalletError::TransactionError {
+            Err(KeyStoreError::TransactionError {
                 source: TransactionError::InsufficientBalance { .. },
             }) => {}
             ret => panic!("expected InsufficientBalance, got {:?}", ret.map(|_| ())),
@@ -901,7 +901,7 @@ pub mod generic_wallet_tests {
             .transfer(Some(&src), &asset.code, &[(dst, 1)], 1)
             .await
         {
-            Err(WalletError::TransactionError {
+            Err(KeyStoreError::TransactionError {
                 source: TransactionError::InsufficientBalance { .. },
             }) => {
                 println!(
@@ -1203,7 +1203,7 @@ pub mod generic_wallet_tests {
         // for).
         async fn check_balances<'b, L: Ledger + 'static>(
             wallets: &[(
-                Wallet<'b, impl WalletBackend<'b, L> + Sync + 'b, L>,
+                KeyStore<'b, impl KeyStoreBackend<'b, L> + Sync + 'b, L>,
                 Vec<UserAddress>,
             )],
             balances: &[Vec<u64>],
@@ -1231,7 +1231,7 @@ pub mod generic_wallet_tests {
 
         async fn check_histories<'b, L: Ledger + 'static>(
             wallets: &[(
-                Wallet<'b, impl WalletBackend<'b, L> + Sync + 'b, L>,
+                KeyStore<'b, impl KeyStoreBackend<'b, L> + Sync + 'b, L>,
                 Vec<UserAddress>,
             )],
             histories: &[Vec<Vec<TransactionHistoryEntry<L>>>],
@@ -1374,7 +1374,7 @@ pub mod generic_wallet_tests {
                     .await
                 {
                     Ok(receipt) => receipt.clone(),
-                    Err(WalletError::TransactionError {
+                    Err(KeyStoreError::TransactionError {
                         source:
                             TransactionError::Fragmentation {
                                 suggested_amount, ..
@@ -1415,7 +1415,7 @@ pub mod generic_wallet_tests {
                             continue;
                         }
                     }
-                    Err(WalletError::TransactionError {
+                    Err(KeyStoreError::TransactionError {
                         source: TransactionError::InsufficientBalance { .. },
                     }) => {
                         // We should always have enough balance to make the transaction, because we
@@ -1722,7 +1722,7 @@ pub mod generic_wallet_tests {
         // the key through the wallet's public interface, triggering a background ledger scan which
         // should identify the existing record belonging to the key.
         let key = {
-            let WalletSharedState { state, session, .. } = &mut *wallets[0].0.lock().await;
+            let KeyStoreSharedState { state, session, .. } = &mut *wallets[0].0.lock().await;
             let key = session
                 .backend
                 .key_stream()
@@ -1885,7 +1885,7 @@ pub mod generic_wallet_tests {
                 Arc::new(Mutex::new(storage)),
             )
             .await;
-        let mut wallet2 = Wallet::new(backend).await.unwrap();
+        let mut wallet2 = KeyStore::new(backend).await.unwrap();
         wallet2.sync(ledger.lock().await.now()).await.unwrap();
         let address2 = wallet2
             .generate_user_key("sending_key".into(), None)
@@ -2058,7 +2058,7 @@ pub mod generic_wallet_tests {
             )
             .await
         {
-            Err(WalletError::TransactionError {
+            Err(KeyStoreError::TransactionError {
                 source: TransactionError::InsufficientBalance { .. },
             }) => {}
             ret => panic!("expected InsufficientBalance, got {:?}", ret.map(|_| ())),
@@ -2312,7 +2312,7 @@ pub mod generic_wallet_tests {
                 .0
                 .verify_assets(key_pair.ver_key_ref(), imposter_assets)
                 .await,
-            Err(WalletError::AssetVerificationError)
+            Err(KeyStoreError::AssetVerificationError)
         ));
 
         // Check that `asset1` got updated, retaining it's mint info and persistence but attaining

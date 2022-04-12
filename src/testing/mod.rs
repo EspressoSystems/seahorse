@@ -29,24 +29,24 @@ use std::time::Instant;
 #[async_trait]
 pub trait MockNetwork<'a, L: Ledger> {
     fn now(&self) -> EventIndex;
-    fn submit(&mut self, block: Block<L>) -> Result<(), WalletError<L>>;
+    fn submit(&mut self, block: Block<L>) -> Result<(), KeyStoreError<L>>;
     fn post_memos(
         &mut self,
         block_id: u64,
         txn_id: u64,
         memos: Vec<ReceiverMemo>,
         sig: Signature,
-    ) -> Result<(), WalletError<L>>;
+    ) -> Result<(), KeyStoreError<L>>;
     fn memos_source(&self) -> EventSource;
     fn generate_event(&mut self, event: LedgerEvent<L>);
     fn event(
         &self,
         index: EventIndex,
         source: EventSource,
-    ) -> Result<LedgerEvent<L>, WalletError<L>>;
+    ) -> Result<LedgerEvent<L>, KeyStoreError<L>>;
 }
 
-pub struct MockLedger<'a, L: Ledger, N: MockNetwork<'a, L>, S: WalletStorage<'a, L>> {
+pub struct MockLedger<'a, L: Ledger, N: MockNetwork<'a, L>, S: KeyStoreStorage<'a, L>> {
     network: N,
     current_block: Block<L>,
     block_size: usize,
@@ -60,7 +60,7 @@ pub struct MockLedger<'a, L: Ledger, N: MockNetwork<'a, L>, S: WalletStorage<'a,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
 
-impl<'a, L: Ledger, N: MockNetwork<'a, L>, S: WalletStorage<'a, L>> MockLedger<'a, L, N, S> {
+impl<'a, L: Ledger, N: MockNetwork<'a, L>, S: KeyStoreStorage<'a, L>> MockLedger<'a, L, N, S> {
     pub fn new(network: N, records: MerkleTree) -> Self {
         Self {
             network,
@@ -85,7 +85,7 @@ impl<'a, L: Ledger, N: MockNetwork<'a, L>, S: WalletStorage<'a, L>> MockLedger<'
         self.network.now()
     }
 
-    pub fn flush(&mut self) -> Result<(), WalletError<L>> {
+    pub fn flush(&mut self) -> Result<(), KeyStoreError<L>> {
         if self.current_block.is_empty() {
             return Ok(());
         }
@@ -118,7 +118,7 @@ impl<'a, L: Ledger, N: MockNetwork<'a, L>, S: WalletStorage<'a, L>> MockLedger<'
         self.mangled = false;
     }
 
-    pub fn submit(&mut self, txn: Transaction<L>) -> Result<(), WalletError<L>> {
+    pub fn submit(&mut self, txn: Transaction<L>) -> Result<(), KeyStoreError<L>> {
         if self.hold_next_transaction {
             self.held_transaction = Some(txn);
             self.hold_next_transaction = false;
@@ -154,12 +154,12 @@ impl<'a, L: Ledger, N: MockNetwork<'a, L>, S: WalletStorage<'a, L>> MockLedger<'
         txn_id: u64,
         memos: Vec<ReceiverMemo>,
         sig: Signature,
-    ) -> Result<(), WalletError<L>> {
+    ) -> Result<(), KeyStoreError<L>> {
         self.network.post_memos(block_id, txn_id, memos, sig)?;
         Ok(())
     }
 
-    pub fn set_block_size(&mut self, size: usize) -> Result<(), WalletError<L>> {
+    pub fn set_block_size(&mut self, size: usize) -> Result<(), KeyStoreError<L>> {
         self.block_size = size;
         if self.current_block.len() >= self.block_size {
             self.flush()?;
@@ -167,7 +167,7 @@ impl<'a, L: Ledger, N: MockNetwork<'a, L>, S: WalletStorage<'a, L>> MockLedger<'
         Ok(())
     }
 
-    pub fn get_initial_scan_state(&self) -> Result<(MerkleTree, EventIndex), WalletError<L>> {
+    pub fn get_initial_scan_state(&self) -> Result<(MerkleTree, EventIndex), KeyStoreError<L>> {
         Ok((self.initial_records.clone(), EventIndex::default()))
     }
 }
@@ -176,7 +176,7 @@ impl<'a, L: Ledger, N: MockNetwork<'a, L>, S: WalletStorage<'a, L>> MockLedger<'
 // that cannot directly be compared for equality. It is sufficient for tests that want to compare
 // wallet states (like round-trip serialization tests) but since it is deterministic, we shouldn't
 // make it into a PartialEq instance.
-pub fn assert_wallet_states_eq<'a, L: Ledger>(w1: &WalletState<'a, L>, w2: &WalletState<'a, L>) {
+pub fn assert_wallet_states_eq<'a, L: Ledger>(w1: &KeyStoreState<'a, L>, w2: &KeyStoreState<'a, L>) {
     assert_eq!(w1.txn_state.now, w2.txn_state.now);
     assert_eq!(
         w1.txn_state.validator.commit(),
@@ -200,9 +200,9 @@ pub fn assert_wallet_states_eq<'a, L: Ledger>(w1: &WalletState<'a, L>, w2: &Wall
 #[async_trait]
 pub trait SystemUnderTest<'a>: Default + Send + Sync {
     type Ledger: 'static + Ledger;
-    type MockBackend: 'a + WalletBackend<'a, Self::Ledger> + Send + Sync;
+    type MockBackend: 'a + KeyStoreBackend<'a, Self::Ledger> + Send + Sync;
     type MockNetwork: 'a + MockNetwork<'a, Self::Ledger> + Send;
-    type MockStorage: 'a + WalletStorage<'a, Self::Ledger> + Send;
+    type MockStorage: 'a + KeyStoreStorage<'a, Self::Ledger> + Send;
 
     async fn create_backend(
         &mut self,
@@ -232,7 +232,7 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
     ) -> (
         Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork, Self::MockStorage>>>,
         Vec<(
-            Wallet<'a, Self::MockBackend, Self::Ledger>,
+            KeyStore<'a, Self::MockBackend, Self::Ledger>,
             Vec<UserAddress>,
         )>,
     ) {
@@ -345,7 +345,7 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
 
             let mut seed = [0u8; 32];
             rng.fill_bytes(&mut seed);
-            let mut wallet = Wallet::new(
+            let mut wallet = KeyStore::new(
                 self.create_backend(ledger, initial_grants, key_stream, storage)
                     .await,
             )
@@ -369,7 +369,7 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
             wallets.push((wallet, addresses));
         }
 
-        println!("Wallets set up: {}s", now.elapsed().as_secs_f32());
+        println!("KeyStores set up: {}s", now.elapsed().as_secs_f32());
         *now = Instant::now();
 
         // Sync with any events that were emitted during ledger setup.
@@ -382,7 +382,7 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         &self,
         ledger: &Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork, Self::MockStorage>>>,
         wallets: &[(
-            Wallet<'a, Self::MockBackend, Self::Ledger>,
+            KeyStore<'a, Self::MockBackend, Self::Ledger>,
             Vec<UserAddress>,
         )],
     ) {
@@ -443,7 +443,7 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
     async fn sync_with(
         &self,
         wallets: &[(
-            Wallet<'a, Self::MockBackend, Self::Ledger>,
+            KeyStore<'a, Self::MockBackend, Self::Ledger>,
             Vec<UserAddress>,
         )],
         t: EventIndex,
@@ -456,13 +456,13 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         &self,
         ledger: &Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork, Self::MockStorage>>>,
         wallets: &[(
-            Wallet<'a, Self::MockBackend, Self::Ledger>,
+            KeyStore<'a, Self::MockBackend, Self::Ledger>,
             Vec<UserAddress>,
         )],
     ) {
         let ledger = ledger.lock().await;
         for ((wallet, _), storage) in wallets.iter().zip(&ledger.storage) {
-            let WalletSharedState { state, .. } = &*wallet.mutex.lock().await;
+            let KeyStoreSharedState { state, .. } = &*wallet.mutex.lock().await;
 
             let mut state = state.clone();
             let mut loaded = storage.lock().await.load().await.unwrap();
@@ -611,11 +611,11 @@ impl<L: Ledger + 'static> MockEventSource<L> {
         self.events.push(event);
     }
 
-    pub fn get(&self, index: EventIndex) -> Result<LedgerEvent<L>, WalletError<L>> {
+    pub fn get(&self, index: EventIndex) -> Result<LedgerEvent<L>, KeyStoreError<L>> {
         self.events
             .get(index.index(self.source))
             .cloned()
-            .ok_or_else(|| WalletError::Failed {
+            .ok_or_else(|| KeyStoreError::Failed {
                 msg: String::from("invalid event index"),
             })
     }
@@ -623,7 +623,7 @@ impl<L: Ledger + 'static> MockEventSource<L> {
 
 /// Wait for the transaction involving `sender` and `receivers` to be processed.
 ///
-/// `Wallet::await_transaction` is not perfect in determining when a receiver has finished
+/// `KeyStore::await_transaction` is not perfect in determining when a receiver has finished
 /// processing a transaction which was generated by a different wallet. This is due to limitations
 /// in uniquely identifying a transaction in a way that is consistent across wallets and services.
 /// This should not matter too much in the real world, since transactions are expected to be
@@ -638,11 +638,11 @@ impl<L: Ledger + 'static> MockEventSource<L> {
 pub async fn await_transaction<
     'a,
     L: Ledger + 'static,
-    Backend: WalletBackend<'a, L> + Sync + 'a,
+    Backend: KeyStoreBackend<'a, L> + Sync + 'a,
 >(
     receipt: &TransactionReceipt<L>,
-    sender: &Wallet<'a, Backend, L>,
-    receivers: &[&Wallet<'a, Backend, L>],
+    sender: &KeyStore<'a, Backend, L>,
+    receivers: &[&KeyStore<'a, Backend, L>],
 ) {
     assert_eq!(
         sender.await_transaction(receipt).await.unwrap(),
