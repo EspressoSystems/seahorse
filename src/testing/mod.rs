@@ -7,14 +7,14 @@
 
 #![allow(dead_code)]
 
-/// This module contains testing utilities and unit tests for the generic wallet interface.
+/// This module contains testing utilities and unit tests for the generic key store interface.
 ///
-/// This file defines a framework for testing the generic wallet with any mock backend, for any
+/// This file defines a framework for testing the generic key store with any mock backend, for any
 /// ledger. Implementations of this test interface for various backends and ledgers are in
 /// sub-modules in different files (e.g. spectrum_test.rs, cape_test.rs). These files also contain
-/// tests which are specific to wallets with a particular ledger type or backend, which depend on
+/// tests which are specific to key stores with a particular ledger type or backend, which depend on
 /// properties not exposed or guaranteed by the generic interface. The file tests.rs contains the
-/// test suite for the generic wallet interface, which is instantiated for each ledger/backend.
+/// test suite for the generic key store interface, which is instantiated for each ledger/backend.
 use super::*;
 use async_std::sync::{Arc, Mutex};
 use chrono::Local;
@@ -172,11 +172,11 @@ impl<'a, L: Ledger, N: MockNetwork<'a, L>, S: KeyStoreStorage<'a, L>> MockLedger
     }
 }
 
-// This function checks probabilistic equality for two wallet states, comparing hashes for fields
+// This function checks probabilistic equality for two key store states, comparing hashes for fields
 // that cannot directly be compared for equality. It is sufficient for tests that want to compare
-// wallet states (like round-trip serialization tests) but since it is deterministic, we shouldn't
+// key store states (like round-trip serialization tests) but since it is deterministic, we shouldn't
 // make it into a PartialEq instance.
-pub fn assert_wallet_states_eq<'a, L: Ledger>(w1: &KeyStoreState<'a, L>, w2: &KeyStoreState<'a, L>) {
+pub fn assert_key_store_states_eq<'a, L: Ledger>(w1: &KeyStoreState<'a, L>, w2: &KeyStoreState<'a, L>) {
     assert_eq!(w1.txn_state.now, w2.txn_state.now);
     assert_eq!(
         w1.txn_state.validator.commit(),
@@ -220,9 +220,9 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
     ) -> Self::MockNetwork;
     async fn create_storage(&mut self) -> Self::MockStorage;
 
-    /// Creates two key pairs/addresses for each wallet.
+    /// Creates two key pairs/addresses for each key store.
     ///
-    /// `initial_grants` - List of total initial grants for each wallet. Each amount will be
+    /// `initial_grants` - List of total initial grants for each key store. Each amount will be
     /// divided by 2, and any remainder will be added to the second address.
     async fn create_test_network(
         &mut self,
@@ -241,7 +241,7 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
 
         // Populate the unpruned record merkle tree with an initial record commitment for each
         // non-zero initial grant. Collect user-specific info (keys and record openings
-        // corresponding to grants) in `users`, which will be used to create the wallets later.
+        // corresponding to grants) in `users`, which will be used to create the key stores later.
         let mut record_merkle_tree = MerkleTree::new(Self::Ledger::merkle_height()).unwrap();
         let mut users = vec![];
         let mut initial_records = vec![];
@@ -334,9 +334,9 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
             record_merkle_tree.clone(),
         )));
 
-        // Create a wallet for each user based on the validator and the per-user information
+        // Create a key store for each user based on the validator and the per-user information
         // computed above.
-        let mut wallets = Vec::new();
+        let mut key_stores = Vec::new();
         for (key_stream, key_pairs, initial_grants) in users {
             let mut rng = ChaChaRng::from_rng(&mut rng).unwrap();
             let ledger = ledger.clone();
@@ -345,7 +345,7 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
 
             let mut seed = [0u8; 32];
             rng.fill_bytes(&mut seed);
-            let mut wallet = KeyStore::new(
+            let mut key_store = KeyStore::new(
                 self.create_backend(ledger, initial_grants, key_stream, storage)
                     .await,
             )
@@ -354,34 +354,34 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
             let mut addresses = vec![];
             for key_pair in key_pairs.clone() {
                 assert_eq!(
-                    wallet
+                    key_store
                         .generate_user_key("".into(), Some(EventIndex::default()))
                         .await
                         .unwrap(),
                     key_pair.pub_key()
                 );
 
-                // Wait for the wallet to find any records already belonging to this key from the
+                // Wait for the key_store to find any records already belonging to this key from the
                 // initial grants.
-                wallet.await_key_scan(&key_pair.address()).await.unwrap();
+                key_store.await_key_scan(&key_pair.address()).await.unwrap();
                 addresses.push(key_pair.address());
             }
-            wallets.push((wallet, addresses));
+            key_stores.push((key_store, addresses));
         }
 
         println!("KeyStores set up: {}s", now.elapsed().as_secs_f32());
         *now = Instant::now();
 
         // Sync with any events that were emitted during ledger setup.
-        self.sync(&ledger, &wallets).await;
+        self.sync(&ledger, &key_stores).await;
 
-        (ledger, wallets)
+        (ledger, key_stores)
     }
 
     async fn sync(
         &self,
         ledger: &Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork, Self::MockStorage>>>,
-        wallets: &[(
+        key_stores: &[(
             KeyStore<'a, Self::MockBackend, Self::Ledger>,
             Vec<UserAddress>,
         )],
@@ -405,7 +405,7 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
                 }
                 ledger.sync_index + EventIndex::from_source(memos_source, ledger.missing_memos)
             };
-            self.sync_with(wallets, t).await;
+            self.sync_with(key_stores, t).await;
 
             // Count how many memos events we got while incrementing `sync_index`. Note that even
             // though we waited for `missing_memos` events from the memos event source, we may have
@@ -432,37 +432,37 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
             ledger.sync_index = ledger.now();
             ledger.sync_index
         };
-        self.sync_with(wallets, t).await;
+        self.sync_with(key_stores, t).await;
 
-        // Since we're syncing with the time stamp from the most recent event, the wallets should
-        // be in a stable state once they have processed up to that event. Check that each wallet
+        // Since we're syncing with the time stamp from the most recent event, the key stores should
+        // be in a stable state once they have processed up to that event. Check that each key store
         // has persisted all of its in-memory state at this point.
-        self.check_storage(ledger, wallets).await;
+        self.check_storage(ledger, key_stores).await;
     }
 
     async fn sync_with(
         &self,
-        wallets: &[(
+        key_stores: &[(
             KeyStore<'a, Self::MockBackend, Self::Ledger>,
             Vec<UserAddress>,
         )],
         t: EventIndex,
     ) {
         println!("waiting for sync point {}", t);
-        future::join_all(wallets.iter().map(|(wallet, _)| wallet.sync(t))).await;
+        future::join_all(key_stores.iter().map(|(key_store, _)| key_store.sync(t))).await;
     }
 
     async fn check_storage(
         &self,
         ledger: &Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork, Self::MockStorage>>>,
-        wallets: &[(
+        key_stores: &[(
             KeyStore<'a, Self::MockBackend, Self::Ledger>,
             Vec<UserAddress>,
         )],
     ) {
         let ledger = ledger.lock().await;
-        for ((wallet, _), storage) in wallets.iter().zip(&ledger.storage) {
-            let KeyStoreSharedState { state, .. } = &*wallet.mutex.lock().await;
+        for ((key_store, _), storage) in key_stores.iter().zip(&ledger.storage) {
+            let KeyStoreSharedState { state, .. } = &*key_store.mutex.lock().await;
 
             let mut state = state.clone();
             let mut loaded = storage.lock().await.load().await.unwrap();
@@ -507,7 +507,7 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
                 loaded.viewing_accounts.keys().cloned().collect(),
             );
 
-            assert_wallet_states_eq(&state, &loaded);
+            assert_key_store_states_eq(&state, &loaded);
         }
     }
 }
@@ -624,14 +624,14 @@ impl<L: Ledger + 'static> MockEventSource<L> {
 /// Wait for the transaction involving `sender` and `receivers` to be processed.
 ///
 /// `KeyStore::await_transaction` is not perfect in determining when a receiver has finished
-/// processing a transaction which was generated by a different wallet. This is due to limitations
-/// in uniquely identifying a transaction in a way that is consistent across wallets and services.
+/// processing a transaction which was generated by a different key store. This is due to limitations
+/// in uniquely identifying a transaction in a way that is consistent across key stores and services.
 /// This should not matter too much in the real world, since transactions are expected to be
 /// asynchronous, but it is problematic in automated tests.
 ///
-/// This function can be used in a test involving multiple to synchronize all wallets involved in a
+/// This function can be used in a test involving multiple to synchronize all key stores involved in a
 /// transaction to a point in time after that transaction has been processed. It uses
-/// `await_transaction` (which is reliable in the sending wallet) to wait until the sender has
+/// `await_transaction` (which is reliable in the sending key store) to wait until the sender has
 /// processed the transaction. It then uses `sync_with_peer` to wait until each receiver has
 /// processed at least as many events as the sender (which, after `await_transaction`, will include
 /// the events relating to this transaction).
@@ -655,6 +655,6 @@ pub async fn await_transaction<
 
 #[macro_use]
 pub mod tests;
-pub use tests::generic_wallet_tests;
+pub use tests::generic_key_store_tests;
 pub mod cli_match;
 pub mod mocks;

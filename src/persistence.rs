@@ -174,10 +174,10 @@ pub struct AtomicKeyStoreStorage<'a, L: Ledger, Meta: Serialize + DeserializeOwn
     store: AtomicStore,
     // Metadata given at initialization time that may not have been written to disk yet.
     meta: Meta,
-    // Persisted metadata, if the wallet has already been committed to disk. This is a snapshot log
+    // Persisted metadata, if the key store has already been committed to disk. This is a snapshot log
     // which only ever has at most 1 entry. It is reprsented as a log, rather than a plain file,
     // solely so that we can use the transaction mechanism of AtomicStore to ensure that the
-    // metadata and static data are persisted to disk atomically when the wallet is created.
+    // metadata and static data are persisted to disk atomically when the key store is created.
     persisted_meta: RollingLog<BincodeLoadStore<Meta>>,
     meta_dirty: bool,
     // Snapshot log with a single entry containing the static data.
@@ -189,7 +189,7 @@ pub struct AtomicKeyStoreStorage<'a, L: Ledger, Meta: Serialize + DeserializeOwn
     assets_dirty: bool,
     txn_history: AppendLog<EncryptingResourceAdapter<TransactionHistoryEntry<L>>>,
     txn_history_dirty: bool,
-    wallet_key_tree: KeyTree,
+    key_store_key_tree: KeyTree,
 }
 
 impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned + Clone + PartialEq>
@@ -201,14 +201,14 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned + Clone + PartialE
     ) -> Result<Self, KeyStoreError<L>> {
         let directory = loader.location();
         let mut atomic_loader =
-            AtomicStoreLoader::load(&directory, "wallet").context(crate::PersistenceSnafu)?;
+            AtomicStoreLoader::load(&directory, "key_store").context(crate::PersistenceSnafu)?;
 
         // Load the metadata first so the loader can use it to generate the encryption key needed to
         // read the rest of the data.
         let mut persisted_meta = RollingLog::load(
             &mut atomic_loader,
             BincodeLoadStore::<Meta>::default(),
-            "wallet_meta",
+            "key_store_meta",
             1024,
         )
         .context(crate::PersistenceSnafu)?;
@@ -228,7 +228,7 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned + Clone + PartialE
                 }
             }
             Err(_) => {
-                // If there is no persisted metadata, ask the loader to generate a new wallet.
+                // If there is no persisted metadata, ask the loader to generate a new key store.
                 let (meta, key) = loader.create()?;
                 (meta, key, false)
             }
@@ -238,28 +238,28 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned + Clone + PartialE
         let static_data = RollingLog::load(
             &mut atomic_loader,
             adaptor.cast(),
-            "wallet_static",
+            "key_store_static",
             file_fill_size,
         )
         .context(crate::PersistenceSnafu)?;
         let dynamic_state = RollingLog::load(
             &mut atomic_loader,
             adaptor.cast(),
-            "wallet_dyn",
+            "key_store_dyn",
             file_fill_size,
         )
         .context(crate::PersistenceSnafu)?;
         let assets = AppendLog::load(
             &mut atomic_loader,
             adaptor.cast(),
-            "wallet_assets",
+            "key_store_assets",
             file_fill_size,
         )
         .context(crate::PersistenceSnafu)?;
         let txn_history = AppendLog::load(
             &mut atomic_loader,
             adaptor.cast(),
-            "wallet_txns",
+            "key_store_txns",
             file_fill_size,
         )
         .context(crate::PersistenceSnafu)?;
@@ -278,7 +278,7 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned + Clone + PartialE
             assets_dirty: false,
             txn_history,
             txn_history_dirty: false,
-            wallet_key_tree: key.derive_sub_tree("wallet".as_bytes()),
+            key_store_key_tree: key.derive_sub_tree("key_store".as_bytes()),
         })
     }
 }
@@ -316,7 +316,7 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicKeyStoreSto
     }
 
     pub fn key_stream(&self) -> KeyTree {
-        self.wallet_key_tree.clone()
+        self.key_store_key_tree.clone()
     }
 }
 
@@ -329,7 +329,7 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> KeyStoreStorage<'
     }
 
     async fn load(&mut self) -> Result<KeyStoreState<'a, L>, KeyStoreError<L>> {
-        // This function is called once, when the wallet is loaded. It is a good place to persist
+        // This function is called once, when the key store is loaded. It is a good place to persist
         // changes to the metadata that happened during loading.
         self.commit().await;
 
@@ -470,7 +470,7 @@ mod tests {
     use super::*;
     use crate::{
         events::{EventIndex, EventSource},
-        testing::assert_wallet_states_eq,
+        testing::assert_key_store_states_eq,
         txn_builder::{PendingTransaction, TransactionInfo, TransactionUID},
     };
     use chrono::Local;
@@ -625,16 +625,16 @@ mod tests {
     async fn test_round_trip() -> std::io::Result<()> {
         let (mut stored, mut loader, mut rng) = get_test_state("test_round_trip").await;
 
-        // Create a new storage instance to load the wallet back from disk, to ensure that what we
+        // Create a new storage instance to load the key store back from disk, to ensure that what we
         // load comes only from persistent storage and not from any in-memory state of the first
         // instance.
         let loaded = {
             let mut storage = AtomicKeyStoreStorage::new(&mut loader, 1024).unwrap();
             storage.load().await.unwrap()
         };
-        assert_wallet_states_eq(&stored, &loaded);
+        assert_key_store_states_eq(&stored, &loaded);
 
-        // Modify some dynamic state and load the wallet again.
+        // Modify some dynamic state and load the key store again.
         let user_key = UserKeyPair::generate(&mut rng);
         let ro = random_ro(&mut rng, &user_key);
         let comm = RecordCommitment::from(&ro);
@@ -674,7 +674,7 @@ mod tests {
             let mut storage = AtomicKeyStoreStorage::new(&mut loader, 1024).unwrap();
             storage.load().await.unwrap()
         };
-        assert_wallet_states_eq(&stored, &loaded);
+        assert_key_store_states_eq(&stored, &loaded);
 
         // Append to monotonic state and then reload.
         let definition =
@@ -699,7 +699,7 @@ mod tests {
             let mut storage = AtomicKeyStoreStorage::new(&mut loader, 1024).unwrap();
             storage.load().await.unwrap()
         };
-        assert_wallet_states_eq(&stored, &loaded);
+        assert_key_store_states_eq(&stored, &loaded);
 
         Ok(())
     }
@@ -720,7 +720,7 @@ mod tests {
             storage.commit().await;
             storage.load().await.unwrap()
         };
-        assert_wallet_states_eq(&stored, &loaded);
+        assert_key_store_states_eq(&stored, &loaded);
 
         // Change multiple data structures and revert.
         let loaded = {
@@ -766,7 +766,7 @@ mod tests {
             storage.commit().await;
             storage.load().await.unwrap()
         };
-        assert_wallet_states_eq(&stored, &loaded);
+        assert_key_store_states_eq(&stored, &loaded);
 
         Ok(())
     }

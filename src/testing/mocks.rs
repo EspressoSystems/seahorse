@@ -324,7 +324,7 @@ impl<'a> KeyStoreBackend<'a, cap::Ledger> for MockBackend<'a> {
             let network = ledger.network();
 
             // `records` should be _almost_ completely sparse. However, even a fully pruned Merkle
-            // tree contains the last leaf appended, but as a new wallet, we don't care about _any_
+            // tree contains the last leaf appended, but as a new key store, we don't care about _any_
             // of the leaves, so make a note to forget the last one once more leaves have been
             // appended.
             let record_mt = network.records.clone();
@@ -476,6 +476,6 @@ impl<'a> super::SystemUnderTest<'a> for MockSystem {
 
 #[cfg(test)]
 mod tests {
-    use super::super::generic_wallet_tests;
-    instantiate_generic_wallet_tests!(super::MockSystem);
+    use super::super::generic_key_store_tests;
+    instantiate_generic_key_store_tests!(super::MockSystem);
 }

@@ -50,12 +50,12 @@ use tempdir::TempDir;
 pub trait CLI<'a> {
     /// The ledger for which we want to instantiate this CLI.
     type Ledger: 'static + Ledger;
-    /// The [KeyStoreBackend] implementation to use for the wallet.
+    /// The [KeyStoreBackend] implementation to use for the key store.
     type Backend: 'a + KeyStoreBackend<'a, Self::Ledger> + Send + Sync;
     /// The type of command line options for use when configuring the CLI.
     type Args: CLIArgs;
 
-    /// Create a backend for the wallet which is being controlled by the CLI.
+    /// Create a backend for the key store which is being controlled by the CLI.
     fn init_backend(
         universal_param: &'a UniversalParam,
         args: Self::Args,
@@ -65,7 +65,7 @@ pub trait CLI<'a> {
     /// Add extra, ledger-specific commands to the generic CLI interface.
     ///
     /// This method is optional. By default it returns an empty list, in which case the CLI
-    /// instantiation will still provide commands for all of the basic, ledger-agnostic wallet
+    /// instantiation will still provide commands for all of the basic, ledger-agnostic key store
     /// functionality.
     fn extra_commands() -> Vec<Command<'a, Self>>
     where
@@ -80,9 +80,9 @@ pub trait CLIArgs {
     /// If specified, do not run the REPl, only generate a key pair in the given file.
     fn key_gen_path(&self) -> Option<PathBuf>;
 
-    /// Path to use for the wallet's persistent storage.
+    /// Path to use for the key store's persistent storage.
     ///
-    /// If not provided, the default path, `~/.espresso/<ledger-name>/wallet`, will be used.
+    /// If not provided, the default path, `~/.espresso/<ledger-name>/key_store`, will be used.
     fn storage_path(&self) -> Option<PathBuf>;
 
     /// Override the default, terminal-based IO.
@@ -145,14 +145,14 @@ impl<'a, C: CLI<'a>> Display for Command<'a, C> {
 
 /// Types which can be parsed from a string relative to a particular [KeyStore].Stream
 pub trait CLIInput<'a, C: CLI<'a>>: Sized {
-    fn parse_for_wallet(wallet: &mut KeyStore<'a, C>, s: &str) -> Option<Self>;
+    fn parse_for_key_store(key_store: &mut KeyStore<'a, C>, s: &str) -> Option<Self>;
 }
 
 macro_rules! cli_input_from_str {
     ($($t:ty),*) => {
         $(
             impl<'a, C: CLI<'a>> CLIInput<'a, C> for $t {
-                fn parse_for_wallet(_wallet: &mut KeyStore<'a, C>, s: &str) -> Option<Self> {
+                fn parse_for_key_store(_key_store: &mut KeyStore<'a, C>, s: &str) -> Option<Self> {
                     Self::from_str(s).ok()
                 }
             }
@@ -166,7 +166,7 @@ cli_input_from_str! {
 }
 
 impl<'a, C: CLI<'a>, L: Ledger> CLIInput<'a, C> for TransactionReceipt<L> {
-    fn parse_for_wallet(_wallet: &mut KeyStore<'a, C>, s: &str) -> Option<Self> {
+    fn parse_for_key_store(_key_store: &mut KeyStore<'a, C>, s: &str) -> Option<Self> {
         Self::from_str(s).ok()
     }
 }
@@ -188,7 +188,7 @@ macro_rules! command {
     ($name:ident,
      $help:expr,
      $cli:ident,
-     |$io:pat, $wallet:pat, $($arg:ident : $argty:ty),*
+     |$io:pat, $key_store:pat, $($arg:ident : $argty:ty),*
       $(; $($kwarg:ident : Option<$kwargty:ty>),*)?| $run:expr) => {
         Command {
             name: String::from(stringify!($name)),
@@ -201,7 +201,7 @@ macro_rules! command {
                 String::from(type_name::<$kwargty>()),
             )),*)?],
             help: String::from($help),
-            run: Box::new(|mut io, wallet, args, kwargs| Box::pin(async move {
+            run: Box::new(|mut io, key_store, args, kwargs| Box::pin(async move {
                 if args.len() != count!($($arg)*) {
                     cli_writeln!(io, "incorrect number of arguments (expected {})", count!($($arg)*));
                     return;
@@ -214,7 +214,7 @@ macro_rules! command {
                 #[allow(unused_variables)]
                 let mut args = args.into_iter();
                 $(
-                    let $arg = match <$argty as CLIInput<$cli>>::parse_for_wallet(wallet, args.next().unwrap().as_str()) {
+                    let $arg = match <$argty as CLIInput<$cli>>::parse_for_key_store(key_store, args.next().unwrap().as_str()) {
                         Some(arg) => arg,
                         None => {
                             cli_writeln!(
@@ -232,7 +232,7 @@ macro_rules! command {
                 // `kwarg` in `kwargs` to tye type `ty`.
                 $($(
                     let $kwarg = match kwargs.get(stringify!($kwarg)) {
-                        Some(val) => match <$kwargty as CLIInput<$cli>>::parse_for_wallet(wallet, val) {
+                        Some(val) => match <$kwargty as CLIInput<$cli>>::parse_for_key_store(key_store, val) {
                             Some(arg) => Some(arg),
                             None => {
                                 cli_writeln!(
@@ -250,18 +250,18 @@ macro_rules! command {
                 let _ = kwargs;
 
                 let $io = &mut io;
-                let $wallet = wallet;
+                let $key_store = key_store;
                 $run
             }))
         }
     };
 
-    // Don't require a comma after $wallet if there are no additional args.
-    ($name:ident, $help:expr, $cli:ident, |$io:pat, $wallet:pat| $run:expr) => {
-        command!($name, $help, $cli, |$io, $wallet,| $run)
+    // Don't require a comma after $key_store if there are no additional args.
+    ($name:ident, $help:expr, $cli:ident, |$io:pat, $key_store:pat| $run:expr) => {
+        command!($name, $help, $cli, |$io, $key_store,| $run)
     };
 
-    // Don't require wallet at all.
+    // Don't require key_store at all.
     ($name:ident, $help:expr, $cli:ident, |$io:pat| $run:expr) => {
         command!($name, $help, $cli, |$io, _| $run)
     };
@@ -282,10 +282,10 @@ pub use crate::count;
 /// Types which can be listed in terminal output and parsed from a list index.
 #[async_trait]
 pub trait Listable<'a, C: CLI<'a>>: Sized {
-    async fn list(wallet: &mut KeyStore<'a, C>) -> Vec<ListItem<Self>>;
+    async fn list(key_store: &mut KeyStore<'a, C>) -> Vec<ListItem<Self>>;
 
-    fn list_sync(wallet: &mut KeyStore<'a, C>) -> Vec<ListItem<Self>> {
-        block_on(Self::list(wallet))
+    fn list_sync(key_store: &mut KeyStore<'a, C>) -> Vec<ListItem<Self>> {
+        block_on(Self::list(key_store))
     }
 }
 
@@ -306,11 +306,11 @@ impl<T: Display> Display for ListItem<T> {
 }
 
 impl<'a, C: CLI<'a>, T: Listable<'a, C> + CLIInput<'a, C>> CLIInput<'a, C> for ListItem<T> {
-    fn parse_for_wallet(wallet: &mut KeyStore<'a, C>, s: &str) -> Option<Self> {
+    fn parse_for_key_store(key_store: &mut KeyStore<'a, C>, s: &str) -> Option<Self> {
         if let Ok(index) = usize::from_str(s) {
             // If the input looks like a list index, build the list for type T and get an element of
             // type T by indexing.
-            let mut items = T::list_sync(wallet);
+            let mut items = T::list_sync(key_store);
             if index < items.len() {
                 Some(items.remove(index))
             } else {
@@ -318,7 +318,7 @@ impl<'a, C: CLI<'a>, T: Listable<'a, C> + CLIInput<'a, C>> CLIInput<'a, C> for L
             }
         } else {
             // Otherwise, just parse a T directly.
-            T::parse_for_wallet(wallet, s).map(|item| ListItem {
+            T::parse_for_key_store(key_store, s).map(|item| ListItem {
                 item,
                 index: 0,
                 annotation: None,
@@ -329,14 +329,14 @@ impl<'a, C: CLI<'a>, T: Listable<'a, C> + CLIInput<'a, C>> CLIInput<'a, C> for L
 
 #[async_trait]
 impl<'a, C: CLI<'a>> Listable<'a, C> for AssetCode {
-    async fn list(wallet: &mut KeyStore<'a, C>) -> Vec<ListItem<Self>> {
+    async fn list(key_store: &mut KeyStore<'a, C>) -> Vec<ListItem<Self>> {
         // Get our viewing and freezing keys so we can check if the asset types are
         // viewable/freezable.
-        let viewing_keys = wallet.auditor_pub_keys().await;
-        let freezing_keys = wallet.freezer_pub_keys().await;
+        let viewing_keys = key_store.auditor_pub_keys().await;
+        let freezing_keys = key_store.freezer_pub_keys().await;
 
-        // Get the wallet's asset library and convert to ListItems.
-        wallet
+        // Get the key store's asset library and convert to ListItems.
+        key_store
             .assets()
             .await
             .into_iter()
@@ -376,30 +376,30 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
     commands.append(&mut vec![
         command!(
             address,
-            "print all public addresses of this wallet",
+            "print all public addresses of this key store",
             C,
-            |io, wallet| {
-                for pub_key in wallet.pub_keys().await {
+            |io, key_store| {
+                for pub_key in key_store.pub_keys().await {
                     cli_writeln!(io, "{}", UserAddress(pub_key.address()));
                 }
             }
         ),
         command!(
             pub_key,
-            "print all of the public keys of this wallet",
+            "print all of the public keys of this key store",
             C,
-            |io, wallet| {
-                for pub_key in wallet.pub_keys().await {
+            |io, key_store| {
+                for pub_key in key_store.pub_keys().await {
                     cli_writeln!(io, "{:?}", pub_key);
                 }
             }
         ),
         command!(
             assets,
-            "list assets known to the wallet",
+            "list assets known to the key_store",
             C,
-            |io, wallet| {
-                for item in <AssetCode as Listable<C>>::list(wallet).await {
+            |io, key_store| {
+                for item in <AssetCode as Listable<C>>::list(key_store).await {
                     cli_writeln!(io, "{}", item);
                 }
                 cli_writeln!(io, "(v=viewable, f=freezeable, m=mintable)");
@@ -409,8 +409,8 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             asset,
             "print information about an asset",
             C,
-            |io, wallet, asset: ListItem<AssetCode>| {
-                let asset = match wallet.asset(asset.item).await {
+            |io, key_store, asset: ListItem<AssetCode>| {
+                let asset = match key_store.asset(asset.item).await {
                     Some(asset) => asset.clone(),
                     None => {
                         cli_writeln!(io, "No such asset {}", asset.item);
@@ -432,7 +432,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                 let policy = asset.definition.policy_ref();
                 if policy.is_auditor_pub_key_set() {
                     let viewing_key = policy.auditor_pub_key();
-                    if wallet.auditor_pub_keys().await.contains(viewing_key) {
+                    if key_store.auditor_pub_keys().await.contains(viewing_key) {
                         cli_writeln!(io, "Viewer: me");
                     } else {
                         cli_writeln!(io, "Viewer: {}", *viewing_key);
@@ -444,7 +444,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                 // Print the freezer, noting if it is us.
                 if policy.is_freezer_pub_key_set() {
                     let freezer_key = policy.freezer_pub_key();
-                    if wallet.freezer_pub_keys().await.contains(freezer_key) {
+                    if key_store.freezer_pub_keys().await.contains(freezer_key) {
                         cli_writeln!(io, "Freezer: me");
                     } else {
                         cli_writeln!(io, "Freezer: {}", *freezer_key);
@@ -467,20 +467,20 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             balance,
             "print owned balances of asset",
             C,
-            |io, wallet, asset: ListItem<AssetCode>| {
+            |io, key_store, asset: ListItem<AssetCode>| {
                 cli_writeln!(io, "Address Balance");
-                for pub_key in wallet.pub_keys().await {
+                for pub_key in key_store.pub_keys().await {
                     cli_writeln!(
                         io,
                         "{} {}",
                         UserAddress(pub_key.address()),
-                        wallet.balance_breakdown(&pub_key.address(), &asset.item).await
+                        key_store.balance_breakdown(&pub_key.address(), &asset.item).await
                     );
                 }
                 cli_writeln!(
                     io,
                     "Total {}",
-                    wallet.balance(&asset.item).await
+                    key_store.balance(&asset.item).await
                 );
             }
         ),
@@ -488,25 +488,25 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             transfer,
             "transfer some owned assets to another user",
             C,
-            |io, wallet, asset: ListItem<AssetCode>, to: UserAddress, amount: u64, fee: u64; wait: Option<bool>| {
-                let res = wallet.transfer(None, &asset.item, &[(to.0, amount)], fee).await;
-                finish_transaction::<C>(io, wallet, res, wait, "transferred").await;
+            |io, key_store, asset: ListItem<AssetCode>, to: UserAddress, amount: u64, fee: u64; wait: Option<bool>| {
+                let res = key_store.transfer(None, &asset.item, &[(to.0, amount)], fee).await;
+                finish_transaction::<C>(io, key_store, res, wait, "transferred").await;
             }
         ),
         command!(
             transfer_from,
             "transfer some assets from an owned address to another user",
             C,
-            |io, wallet, asset: ListItem<AssetCode>, from: UserAddress, to: UserAddress, amount: u64, fee: u64; wait: Option<bool>| {
-                let res = wallet.transfer(Some(&from.0), &asset.item, &[(to.0, amount)], fee).await;
-                finish_transaction::<C>(io, wallet, res, wait, "transferred").await;
+            |io, key_store, asset: ListItem<AssetCode>, from: UserAddress, to: UserAddress, amount: u64, fee: u64; wait: Option<bool>| {
+                let res = key_store.transfer(Some(&from.0), &asset.item, &[(to.0, amount)], fee).await;
+                finish_transaction::<C>(io, key_store, res, wait, "transferred").await;
             }
         ),
         command!(
             create_asset,
             "create a new asset",
             C,
-            |io, wallet, desc: String; name: Option<String>, viewing_key: Option<AuditorPubKey>,
+            |io, key_store, desc: String; name: Option<String>, viewing_key: Option<AuditorPubKey>,
              freezing_key: Option<FreezerPubKey>, view_amount: Option<bool>,
              view_address: Option<bool>, view_blind: Option<bool>, viewing_threshold: Option<u64>|
             {
@@ -547,7 +547,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                 if let Some(viewing_threshold) = viewing_threshold {
                     policy = policy.set_reveal_threshold(viewing_threshold);
                 }
-                match wallet.define_asset(name.unwrap_or_default(), desc.as_bytes(), policy).await {
+                match key_store.define_asset(name.unwrap_or_default(), desc.as_bytes(), policy).await {
                     Ok(def) => {
                         cli_writeln!(io, "{}", def.code);
                     }
@@ -561,44 +561,44 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             mint,
             "mint an asset",
             C,
-            |io, wallet, asset: ListItem<AssetCode>, from: UserAddress, to: UserAddress, amount: u64, fee: u64; wait: Option<bool>| {
-                let res = wallet.mint(&from.0, fee, &asset.item, amount, to.0).await;
-                finish_transaction::<C>(io, wallet, res, wait, "minted").await;
+            |io, key_store, asset: ListItem<AssetCode>, from: UserAddress, to: UserAddress, amount: u64, fee: u64; wait: Option<bool>| {
+                let res = key_store.mint(&from.0, fee, &asset.item, amount, to.0).await;
+                finish_transaction::<C>(io, key_store, res, wait, "minted").await;
             }
         ),
         command!(
             freeze,
             "freeze assets owned by another users",
             C,
-            |io, wallet, asset: ListItem<AssetCode>, fee_account: UserAddress, target: UserAddress,
+            |io, key_store, asset: ListItem<AssetCode>, fee_account: UserAddress, target: UserAddress,
              amount: u64, fee: u64; wait: Option<bool>|
             {
-                let res = wallet.freeze(&fee_account.0, fee, &asset.item, amount, target.0).await;
-                finish_transaction::<C>(io, wallet, res, wait, "frozen").await;
+                let res = key_store.freeze(&fee_account.0, fee, &asset.item, amount, target.0).await;
+                finish_transaction::<C>(io, key_store, res, wait, "frozen").await;
             }
         ),
         command!(
             unfreeze,
             "unfreeze previously frozen assets owned by another users",
             C,
-            |io, wallet, asset: ListItem<AssetCode>, fee_account: UserAddress, target: UserAddress,
+            |io, key_store, asset: ListItem<AssetCode>, fee_account: UserAddress, target: UserAddress,
              amount: u64, fee: u64; wait: Option<bool>|
             {
-                let res = wallet.unfreeze(&fee_account.0, fee, &asset.item, amount, target.0).await;
-                finish_transaction::<C>(io, wallet, res, wait, "unfrozen").await;
+                let res = key_store.unfreeze(&fee_account.0, fee, &asset.item, amount, target.0).await;
+                finish_transaction::<C>(io, key_store, res, wait, "unfrozen").await;
             }
         ),
         command!(
             transactions,
-            "list past transactions sent and received by this wallet",
+            "list past transactions sent and received by this key store",
             C,
-            |io, wallet| {
-                match wallet.transaction_history().await {
+            |io, key_store| {
+                match key_store.transaction_history().await {
                     Ok(txns) => {
                         cli_writeln!(io, "Submitted Status Asset Type Sender Receiver Amount ...");
                         for txn in txns {
                             let status = match &txn.receipt {
-                                Some(receipt) => wallet
+                                Some(receipt) => key_store
                                     .transaction_status(receipt)
                                     .await
                                     .unwrap_or(TransactionStatus::Unknown),
@@ -615,7 +615,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                             } else if let Some(AssetInfo {
                                 mint_info: Some(mint_info),
                                 ..
-                            }) = wallet.asset(txn.asset).await
+                            }) = key_store.asset(txn.asset).await
                             {
                                 // If the description looks like it came from a string, interpret as
                                 // a string. Otherwise, encode the binary blob as tagged base64.
@@ -662,8 +662,8 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             transaction,
             "print the status of a transaction",
             C,
-            |io, wallet, receipt: TransactionReceipt<C::Ledger>| {
-                match wallet.transaction_status(&receipt).await {
+            |io, key_store, receipt: TransactionReceipt<C::Ledger>| {
+                match key_store.transaction_status(&receipt).await {
                     Ok(status) => cli_writeln!(io, "{}", status),
                     Err(err) => cli_writeln!(io, "Error getting transaction status: {}", err),
                 }
@@ -673,36 +673,36 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             wait,
             "wait for a transaction to complete",
             C,
-            |io, wallet, receipt: TransactionReceipt<C::Ledger>| {
-                match wallet.await_transaction(&receipt).await {
+            |io, key_store, receipt: TransactionReceipt<C::Ledger>| {
+                match key_store.await_transaction(&receipt).await {
                     Ok(status) => cli_writeln!(io, "{}", status),
                     Err(err) => cli_writeln!(io, "Error waiting for transaction: {}", err),
                 }
             }
         ),
-        command!(keys, "list keys tracked by this wallet", C, |io, wallet| {
-            print_keys::<C>(io, wallet).await;
+        command!(keys, "list keys tracked by this key store", C, |io, key_store| {
+            print_keys::<C>(io, key_store).await;
         }),
         command!(
             gen_key,
             "generate new keys",
             C,
-            |io, wallet, key_type: KeyType;
+            |io, key_store, key_type: KeyType;
              description: Option<String>, scan_from: Option<EventIndex>, wait: Option<bool>| {
                 let description = description.unwrap_or_default();
                 match key_type {
-                    KeyType::Viewing => match wallet.generate_audit_key(description).await {
+                    KeyType::Viewing => match key_store.generate_audit_key(description).await {
                         Ok(pub_key) => cli_writeln!(io, "{}", pub_key),
                         Err(err) => cli_writeln!(io, "Error generating viewing key: {}", err),
                     },
-                    KeyType::Freezing => match wallet.generate_freeze_key(description).await {
+                    KeyType::Freezing => match key_store.generate_freeze_key(description).await {
                         Ok(pub_key) => cli_writeln!(io, "{}", pub_key),
                         Err(err) => cli_writeln!(io, "Error generating freezing key: {}", err),
                     },
-                    KeyType::Sending => match wallet.generate_user_key(description, scan_from).await {
+                    KeyType::Sending => match key_store.generate_user_key(description, scan_from).await {
                         Ok(pub_key) => {
                             if wait == Some(true) {
-                                if let Err(err) = wallet.await_key_scan(&pub_key.address()).await {
+                                if let Err(err) = key_store.await_key_scan(&pub_key.address()).await {
                                     cli_writeln!(io, "Error waiting for key scan: {}", err);
                                 }
                             }
@@ -717,7 +717,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             load_key,
             "load a key from a file",
             C,
-            |io, wallet, key_type: KeyType, path: PathBuf;
+            |io, key_store, key_type: KeyType, path: PathBuf;
              description: Option<String>, scan_from: Option<EventIndex>, wait: Option<bool>| {
                 let mut file = match File::open(path.clone()) {
                     Ok(file) => file,
@@ -735,7 +735,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                 let description = description.unwrap_or_default();
                 match key_type {
                     KeyType::Viewing => match bincode::deserialize::<AuditorKeyPair>(&bytes) {
-                        Ok(key) => match wallet.add_audit_key(key.clone(), description).await {
+                        Ok(key) => match key_store.add_audit_key(key.clone(), description).await {
                             Ok(()) => cli_writeln!(io, "{}", key.pub_key()),
                             Err(err) => cli_writeln!(io, "Error saving viewing key: {}", err),
                         },
@@ -744,7 +744,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                         }
                     },
                     KeyType::Freezing => match bincode::deserialize::<FreezerKeyPair>(&bytes) {
-                        Ok(key) => match wallet.add_freeze_key(key.clone(), description).await {
+                        Ok(key) => match key_store.add_freeze_key(key.clone(), description).await {
                             Ok(()) => cli_writeln!(io, "{}", key.pub_key()),
                             Err(err) => cli_writeln!(io, "Error saving freezing key: {}", err),
                         },
@@ -753,14 +753,14 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                         }
                     },
                     KeyType::Sending => match bincode::deserialize::<UserKeyPair>(&bytes) {
-                        Ok(key) => match wallet.add_user_key(
+                        Ok(key) => match key_store.add_user_key(
                             key.clone(),
                             description,
                             scan_from.unwrap_or_default(),
                         ).await {
                             Ok(()) => {
                                 if wait == Some(true) {
-                                    if let Err(err) = wallet.await_key_scan(&key.address()).await {
+                                    if let Err(err) = key_store.await_key_scan(&key.address()).await {
                                         cli_writeln!(io, "Error waiting for key scan: {}", err);
                                     }
                                 } else {
@@ -783,37 +783,37 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
         ),
         command!(
             import_memo,
-            "import an owner memo belonging to this wallet",
+            "import an owner memo belonging to this key store",
             C,
             |io,
-             wallet,
+             key_store,
              memo: ReceiverMemo,
              comm: RecordCommitment,
              uid: u64,
              proof: MerklePath| {
-                if let Err(err) = wallet.import_memo(memo, comm, uid, proof.0).await {
+                if let Err(err) = key_store.import_memo(memo, comm, uid, proof.0).await {
                     cli_writeln!(io, "{}", err);
                 }
             }
         ),
         command!(
             info,
-            "print general information about this wallet",
+            "print general information about this key store",
             C,
-            |io, wallet| {
+            |io, key_store| {
                 cli_writeln!(io, "Addresses:");
-                for pub_key in wallet.pub_keys().await {
+                for pub_key in key_store.pub_keys().await {
                     cli_writeln!(io, "  {}", UserAddress(pub_key.address()));
                 }
-                print_keys::<C>(io, wallet).await;
+                print_keys::<C>(io, key_store).await;
             }
         ),
         command!(
             view,
             "list unspent records of viewable asset types",
             C,
-            |io, wallet, asset: ListItem<AssetCode>; account: Option<UserAddress>| {
-                let records = wallet
+            |io, key_store, asset: ListItem<AssetCode>; account: Option<UserAddress>| {
+                let records = key_store
                     .records()
                     .await
                     .filter(|rec| rec.ro.asset_def.code == asset.item && match &account {
@@ -843,8 +843,8 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             import_asset,
             "import an asset type",
             C,
-            |io, wallet, asset: AssetInfo| {
-                if let Err(err) = wallet.import_asset(asset).await {
+            |io, key_store, asset: AssetInfo| {
+                if let Err(err) = key_store.import_asset(asset).await {
                     cli_writeln!(io, "Error: {}", err);
                 }
             }
@@ -854,19 +854,19 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
         #[cfg(any(test, feature = "testing"))]
         command!(
             now,
-            "print the index of the latest event processed by the wallet",
+            "print the index of the latest event processed by the key store",
             C,
-            |io, wallet| {
-                cli_writeln!(io, "{}", wallet.now().await);
+            |io, key_store| {
+                cli_writeln!(io, "{}", key_store.now().await);
             }
         ),
         #[cfg(any(test, feature = "testing"))]
         command!(
             sync,
-            "wait until the wallet has processed up to a given event index",
+            "wait until the key store has processed up to a given event index",
             C,
-            |io, wallet, t: EventIndex| {
-                if let Err(err) = wallet.sync(t).await {
+            |io, key_store, t: EventIndex| {
+                if let Err(err) = key_store.sync(t).await {
                     cli_writeln!(io, "Error waiting for sync point {}: {}", t, err);
                 }
             }
@@ -876,20 +876,20 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
     commands
 }
 
-async fn print_keys<'a, C: CLI<'a>>(io: &mut SharedIO, wallet: &KeyStore<'a, C>) {
+async fn print_keys<'a, C: CLI<'a>>(io: &mut SharedIO, key_store: &KeyStore<'a, C>) {
     cli_writeln!(io, "Sending keys:");
-    for key in wallet.pub_keys().await {
-        let account = wallet.sending_account(&key.address()).await.unwrap();
+    for key in key_store.pub_keys().await {
+        let account = key_store.sending_account(&key.address()).await.unwrap();
         cli_writeln!(io, "  {} {}", key, account.description);
     }
     cli_writeln!(io, "Viewing keys:");
-    for key in wallet.auditor_pub_keys().await {
-        let account = wallet.viewing_account(&key).await.unwrap();
+    for key in key_store.auditor_pub_keys().await {
+        let account = key_store.viewing_account(&key).await.unwrap();
         cli_writeln!(io, "  {} {}", key, account.description);
     }
     cli_writeln!(io, "Freezing keys:");
-    for key in wallet.freezer_pub_keys().await {
-        let account = wallet.freezing_account(&key).await.unwrap();
+    for key in key_store.freezer_pub_keys().await {
+        let account = key_store.freezing_account(&key).await.unwrap();
         cli_writeln!(io, "  {} {}", key, account.description);
     }
 }
@@ -901,7 +901,7 @@ pub enum KeyType {
 }
 
 impl<'a, C: CLI<'a>> CLIInput<'a, C> for KeyType {
-    fn parse_for_wallet(_wallet: &mut KeyStore<'a, C>, s: &str) -> Option<Self> {
+    fn parse_for_key_store(_key_store: &mut KeyStore<'a, C>, s: &str) -> Option<Self> {
         match s {
             "view" | "viewing" => Some(Self::Viewing),
             "freeze" | "freezing" => Some(Self::Freezing),
@@ -913,7 +913,7 @@ impl<'a, C: CLI<'a>> CLIInput<'a, C> for KeyType {
 
 pub async fn finish_transaction<'a, C: CLI<'a>>(
     io: &mut SharedIO,
-    wallet: &KeyStore<'a, C>,
+    key_store: &KeyStore<'a, C>,
     result: Result<TransactionReceipt<C::Ledger>, KeyStoreError<C::Ledger>>,
     wait: Option<bool>,
     success_state: &str,
@@ -921,7 +921,7 @@ pub async fn finish_transaction<'a, C: CLI<'a>>(
     match result {
         Ok(receipt) => {
             if wait == Some(true) {
-                match wallet.await_transaction(&receipt).await {
+                match key_store.await_transaction(&receipt).await {
                     Err(err) => {
                         cli_writeln!(io, "Error waiting for transaction to complete: {}", err);
                     }
@@ -982,7 +982,7 @@ async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
             })?;
             let mut dir = PathBuf::from(home);
             dir.push(format!(
-                ".espresso/{}/wallet",
+                ".espresso/{}/key_store",
                 L::name()
                     .to_lowercase()
                     .replace('/', "_")
@@ -991,7 +991,7 @@ async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
             (dir, None)
         }
         None => {
-            let tmp_dir = TempDir::new("wallet").context(IoSnafu)?;
+            let tmp_dir = TempDir::new("key_store").context(IoSnafu)?;
             (PathBuf::from(tmp_dir.path()), Some(tmp_dir))
         }
     };
@@ -1002,7 +1002,7 @@ async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
     };
     cli_writeln!(
         io,
-        "Welcome to the {} wallet, version {}",
+        "Welcome to the {} key store, version {}",
         C::Ledger::name(),
         env!("CARGO_PKG_VERSION")
     );
@@ -1013,10 +1013,10 @@ async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
     let universal_param = Box::leak(Box::new(L::srs()));
     let backend = C::init_backend(universal_param, args, &mut loader)?;
 
-    // Loading the wallet takes a while. Let the user know that's expected.
+    // Loading the key_store takes a while. Let the user know that's expected.
     //todo !jeb.bearer Make it faster
     cli_writeln!(io, "connecting...");
-    let mut wallet = KeyStore::<C>::new(backend).await?;
+    let mut key_store = KeyStore::<C>::new(backend).await?;
     cli_writeln!(io, "Type 'help' for a list of commands.");
     let commands = init_commands::<C>();
 
@@ -1043,7 +1043,7 @@ async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
                         args.push(String::from(tok));
                     }
                 }
-                run(io.clone(), &mut wallet, args, kwargs).await;
+                run(io.clone(), &mut key_store, args, kwargs).await;
                 continue 'repl;
             }
         }
@@ -1131,30 +1131,30 @@ mod test {
         initial_grants: &[u64],
     ) -> (MockCapLedger<'a>, Vec<hd::KeyTree>) {
         // Use `create_test_network` to create a ledger with some initial records.
-        let (ledger, wallets) = t
+        let (ledger, key_stores) = t
             .create_test_network(&[(3, 3)], initial_grants.to_vec(), &mut Instant::now())
             .await;
         // Set `block_size` to `1` so we don't have to explicitly flush the ledger after each
         // transaction submission.
         ledger.lock().await.set_block_size(1).unwrap();
-        // We don't actually care about the open wallets returned by `create_test_network`, because
-        // the CLI does its own wallet loading. But we do want to get their key streams, so that
-        // the wallets we create through the CLI can deterministically generate the keys that own
+        // We don't actually care about the open key stores returned by `create_test_network`, because
+        // the CLI does its own key store loading. But we do want to get their key streams, so that
+        // the key stores we create through the CLI can deterministically generate the keys that own
         // the initial records.
-        let key_streams = iter(wallets)
-            .then(|(wallet, _)| async move { wallet.lock().await.backend().key_stream() })
+        let key_streams = iter(key_stores)
+            .then(|(key_store, _)| async move { key_store.lock().await.backend().key_stream() })
             .collect::<Vec<_>>()
             .await;
         (ledger, key_streams)
     }
 
-    fn create_wallet(
+    fn create_key_store(
         ledger: MockCapLedger<'static>,
         key_stream: hd::KeyTree,
     ) -> (Tee<PipeWriter>, Tee<PipeReader>) {
         let (io, input, output) = SharedIO::pipe();
 
-        // Run a CLI interface for a wallet in the background.
+        // Run a CLI interface for a key store in the background.
         spawn(async move {
             let args = MockArgs {
                 io,
@@ -1176,15 +1176,15 @@ mod test {
         let mut t = MockSystem::default();
         let (ledger, key_streams) = create_network(&mut t, &[2000, 2000, 0]).await;
 
-        // Create three wallet clients: one to mint and view an asset, one to make an anonymous
+        // Create three key store clients: one to mint and view an asset, one to make an anonymous
         // transfer, and one to receive an anonymous transfer. We will see if the viewer can
         // discover the output record of the anonymous transfer, in which it is not a participant.
         let (mut viewer_input, mut viewer_output) =
-            create_wallet(ledger.clone(), key_streams[0].clone());
+            create_key_store(ledger.clone(), key_streams[0].clone());
         let (mut sender_input, mut sender_output) =
-            create_wallet(ledger.clone(), key_streams[1].clone());
+            create_key_store(ledger.clone(), key_streams[1].clone());
         let (mut receiver_input, mut receiver_output) =
-            create_wallet(ledger, key_streams[2].clone());
+            create_key_store(ledger, key_streams[2].clone());
 
         // Get the viewer's funded address.
         writeln!(viewer_input, "gen_key sending scan_from=start wait=true").unwrap();
@@ -1360,7 +1360,7 @@ mod test {
 
         let mut t = MockSystem::default();
         let (ledger, key_streams) = create_network(&mut t, &[0]).await;
-        let (mut input, mut output) = create_wallet(ledger.clone(), key_streams[0].clone());
+        let (mut input, mut output) = create_key_store(ledger.clone(), key_streams[0].clone());
 
         // Load without mint info.
         writeln!(input, "import_asset definition:{}", definition).unwrap();

@@ -5,11 +5,11 @@
 // This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 // You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-//! Traits and types for creating and loading wallets.
+//! Traits and types for creating and loading key stores.
 //!
 //! This module defines the [KeyStoreLoader] interface, which allows various implementations as
 //! plugins to the persistence layer. It also provides a generally useful implementation [Loader],
-//! which loads an encrypted wallet from the file system using a mnemonic phrase to generate keys
+//! which loads an encrypted key store from the file system using a mnemonic phrase to generate keys
 //! and a password to provide a more convenient login interface.
 use super::{encryption, hd, reader, EncryptionSnafu, KeySnafu, MnemonicSnafu, KeyStoreError};
 use encryption::{Cipher, CipherText, Salt};
@@ -25,14 +25,14 @@ use snafu::ResultExt;
 use std::path::{Path, PathBuf};
 
 pub trait KeyStoreLoader<L: Ledger> {
-    type Meta; // Metadata stored in plaintext and used by the loader to access the wallet.
+    type Meta; // Metadata stored in plaintext and used by the loader to access the key store.
     fn location(&self) -> PathBuf;
     fn create(&mut self) -> Result<(Self::Meta, KeyTree), KeyStoreError<L>>;
     fn load(&mut self, meta: &mut Self::Meta) -> Result<KeyTree, KeyStoreError<L>>;
 }
 
-// Metadata about a wallet which is always stored unencrypted, so we can report some basic
-// information about the wallet without decrypting. This also aids in the key derivation process.
+// Metadata about a key store which is always stored unencrypted, so we can report some basic
+// information about the key store without decrypting. This also aids in the key derivation process.
 //
 // DO NOT put secrets in here.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -103,8 +103,8 @@ impl LoaderInput {
         match self {
             Self::User(reader) => {
                 println!(
-                    "Your wallet will be identified by a secret mnemonic phrase. This phrase will \
-                     allow you to recover your wallet if you lose access to it. Anyone who has access \
+                    "Your key store will be identified by a secret mnemonic phrase. This phrase will \
+                     allow you to recover your key store if you lose access to it. Anyone who has access \
                      to this phrase will be able to view and spend your assets. Store this phrase in a \
                      safe, private place."
                 );
@@ -113,10 +113,10 @@ impl LoaderInput {
                     println!("Your mnemonic phrase will be:");
                     println!("{}", mnemonic);
                     'inner: loop {
-                        println!("1) Accept phrase and create wallet");
+                        println!("1) Accept phrase and create key store");
                         println!("2) Generate a new phrase");
                         println!(
-                            "3) Manually enter a mnemonic (use this to recover a lost wallet)"
+                            "3) Manually enter a mnemonic (use this to recover a lost key store)"
                         );
                         match reader.read_line() {
                             Some(line) => match line.as_str().trim() {

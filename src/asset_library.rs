@@ -8,7 +8,7 @@
 //! Collections of and information on CAP assets.
 //!
 //! This module defines [AssetInfo] and [MintInfo], which store auxiliary information about assets
-//! which is useful to wallets but not present in [AssetDefinition]. For example, [AssetInfo] may
+//! which is useful to key stores but not present in [AssetDefinition]. For example, [AssetInfo] may
 //! include a [MintInfo], which contains the secret information needed by the asset creator to mint
 //! more of that asset type.
 //!
@@ -175,9 +175,9 @@ pub struct AssetInfo {
     /// UI-friendly name assigned to this asset.
     ///
     /// The name is purely for display purposes. It is not bound to anything in the CAP protocol,
-    /// and will not be populated when a wallet discovers an asset, only when a user manually
-    /// imports or creates that asset with a particular name. Two wallets will only agree on the
-    /// name for an asset if both wallets have imported that asset with the same name.
+    /// and will not be populated when a key store discovers an asset, only when a user manually
+    /// imports or creates that asset with a particular name. Two key stores will only agree on the
+    /// name for an asset if both key stores have imported that asset with the same name.
     pub name: Option<String>,
     /// UI-friendly description assigned to this asset.
     ///
@@ -185,17 +185,17 @@ pub struct AssetInfo {
     /// can be used however the client wants.
     ///
     /// The description is purely for display purposes. It is not bound to anything in the CAP
-    /// protocol, and will not be populated when a wallet discovers an asset, only when a user
-    /// manually imports or creates that asset with a particular description. Two wallets will only
-    /// agree on the description for an asset if both wallets have imported that asset with the same
+    /// protocol, and will not be populated when a key store discovers an asset, only when a user
+    /// manually imports or creates that asset with a particular description. Two key stores will only
+    /// agree on the description for an asset if both key stores have imported that asset with the same
     /// description.
     pub description: Option<String>,
     /// Icon used when displaying this asset in a GUI.
     ///
     /// The icon is purely for display purposes. It is not bound to anything in the CAP protocol,
-    /// and will not be populated when a wallet discovers an asset, only when a user manually
-    /// imports or creates that asset with a particular icon. Two wallets will only agree on the
-    /// icon for an asset if both wallets have imported that asset with the same icon.
+    /// and will not be populated when a key store discovers an asset, only when a user manually
+    /// imports or creates that asset with a particular icon. Two key stores will only agree on the
+    /// icon for an asset if both key stores have imported that asset with the same icon.
     pub icon: Option<Icon>,
     /// Secret information required to mint an asset.
     pub mint_info: Option<MintInfo>,
@@ -203,7 +203,7 @@ pub struct AssetInfo {
     pub verified: bool,
     /// This asset is not included in the persistent asset library.
     ///
-    /// It will need to be reloaded when the wallet is restarted.
+    /// It will need to be reloaded when the key store is restarted.
     pub temporary: bool,
 }
 
@@ -225,7 +225,7 @@ impl AssetInfo {
         self.mint_info = None;
         self.verified = true;
         // Assets loaded from verified libraries are not included in our persistent state. Instead,
-        // they should be loaded from the verified library each time the wallet is launched, in case
+        // they should be loaded from the verified library each time the key store is launched, in case
         // the verified library changes.
         //
         // Note that if the same asset is imported manually, it will be persisted due to the

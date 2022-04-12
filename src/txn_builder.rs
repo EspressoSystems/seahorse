@@ -7,7 +7,7 @@
 
 //! Transaction building.
 //!
-//! This module defines the subset of ledger state required by a wallet to build transactions, and
+//! This module defines the subset of ledger state required by a key store to build transactions, and
 //! provides an interface for building them.
 use crate::events::EventIndex;
 use arbitrary::{Arbitrary, Unstructured};
