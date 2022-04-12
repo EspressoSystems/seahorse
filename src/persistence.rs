@@ -201,7 +201,7 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned + Clone + PartialE
     ) -> Result<Self, KeyStoreError<L>> {
         let directory = loader.location();
         let mut atomic_loader =
-            AtomicStoreLoader::load(&directory, "wallet").context(crate::PersistenceError)?;
+            AtomicStoreLoader::load(&directory, "wallet").context(crate::PersistenceSnafu)?;
 
         // Load the metadata first so the loader can use it to generate the encryption key needed to
         // read the rest of the data.
@@ -211,7 +211,7 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned + Clone + PartialE
             "wallet_meta",
             1024,
         )
-        .context(crate::PersistenceError)?;
+        .context(crate::PersistenceSnafu)?;
         let (meta, key, meta_dirty) = match persisted_meta.load_latest() {
             Ok(mut meta) => {
                 let old_meta = meta.clone();
@@ -221,7 +221,7 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned + Clone + PartialE
                 if meta != old_meta {
                     persisted_meta
                         .store_resource(&meta)
-                        .context(crate::PersistenceError)?;
+                        .context(crate::PersistenceSnafu)?;
                     (meta, key, true)
                 } else {
                     (meta, key, false)
@@ -241,29 +241,29 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned + Clone + PartialE
             "wallet_static",
             file_fill_size,
         )
-        .context(crate::PersistenceError)?;
+        .context(crate::PersistenceSnafu)?;
         let dynamic_state = RollingLog::load(
             &mut atomic_loader,
             adaptor.cast(),
             "wallet_dyn",
             file_fill_size,
         )
-        .context(crate::PersistenceError)?;
+        .context(crate::PersistenceSnafu)?;
         let assets = AppendLog::load(
             &mut atomic_loader,
             adaptor.cast(),
             "wallet_assets",
             file_fill_size,
         )
-        .context(crate::PersistenceError)?;
+        .context(crate::PersistenceSnafu)?;
         let txn_history = AppendLog::load(
             &mut atomic_loader,
             adaptor.cast(),
             "wallet_txns",
             file_fill_size,
         )
-        .context(crate::PersistenceError)?;
-        let store = AtomicStore::open(atomic_loader).context(crate::PersistenceError)?;
+        .context(crate::PersistenceSnafu)?;
+        let store = AtomicStore::open(atomic_loader).context(crate::PersistenceSnafu)?;
 
         Ok(Self {
             meta,
@@ -293,12 +293,12 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicKeyStoreSto
             store
                 .persisted_meta
                 .store_resource(&store.meta)
-                .context(crate::PersistenceError)?;
+                .context(crate::PersistenceSnafu)?;
             store.meta_dirty = true;
             store
                 .static_data
                 .store_resource(&KeyStoreStaticState::from(w))
-                .context(crate::PersistenceError)?;
+                .context(crate::PersistenceSnafu)?;
             store.static_dirty = true;
             store.store_snapshot(w).await
         })()
@@ -336,11 +336,11 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> KeyStoreStorage<'
         let static_state = self
             .static_data
             .load_latest()
-            .context(crate::PersistenceError)?;
+            .context(crate::PersistenceSnafu)?;
         let dynamic_state = self
             .dynamic_state
             .load_latest()
-            .context(crate::PersistenceError)?;
+            .context(crate::PersistenceSnafu)?;
         let assets = self.assets.iter().filter_map(|res| res.ok()).collect();
 
         Ok(KeyStoreState {
@@ -381,7 +381,7 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> KeyStoreStorage<'
     async fn store_snapshot(&mut self, w: &KeyStoreState<'a, L>) -> Result<(), KeyStoreError<L>> {
         self.dynamic_state
             .store_resource(&KeyStoreSnapshot::from(w))
-            .context(crate::PersistenceError)?;
+            .context(crate::PersistenceSnafu)?;
         self.dynamic_state_dirty = true;
         Ok(())
     }
@@ -389,7 +389,7 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> KeyStoreStorage<'
     async fn store_asset(&mut self, asset: &AssetInfo) -> Result<(), KeyStoreError<L>> {
         self.assets
             .store_resource(asset)
-            .context(crate::PersistenceError)?;
+            .context(crate::PersistenceSnafu)?;
         self.assets_dirty = true;
         Ok(())
     }
@@ -400,7 +400,7 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> KeyStoreStorage<'
     ) -> Result<(), KeyStoreError<L>> {
         self.txn_history
             .store_resource(&txn)
-            .context(crate::PersistenceError)?;
+            .context(crate::PersistenceSnafu)?;
         self.txn_history_dirty = true;
         Ok(())
     }
@@ -410,7 +410,7 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> KeyStoreStorage<'
     ) -> Result<Vec<TransactionHistoryEntry<L>>, KeyStoreError<L>> {
         self.txn_history
             .iter()
-            .map(|res| res.context(crate::PersistenceError))
+            .map(|res| res.context(crate::PersistenceSnafu))
             .collect()
     }
 
@@ -711,7 +711,10 @@ mod tests {
         // Make a change to one of the data structures, but revert it.
         let loaded = {
             let mut storage = AtomicKeyStoreStorage::new(&mut loader, 1024).unwrap();
-            storage.store_asset(&AssetInfo::native()).await.unwrap();
+            storage
+                .store_asset(&AssetInfo::native::<cap::Ledger>())
+                .await
+                .unwrap();
             storage.revert().await;
             // Make sure committing after a revert does not commit the reverted changes.
             storage.commit().await;
@@ -734,7 +737,10 @@ mod tests {
             // Store some data.
             stored.txn_state.records.insert(ro, 0, &user_key);
             storage.store_snapshot(&stored).await.unwrap();
-            storage.store_asset(&AssetInfo::native()).await.unwrap();
+            storage
+                .store_asset(&AssetInfo::native::<cap::Ledger>())
+                .await
+                .unwrap();
             storage
                 .store_transaction(TransactionHistoryEntry {
                     time: Local::now(),

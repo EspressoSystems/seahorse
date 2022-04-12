@@ -628,15 +628,14 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                             } else {
                                 txn.asset.to_string()
                             };
-                            let senders;
-                            if !txn.senders.is_empty() {
-                                senders = txn.senders
+                            let senders = if !txn.senders.is_empty() {
+                                txn.senders
                                     .into_iter()
                                     .map(|sender| UserAddress(sender).to_string())
-                                    .collect::<Vec<String>>();
+                                    .collect::<Vec<String>>()
                             } else {
-                                senders = vec![String::from("unknown")];
-                            }
+                                vec![String::from("unknown")]
+                            };
                             cli_write!(
                                 io,
                                 "{} {} {} {} {:?} ",
@@ -957,14 +956,14 @@ pub async fn cli_main<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
 pub fn key_gen<'a, C: CLI<'a>>(mut path: PathBuf) -> Result<(), KeyStoreError<C::Ledger>> {
     let key_pair = crate::new_key_pair();
 
-    let mut file = File::create(path.clone()).context(IoError)?;
-    let bytes = bincode::serialize(&key_pair).context(BincodeError)?;
-    file.write_all(&bytes).context(IoError)?;
+    let mut file = File::create(path.clone()).context(IoSnafu)?;
+    let bytes = bincode::serialize(&key_pair).context(BincodeSnafu)?;
+    file.write_all(&bytes).context(IoSnafu)?;
 
     path.set_extension("pub");
-    let mut file = File::create(path).context(IoError)?;
-    let bytes = bincode::serialize(&key_pair.pub_key()).context(BincodeError)?;
-    file.write_all(&bytes).context(IoError)?;
+    let mut file = File::create(path).context(IoSnafu)?;
+    let bytes = bincode::serialize(&key_pair.pub_key()).context(BincodeSnafu)?;
+    file.write_all(&bytes).context(IoSnafu)?;
 
     Ok(())
 }
@@ -992,7 +991,7 @@ async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
             (dir, None)
         }
         None => {
-            let tmp_dir = TempDir::new("wallet").context(IoError)?;
+            let tmp_dir = TempDir::new("wallet").context(IoSnafu)?;
             (PathBuf::from(tmp_dir.path()), Some(tmp_dir))
         }
     };

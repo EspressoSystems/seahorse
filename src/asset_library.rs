@@ -29,6 +29,7 @@ use jf_cap::{
     BaseField, KeyPair, Signature, VerKey,
 };
 use jf_utils::tagged_blob;
+use reef::Ledger;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fmt::{self, Display, Formatter};
@@ -252,10 +253,10 @@ impl AssetInfo {
     }
 
     /// Details about the native asset type.
-    pub fn native() -> Self {
+    pub fn native<L: Ledger>() -> Self {
         Self::from(AssetDefinition::native())
-            .with_name("native".into())
-            .with_description("the native CAP asset type".into())
+            .with_name(L::name().to_uppercase())
+            .with_description(format!("The {} native asset type", L::name()))
     }
 
     /// Update this info by merging in information from `info`.
@@ -633,8 +634,7 @@ impl VerifiedAssetLibrary {
     fn digest(assets: &[AssetInfo]) -> BaseField {
         let bytes = assets
             .iter()
-            .map(|asset| bincode::serialize(asset).unwrap())
-            .flatten()
+            .flat_map(|asset| bincode::serialize(asset).unwrap())
             .collect::<Vec<_>>();
         jf_utils::hash_to_field(bytes)
     }

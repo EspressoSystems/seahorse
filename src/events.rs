@@ -20,7 +20,7 @@ use std::ops::{Add, AddAssign};
 use std::str::FromStr;
 
 /// A ledger state change.
-#[derive(Clone, Debug, Serialize, Deserialize, strum_macros::AsStaticStr)]
+#[derive(Clone, Debug, Serialize, Deserialize, strum_macros::IntoStaticStr)]
 #[serde(bound = "")]
 pub enum LedgerEvent<L: Ledger> {
     /// A new block was added to the ledger.

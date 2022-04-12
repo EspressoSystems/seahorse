@@ -29,13 +29,13 @@ proptest = { version = "0.8.7", optional = true }
 rand_chacha = { version = "0.3.1", features = ["serde1"] }
 regex = "1.5.4"
 rpassword = "5.0.1"
-rust-argon2 = "0.8.3"
+rust-argon2 = "1.0.0"
 rustyline = "9.0.0"
 serde = { version = "1.0", features = ["derive"] }
 sha3 = "^0.9"
-snafu = { version = "0.6.10", features = ["backtraces"] }
+snafu = { version = "0.7", features = ["backtraces"] }
 structopt = "0.3"
-strum = "0.20"
+strum = "0.24"
 strum_macros = "0.20.1"
 surf = "2.3.1"
 tempdir = "0.3.7"

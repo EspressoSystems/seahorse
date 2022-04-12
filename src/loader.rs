@@ -140,7 +140,7 @@ impl LoaderInput {
             }),
 
             Self::MnemonicPasswordLiteral(mnemonic, _) | Self::RecoveryLiteral(mnemonic, _) => {
-                Mnemonic::from_phrase(mnemonic.as_str()).context(MnemonicError)
+                Mnemonic::from_phrase(mnemonic.as_str()).context(MnemonicSnafu)
             }
         }
     }
@@ -152,7 +152,7 @@ impl LoaderInput {
                 msg: String::from("missing mnemonic phrase"),
             }),
             Self::MnemonicPasswordLiteral(mnemonic, _) | Self::RecoveryLiteral(mnemonic, _) => {
-                Mnemonic::from_phrase(mnemonic.as_str()).context(MnemonicError)
+                Mnemonic::from_phrase(mnemonic.as_str()).context(MnemonicSnafu)
             }
         }
     }
@@ -240,13 +240,13 @@ impl Loader {
 
         // Encrypt the mnemonic phrase, which we can decrypt on load to check the derived key.
         let (encryption_key, salt) =
-            KeyTree::from_password(&mut self.rng, password.as_bytes()).context(KeyError)?;
+            KeyTree::from_password(&mut self.rng, password.as_bytes()).context(KeySnafu)?;
         let encrypted_mnemonic = Cipher::new(
             encryption_key.derive_sub_tree(KEY_CHECK_SUB_TREE.as_bytes()),
             ChaChaRng::from_rng(&mut self.rng).unwrap(),
         )
         .encrypt(mnemonic.into_phrase().as_str().as_bytes())
-        .context(EncryptionError)?;
+        .context(EncryptionSnafu)?;
 
         Ok((salt, encrypted_mnemonic))
     }
@@ -273,7 +273,7 @@ impl<L: Ledger> KeyStoreLoader<L> for Loader {
             ChaChaRng::from_rng(&mut self.rng).unwrap(),
         )
         .encrypt(&bytes)
-        .context(EncryptionError)?;
+        .context(EncryptionSnafu)?;
 
         let (salt, encrypted_mnemonic) = self.create_password(mnemonic)?;
         let meta = LoaderMetadata {
@@ -292,7 +292,7 @@ impl<L: Ledger> KeyStoreLoader<L> for Loader {
                 // `encrypted_mnemonic`. If we can't, the key is wrong.
                 let decryption_key =
                     KeyTree::from_password_and_salt(password.as_bytes(), &meta.salt)
-                        .context(KeyError)?;
+                        .context(KeySnafu)?;
                 if let Ok(mnemonic_bytes) = Cipher::new(
                     decryption_key.derive_sub_tree(KEY_CHECK_SUB_TREE.as_bytes()),
                     ChaChaRng::from_rng(&mut self.rng).unwrap(),

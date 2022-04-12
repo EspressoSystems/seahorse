@@ -48,7 +48,7 @@ use std::iter::FromIterator;
 use std::ops::{Index, IndexMut};
 
 #[derive(Debug, Snafu)]
-#[snafu(visibility = "pub")]
+#[snafu(visibility(pub))]
 pub enum TransactionError {
     InsufficientBalance {
         asset: AssetCode,
@@ -946,7 +946,7 @@ impl<L: Ledger> TransactionState<L> {
     ) -> Result<(AssetCodeSeed, AssetDefinition), TransactionError> {
         let seed = AssetCodeSeed::generate(rng);
         let code = AssetCode::new_domestic(seed, description);
-        let asset_definition = AssetDefinition::new(code, policy).context(CryptoError)?;
+        let asset_definition = AssetDefinition::new(code, policy).context(CryptoSnafu)?;
         Ok((seed, asset_definition))
     }
 
@@ -1113,7 +1113,7 @@ impl<L: Ledger> TransactionState<L> {
             UNEXPIRED_VALID_UNTIL,
             proving_key,
         )
-        .context(CryptoError)?;
+        .context(CryptoSnafu)?;
 
         let outputs: Vec<_> = vec![fee_change_ro]
             .into_iter()
@@ -1286,7 +1286,7 @@ impl<L: Ledger> TransactionState<L> {
             proving_key,
             spec.bound_data.clone(),
         )
-        .context(CryptoError)?;
+        .context(CryptoSnafu)?;
 
         let outputs: Vec<_> = vec![fee_out_rec]
             .into_iter()
@@ -1351,7 +1351,7 @@ impl<L: Ledger> TransactionState<L> {
             .map(|(ro, include)| {
                 if include {
                     Ok(Some(
-                        ReceiverMemo::from_ro(rng, ro, &[]).context(CryptoError)?,
+                        ReceiverMemo::from_ro(rng, ro, &[]).context(CryptoSnafu)?,
                     ))
                 } else {
                     Ok(None)
@@ -1362,7 +1362,7 @@ impl<L: Ledger> TransactionState<L> {
             sig_key_pair,
             &memos.iter().flatten().cloned().collect::<Vec<_>>(),
         )
-        .context(CryptoError)?;
+        .context(CryptoSnafu)?;
 
         Ok((memos, sig))
     }
@@ -1399,7 +1399,7 @@ impl<L: Ledger> TransactionState<L> {
             fee_info,
             proving_key,
         )
-        .context(CryptoError)?;
+        .context(CryptoSnafu)?;
         let outputs = vec![fee_out_rec, mint_record];
         let (memos, sig) = self.generate_memos(&outputs, vec![true, true], rng, &sig_key_pair)?;
 
@@ -1474,7 +1474,7 @@ impl<L: Ledger> TransactionState<L> {
         // generate transfer note and receiver memos
         let (fee_info, fee_out_rec) = TxnFeeInfo::new(rng, fee_input, fee).unwrap();
         let (note, sig_key_pair, outputs) =
-            FreezeNote::generate(rng, inputs, fee_info, proving_key).context(CryptoError)?;
+            FreezeNote::generate(rng, inputs, fee_info, proving_key).context(CryptoSnafu)?;
         let outputs = std::iter::once(fee_out_rec)
             .chain(outputs)
             .collect::<Vec<_>>();

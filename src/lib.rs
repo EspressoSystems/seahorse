@@ -90,7 +90,7 @@ use std::iter::repeat;
 use std::sync::Arc;
 
 #[derive(Debug, Snafu)]
-#[snafu(visibility = "pub")]
+#[snafu(visibility(pub))]
 pub enum KeyStoreError<L: Ledger> {
     UndefinedAsset {
         asset: AssetCode,
@@ -1505,7 +1505,7 @@ impl<'a, L: 'static + Ledger> KeyStoreState<'a, L> {
     ) -> Result<(TransferNote, TransactionInfo<L>), KeyStoreError<L>> {
         self.txn_state
             .transfer(spec, &self.proving_keys.xfr, &mut session.rng)
-            .context(TransactionError)
+            .context(TransactionSnafu)
     }
 
     async fn build_mint(
@@ -1538,7 +1538,7 @@ impl<'a, L: 'static + Ledger> KeyStoreState<'a, L> {
                 session.backend.get_public_key(&receiver).await?,
                 &mut session.rng,
             )
-            .context(TransactionError)
+            .context(TransactionSnafu)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1576,7 +1576,7 @@ impl<'a, L: 'static + Ledger> KeyStoreState<'a, L> {
                 outputs_frozen,
                 &mut session.rng,
             )
-            .context(TransactionError)
+            .context(TransactionSnafu)
     }
 
     async fn submit_transaction(
@@ -1787,7 +1787,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + KeyStoreBackend<'a, L> + Send + Sync
 
         // Ensure the native asset type is always recognized.
         state
-            .import_asset(&mut session, AssetInfo::native())
+            .import_asset(&mut session, AssetInfo::native::<L>())
             .await?;
 
         let sync_handles = Vec::new();
