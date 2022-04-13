@@ -7,14 +7,14 @@
 
 #![allow(dead_code)]
 
-/// This module contains testing utilities and unit tests for the generic key store interface.
+/// This module contains testing utilities and unit tests for the generic keystore interface.
 ///
-/// This file defines a framework for testing the generic key store with any mock backend, for any
+/// This file defines a framework for testing the generic keystore with any mock backend, for any
 /// ledger. Implementations of this test interface for various backends and ledgers are in
 /// sub-modules in different files (e.g. spectrum_test.rs, cape_test.rs). These files also contain
-/// tests which are specific to key stores with a particular ledger type or backend, which depend on
+/// tests which are specific to keystores with a particular ledger type or backend, which depend on
 /// properties not exposed or guaranteed by the generic interface. The file tests.rs contains the
-/// test suite for the generic key store interface, which is instantiated for each ledger/backend.
+/// test suite for the generic keystore interface, which is instantiated for each ledger/backend.
 use super::*;
 use async_std::sync::{Arc, Mutex};
 use chrono::Local;
@@ -29,24 +29,24 @@ use std::time::Instant;
 #[async_trait]
 pub trait MockNetwork<'a, L: Ledger> {
     fn now(&self) -> EventIndex;
-    fn submit(&mut self, block: Block<L>) -> Result<(), KeyStoreError<L>>;
+    fn submit(&mut self, block: Block<L>) -> Result<(), KeystoreError<L>>;
     fn post_memos(
         &mut self,
         block_id: u64,
         txn_id: u64,
         memos: Vec<ReceiverMemo>,
         sig: Signature,
-    ) -> Result<(), KeyStoreError<L>>;
+    ) -> Result<(), KeystoreError<L>>;
     fn memos_source(&self) -> EventSource;
     fn generate_event(&mut self, event: LedgerEvent<L>);
     fn event(
         &self,
         index: EventIndex,
         source: EventSource,
-    ) -> Result<LedgerEvent<L>, KeyStoreError<L>>;
+    ) -> Result<LedgerEvent<L>, KeystoreError<L>>;
 }
 
-pub struct MockLedger<'a, L: Ledger, N: MockNetwork<'a, L>, S: KeyStoreStorage<'a, L>> {
+pub struct MockLedger<'a, L: Ledger, N: MockNetwork<'a, L>, S: KeystoreStorage<'a, L>> {
     network: N,
     current_block: Block<L>,
     block_size: usize,
@@ -60,7 +60,7 @@ pub struct MockLedger<'a, L: Ledger, N: MockNetwork<'a, L>, S: KeyStoreStorage<'
     _phantom: std::marker::PhantomData<&'a ()>,
 }
 
-impl<'a, L: Ledger, N: MockNetwork<'a, L>, S: KeyStoreStorage<'a, L>> MockLedger<'a, L, N, S> {
+impl<'a, L: Ledger, N: MockNetwork<'a, L>, S: KeystoreStorage<'a, L>> MockLedger<'a, L, N, S> {
     pub fn new(network: N, records: MerkleTree) -> Self {
         Self {
             network,
@@ -85,7 +85,7 @@ impl<'a, L: Ledger, N: MockNetwork<'a, L>, S: KeyStoreStorage<'a, L>> MockLedger
         self.network.now()
     }
 
-    pub fn flush(&mut self) -> Result<(), KeyStoreError<L>> {
+    pub fn flush(&mut self) -> Result<(), KeystoreError<L>> {
         if self.current_block.is_empty() {
             return Ok(());
         }
@@ -118,7 +118,7 @@ impl<'a, L: Ledger, N: MockNetwork<'a, L>, S: KeyStoreStorage<'a, L>> MockLedger
         self.mangled = false;
     }
 
-    pub fn submit(&mut self, txn: Transaction<L>) -> Result<(), KeyStoreError<L>> {
+    pub fn submit(&mut self, txn: Transaction<L>) -> Result<(), KeystoreError<L>> {
         if self.hold_next_transaction {
             self.held_transaction = Some(txn);
             self.hold_next_transaction = false;
@@ -154,12 +154,12 @@ impl<'a, L: Ledger, N: MockNetwork<'a, L>, S: KeyStoreStorage<'a, L>> MockLedger
         txn_id: u64,
         memos: Vec<ReceiverMemo>,
         sig: Signature,
-    ) -> Result<(), KeyStoreError<L>> {
+    ) -> Result<(), KeystoreError<L>> {
         self.network.post_memos(block_id, txn_id, memos, sig)?;
         Ok(())
     }
 
-    pub fn set_block_size(&mut self, size: usize) -> Result<(), KeyStoreError<L>> {
+    pub fn set_block_size(&mut self, size: usize) -> Result<(), KeystoreError<L>> {
         self.block_size = size;
         if self.current_block.len() >= self.block_size {
             self.flush()?;
@@ -167,18 +167,18 @@ impl<'a, L: Ledger, N: MockNetwork<'a, L>, S: KeyStoreStorage<'a, L>> MockLedger
         Ok(())
     }
 
-    pub fn get_initial_scan_state(&self) -> Result<(MerkleTree, EventIndex), KeyStoreError<L>> {
+    pub fn get_initial_scan_state(&self) -> Result<(MerkleTree, EventIndex), KeystoreError<L>> {
         Ok((self.initial_records.clone(), EventIndex::default()))
     }
 }
 
-// This function checks probabilistic equality for two key store states, comparing hashes for fields
+// This function checks probabilistic equality for two keystore states, comparing hashes for fields
 // that cannot directly be compared for equality. It is sufficient for tests that want to compare
-// key store states (like round-trip serialization tests) but since it is deterministic, we shouldn't
+// keystore states (like round-trip serialization tests) but since it is deterministic, we shouldn't
 // make it into a PartialEq instance.
-pub fn assert_key_store_states_eq<'a, L: Ledger>(
-    w1: &KeyStoreState<'a, L>,
-    w2: &KeyStoreState<'a, L>,
+pub fn assert_keystore_states_eq<'a, L: Ledger>(
+    w1: &KeystoreState<'a, L>,
+    w2: &KeystoreState<'a, L>,
 ) {
     assert_eq!(w1.txn_state.now, w2.txn_state.now);
     assert_eq!(
@@ -203,9 +203,9 @@ pub fn assert_key_store_states_eq<'a, L: Ledger>(
 #[async_trait]
 pub trait SystemUnderTest<'a>: Default + Send + Sync {
     type Ledger: 'static + Ledger;
-    type MockBackend: 'a + KeyStoreBackend<'a, Self::Ledger> + Send + Sync;
+    type MockBackend: 'a + KeystoreBackend<'a, Self::Ledger> + Send + Sync;
     type MockNetwork: 'a + MockNetwork<'a, Self::Ledger> + Send;
-    type MockStorage: 'a + KeyStoreStorage<'a, Self::Ledger> + Send;
+    type MockStorage: 'a + KeystoreStorage<'a, Self::Ledger> + Send;
 
     async fn create_backend(
         &mut self,
@@ -223,9 +223,9 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
     ) -> Self::MockNetwork;
     async fn create_storage(&mut self) -> Self::MockStorage;
 
-    /// Creates two key pairs/addresses for each key store.
+    /// Creates two key pairs/addresses for each keystore.
     ///
-    /// `initial_grants` - List of total initial grants for each key store. Each amount will be
+    /// `initial_grants` - List of total initial grants for each keystore. Each amount will be
     /// divided by 2, and any remainder will be added to the second address.
     async fn create_test_network(
         &mut self,
@@ -235,7 +235,7 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
     ) -> (
         Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork, Self::MockStorage>>>,
         Vec<(
-            KeyStore<'a, Self::MockBackend, Self::Ledger>,
+            Keystore<'a, Self::MockBackend, Self::Ledger>,
             Vec<UserAddress>,
         )>,
     ) {
@@ -244,7 +244,7 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
 
         // Populate the unpruned record merkle tree with an initial record commitment for each
         // non-zero initial grant. Collect user-specific info (keys and record openings
-        // corresponding to grants) in `users`, which will be used to create the key stores later.
+        // corresponding to grants) in `users`, which will be used to create the keystores later.
         let mut record_merkle_tree = MerkleTree::new(Self::Ledger::merkle_height()).unwrap();
         let mut users = vec![];
         let mut initial_records = vec![];
@@ -337,9 +337,9 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
             record_merkle_tree.clone(),
         )));
 
-        // Create a key store for each user based on the validator and the per-user information
+        // Create a keystore for each user based on the validator and the per-user information
         // computed above.
-        let mut key_stores = Vec::new();
+        let mut keystores = Vec::new();
         for (key_stream, key_pairs, initial_grants) in users {
             let mut rng = ChaChaRng::from_rng(&mut rng).unwrap();
             let ledger = ledger.clone();
@@ -348,7 +348,7 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
 
             let mut seed = [0u8; 32];
             rng.fill_bytes(&mut seed);
-            let mut key_store = KeyStore::new(
+            let mut keystore = Keystore::new(
                 self.create_backend(ledger, initial_grants, key_stream, storage)
                     .await,
             )
@@ -357,35 +357,35 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
             let mut addresses = vec![];
             for key_pair in key_pairs.clone() {
                 assert_eq!(
-                    key_store
+                    keystore
                         .generate_user_key("".into(), Some(EventIndex::default()))
                         .await
                         .unwrap(),
                     key_pair.pub_key()
                 );
 
-                // Wait for the key_store to find any records already belonging to this key from the
+                // Wait for the keystore to find any records already belonging to this key from the
                 // initial grants.
-                key_store.await_key_scan(&key_pair.address()).await.unwrap();
+                keystore.await_key_scan(&key_pair.address()).await.unwrap();
                 addresses.push(key_pair.address());
             }
-            key_stores.push((key_store, addresses));
+            keystores.push((keystore, addresses));
         }
 
-        println!("KeyStores set up: {}s", now.elapsed().as_secs_f32());
+        println!("Keystores set up: {}s", now.elapsed().as_secs_f32());
         *now = Instant::now();
 
         // Sync with any events that were emitted during ledger setup.
-        self.sync(&ledger, &key_stores).await;
+        self.sync(&ledger, &keystores).await;
 
-        (ledger, key_stores)
+        (ledger, keystores)
     }
 
     async fn sync(
         &self,
         ledger: &Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork, Self::MockStorage>>>,
-        key_stores: &[(
-            KeyStore<'a, Self::MockBackend, Self::Ledger>,
+        keystores: &[(
+            Keystore<'a, Self::MockBackend, Self::Ledger>,
             Vec<UserAddress>,
         )],
     ) {
@@ -408,7 +408,7 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
                 }
                 ledger.sync_index + EventIndex::from_source(memos_source, ledger.missing_memos)
             };
-            self.sync_with(key_stores, t).await;
+            self.sync_with(keystores, t).await;
 
             // Count how many memos events we got while incrementing `sync_index`. Note that even
             // though we waited for `missing_memos` events from the memos event source, we may have
@@ -435,37 +435,37 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
             ledger.sync_index = ledger.now();
             ledger.sync_index
         };
-        self.sync_with(key_stores, t).await;
+        self.sync_with(keystores, t).await;
 
-        // Since we're syncing with the time stamp from the most recent event, the key stores should
-        // be in a stable state once they have processed up to that event. Check that each key store
+        // Since we're syncing with the time stamp from the most recent event, the keystores should
+        // be in a stable state once they have processed up to that event. Check that each keystore
         // has persisted all of its in-memory state at this point.
-        self.check_storage(ledger, key_stores).await;
+        self.check_storage(ledger, keystores).await;
     }
 
     async fn sync_with(
         &self,
-        key_stores: &[(
-            KeyStore<'a, Self::MockBackend, Self::Ledger>,
+        keystores: &[(
+            Keystore<'a, Self::MockBackend, Self::Ledger>,
             Vec<UserAddress>,
         )],
         t: EventIndex,
     ) {
         println!("waiting for sync point {}", t);
-        future::join_all(key_stores.iter().map(|(key_store, _)| key_store.sync(t))).await;
+        future::join_all(keystores.iter().map(|(keystore, _)| keystore.sync(t))).await;
     }
 
     async fn check_storage(
         &self,
         ledger: &Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork, Self::MockStorage>>>,
-        key_stores: &[(
-            KeyStore<'a, Self::MockBackend, Self::Ledger>,
+        keystores: &[(
+            Keystore<'a, Self::MockBackend, Self::Ledger>,
             Vec<UserAddress>,
         )],
     ) {
         let ledger = ledger.lock().await;
-        for ((key_store, _), storage) in key_stores.iter().zip(&ledger.storage) {
-            let KeyStoreSharedState { state, .. } = &*key_store.mutex.lock().await;
+        for ((keystore, _), storage) in keystores.iter().zip(&ledger.storage) {
+            let KeystoreSharedState { state, .. } = &*keystore.mutex.lock().await;
 
             let mut state = state.clone();
             let mut loaded = storage.lock().await.load().await.unwrap();
@@ -510,7 +510,7 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
                 loaded.viewing_accounts.keys().cloned().collect(),
             );
 
-            assert_key_store_states_eq(&state, &loaded);
+            assert_keystore_states_eq(&state, &loaded);
         }
     }
 }
@@ -614,11 +614,11 @@ impl<L: Ledger + 'static> MockEventSource<L> {
         self.events.push(event);
     }
 
-    pub fn get(&self, index: EventIndex) -> Result<LedgerEvent<L>, KeyStoreError<L>> {
+    pub fn get(&self, index: EventIndex) -> Result<LedgerEvent<L>, KeystoreError<L>> {
         self.events
             .get(index.index(self.source))
             .cloned()
-            .ok_or_else(|| KeyStoreError::Failed {
+            .ok_or_else(|| KeystoreError::Failed {
                 msg: String::from("invalid event index"),
             })
     }
@@ -626,26 +626,26 @@ impl<L: Ledger + 'static> MockEventSource<L> {
 
 /// Wait for the transaction involving `sender` and `receivers` to be processed.
 ///
-/// `KeyStore::await_transaction` is not perfect in determining when a receiver has finished
-/// processing a transaction which was generated by a different key store. This is due to limitations
-/// in uniquely identifying a transaction in a way that is consistent across key stores and services.
+/// `Keystore::await_transaction` is not perfect in determining when a receiver has finished
+/// processing a transaction which was generated by a different keystore. This is due to limitations
+/// in uniquely identifying a transaction in a way that is consistent across keystores and services.
 /// This should not matter too much in the real world, since transactions are expected to be
 /// asynchronous, but it is problematic in automated tests.
 ///
-/// This function can be used in a test involving multiple to synchronize all key stores involved in a
+/// This function can be used in a test involving multiple to synchronize all keystores involved in a
 /// transaction to a point in time after that transaction has been processed. It uses
-/// `await_transaction` (which is reliable in the sending key store) to wait until the sender has
+/// `await_transaction` (which is reliable in the sending keystore) to wait until the sender has
 /// processed the transaction. It then uses `sync_with_peer` to wait until each receiver has
 /// processed at least as many events as the sender (which, after `await_transaction`, will include
 /// the events relating to this transaction).
 pub async fn await_transaction<
     'a,
     L: Ledger + 'static,
-    Backend: KeyStoreBackend<'a, L> + Sync + 'a,
+    Backend: KeystoreBackend<'a, L> + Sync + 'a,
 >(
     receipt: &TransactionReceipt<L>,
-    sender: &KeyStore<'a, Backend, L>,
-    receivers: &[&KeyStore<'a, Backend, L>],
+    sender: &Keystore<'a, Backend, L>,
+    receivers: &[&Keystore<'a, Backend, L>],
 ) {
     assert_eq!(
         sender.await_transaction(receipt).await.unwrap(),
@@ -658,6 +658,6 @@ pub async fn await_transaction<
 
 #[macro_use]
 pub mod tests;
-pub use tests::generic_key_store_tests;
+pub use tests::generic_keystore_tests;
 pub mod cli_match;
 pub mod mocks;

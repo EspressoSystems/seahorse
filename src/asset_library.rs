@@ -8,7 +8,7 @@
 //! Collections of and information on CAP assets.
 //!
 //! This module defines [AssetInfo] and [MintInfo], which store auxiliary information about assets
-//! which is useful to key stores but not present in [AssetDefinition]. For example, [AssetInfo] may
+//! which is useful to keystores but not present in [AssetDefinition]. For example, [AssetInfo] may
 //! include a [MintInfo], which contains the secret information needed by the asset creator to mint
 //! more of that asset type.
 //!
@@ -175,9 +175,9 @@ pub struct AssetInfo {
     /// UI-friendly name assigned to this asset.
     ///
     /// The name is purely for display purposes. It is not bound to anything in the CAP protocol,
-    /// and will not be populated when a key store discovers an asset, only when a user manually
-    /// imports or creates that asset with a particular name. Two key stores will only agree on the
-    /// name for an asset if both key stores have imported that asset with the same name.
+    /// and will not be populated when a keystore discovers an asset, only when a user manually
+    /// imports or creates that asset with a particular name. Two keystores will only agree on the
+    /// name for an asset if both keystores have imported that asset with the same name.
     pub name: Option<String>,
     /// UI-friendly description assigned to this asset.
     ///
@@ -185,17 +185,17 @@ pub struct AssetInfo {
     /// can be used however the client wants.
     ///
     /// The description is purely for display purposes. It is not bound to anything in the CAP
-    /// protocol, and will not be populated when a key store discovers an asset, only when a user
-    /// manually imports or creates that asset with a particular description. Two key stores will only
-    /// agree on the description for an asset if both key stores have imported that asset with the same
+    /// protocol, and will not be populated when a keystore discovers an asset, only when a user
+    /// manually imports or creates that asset with a particular description. Two keystores will only
+    /// agree on the description for an asset if both keystores have imported that asset with the same
     /// description.
     pub description: Option<String>,
     /// Icon used when displaying this asset in a GUI.
     ///
     /// The icon is purely for display purposes. It is not bound to anything in the CAP protocol,
-    /// and will not be populated when a key store discovers an asset, only when a user manually
-    /// imports or creates that asset with a particular icon. Two key stores will only agree on the
-    /// icon for an asset if both key stores have imported that asset with the same icon.
+    /// and will not be populated when a keystore discovers an asset, only when a user manually
+    /// imports or creates that asset with a particular icon. Two keystores will only agree on the
+    /// icon for an asset if both keystores have imported that asset with the same icon.
     pub icon: Option<Icon>,
     /// Secret information required to mint an asset.
     pub mint_info: Option<MintInfo>,
@@ -203,7 +203,7 @@ pub struct AssetInfo {
     pub verified: bool,
     /// This asset is not included in the persistent asset library.
     ///
-    /// It will need to be reloaded when the key store is restarted.
+    /// It will need to be reloaded when the keystore is restarted.
     pub temporary: bool,
 }
 
@@ -225,7 +225,7 @@ impl AssetInfo {
         self.mint_info = None;
         self.verified = true;
         // Assets loaded from verified libraries are not included in our persistent state. Instead,
-        // they should be loaded from the verified library each time the key store is launched, in case
+        // they should be loaded from the verified library each time the keystore is launched, in case
         // the verified library changes.
         //
         // Note that if the same asset is imported manually, it will be persisted due to the
@@ -336,7 +336,7 @@ impl FromStr for AssetInfo {
         //
         // Recognized fields are "description", "name", "definition", "mint_description", "seed",
         // and "temporary". Note that the `verified` field cannot be set this way. There is only one
-        // way to create verified `AssetInfo`: using [KeyStore::verify_assets], which performs a
+        // way to create verified `AssetInfo`: using [Keystore::verify_assets], which performs a
         // signature check before marking assets verified.
         let mut definition = None;
         let mut name = None;
@@ -584,8 +584,8 @@ impl Index<AssetCode> for AssetLibrary {
 ///    writes it to a file (for example, using [bincode] serialization). The
 ///    `gen_verified_asset_library` executable that ships with this crate can be used to do this.
 /// 3. The application developer distributes this file to users along with the client application.
-/// 4. The application, upon creating a [KeyStore](crate::KeyStore), deserializes the
-///    [VerifiedAssetLibrary] and calls [KeyStore::verify_assets](crate::KeyStore::verify_assets) with
+/// 4. The application, upon creating a [Keystore](crate::Keystore), deserializes the
+///    [VerifiedAssetLibrary] and calls [Keystore::verify_assets](crate::Keystore::verify_assets) with
 ///    the public key from step 1. This key can be hard-coded in the client application.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct VerifiedAssetLibrary {

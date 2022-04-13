@@ -192,7 +192,7 @@ impl FromStr for EventIndex {
     }
 }
 
-/// The event streams that the wallet can subscribe to.
+/// The event streams that the keystore can subscribe to.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum EventSource {
     QueryService,

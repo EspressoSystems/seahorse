@@ -5,9 +5,9 @@
 // This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 // You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-//! Symmetric encryption for locally persistent wallet data.
+//! Symmetric encryption for locally persistent keystore data.
 //!
-//! All secret data that the wallet stores on the file system is encrypted using this module. The
+//! All secret data that the keystore stores on the file system is encrypted using this module. The
 //! encryption scheme is an encrypt-then-MAC implementation using ChaCha20 as a stream cipher and
 //! SHA3-256 as an HMAC.
 //!
@@ -29,7 +29,7 @@
 //!   recovery) and are usually easiest to carry out anyways. In particular, the length of the
 //!   longest encrypted plaintext (`k` in the table indicates the longest message is `~2^k` AES
 //!   blocks long) significantly reduces the additional amount of work required to carry out the
-//!   attack, but the wallet only encrypts relatively small amounts of data with any one key.
+//!   attack, but the keystore only encrypts relatively small amounts of data with any one key.
 //!   Nevertheless, we can avoid this attack entirely by using a hash-based MAC instead of a
 //!   polynomial MAC.
 //!
@@ -49,7 +49,7 @@
 //!   take a message of 2^128 blocks being encrypted with the same key to have a 2^-256 probability
 //!   of distinguishing plaintexts.
 //!
-//! The wallet uses this library to encrypt data at a small granularity. For the log-structured
+//! The keystore uses this library to encrypt data at a small granularity. For the log-structured
 //! data, each log entry is encrypted separately. Matching the encryption granularity to the
 //! structure of the data is advantageous for a few reasons. First, it allows us to recover most of
 //! the data if a single entry becomes corrupted on disk. More relevantly for this module, it allows
