@@ -1244,9 +1244,7 @@ pub mod generic_keystore_tests {
                 );
                 for (j, asset) in assets.iter().enumerate() {
                     assert_eq!(
-                        keystore
-                            .balance_breakdown(&addresses[0], &asset.code)
-                            .await,
+                        keystore.balance_breakdown(&addresses[0], &asset.code).await,
                         balance[j + 1]
                     );
                 }
@@ -1837,11 +1835,7 @@ pub mod generic_keystore_tests {
         t.check_storage(&ledger, &keystores).await;
 
         // Check that the scan discovered the existing record.
-        keystores[0]
-            .0
-            .await_key_scan(&key.address())
-            .await
-            .unwrap();
+        keystores[0].0.await_key_scan(&key.address()).await.unwrap();
         assert_eq!(
             keystores[0]
                 .0

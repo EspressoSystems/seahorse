@@ -13,7 +13,7 @@ use crate::{
     hd::KeyTree,
     loader::KeystoreLoader,
     txn_builder::TransactionState,
-    KeystoreError, KeystoreState, KeystoreStorage, KeyStreamState, TransactionHistoryEntry,
+    KeyStreamState, KeystoreError, KeystoreState, KeystoreStorage, TransactionHistoryEntry,
 };
 use arbitrary::{Arbitrary, Unstructured};
 use async_std::sync::Arc;
