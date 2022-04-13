@@ -1875,17 +1875,7 @@ pub mod generic_wallet_tests {
         );
 
         // A new wallet joins the system after there are already some transactions on the ledger.
-        let storage = t.create_storage().await;
-        let key_stream = hd::KeyTree::random(&mut rng).0;
-        let backend = t
-            .create_backend(
-                ledger.clone(),
-                vec![],
-                key_stream,
-                Arc::new(Mutex::new(storage)),
-            )
-            .await;
-        let mut wallet2 = Wallet::new(backend).await.unwrap();
+        let mut wallet2 = t.create_wallet(&mut rng, &ledger).await;
         wallet2.sync(ledger.lock().await.now()).await.unwrap();
         let address2 = wallet2
             .generate_user_key("sending_key".into(), None)

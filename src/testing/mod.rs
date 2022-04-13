@@ -220,6 +220,43 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
     ) -> Self::MockNetwork;
     async fn create_storage(&mut self) -> Self::MockStorage;
 
+    async fn create_wallet(
+        &mut self,
+        rng: &mut ChaChaRng,
+        ledger: &Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork, Self::MockStorage>>>,
+    ) -> Wallet<'a, Self::MockBackend, Self::Ledger> {
+        let storage = self.create_storage().await;
+        let key_stream = hd::KeyTree::random(rng).0;
+        let backend = self
+            .create_backend(
+                ledger.clone(),
+                vec![],
+                key_stream,
+                Arc::new(Mutex::new(storage)),
+            )
+            .await;
+        Wallet::new(backend).await.unwrap()
+    }
+
+    async fn create_wallet_with_state(
+        &mut self,
+        rng: &mut ChaChaRng,
+        ledger: &Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork, Self::MockStorage>>>,
+        state: WalletState<'a, Self::Ledger>,
+    ) -> Wallet<'a, Self::MockBackend, Self::Ledger> {
+        let storage = self.create_storage().await;
+        let key_stream = hd::KeyTree::random(rng).0;
+        let backend = self
+            .create_backend(
+                ledger.clone(),
+                vec![],
+                key_stream,
+                Arc::new(Mutex::new(storage)),
+            )
+            .await;
+        Wallet::with_state(backend, state).await.unwrap()
+    }
+
     /// Creates two key pairs/addresses for each wallet.
     ///
     /// `initial_grants` - List of total initial grants for each wallet. Each amount will be
@@ -653,8 +690,55 @@ pub async fn await_transaction<
     }
 }
 
+/// A generic test suite which can be used with any backend implementation.
+///
+/// To use, first implement [SystemUnderTest] for your backend/network. Then, instantiate the
+/// generic tests using the [instantiate_generic_wallet_tests] macro, like so
+/// ```
+/// #[cfg(test)]
+/// mod test {
+///     # type MyMockSystemImpl = seahorse::testing::mocks::MockSystem;
+///     use seahorse::testing::{generic_wallet_tests, instantiate_generic_wallet_tests};
+///     instantiate_generic_wallet_tests!(MyMockSystemImpl);
+/// }
+/// ```
 #[macro_use]
 pub mod tests;
 pub use tests::generic_wallet_tests;
+
+/// Generic benchmarks which can be used with any backend implementation.
+///
+/// To use, first implement [SystemUnderTest] for your backend/network. Then, add a benchmark to
+/// your project by adding to Cargo.toml:
+/// ```toml
+/// [dev-dependencies]
+/// criterion = "0.3"
+///
+/// [[bench]]
+/// name = "seahorse-generic"
+/// harness = false
+/// ```
+///
+/// and create the file `benches/seahorse-generic.rs` with the contents (replacing
+/// `MyMockSystemImpl` with your implementation of [SystemUnderTest]):
+/// ```
+/// use criterion::{criterion_group, criterion_main, Criterion};
+/// use seahorse::testing::instantiate_generic_wallet_bench;
+/// # type MyMockSystemImpl = seahorse::testing::mocks::MockSystem;
+///
+/// pub fn seahorse_generic(c: &mut Criterion) {
+///     instantiate_generic_wallet_bench::<MyMockSystemImpl>(c)
+/// }
+///
+/// criterion_group!(benches, seahorse_generic);
+/// criterion_main!(benches);
+/// ```
+///
+/// You can then run the benchmarks using `cargo bench --features testing`. You may also consider
+/// setting `RUST_FLAGS='-Ctarget-cpu=native'` before running the benchmarks. This can result in a
+/// performance improvement around 7-10%.
+pub mod bench;
+pub use bench::instantiate_generic_wallet_bench;
+
 pub mod cli_match;
 pub mod mocks;

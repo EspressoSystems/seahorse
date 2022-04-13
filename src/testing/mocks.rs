@@ -438,7 +438,7 @@ impl<'a> WalletBackend<'a, cap::Ledger> for MockBackend<'a> {
     }
 }
 
-#[derive(Default)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct MockSystem;
 
 #[async_trait]
