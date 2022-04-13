@@ -8,11 +8,19 @@ use futures::future::join_all;
 use itertools::Itertools;
 use std::collections::hash_map::{Entry, HashMap};
 use std::time::{Duration, Instant};
+use strum::IntoEnumIterator;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, strum_macros::EnumIter, strum_macros::Display)]
+enum ScannerRole {
+    Listener,
+    Receiver,
+    Viewer,
+}
 
 struct BenchLedgerScannerConfig {
     txns_per_block: usize,
     blocks: usize,
-    receiver: bool,
+    role: ScannerRole,
     background: bool,
 }
 
@@ -24,11 +32,15 @@ struct BenchLedgerScanner<'a, T: SystemUnderTest<'a> + Clone> {
     ledger: Arc<Mutex<MockLedger<'a, T>>>,
     // The receiver of transactions in the prepopulated event stream.
     receiver: UserKeyPair,
-    // The index of the latest event.
-    sync_time: EventIndex,
-    // A wallet state snapshotted from the initial state of the ledger (before any events were
-    // generated). This can be used to create a new wallet which will then scan all of the
-    // preopulated events in its main event thread.
+    // Key pairs which can be used to view and freeze transactions in the prepopulated event stream.
+    issuer_keys: Vec<(AuditorKeyPair, FreezerKeyPair)>,
+    // The index of the first event for the benchmark to scan.
+    start_time: EventIndex,
+    // The index of the latest event for the benchmark to scan.
+    end_time: EventIndex,
+    // A wallet state snapshotted from the initial state of the benchmark (after `start_time`). This
+    // can be used to create a new wallet which will then scan all of the preopulated events in its
+    // main event thread.
     initial_state: WalletState<'a, T::Ledger>,
 }
 
@@ -70,7 +82,6 @@ async fn bench_ledger_scanner_setup<
                 .await
                 .set_block_size(cfg.txns_per_block)
                 .unwrap();
-            let initial_state = wallets[0].0.lock().await.state().clone();
 
             // Create a receiving key for output records. We generate this key outside of any
             // particular wallet, because we may or may not add it to a wallet being benched later,
@@ -85,15 +96,61 @@ async fn bench_ledger_scanner_setup<
                 .await
                 .unwrap();
 
+            // Mint a viewable asset for each wallet.
+            let (assets, issuer_keys): (Vec<_>, Vec<_>) = join_all(
+                wallets
+                    .iter_mut()
+                    .enumerate()
+                    .map(|(i, (wallet, addrs))| async move {
+                        let viewing_pub_key =
+                            wallet.generate_audit_key("viewing".into()).await.unwrap();
+                        let viewing_key = wallet
+                            .get_auditor_private_key(&viewing_pub_key)
+                            .await
+                            .unwrap();
+                        let freezing_pub_key =
+                            wallet.generate_freeze_key("freezing".into()).await.unwrap();
+                        let freezing_key = wallet
+                            .get_freezer_private_key(&freezing_pub_key)
+                            .await
+                            .unwrap();
+                        let asset = wallet
+                            .define_asset(
+                                format!("asset {}", i),
+                                &[],
+                                AssetPolicy::default()
+                                    .set_auditor_pub_key(viewing_pub_key)
+                                    .set_freezer_pub_key(freezing_pub_key)
+                                    .reveal_record_opening()
+                                    .unwrap(),
+                            )
+                            .await
+                            .unwrap();
+                        let receipt = wallet
+                            .mint(&addrs[0], 1, &asset.code, 1u64 << 32, addrs[0].clone())
+                            .await
+                            .unwrap();
+                        wallet.await_transaction(&receipt).await.unwrap();
+                        (asset.code, (viewing_key, freezing_key))
+                    }),
+            )
+            .await
+            .into_iter()
+            .unzip();
+
+            t.sync(&ledger, &wallets).await;
+
             // Create events by making a number of transfers. We transfer from a number of different
             // wallets so we can easily parallelize the transfers, which speeds things up and allows
             // them all to be included in the same block.
+            let start_time = ledger.lock().await.now();
+            let initial_state = wallets[0].0.lock().await.state().clone();
             for _ in 0..cfg.blocks {
-                join_all(wallets.iter_mut().map(|(wallet, _)| {
+                join_all(wallets.iter_mut().zip(&assets).map(|((wallet, _), asset)| {
                     let receiver = receiver.address();
                     async move {
                         let receipt = wallet
-                            .transfer(None, &AssetCode::native(), &[(receiver, 1)], 1)
+                            .transfer(None, asset, &[(receiver, 1)], 1)
                             .await
                             .unwrap();
                         wallet.await_transaction(&receipt).await.unwrap();
@@ -101,14 +158,16 @@ async fn bench_ledger_scanner_setup<
                 }))
                 .await;
             }
-            let sync_time = ledger.lock().await.now();
+            let end_time = ledger.lock().await.now();
 
             let bench = BenchLedgerScanner {
                 t,
                 rng,
                 ledger,
                 receiver,
-                sync_time,
+                issuer_keys,
+                start_time,
+                end_time,
                 initial_state,
             };
             e.insert(bench.clone());
@@ -128,7 +187,7 @@ fn bench_ledger_scanner<
     cfg: BenchLedgerScannerConfig,
 ) {
     let mut bench = block_on(bench_ledger_scanner_setup(&cfg, ledger_cache));
-    let scan_key = if cfg.receiver {
+    let scan_key = if cfg.role == ScannerRole::Receiver {
         bench.receiver.clone()
     } else {
         UserKeyPair::generate(&mut bench.rng)
@@ -146,10 +205,10 @@ fn bench_ledger_scanner<
                     // it is not consuming CPU time and interfering with the benchmark of the
                     // background thread, and so that the background thread has to run all the way
                     // to `sync_time` in order to catch up.
-                    w.sync(bench.sync_time).await.unwrap();
+                    w.sync(bench.end_time).await.unwrap();
 
                     let start = Instant::now();
-                    w.add_user_key(scan_key.clone(), "key".into(), EventIndex::default())
+                    w.add_user_key(scan_key.clone(), "key".into(), bench.start_time)
                         .await
                         .unwrap();
                     w.await_key_scan(&scan_key.address()).await.unwrap();
@@ -182,7 +241,7 @@ fn bench_ledger_scanner<
                         .create_wallet_with_state(&mut bench.rng, &bench.ledger, state)
                         .await;
                     // Wait for the wallet to scan all the events.
-                    w.sync(bench.sync_time).await.unwrap();
+                    w.sync(bench.end_time).await.unwrap();
                     dur += start.elapsed();
                 }
                 dur
@@ -201,10 +260,10 @@ pub fn instantiate_generic_wallet_bench<'a, T: SystemUnderTest<'a> + Clone>(c: &
     // We keep the total number of blocks constant throughout, since there is no parallelism between
     // blocks and therefore the scaling with number of blocks is perfectly linear. In other words,
     // measuring with varying numbers of blocks would take a lot longer for little benefit.
-    for (receiver, background) in [false, true].iter().cartesian_product(&[false, true]) {
+    for (role, background) in ScannerRole::iter().cartesian_product(&[false, true]) {
         let mut group = c.benchmark_group(format!(
-            "seahorse:scanner{},{}",
-            if *receiver { "receiver" } else { "listener" },
+            "seahorse:scanner:{},{}",
+            role,
             if *background { "bg" } else { "fg" }
         ));
         group.sampling_mode(SamplingMode::Flat).sample_size(10);
@@ -224,7 +283,7 @@ pub fn instantiate_generic_wallet_bench<'a, T: SystemUnderTest<'a> + Clone>(c: &
                                 // benchmarks, and we only care about scaling/parallelism within a
                                 // block anyways.
                                 blocks: 1,
-                                receiver: *receiver,
+                                role,
                                 background: *background,
                             },
                         )

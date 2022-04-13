@@ -1080,7 +1080,7 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
         txn_hash: Option<TransactionHash<L>>,
         records: &[RecordOpening],
     ) {
-        let history = receive_history_entry(block_id, txn_id, kind, txn_hash, records);
+        let history = receive_history_entry(kind, txn_hash, records);
 
         if let Err(err) = session
             .backend
