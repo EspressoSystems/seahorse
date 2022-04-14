@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 env:
-  RUST_FLAGS: -Ctarget-cpu=native
+  RUSTFLAGS: -Ctarget-cpu=native
 
 jobs:
   build:

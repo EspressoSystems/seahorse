@@ -735,7 +735,7 @@ pub use tests::generic_wallet_tests;
 /// ```
 ///
 /// You can then run the benchmarks using `cargo bench --features testing`. You may also consider
-/// setting `RUST_FLAGS='-Ctarget-cpu=native'` before running the benchmarks. This can result in a
+/// setting `RUSTFLAGS='-Ctarget-cpu=native'` before running the benchmarks. This can result in a
 /// performance improvement around 7-10%.
 pub mod bench;
 pub use bench::instantiate_generic_wallet_bench;

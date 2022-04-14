@@ -61,10 +61,11 @@ async fn bench_ledger_scanner_setup<
     T: SystemUnderTest<'a, Ledger = L> + Clone,
     L: 'static + Ledger,
 >(
-    cfg: &BenchLedgerScannerConfig,
+    blocks: usize,
+    txns_per_block: usize,
     ledger_cache: &mut LedgerCache<'a, T>,
 ) -> BenchLedgerScanner<'a, T> {
-    match ledger_cache.entry((cfg.blocks, cfg.txns_per_block)) {
+    match ledger_cache.entry((blocks, txns_per_block)) {
         Entry::Occupied(e) => e.get().clone(),
         Entry::Vacant(e) => {
             let mut t = T::default();
@@ -73,15 +74,11 @@ async fn bench_ledger_scanner_setup<
             let (ledger, mut wallets) = t
                 .create_test_network(
                     &[(1, 2), (2, 2), (3, 3)],
-                    vec![1u64 << 32; cfg.txns_per_block],
+                    vec![1u64 << 32; txns_per_block],
                     &mut now,
                 )
                 .await;
-            ledger
-                .lock()
-                .await
-                .set_block_size(cfg.txns_per_block)
-                .unwrap();
+            ledger.lock().await.set_block_size(txns_per_block).unwrap();
 
             // Create a receiving key for output records. We generate this key outside of any
             // particular wallet, because we may or may not add it to a wallet being benched later,
@@ -138,6 +135,8 @@ async fn bench_ledger_scanner_setup<
             .into_iter()
             .unzip();
 
+            // Wait for the wallets to catch up to the state before we snapshot the `initial_state`
+            // wallet.
             t.sync(&ledger, &wallets).await;
 
             // Create events by making a number of transfers. We transfer from a number of different
@@ -145,7 +144,7 @@ async fn bench_ledger_scanner_setup<
             // them all to be included in the same block.
             let start_time = ledger.lock().await.now();
             let initial_state = wallets[0].0.lock().await.state().clone();
-            for _ in 0..cfg.blocks {
+            for _ in 0..blocks {
                 join_all(wallets.iter_mut().zip(&assets).map(|((wallet, _), asset)| {
                     let receiver = receiver.address();
                     async move {
@@ -158,6 +157,10 @@ async fn bench_ledger_scanner_setup<
                 }))
                 .await;
             }
+            // Let the wallets finish processing events. This ensures that `end_time` is up-to-date
+            // when we snapshot it below, and it keeps the setup wallets' event threads from
+            // interfering with the benchmark later on.
+            t.sync(&ledger, &wallets).await;
             let end_time = ledger.lock().await.now();
 
             let bench = BenchLedgerScanner {
@@ -176,17 +179,16 @@ async fn bench_ledger_scanner_setup<
     }
 }
 
-fn bench_ledger_scanner<
+fn bench_ledger_scanner_run<
     'a,
     'b,
     T: SystemUnderTest<'a> + Clone,
     M: Measurement<Value = Duration>,
 >(
     mut b: AsyncBencher<'_, 'b, AsyncStdExecutor, M>,
-    ledger_cache: &mut LedgerCache<'a, T>,
+    mut bench: BenchLedgerScanner<'a, T>,
     cfg: BenchLedgerScannerConfig,
 ) {
-    let mut bench = block_on(bench_ledger_scanner_setup(&cfg, ledger_cache));
     let scan_key = if cfg.role == ScannerRole::Receiver {
         bench.receiver.clone()
     } else {
@@ -251,7 +253,24 @@ fn bench_ledger_scanner<
 }
 
 pub fn instantiate_generic_wallet_bench<'a, T: SystemUnderTest<'a> + Clone>(c: &mut Criterion) {
+    // Only generate one block per benchmark. Criterion is optimized for smaller benchmarks, and we
+    // only care about scaling/parallelism within a block anyways.
+    let blocks = 1;
+    let txns_per_block = [1, 5, 10, 25, 50];
+
+    // Prepopulate the cache with all the benchmark setups we will need.
     let mut ledger_cache = LedgerCache::default();
+    for txns_per_block in &txns_per_block {
+        println!(
+            "Pregenerating {} blocks of {} transactions each",
+            blocks, *txns_per_block
+        );
+        block_on(bench_ledger_scanner_setup(
+            blocks,
+            *txns_per_block,
+            &mut ledger_cache,
+        ));
+    }
 
     // We create a benchmark group for each combination of {receiver, listener} and
     // {background, foreground}. In each group, we measure the performance with varying numbers of
@@ -266,23 +285,27 @@ pub fn instantiate_generic_wallet_bench<'a, T: SystemUnderTest<'a> + Clone>(c: &
             role,
             if *background { "bg" } else { "fg" }
         ));
-        group.sampling_mode(SamplingMode::Flat).sample_size(10);
+        group
+            .sampling_mode(SamplingMode::Flat)
+            .sample_size(20)
+            // Set quite a long warmup and measurement time as this is a slow benchmark.
+            .warm_up_time(Duration::from_secs(15))
+            .measurement_time(Duration::from_secs(30));
         for txns_per_block in &[1, 5, 10, 25, 50] {
+            let bench = ledger_cache[&(blocks, *txns_per_block)].clone();
             group
-                .throughput(Throughput::Elements(*txns_per_block))
+                .throughput(Throughput::Elements(*txns_per_block as u64))
                 .bench_with_input(
                     BenchmarkId::from_parameter(txns_per_block),
                     txns_per_block,
                     |b, &txns_per_block| {
-                        bench_ledger_scanner::<T, _>(
+                        bench_ledger_scanner_run::<T, _>(
                             b.to_async(AsyncStdExecutor),
-                            &mut ledger_cache,
+                            bench.clone(),
                             BenchLedgerScannerConfig {
                                 txns_per_block: txns_per_block as usize,
-                                // Only generate one block. Criterion is optimized for smaller
-                                // benchmarks, and we only care about scaling/parallelism within a
-                                // block anyways.
-                                blocks: 1,
+
+                                blocks,
                                 role,
                                 background: *background,
                             },

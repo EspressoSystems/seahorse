@@ -3089,7 +3089,7 @@ dependencies = [
 [[package]]
 name = "reef"
 version = "0.2.0"
-source = "git+https://github.com/EspressoSystems/reef.git#e5457f0e078a7f2bc451def9eba2b8b3c35ed80c"
+source = "git+https://github.com/EspressoSystems/reef.git?branch=jeb-merkle-height#04e020acb1d7bc90784c481c8f4700eddf2a093e"
 dependencies = [
  "arbitrary",
  "arbitrary-wrappers",
@@ -3101,7 +3101,7 @@ dependencies = [
  "lazy_static",
  "rand_chacha 0.3.1",
  "serde",
- "snafu 0.6.10",
+ "snafu 0.7.0",
  "strum_macros",
 ]
 
