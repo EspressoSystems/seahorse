@@ -6,7 +6,7 @@ use criterion::{
 };
 use futures::future::join_all;
 use itertools::Itertools;
-use std::collections::hash_map::{Entry, HashMap};
+use std::collections::hash_map::HashMap;
 use std::time::{Duration, Instant};
 use strum::IntoEnumIterator;
 
@@ -22,6 +22,18 @@ struct BenchLedgerScannerConfig {
     blocks: usize,
     role: ScannerRole,
     background: bool,
+}
+
+#[derive(Clone)]
+struct BenchLedgerScannerTransactions<L: Ledger> {
+    // Mint transactions which must be submitted before the transfers.
+    mints: Vec<(MintNote, TransactionInfo<L>)>,
+    // Independent transfers, one for each asset type.
+    transfers: Vec<(TransferNote, TransactionInfo<L>)>,
+    // Receiver of transfers.
+    receiver: UserKeyPair,
+    // Asset types used in the transactions, with issuer keys.
+    assets: Vec<(AssetInfo, AuditorKeyPair, FreezerKeyPair)>,
 }
 
 #[derive(Clone)]
@@ -56,6 +68,115 @@ type MockLedger<'a, T> = super::MockLedger<
 // dramatically decreases the time required to run the benchmarks.
 type LedgerCache<'a, T> = HashMap<(usize, usize), BenchLedgerScanner<'a, T>>;
 
+// Generate `n` independent transfers. Since the transfers are independent (no two involve the same
+// assets) they can be grouped into blocks and played back in whatever way the benchmark requires.
+async fn generate_independent_transactions<
+    'a,
+    T: SystemUnderTest<'a, Ledger = L> + Clone,
+    L: 'static + Ledger,
+>(
+    n: usize,
+) -> BenchLedgerScannerTransactions<L> {
+    let mut t = T::default();
+    let mut rng = ChaChaRng::from_seed([0; 32]);
+    let mut now = Instant::now();
+    let (ledger, mut wallets) = t
+        .create_test_network(&[(1, 2), (2, 2), (3, 3)], vec![1u64 << 32; n], &mut now)
+        .await;
+    ledger.lock().await.set_block_size(n).unwrap();
+
+    // Create a receiving key for output records. We generate this key outside of any
+    // particular wallet, because we may or may not add it to a wallet being benched later,
+    // depending on whether we are benchmarking the receiver of transactions or a
+    // third-party observer.
+    let receiver = UserKeyPair::generate(&mut rng);
+
+    // Add the key to a fresh wallet to force it to be registered in the address book. We
+    // will not use this wallet again.
+    let mut w = t.create_wallet(&mut rng, &ledger).await;
+    w.add_user_key(receiver.clone(), "key".into(), EventIndex::default())
+        .await
+        .unwrap();
+
+    // Mint a viewable asset for each wallet.
+    let (assets, mints): (Vec<_>, Vec<_>) = join_all(wallets.iter_mut().enumerate().map(
+        |(i, (wallet, addrs))| async move {
+            let viewing_pub_key = wallet.generate_audit_key("viewing".into()).await.unwrap();
+            let viewing_key = wallet
+                .get_auditor_private_key(&viewing_pub_key)
+                .await
+                .unwrap();
+            let freezing_pub_key = wallet.generate_freeze_key("freezing".into()).await.unwrap();
+            let freezing_key = wallet
+                .get_freezer_private_key(&freezing_pub_key)
+                .await
+                .unwrap();
+            let asset = wallet
+                .define_asset(
+                    format!("asset {}", i),
+                    &[],
+                    AssetPolicy::default()
+                        .set_auditor_pub_key(viewing_pub_key)
+                        .set_freezer_pub_key(freezing_pub_key)
+                        .reveal_record_opening()
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            let (mint_note, mint_info) = wallet
+                .build_mint(&addrs[0], 1, &asset.code, 1u64 << 32, addrs[0].clone())
+                .await
+                .unwrap();
+            let receipt = wallet
+                .submit_cap(mint_note.clone().into(), mint_info.clone())
+                .await
+                .unwrap();
+            wallet.await_transaction(&receipt).await.unwrap();
+            (
+                (AssetInfo::from(asset), viewing_key, freezing_key),
+                (mint_note, mint_info),
+            )
+        },
+    ))
+    .await
+    .into_iter()
+    .unzip();
+
+    // Create events by making a number of transfers. We transfer from a number of different
+    // wallets so we can easily parallelize the transfers, which speeds things up and allows
+    // them all to be included in the same block.
+    let transfers = join_all(wallets.iter_mut().zip(&assets).map(
+        |((wallet, _), (asset, _, _))| {
+            let receiver = receiver.address();
+            async move {
+                wallet
+                    .build_transfer(
+                        None,
+                        &asset.definition.code,
+                        &[(receiver, 1, false)],
+                        1,
+                        vec![],
+                        None,
+                    )
+                    .await
+                    .unwrap()
+            }
+        },
+    ))
+    .await;
+
+    // Let the wallets finish processing events. This keeps the setup wallets' event threads from
+    // interfering with the benchmark later on.
+    t.sync(&ledger, &wallets).await;
+
+    BenchLedgerScannerTransactions {
+        mints,
+        transfers,
+        receiver,
+        assets,
+    }
+}
+
 async fn bench_ledger_scanner_setup<
     'a,
     T: SystemUnderTest<'a, Ledger = L> + Clone,
@@ -63,119 +184,78 @@ async fn bench_ledger_scanner_setup<
 >(
     blocks: usize,
     txns_per_block: usize,
-    ledger_cache: &mut LedgerCache<'a, T>,
+    txns: BenchLedgerScannerTransactions<L>,
 ) -> BenchLedgerScanner<'a, T> {
-    match ledger_cache.entry((blocks, txns_per_block)) {
-        Entry::Occupied(e) => e.get().clone(),
-        Entry::Vacant(e) => {
-            let mut t = T::default();
-            let mut rng = ChaChaRng::from_seed([0; 32]);
-            let mut now = Instant::now();
-            let (ledger, mut wallets) = t
-                .create_test_network(
-                    &[(1, 2), (2, 2), (3, 3)],
-                    vec![1u64 << 32; txns_per_block],
-                    &mut now,
-                )
-                .await;
-            ledger.lock().await.set_block_size(txns_per_block).unwrap();
+    let mut t = T::default();
+    let mut rng = ChaChaRng::from_seed([0; 32]);
+    let mut now = Instant::now();
+    let (ledger, mut wallets) = t
+        .create_test_network(
+            &[(1, 2), (2, 2), (3, 3)],
+            vec![1u64 << 32; txns_per_block],
+            &mut now,
+        )
+        .await;
+    ledger.lock().await.set_block_size(txns_per_block).unwrap();
 
-            // Create a receiving key for output records. We generate this key outside of any
-            // particular wallet, because we may or may not add it to a wallet being benched later,
-            // depending on whether we are benchmarking the receiver of transactions or a
-            // third-party observer.
-            let receiver = UserKeyPair::generate(&mut rng);
+    // Add the receiver key to a fresh wallet to force it to be registered in the address
+    // book. We will not use this wallet again.
+    let mut w = t.create_wallet(&mut rng, &ledger).await;
+    w.add_user_key(txns.receiver.clone(), "key".into(), EventIndex::default())
+        .await
+        .unwrap();
 
-            // Add the key to a fresh wallet to force it to be registered in the address book. We
-            // will not use this wallet again.
-            let mut w = t.create_wallet(&mut rng, &ledger).await;
-            w.add_user_key(receiver.clone(), "key".into(), EventIndex::default())
+    // Mint a viewable asset for each wallet.
+    join_all(wallets.iter_mut().zip(txns.mints).map(
+        |((wallet, _), (mint_note, mint_info))| async move {
+            let receipt = wallet
+                .submit_cap(mint_note.into(), mint_info)
                 .await
                 .unwrap();
+            wallet.await_transaction(&receipt).await.unwrap();
+        },
+    ))
+    .await;
 
-            // Mint a viewable asset for each wallet.
-            let assets = join_all(wallets.iter_mut().enumerate().map(
-                |(i, (wallet, addrs))| async move {
-                    let viewing_pub_key =
-                        wallet.generate_audit_key("viewing".into()).await.unwrap();
-                    let viewing_key = wallet
-                        .get_auditor_private_key(&viewing_pub_key)
-                        .await
-                        .unwrap();
-                    let freezing_pub_key =
-                        wallet.generate_freeze_key("freezing".into()).await.unwrap();
-                    let freezing_key = wallet
-                        .get_freezer_private_key(&freezing_pub_key)
-                        .await
-                        .unwrap();
-                    let asset = wallet
-                        .define_asset(
-                            format!("asset {}", i),
-                            &[],
-                            AssetPolicy::default()
-                                .set_auditor_pub_key(viewing_pub_key)
-                                .set_freezer_pub_key(freezing_pub_key)
-                                .reveal_record_opening()
-                                .unwrap(),
-                        )
-                        .await
-                        .unwrap();
+    // Wait for the wallets to catch up to the state before we snapshot the `initial_state`
+    // wallet.
+    t.sync(&ledger, &wallets).await;
+
+    // Create events by making a number of transfers. We transfer from a number of different
+    // wallets so we can easily parallelize the transfers, which speeds things up and allows
+    // them all to be included in the same block.
+    let start_time = ledger.lock().await.now();
+    let initial_state = wallets[0].0.lock().await.state().clone();
+    for i in 0..blocks {
+        join_all(
+            wallets
+                .iter_mut()
+                .zip(&txns.transfers[i * txns_per_block..])
+                .map(|((wallet, _), (xfr_note, xfr_info))| async move {
                     let receipt = wallet
-                        .mint(&addrs[0], 1, &asset.code, 1u64 << 32, addrs[0].clone())
+                        .submit_cap(xfr_note.clone().into(), xfr_info.clone())
                         .await
                         .unwrap();
                     wallet.await_transaction(&receipt).await.unwrap();
-                    (AssetInfo::from(asset), viewing_key, freezing_key)
-                },
-            ))
-            .await;
+                }),
+        )
+        .await;
+    }
+    // Let the wallets finish processing events. This ensures that `end_time` is up-to-date
+    // when we snapshot it below, and it keeps the setup wallets' event threads from
+    // interfering with the benchmark later on.
+    t.sync(&ledger, &wallets).await;
+    let end_time = ledger.lock().await.now();
 
-            // Wait for the wallets to catch up to the state before we snapshot the `initial_state`
-            // wallet.
-            t.sync(&ledger, &wallets).await;
-
-            // Create events by making a number of transfers. We transfer from a number of different
-            // wallets so we can easily parallelize the transfers, which speeds things up and allows
-            // them all to be included in the same block.
-            let start_time = ledger.lock().await.now();
-            let initial_state = wallets[0].0.lock().await.state().clone();
-            for _ in 0..blocks {
-                join_all(
-                    wallets
-                        .iter_mut()
-                        .zip(&assets)
-                        .map(|((wallet, _), (asset, _, _))| {
-                            let receiver = receiver.address();
-                            async move {
-                                let receipt = wallet
-                                    .transfer(None, &asset.definition.code, &[(receiver, 1)], 1)
-                                    .await
-                                    .unwrap();
-                                wallet.await_transaction(&receipt).await.unwrap();
-                            }
-                        }),
-                )
-                .await;
-            }
-            // Let the wallets finish processing events. This ensures that `end_time` is up-to-date
-            // when we snapshot it below, and it keeps the setup wallets' event threads from
-            // interfering with the benchmark later on.
-            t.sync(&ledger, &wallets).await;
-            let end_time = ledger.lock().await.now();
-
-            let bench = BenchLedgerScanner {
-                t,
-                rng,
-                ledger,
-                receiver,
-                assets,
-                start_time,
-                end_time,
-                initial_state,
-            };
-            e.insert(bench.clone());
-            bench
-        }
+    BenchLedgerScanner {
+        t,
+        rng,
+        ledger,
+        receiver: txns.receiver,
+        assets: txns.assets,
+        start_time,
+        end_time,
+        initial_state,
     }
 }
 
@@ -284,19 +364,27 @@ pub fn instantiate_generic_wallet_bench<'a, T: SystemUnderTest<'a> + Clone>(c: &
     let blocks = 1;
     let txns_per_block = [1, 5, 10, 25, 50];
 
+    // Pregenerate the maximum number of independent transactions we will ever need. Since they are
+    // independent, they can be grouped into blocks and submitted however we want in order to
+    // create the various benchmark setups.
+    let txns = block_on(generate_independent_transactions::<T, T::Ledger>(
+        *txns_per_block.last().unwrap(),
+    ));
+
     // Prepopulate the cache with all the benchmark setups we will need.
-    let mut ledger_cache = LedgerCache::default();
-    for txns_per_block in &txns_per_block {
-        println!(
-            "Pregenerating {} blocks of {} transactions each",
-            blocks, *txns_per_block
-        );
-        block_on(bench_ledger_scanner_setup(
-            blocks,
-            *txns_per_block,
-            &mut ledger_cache,
-        ));
-    }
+    let ledger_cache = txns_per_block
+        .iter()
+        .map(|&txns_per_block| {
+            (
+                (blocks, txns_per_block),
+                block_on(bench_ledger_scanner_setup(
+                    blocks,
+                    txns_per_block,
+                    txns.clone(),
+                )),
+            )
+        })
+        .collect::<HashMap<_, _>>();
 
     // We create a benchmark group for each combination of {receiver, listener} and
     // {background, foreground}. In each group, we measure the performance with varying numbers of
