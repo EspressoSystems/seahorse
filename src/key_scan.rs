@@ -396,12 +396,11 @@ pub fn receive_history_entry<L: Ledger>(
         senders: Vec::new(),
         receivers: records
             .iter()
-            .skip(1)
             .filter_map(|ro| {
                 if ro.asset_def.code == txn_asset {
                     Some((ro.pub_key.address(), ro.amount))
                 } else {
-                    // Ignore recores of the wrong asset type (e.g. the fee change output for a non-
+                    // Ignore records of the wrong asset type (e.g. the fee change output for a non-
                     // native asset transfer).
                     None
                 }
