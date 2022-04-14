@@ -32,8 +32,8 @@ struct BenchLedgerScanner<'a, T: SystemUnderTest<'a> + Clone> {
     ledger: Arc<Mutex<MockLedger<'a, T>>>,
     // The receiver of transactions in the prepopulated event stream.
     receiver: UserKeyPair,
-    // Key pairs which can be used to view and freeze transactions in the prepopulated event stream.
-    issuer_keys: Vec<(AuditorKeyPair, FreezerKeyPair)>,
+    // Viewable and freezable assets used in pregenerated transactions.
+    assets: Vec<(AssetInfo, AuditorKeyPair, FreezerKeyPair)>,
     // The index of the first event for the benchmark to scan.
     start_time: EventIndex,
     // The index of the latest event for the benchmark to scan.
@@ -94,46 +94,41 @@ async fn bench_ledger_scanner_setup<
                 .unwrap();
 
             // Mint a viewable asset for each wallet.
-            let (assets, issuer_keys): (Vec<_>, Vec<_>) = join_all(
-                wallets
-                    .iter_mut()
-                    .enumerate()
-                    .map(|(i, (wallet, addrs))| async move {
-                        let viewing_pub_key =
-                            wallet.generate_audit_key("viewing".into()).await.unwrap();
-                        let viewing_key = wallet
-                            .get_auditor_private_key(&viewing_pub_key)
-                            .await
-                            .unwrap();
-                        let freezing_pub_key =
-                            wallet.generate_freeze_key("freezing".into()).await.unwrap();
-                        let freezing_key = wallet
-                            .get_freezer_private_key(&freezing_pub_key)
-                            .await
-                            .unwrap();
-                        let asset = wallet
-                            .define_asset(
-                                format!("asset {}", i),
-                                &[],
-                                AssetPolicy::default()
-                                    .set_auditor_pub_key(viewing_pub_key)
-                                    .set_freezer_pub_key(freezing_pub_key)
-                                    .reveal_record_opening()
-                                    .unwrap(),
-                            )
-                            .await
-                            .unwrap();
-                        let receipt = wallet
-                            .mint(&addrs[0], 1, &asset.code, 1u64 << 32, addrs[0].clone())
-                            .await
-                            .unwrap();
-                        wallet.await_transaction(&receipt).await.unwrap();
-                        (asset.code, (viewing_key, freezing_key))
-                    }),
-            )
-            .await
-            .into_iter()
-            .unzip();
+            let assets = join_all(wallets.iter_mut().enumerate().map(
+                |(i, (wallet, addrs))| async move {
+                    let viewing_pub_key =
+                        wallet.generate_audit_key("viewing".into()).await.unwrap();
+                    let viewing_key = wallet
+                        .get_auditor_private_key(&viewing_pub_key)
+                        .await
+                        .unwrap();
+                    let freezing_pub_key =
+                        wallet.generate_freeze_key("freezing".into()).await.unwrap();
+                    let freezing_key = wallet
+                        .get_freezer_private_key(&freezing_pub_key)
+                        .await
+                        .unwrap();
+                    let asset = wallet
+                        .define_asset(
+                            format!("asset {}", i),
+                            &[],
+                            AssetPolicy::default()
+                                .set_auditor_pub_key(viewing_pub_key)
+                                .set_freezer_pub_key(freezing_pub_key)
+                                .reveal_record_opening()
+                                .unwrap(),
+                        )
+                        .await
+                        .unwrap();
+                    let receipt = wallet
+                        .mint(&addrs[0], 1, &asset.code, 1u64 << 32, addrs[0].clone())
+                        .await
+                        .unwrap();
+                    wallet.await_transaction(&receipt).await.unwrap();
+                    (AssetInfo::from(asset), viewing_key, freezing_key)
+                },
+            ))
+            .await;
 
             // Wait for the wallets to catch up to the state before we snapshot the `initial_state`
             // wallet.
@@ -145,16 +140,21 @@ async fn bench_ledger_scanner_setup<
             let start_time = ledger.lock().await.now();
             let initial_state = wallets[0].0.lock().await.state().clone();
             for _ in 0..blocks {
-                join_all(wallets.iter_mut().zip(&assets).map(|((wallet, _), asset)| {
-                    let receiver = receiver.address();
-                    async move {
-                        let receipt = wallet
-                            .transfer(None, asset, &[(receiver, 1)], 1)
-                            .await
-                            .unwrap();
-                        wallet.await_transaction(&receipt).await.unwrap();
-                    }
-                }))
+                join_all(
+                    wallets
+                        .iter_mut()
+                        .zip(&assets)
+                        .map(|((wallet, _), (asset, _, _))| {
+                            let receiver = receiver.address();
+                            async move {
+                                let receipt = wallet
+                                    .transfer(None, &asset.definition.code, &[(receiver, 1)], 1)
+                                    .await
+                                    .unwrap();
+                                wallet.await_transaction(&receipt).await.unwrap();
+                            }
+                        }),
+                )
                 .await;
             }
             // Let the wallets finish processing events. This ensures that `end_time` is up-to-date
@@ -168,7 +168,7 @@ async fn bench_ledger_scanner_setup<
                 rng,
                 ledger,
                 receiver,
-                issuer_keys,
+                assets,
                 start_time,
                 end_time,
                 initial_state,
@@ -194,6 +194,25 @@ fn bench_ledger_scanner_run<
     } else {
         UserKeyPair::generate(&mut bench.rng)
     };
+
+    // Set up the wallet state for the benchmark.
+    let state = &mut bench.initial_state;
+    // If this is a viewing benchmark, add the viewable assets and viewing keys to the state.
+    if cfg.role == ScannerRole::Viewer {
+        for (asset, viewing_key, freezing_key) in &bench.assets {
+            state.freezing_accounts.insert(
+                freezing_key.pub_key(),
+                Account::new(freezing_key.clone(), "freezing".into()),
+            );
+            state.viewing_accounts.insert(
+                viewing_key.pub_key(),
+                Account::new(viewing_key.clone(), "viewing".into()),
+            );
+            state.assets.add_audit_key(viewing_key.pub_key());
+            state.assets.insert(asset.clone());
+        }
+    }
+
     if cfg.background {
         // To create a background scan, just add a new key to an existing wallet.
         b.iter_custom(|n| {
@@ -202,7 +221,15 @@ fn bench_ledger_scanner_run<
             async move {
                 let mut dur = Duration::default();
                 for _ in 0..n {
-                    let mut w = bench.t.create_wallet(&mut bench.rng, &bench.ledger).await;
+                    let mut w = bench
+                        .t
+                        .create_wallet_with_state(
+                            &mut bench.rng,
+                            &bench.ledger,
+                            bench.initial_state.clone(),
+                        )
+                        .await;
+
                     // Wait for the main event thread to catch up before starting the timer, so that
                     // it is not consuming CPU time and interfering with the benchmark of the
                     // background thread, and so that the background thread has to run all the way
@@ -232,10 +259,9 @@ fn bench_ledger_scanner_run<
                     .sending_accounts
                     .insert(scan_key.address(), Account::new(scan_key, "key".into()));
 
-                let state = bench.initial_state.clone();
                 let mut dur = Duration::default();
                 for _ in 0..n {
-                    let state = state.clone();
+                    let state = bench.initial_state.clone();
                     let start = Instant::now();
                     // Create the wallet, starting the main event thread.
                     let w = bench
@@ -291,7 +317,7 @@ pub fn instantiate_generic_wallet_bench<'a, T: SystemUnderTest<'a> + Clone>(c: &
             // Set quite a long warmup and measurement time as this is a slow benchmark.
             .warm_up_time(Duration::from_secs(15))
             .measurement_time(Duration::from_secs(30));
-        for txns_per_block in &[1, 5, 10, 25, 50] {
+        for txns_per_block in &txns_per_block {
             let bench = ledger_cache[&(blocks, *txns_per_block)].clone();
             group
                 .throughput(Throughput::Elements(*txns_per_block as u64))
