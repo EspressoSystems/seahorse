@@ -52,13 +52,13 @@ jf-primitives = { features=["std"], git = "https://github.com/EspressoSystems/je
 jf-utils = { features=["std"], git = "https://github.com/EspressoSystems/jellyfish.git" }
 arbitrary-wrappers = { git = "https://github.com/EspressoSystems/arbitrary-wrappers.git" }
 net = { git = "https://github.com/EspressoSystems/net.git" }
-reef = { git = "https://github.com/EspressoSystems/reef.git", branch = "jeb-merkle-height" }
+reef = { git = "https://github.com/EspressoSystems/reef.git" }
 tagged-base64 = { git = "https://github.com/EspressoSystems/tagged-base64.git", branch = "main" }
 
 [dev-dependencies]
 criterion = {version = "0.3.3", features = ["async_std", "html_reports", "cargo_bench_support", "csv_output"] }
 proptest = "0.8.7"
-reef = { git = "https://github.com/EspressoSystems/reef.git", branch = "jeb-merkle-height", features = ["testing"] }
+reef = { git = "https://github.com/EspressoSystems/reef.git", features = ["testing"] }
 
 [features]
 testing = ["proptest", "criterion", "reef/testing"]
