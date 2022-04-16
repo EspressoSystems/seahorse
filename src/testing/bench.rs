@@ -32,8 +32,12 @@ struct BenchLedgerScannerTransactions<L: Ledger> {
     transfers: Vec<(TransferNote, TransactionInfo<L>)>,
     // Receiver of transfers.
     receiver: UserKeyPair,
-    // Asset types used in the transactions, with issuer keys.
-    assets: Vec<(AssetInfo, AuditorKeyPair, FreezerKeyPair)>,
+    // Asset types used in the transactions.
+    assets: Vec<AssetInfo>,
+    // Viewing key for assets used in the transactions.
+    viewing_key: AuditorKeyPair,
+    // Freezing key for assets used in the transactions.
+    freezing_key: FreezerKeyPair,
 }
 
 #[derive(Clone)]
@@ -45,7 +49,11 @@ struct BenchLedgerScanner<'a, T: SystemUnderTest<'a> + Clone> {
     // The receiver of transactions in the prepopulated event stream.
     receiver: UserKeyPair,
     // Viewable and freezable assets used in pregenerated transactions.
-    assets: Vec<(AssetInfo, AuditorKeyPair, FreezerKeyPair)>,
+    assets: Vec<AssetInfo>,
+    // Viewing key for assets used in the transactions.
+    viewing_key: AuditorKeyPair,
+    // Freezing key for assets used in the transactions.
+    freezing_key: FreezerKeyPair,
     // The index of the first event for the benchmark to scan.
     start_time: EventIndex,
     // The index of the latest event for the benchmark to scan.
@@ -99,70 +107,60 @@ async fn generate_independent_transactions<
         .unwrap();
 
     // Mint a viewable asset for each wallet.
-    let (assets, mints): (Vec<_>, Vec<_>) = join_all(wallets.iter_mut().enumerate().map(
-        |(i, (wallet, addrs))| async move {
-            let viewing_pub_key = wallet.generate_audit_key("viewing".into()).await.unwrap();
-            let viewing_key = wallet
-                .get_auditor_private_key(&viewing_pub_key)
-                .await
-                .unwrap();
-            let freezing_pub_key = wallet.generate_freeze_key("freezing".into()).await.unwrap();
-            let freezing_key = wallet
-                .get_freezer_private_key(&freezing_pub_key)
-                .await
-                .unwrap();
-            let asset = wallet
-                .define_asset(
-                    format!("asset {}", i),
-                    &[],
-                    AssetPolicy::default()
-                        .set_auditor_pub_key(viewing_pub_key)
-                        .set_freezer_pub_key(freezing_pub_key)
-                        .reveal_record_opening()
-                        .unwrap(),
-                )
-                .await
-                .unwrap();
-            let (mint_note, mint_info) = wallet
-                .build_mint(&addrs[0], 1, &asset.code, 1u64 << 32, addrs[0].clone())
-                .await
-                .unwrap();
-            let receipt = wallet
-                .submit_cap(mint_note.clone().into(), mint_info.clone())
-                .await
-                .unwrap();
-            wallet.await_transaction(&receipt).await.unwrap();
-            (
-                (AssetInfo::from(asset), viewing_key, freezing_key),
-                (mint_note, mint_info),
-            )
-        },
-    ))
-    .await
-    .into_iter()
-    .unzip();
+    let viewing_key = AuditorKeyPair::generate(&mut rng);
+    let freezing_key = FreezerKeyPair::generate(&mut rng);
+    let (assets, mints): (Vec<_>, Vec<_>) =
+        join_all(wallets.iter_mut().enumerate().map(|(i, (wallet, addrs))| {
+            let viewing_key = viewing_key.pub_key();
+            let freezing_key = freezing_key.pub_key();
+            async move {
+                let asset = wallet
+                    .define_asset(
+                        format!("asset {}", i),
+                        &[],
+                        AssetPolicy::default()
+                            .set_auditor_pub_key(viewing_key)
+                            .set_freezer_pub_key(freezing_key)
+                            .reveal_record_opening()
+                            .unwrap(),
+                    )
+                    .await
+                    .unwrap();
+                let (mint_note, mint_info) = wallet
+                    .build_mint(&addrs[0], 1, &asset.code, 1u64 << 32, addrs[0].clone())
+                    .await
+                    .unwrap();
+                let receipt = wallet
+                    .submit_cap(mint_note.clone().into(), mint_info.clone())
+                    .await
+                    .unwrap();
+                wallet.await_transaction(&receipt).await.unwrap();
+                (AssetInfo::from(asset), (mint_note, mint_info))
+            }
+        }))
+        .await
+        .into_iter()
+        .unzip();
 
     // Create events by making a number of transfers. We transfer from a number of different
     // wallets so we can easily parallelize the transfers, which speeds things up and allows
     // them all to be included in the same block.
-    let transfers = join_all(wallets.iter_mut().zip(&assets).map(
-        |((wallet, _), (asset, _, _))| {
-            let receiver = receiver.address();
-            async move {
-                wallet
-                    .build_transfer(
-                        None,
-                        &asset.definition.code,
-                        &[(receiver, 1, false)],
-                        1,
-                        vec![],
-                        None,
-                    )
-                    .await
-                    .unwrap()
-            }
-        },
-    ))
+    let transfers = join_all(wallets.iter_mut().zip(&assets).map(|((wallet, _), asset)| {
+        let receiver = receiver.address();
+        async move {
+            wallet
+                .build_transfer(
+                    None,
+                    &asset.definition.code,
+                    &[(receiver, 1, false)],
+                    1,
+                    vec![],
+                    None,
+                )
+                .await
+                .unwrap()
+        }
+    }))
     .await;
 
     // Let the wallets finish processing events. This keeps the setup wallets' event threads from
@@ -174,6 +172,8 @@ async fn generate_independent_transactions<
         transfers,
         receiver,
         assets,
+        viewing_key,
+        freezing_key,
     }
 }
 
@@ -253,6 +253,8 @@ async fn bench_ledger_scanner_setup<
         ledger,
         receiver: txns.receiver,
         assets: txns.assets,
+        viewing_key: txns.viewing_key,
+        freezing_key: txns.freezing_key,
         start_time,
         end_time,
         initial_state,
@@ -279,16 +281,16 @@ fn bench_ledger_scanner_run<
     let state = &mut bench.initial_state;
     // If this is a viewing benchmark, add the viewable assets and viewing keys to the state.
     if cfg.role == ScannerRole::Viewer {
-        for (asset, viewing_key, freezing_key) in &bench.assets {
+        for asset in &bench.assets {
             state.freezing_accounts.insert(
-                freezing_key.pub_key(),
-                Account::new(freezing_key.clone(), "freezing".into()),
+                bench.freezing_key.pub_key(),
+                Account::new(bench.freezing_key.clone(), "freezing".into()),
             );
             state.viewing_accounts.insert(
-                viewing_key.pub_key(),
-                Account::new(viewing_key.clone(), "viewing".into()),
+                bench.viewing_key.pub_key(),
+                Account::new(bench.viewing_key.clone(), "viewing".into()),
             );
-            state.assets.add_audit_key(viewing_key.pub_key());
+            state.assets.add_audit_key(bench.viewing_key.pub_key());
             state.assets.insert(asset.clone());
         }
     }
