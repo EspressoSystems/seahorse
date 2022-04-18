@@ -13,9 +13,7 @@ on:
 
 jobs:
   build:
-    runs-on: self-hosted
-    container:
-      image: registry.gitlab.com/asuran-rs/containers/rust-sccache-docker:1.56
+    runs-on: ubuntu-latest
     steps:
       - name: Cancel Outdated Builds
         uses: styfle/cancel-workflow-action@0.9.1
@@ -26,8 +24,19 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v3
 
+      - name: Install stable toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: default
+          toolchain: "1.56"
+          override: true
+          default: true
+          components: rustfmt, clippy
+
       - name: Enable Rust Caching
         uses: Swatinem/rust-cache@v1
+        with:
+          cache-on-failure: true
 
       - name: Format Check
         run: cargo fmt -- --check
@@ -52,7 +61,7 @@ jobs:
       - name: Test
         run: |
           cargo test --workspace --release --verbose -- -Zunstable-options --report-time --test-threads 2
-        timeout-minutes: 30
+        timeout-minutes: 60
 
       - name: Generate Documentation
         run: |
