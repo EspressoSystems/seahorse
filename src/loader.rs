@@ -37,6 +37,7 @@ pub trait WalletLoader<L: Ledger> {
 // DO NOT put secrets in here.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct LoaderMetadata {
+    version: (u8, u8, u8),
     salt: Salt,
     // Encrypted mnemonic phrase. This will only decrypt successfully if we have the correct
     // password, so we can use it as a quick check that the user entered the right thing.
@@ -277,6 +278,11 @@ impl<L: Ledger> WalletLoader<L> for Loader {
 
         let (salt, encrypted_mnemonic) = self.create_password(mnemonic)?;
         let meta = LoaderMetadata {
+            version: (
+                env!("CARGO_PKG_VERSION_MAJOR").parse().unwrap(),
+                env!("CARGO_PKG_VERSION_MINOR").parse().unwrap(),
+                env!("CARGO_PKG_VERSION_PATCH").parse().unwrap(),
+            ),
             salt,
             encrypted_mnemonic,
             encrypted_bytes,
