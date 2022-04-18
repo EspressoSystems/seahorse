@@ -24,7 +24,7 @@ use crate::{
     AssetInfo, BincodeSnafu, IoSnafu, TransactionReceipt, TransactionStatus, WalletBackend,
     WalletError,
 };
-use async_std::task::block_on;
+use async_std::task::{block_on, spawn_blocking};
 use async_trait::async_trait;
 use fmt::{Display, Formatter};
 use futures::future::BoxFuture;
@@ -40,7 +40,7 @@ use std::any::type_name;
 use std::collections::HashMap;
 use std::fmt;
 use std::fs::File;
-use std::io::{Read, Write};
+use std::io::{self, Read, Write};
 use std::path::PathBuf;
 use std::str::FromStr;
 use tagged_base64::TaggedBase64;
@@ -174,12 +174,36 @@ impl<'a, C: CLI<'a>, L: Ledger> CLIInput<'a, C> for TransactionReceipt<L> {
 /// Convenience macro for panicking if output fails.
 #[macro_export]
 macro_rules! cli_writeln {
-    ($($arg:expr),+ $(,)?) => { writeln!($($arg),+).expect("failed to write CLI output") };
+    ($io:expr, $fmt:expr, $($arg:expr),*) => {
+        {
+            let args = format_args!($fmt, $($arg),*).to_string();
+            let mut io = $io.clone();
+            spawn_blocking(move || { writeln!(io, "{}", args).expect("failed to write CLI output") }).await
+        }
+    };
+    ($io:expr$(, $fmt:expr)?) => {
+        {
+            let mut io = $io.clone();
+            spawn_blocking(move || { writeln!(io, $($fmt)?)}.expect("failed to write CLI output")).await
+        }
+    };
 }
 /// Convenience macro for panicking if output fails.
 #[macro_export]
 macro_rules! cli_write {
-    ($($arg:expr),+ $(,)?) => { write!($($arg),+).expect("failed to write CLI output") };
+    ($io:expr, $fmt:expr, $($arg:expr),*) => {
+        {
+            let args = format_args!($fmt, $($arg),*).to_string();
+            let mut io = $io.clone();
+            spawn_blocking(move || { write!(io, "{}", args).expect("failed to write CLI output") }).await
+        }
+    };
+    ($io:expr$(, $fmt:expr)?) => {
+        {
+            let mut io = $io.clone();
+            spawn_blocking(move || { write!(io, $($fmt)?)}.expect("failed to write CLI output")).await
+        }
+    };
 }
 
 /// Create a [Command] from a help string and a function.
@@ -719,18 +743,18 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             C,
             |io, wallet, key_type: KeyType, path: PathBuf;
              description: Option<String>, scan_from: Option<EventIndex>, wait: Option<bool>| {
-                let mut file = match File::open(path.clone()) {
-                    Ok(file) => file,
+                let bytes = match spawn_blocking(|| -> io::Result<Vec<u8>> {
+                    let mut file = File::open(path)?;
+                    let mut bytes = Vec::new();
+                    file.read_to_end(&mut bytes)?;
+                    Ok(bytes)
+                }).await {
+                    Ok(bytes) => bytes,
                     Err(err) => {
-                        cli_writeln!(io, "Error opening file {:?}: {}", path, err);
+                        cli_writeln!(io, "Error reading file: {}", err);
                         return;
                     }
                 };
-                let mut bytes = Vec::new();
-                if let Err(err) = file.read_to_end(&mut bytes) {
-                    cli_writeln!(io, "Error reading file: {}", err);
-                    return;
-                }
 
                 let description = description.unwrap_or_default();
                 match key_type {
@@ -996,7 +1020,7 @@ async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
         }
     };
 
-    let (mut io, reader) = match args.io() {
+    let (io, reader) = match args.io() {
         Some(io) => (io.clone(), Reader::automated(io)),
         None => (SharedIO::std(), Reader::interactive()),
     };
@@ -1021,7 +1045,7 @@ async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
     let commands = init_commands::<C>();
 
     let mut input = loader.into_reader().unwrap();
-    'repl: while let Some(line) = input.read_line() {
+    'repl: while let Some(line) = input.read_line().await {
         let tokens = line.split_whitespace().collect::<Vec<_>>();
         if tokens.is_empty() {
             continue;

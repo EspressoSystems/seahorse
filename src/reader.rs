@@ -11,12 +11,16 @@
 //! line editing and [rpassword] for hiding sensitive inputs like passwords and mnemonics. It also
 //! has an automated mode to circumvent the interactive features when scripting for the CLI.
 use crate::{io::SharedIO, WalletError};
+use async_std::{
+    sync::{Arc, Mutex},
+    task::{block_on, spawn_blocking},
+};
 use reef::Ledger;
 use rpassword::prompt_password_stdout;
 use std::io::{BufRead, Write};
 
 pub enum Reader {
-    Interactive(rustyline::Editor<()>),
+    Interactive(Arc<Mutex<rustyline::Editor<()>>>),
     Automated(SharedIO),
 }
 
@@ -31,50 +35,68 @@ impl Clone for Reader {
 
 impl Reader {
     pub fn interactive() -> Self {
-        Self::Interactive(rustyline::Editor::<()>::new())
+        Self::Interactive(Arc::new(Mutex::new(rustyline::Editor::<()>::new())))
     }
 
     pub fn automated(io: SharedIO) -> Self {
         Self::Automated(io)
     }
 
-    pub fn read_password<L: Ledger>(&mut self, prompt: &str) -> Result<String, WalletError<L>> {
+    pub async fn read_password<L: 'static + Ledger>(
+        &mut self,
+        prompt: &str,
+    ) -> Result<String, WalletError<L>> {
+        let prompt = prompt.to_owned();
         match self {
             Self::Interactive(_) => {
-                prompt_password_stdout(prompt).map_err(|err| WalletError::Failed {
-                    msg: err.to_string(),
+                spawn_blocking(move || {
+                    prompt_password_stdout(&prompt).map_err(|err| WalletError::Failed {
+                        msg: err.to_string(),
+                    })
                 })
+                .await
             }
             Self::Automated(io) => {
-                writeln!(io, "{}", prompt).map_err(|err| WalletError::Failed {
-                    msg: err.to_string(),
-                })?;
-                let mut password = String::new();
-                match io.read_line(&mut password) {
-                    Ok(_) => Ok(password),
-                    Err(err) => Err(WalletError::Failed {
+                let mut io = io.clone();
+                spawn_blocking(move || {
+                    writeln!(io, "{}", prompt).map_err(|err| WalletError::Failed {
                         msg: err.to_string(),
-                    }),
-                }
+                    })?;
+                    let mut password = String::new();
+                    match io.read_line(&mut password) {
+                        Ok(_) => Ok(password),
+                        Err(err) => Err(WalletError::Failed {
+                            msg: err.to_string(),
+                        }),
+                    }
+                })
+                .await
             }
         }
     }
 
-    pub fn read_line(&mut self) -> Option<String> {
+    pub async fn read_line(&mut self) -> Option<String> {
         let prompt = "> ";
         match self {
-            Self::Interactive(editor) => editor.readline(prompt).ok(),
+            Self::Interactive(editor) => {
+                let editor = editor.clone();
+                spawn_blocking(move || block_on(editor.lock()).readline(prompt).ok()).await
+            }
             Self::Automated(io) => {
-                writeln!(io, "{}", prompt).ok();
-                let mut line = String::new();
-                match io.read_line(&mut line) {
-                    Ok(0) => {
-                        // EOF
-                        None
+                let mut io = io.clone();
+                spawn_blocking(move || {
+                    writeln!(io, "{}", prompt).ok();
+                    let mut line = String::new();
+                    match io.read_line(&mut line) {
+                        Ok(0) => {
+                            // EOF
+                            None
+                        }
+                        Err(_) => None,
+                        Ok(_) => Some(line),
                     }
-                    Err(_) => None,
-                    Ok(_) => Some(line),
-                }
+                })
+                .await
             }
         }
     }

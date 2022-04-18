@@ -12,6 +12,7 @@
 //! which loads an encrypted wallet from the file system using a mnemonic phrase to generate keys
 //! and a password to provide a more convenient login interface.
 use super::{encryption, hd, reader, EncryptionSnafu, KeySnafu, MnemonicSnafu, WalletError};
+use async_trait::async_trait;
 use encryption::{Cipher, CipherText, Salt};
 use hd::{KeyTree, Mnemonic};
 use rand_chacha::{
@@ -24,11 +25,12 @@ use serde::{Deserialize, Serialize};
 use snafu::ResultExt;
 use std::path::{Path, PathBuf};
 
+#[async_trait]
 pub trait WalletLoader<L: Ledger> {
     type Meta; // Metadata stored in plaintext and used by the loader to access the wallet.
     fn location(&self) -> PathBuf;
-    fn create(&mut self) -> Result<(Self::Meta, KeyTree), WalletError<L>>;
-    fn load(&mut self, meta: &mut Self::Meta) -> Result<KeyTree, WalletError<L>>;
+    async fn create(&mut self) -> Result<(Self::Meta, KeyTree), WalletError<L>>;
+    async fn load(&mut self, meta: &mut Self::Meta) -> Result<KeyTree, WalletError<L>>;
 }
 
 // Metadata about a wallet which is always stored unencrypted, so we can report some basic
@@ -56,11 +58,11 @@ enum LoaderInput {
 }
 
 impl LoaderInput {
-    fn create_password<L: Ledger>(&mut self) -> Result<String, WalletError<L>> {
+    async fn create_password<L: 'static + Ledger>(&mut self) -> Result<String, WalletError<L>> {
         match self {
             Self::User(reader) => loop {
-                let password = reader.read_password("Create password: ")?;
-                let confirm = reader.read_password("Retype password: ")?;
+                let password = reader.read_password("Create password: ").await?;
+                let confirm = reader.read_password("Retype password: ").await?;
                 if password == confirm {
                     return Ok(password);
                 } else {
@@ -74,13 +76,15 @@ impl LoaderInput {
         }
     }
 
-    fn read_password<L: Ledger>(&mut self) -> Result<Option<String>, WalletError<L>> {
+    async fn read_password<L: 'static + Ledger>(
+        &mut self,
+    ) -> Result<Option<String>, WalletError<L>> {
         match self {
             Self::User(reader) => loop {
                 println!("Forgot your password? Want to change it? [y/n]");
-                match reader.read_line() {
+                match reader.read_line().await {
                     Some(line) => match line.as_str().trim() {
-                        "n" => break Ok(Some(reader.read_password("Enter password: ")?)),
+                        "n" => break Ok(Some(reader.read_password("Enter password: ").await?)),
                         "y" => break Ok(None),
                         _ => println!("Please enter 'y' or 'n'."),
                     },
@@ -97,7 +101,7 @@ impl LoaderInput {
         }
     }
 
-    fn create_mnemonic<L: Ledger>(
+    async fn create_mnemonic<L: 'static + Ledger>(
         &mut self,
         rng: &mut ChaChaRng,
     ) -> Result<Mnemonic, WalletError<L>> {
@@ -119,11 +123,11 @@ impl LoaderInput {
                         println!(
                             "3) Manually enter a mnemonic (use this to recover a lost wallet)"
                         );
-                        match reader.read_line() {
+                        match reader.read_line().await {
                             Some(line) => match line.as_str().trim() {
                                 "1" => return Ok(mnemonic),
                                 "2" => continue 'outer,
-                                "3" => return Self::read_mnemonic_interactive(reader),
+                                "3" => return Self::read_mnemonic_interactive(reader).await,
                                 _ => continue 'inner,
                             },
                             None => {
@@ -146,9 +150,9 @@ impl LoaderInput {
         }
     }
 
-    fn read_mnemonic<L: Ledger>(&mut self) -> Result<Mnemonic, WalletError<L>> {
+    async fn read_mnemonic<L: 'static + Ledger>(&mut self) -> Result<Mnemonic, WalletError<L>> {
         match self {
-            Self::User(reader) => Self::read_mnemonic_interactive(reader),
+            Self::User(reader) => Self::read_mnemonic_interactive(reader).await,
             Self::PasswordLiteral(_) => Err(WalletError::Failed {
                 msg: String::from("missing mnemonic phrase"),
             }),
@@ -162,11 +166,11 @@ impl LoaderInput {
         matches!(self, Self::User(..))
     }
 
-    fn read_mnemonic_interactive<L: Ledger>(
+    async fn read_mnemonic_interactive<L: 'static + Ledger>(
         reader: &mut Reader,
     ) -> Result<Mnemonic, WalletError<L>> {
         loop {
-            let phrase = reader.read_password("Enter mnemonic phrase: ")?;
+            let phrase = reader.read_password("Enter mnemonic phrase: ").await?;
             match Mnemonic::from_phrase(&phrase) {
                 Ok(mnemonic) => return Ok(mnemonic),
                 Err(err) => {
@@ -226,18 +230,20 @@ impl Loader {
         &self.dir
     }
 
-    fn create_from_mnemonic<L: Ledger>(&mut self) -> Result<(Mnemonic, KeyTree), WalletError<L>> {
-        let mnemonic = self.input.create_mnemonic(&mut self.rng)?;
+    async fn create_from_mnemonic<L: 'static + Ledger>(
+        &mut self,
+    ) -> Result<(Mnemonic, KeyTree), WalletError<L>> {
+        let mnemonic = self.input.create_mnemonic(&mut self.rng).await?;
         let key = KeyTree::from_mnemonic(&mnemonic);
         Ok((mnemonic, key))
     }
 
     // Create a password, returning salt and encrypted mnemonic.
-    fn create_password<L: Ledger>(
+    async fn create_password<L: 'static + Ledger>(
         &mut self,
         mnemonic: Mnemonic,
     ) -> Result<(Salt, CipherText), WalletError<L>> {
-        let password = self.input.create_password()?;
+        let password = self.input.create_password().await?;
 
         // Encrypt the mnemonic phrase, which we can decrypt on load to check the derived key.
         let (encryption_key, salt) =
@@ -255,15 +261,16 @@ impl Loader {
 
 static KEY_CHECK_SUB_TREE: &str = "key_check";
 
-impl<L: Ledger> WalletLoader<L> for Loader {
+#[async_trait]
+impl<L: 'static + Ledger> WalletLoader<L> for Loader {
     type Meta = LoaderMetadata;
 
     fn location(&self) -> PathBuf {
         self.dir.clone()
     }
 
-    fn create(&mut self) -> Result<(LoaderMetadata, KeyTree), WalletError<L>> {
-        let (mnemonic, key) = self.create_from_mnemonic()?;
+    async fn create(&mut self) -> Result<(LoaderMetadata, KeyTree), WalletError<L>> {
+        let (mnemonic, key) = self.create_from_mnemonic().await?;
 
         // Generate and encrypt some random bytes using the mnemonic, so in the future we can check
         // if the mnemonic is correct.
@@ -276,7 +283,7 @@ impl<L: Ledger> WalletLoader<L> for Loader {
         .encrypt(&bytes)
         .context(EncryptionSnafu)?;
 
-        let (salt, encrypted_mnemonic) = self.create_password(mnemonic)?;
+        let (salt, encrypted_mnemonic) = self.create_password(mnemonic).await?;
         let meta = LoaderMetadata {
             version: (
                 env!("CARGO_PKG_VERSION_MAJOR").parse().unwrap(),
@@ -291,9 +298,9 @@ impl<L: Ledger> WalletLoader<L> for Loader {
         Ok((meta, key))
     }
 
-    fn load(&mut self, meta: &mut Self::Meta) -> Result<KeyTree, WalletError<L>> {
+    async fn load(&mut self, meta: &mut Self::Meta) -> Result<KeyTree, WalletError<L>> {
         let key = loop {
-            if let Some(password) = self.input.read_password()? {
+            if let Some(password) = self.input.read_password().await? {
                 // Generate the decryption key and check that we can use it to decrypt
                 // `encrypted_mnemonic`. If we can't, the key is wrong.
                 let decryption_key =
@@ -320,7 +327,7 @@ impl<L: Ledger> WalletLoader<L> for Loader {
                 }
             } else {
                 // Reset password using mnemonic.
-                let mnemonic = self.input.read_mnemonic()?;
+                let mnemonic = self.input.read_mnemonic().await?;
                 let key = KeyTree::from_mnemonic(&mnemonic);
 
                 // Check if the entered mnemonic is correct by attempting to decrypt the encrypted
@@ -332,7 +339,7 @@ impl<L: Ledger> WalletLoader<L> for Loader {
                 .decrypt(&meta.encrypted_bytes)
                 .is_ok()
                 {
-                    let (salt, encrypted_mnemonic) = self.create_password(mnemonic)?;
+                    let (salt, encrypted_mnemonic) = self.create_password(mnemonic).await?;
                     meta.salt = salt;
                     meta.encrypted_mnemonic = encrypted_mnemonic;
                     break key;
