@@ -15,9 +15,7 @@ jobs:
   build:
     runs-on: self-hosted
     container:
-      image: ghcr.io/espressosystems/nix:main
-      volumes:
-        - github_nix_251:/nix
+      image: registry.gitlab.com/asuran-rs/containers/rust-sccache-docker:1.56
     steps:
       - uses: styfle/cancel-workflow-action@0.9.1
         name: Cancel Outdated Builds
