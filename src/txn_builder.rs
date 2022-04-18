@@ -1189,7 +1189,6 @@ impl<L: Ledger> TransactionState<L> {
 
         let mut inputs = Vec::new();
         let mut input_ros = Vec::new();
-        let mut fee_input = None;
         let mut change_ro = None;
         for (owner_key_pair, input_records, change) in &records {
             // prepare inputs
@@ -1202,11 +1201,6 @@ impl<L: Ledger> TransactionState<L> {
                     cred: None, // TODO support credentials
                 });
                 input_ros.push(ro.clone());
-            }
-            if fee_input.is_none() {
-                if let Ok(input) = self.find_fee_input(owner_key_pair, spec.fee) {
-                    fee_input = Some(input);
-                }
             }
 
             // change in the asset type being transfered (not fee change)
@@ -1221,6 +1215,15 @@ impl<L: Ledger> TransactionState<L> {
                 ));
             }
         }
+        let fee_input = spec
+            .sender_key_pairs
+            .iter()
+            .find_map(|key| self.find_fee_input(key, spec.fee).ok())
+            .ok_or(TransactionError::InsufficientBalance {
+                asset: AssetCode::native(),
+                required: spec.fee,
+                actual: 0,
+            })?;
 
         // prepare outputs, excluding fee change (which will be automatically generated)
         let mut outputs = Vec::new();
@@ -1236,17 +1239,6 @@ impl<L: Ledger> TransactionState<L> {
         if let Some(ro) = change_ro.clone() {
             outputs.push(ro);
         }
-
-        let fee_input = match fee_input {
-            Some(input) => input,
-            None => {
-                return Err(TransactionError::InsufficientBalance {
-                    asset: AssetCode::native(),
-                    required: spec.fee,
-                    actual: 0,
-                });
-            }
-        };
 
         // find a proving key which can handle this transaction size
         let (proving_key, dummy_inputs) = Self::xfr_proving_key(
