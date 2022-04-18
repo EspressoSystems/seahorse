@@ -2758,6 +2758,9 @@
 <span id="2758">2758</span>
 <span id="2759">2759</span>
 <span id="2760">2760</span>
+<span id="2761">2761</span>
+<span id="2762">2762</span>
+<span id="2763">2763</span>
 </pre><pre class="rust"><code><span class="comment">// Copyright (c) 2022 Espresso Systems (espressosys.com)</span>
 <span class="comment">// This file is part of the Seahorse library.</span>
 
@@ -3497,11 +3500,14 @@
                             <span class="self">self</span>.<span class="ident">txn_state</span>.<span class="ident">forget_merkle_leaf</span>(<span class="ident">record</span>.<span class="ident">uid</span>);
                         }
                     }
-                    <span class="comment">// Insert new records.</span>
-                    <span class="kw">for</span> <span class="ident">o</span> <span class="kw">in</span> <span class="ident">txn</span>.<span class="ident">output_commitments</span>() {
-                        <span class="self">self</span>.<span class="ident">txn_state</span>.<span class="ident">append_merkle_leaf</span>(<span class="ident">o</span>);
-                    }
                 }
+                <span class="comment">// Insert new records.</span>
+                <span class="self">self</span>.<span class="ident">txn_state</span>.<span class="ident">append_merkle_leaves</span>(
+                    <span class="ident">block</span>
+                        .<span class="ident">txns</span>()
+                        .<span class="ident">into_iter</span>()
+                        .<span class="ident">flat_map</span>(<span class="op">|</span><span class="ident">txn</span><span class="op">|</span> <span class="ident">txn</span>.<span class="ident">output_commitments</span>()),
+                );
                 <span class="comment">// Update nullifier set</span>
                 <span class="kw">let</span> <span class="ident">nullifier_proofs</span> <span class="op">=</span> <span class="ident">block</span>
                     .<span class="ident">txns</span>()
