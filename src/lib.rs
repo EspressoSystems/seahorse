@@ -30,7 +30,7 @@ pub mod loader;
 pub mod persistence;
 pub mod reader;
 mod secret;
-#[cfg(any(test, feature = "testing"))]
+#[cfg(any(test, bench, feature = "testing"))]
 pub mod testing;
 pub mod txn_builder;
 
@@ -1083,7 +1083,7 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
         txn_hash: Option<TransactionHash<L>>,
         records: &[RecordOpening],
     ) {
-        let history = receive_history_entry(block_id, txn_id, kind, txn_hash, records);
+        let history = receive_history_entry(kind, txn_hash, records);
 
         if let Err(err) = session
             .backend
@@ -1721,6 +1721,10 @@ impl<'a, L: Ledger, Backend: WalletBackend<'a, L>> WalletSharedState<'a, L, Back
         &mut self.session.backend
     }
 
+    pub fn state(&self) -> &WalletState<'a, L> {
+        &self.state
+    }
+
     pub fn rng(&mut self) -> &mut ChaChaRng {
         &mut self.session.rng
     }
@@ -1762,11 +1766,27 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
     // manually write out the opaque return type so that we can explicitly add the `Send` bound. The
     // difference is that we use dynamic type erasure (Pin<Box<dyn Future>>) instead of static type
     // erasure. I don't know why this doesn't crash the compiler, but it doesn't.
-    pub fn new(backend: Backend) -> BoxFuture<'a, Result<Wallet<'a, Backend, L>, WalletError<L>>> {
-        Box::pin(async move { Self::new_impl(backend).await })
+    pub fn new(
+        mut backend: Backend,
+    ) -> BoxFuture<'a, Result<Wallet<'a, Backend, L>, WalletError<L>>> {
+        Box::pin(async move {
+            let state = backend.load().await?;
+            Self::new_impl(backend, state).await
+        })
     }
-    async fn new_impl(mut backend: Backend) -> Result<Wallet<'a, Backend, L>, WalletError<L>> {
-        let mut state = backend.load().await?;
+
+    #[cfg(any(test, bench, feature = "testing"))]
+    pub fn with_state(
+        backend: Backend,
+        state: WalletState<'a, L>,
+    ) -> BoxFuture<'a, Result<Wallet<'a, Backend, L>, WalletError<L>>> {
+        Box::pin(async move { Self::new_impl(backend, state).await })
+    }
+
+    async fn new_impl(
+        backend: Backend,
+        mut state: WalletState<'a, L>,
+    ) -> Result<Wallet<'a, Backend, L>, WalletError<L>> {
         let mut events = backend.subscribe(state.txn_state.now, None).await;
         let mut key_scans = vec![];
         for account in state.viewing_accounts.values() {

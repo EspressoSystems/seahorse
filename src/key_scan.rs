@@ -220,9 +220,7 @@ impl<L: Ledger> BackgroundKeyScan<L> {
 
     fn handle_event_in_range(&mut self, event: LedgerEvent<L>) {
         match event {
-            LedgerEvent::Commit {
-                block_id, block, ..
-            } => {
+            LedgerEvent::Commit { block, .. } => {
                 let mut uid = self.records_mt.num_leaves();
 
                 // Add the record commitments from this block.
@@ -233,7 +231,7 @@ impl<L: Ledger> BackgroundKeyScan<L> {
                         .flat_map(|txn| txn.output_commitments()),
                 );
 
-                for (txn_id, txn) in block.txns().into_iter().enumerate() {
+                for txn in block.txns() {
                     // Remove any records that were spent by this transaction.
                     for n in txn.input_nullifiers() {
                         if let Some((_, uid)) = self.records.remove(&n) {
@@ -266,8 +264,6 @@ impl<L: Ledger> BackgroundKeyScan<L> {
                         }
                         if !received_records.is_empty() {
                             self.history.push(receive_history_entry(
-                                block_id,
-                                txn_id as u64,
                                 txn.kind(),
                                 Some(txn.hash()),
                                 &received_records,
@@ -318,10 +314,8 @@ impl<L: Ledger> BackgroundKeyScan<L> {
 
                 if !records.is_empty() {
                     // Add a history entry for the received transaction.
-                    if let Some((block_id, txn_id, txn_kind)) = transaction {
+                    if let Some((_, _, txn_kind)) = transaction {
                         self.history.push(receive_history_entry(
-                            block_id,
-                            txn_id,
                             txn_kind,
                             None,
                             &records.into_iter().map(|(ro, _, _)| ro).collect::<Vec<_>>(),
@@ -397,8 +391,6 @@ impl<L: Ledger> BackgroundKeyScan<L> {
 }
 
 pub fn receive_history_entry<L: Ledger>(
-    block_id: u64,
-    txn_id: u64,
     kind: TransactionKind<L>,
     hash: Option<TransactionHash<L>>,
     records: &[RecordOpening],
@@ -422,20 +414,16 @@ pub fn receive_history_entry<L: Ledger>(
         asset: txn_asset,
         kind,
         hash,
+        // When we receive transactions, we can't tell from the protocol who sent it to us.
         senders: Vec::new(),
-        // When we receive transactions, we can't tell from the protocol
-        // who sent it to us.
         receivers: records
             .iter()
             .filter_map(|ro| {
                 if ro.asset_def.code == txn_asset {
                     Some((ro.pub_key.address(), ro.amount))
                 } else {
-                    println!(
-                        "Received transaction ({}, {}) contains outputs with \
-                        multiple asset types. Ignoring some of them.",
-                        block_id, txn_id
-                    );
+                    // Ignore records of the wrong asset type (e.g. the fee change output for a non-
+                    // native asset transfer).
                     None
                 }
             })

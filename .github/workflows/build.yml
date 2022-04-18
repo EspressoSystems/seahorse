@@ -45,6 +45,10 @@ jobs:
         run: |
           cargo test --workspace --release --no-run
 
+      - name: Build Benchmarks
+        run: |
+          cargo bench --features=testing --no-run
+
       - name: Test
         run: |
           cargo test --workspace --release --verbose -- -Zunstable-options --report-time --test-threads 2

@@ -1,0 +1,34 @@
+name: Benchmarks
+
+on:
+  push:
+    branches:
+      - main
+  schedule:
+    - cron: "0 1 * * 1"
+  workflow_dispatch:
+
+env:
+  RUSTFLAGS: -Ctarget-cpu=native
+
+jobs:
+  build:
+    runs-on: self-hosted
+    container:
+      image: ghcr.io/espressosystems/nix:main
+      volumes:
+        - github_nix_251:/nix
+    steps:
+      - uses: styfle/cancel-workflow-action@0.9.1
+        name: Cancel Outdated Builds
+        with:
+          access_token: ${{ github.token }}
+
+      - uses: actions/checkout@v2
+        name: Checkout Repository
+
+      - name: Enable Rust Caching
+        uses: Swatinem/rust-cache@v1
+
+      - name: Bench
+        run: cargo bench --features=testing

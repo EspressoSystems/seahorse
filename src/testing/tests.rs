@@ -1263,7 +1263,12 @@ pub mod generic_wallet_tests {
                         .map(|txn| TxnHistoryWithTimeTolerantEq(txn.clone()))
                         .collect::<Vec<_>>();
                     for txn in wallet_block.iter() {
-                        assert!(block.contains(txn));
+                        assert!(
+                            block.contains(txn),
+                            "wallet contains unexpected transaction history:\n  {:?}\nexpected:\n  {:?}",
+                            txn,
+                            block,
+                        );
                     }
                     for txn in block.iter() {
                         assert!(wallet_block.contains(txn));
@@ -1651,6 +1656,39 @@ pub mod generic_wallet_tests {
     }
 
     #[test]
+    pub fn proptest_multixfr_wallet_regression1<'a, T: SystemUnderTest<'a>>() {
+        // This input caused an assertion failure:
+        //  assertion failed: block.contains(txn)
+        // when checking that an expected transaction was in a wallet's transaction history in the
+        // right place. The transaction which was actually in the history differed from the expected
+        // one in that its `receivers` field was empty.
+        //
+        // The root cause was a `skip(1)` when iterating over the output records when creating the
+        // transaction history entry. This was an attempt to skip the fee change record, but the
+        // records available at that point were only the records received by the current wallet,
+        // which does not necessarily include the fee change. (If the transaction was sent to us
+        // from someone else, the first record we received would not be the fee change.)
+        //
+        // Removing this `skip(1)` fixed the bug, and the logic that skips records whose asset types
+        // don't match the asset type of the overall transaction still causes the fee change record
+        // to be skipped when present.
+        proptest_multixfr_wallet::<T>((
+            vec![
+                vec![(0, 0, 0, 1)],
+                vec![(0, 0, 0, 1)],
+                vec![(0, 0, 0, 1)],
+                vec![(0, 0, 0, 1)],
+                vec![(0, 0, 0, 1)],
+            ],
+            2,
+            1,
+            (0, 0, 1),
+            vec![(0, 0, 1), (0, 0, 1), (1, 0, 1)],
+        ))
+        .unwrap();
+    }
+
+    #[test]
     pub fn proptest_multixfr_wallet_small<'a, T: SystemUnderTest<'a>>() {
         TestRunner::new(test_runner::Config {
             cases: 1,
@@ -1875,17 +1913,7 @@ pub mod generic_wallet_tests {
         );
 
         // A new wallet joins the system after there are already some transactions on the ledger.
-        let storage = t.create_storage().await;
-        let key_stream = hd::KeyTree::random(&mut rng).0;
-        let backend = t
-            .create_backend(
-                ledger.clone(),
-                vec![],
-                key_stream,
-                Arc::new(Mutex::new(storage)),
-            )
-            .await;
-        let mut wallet2 = Wallet::new(backend).await.unwrap();
+        let mut wallet2 = t.create_wallet(&mut rng, &ledger).await;
         wallet2.sync(ledger.lock().await.now()).await.unwrap();
         let address2 = wallet2
             .generate_user_key("sending_key".into(), None)
