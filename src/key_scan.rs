@@ -18,6 +18,7 @@ use jf_cap::{
     structs::{FreezeFlag, Nullifier, RecordCommitment, RecordOpening},
     MerkleCommitment, MerkleLeafProof, MerklePath, MerkleTree,
 };
+use jf_primitives::merkle_tree::FilledMTBuilder;
 use reef::{
     traits::{Block as _, Transaction as _, TransactionKind as _},
     Ledger, TransactionHash, TransactionKind,
@@ -222,6 +223,16 @@ impl<L: Ledger> BackgroundKeyScan<L> {
             LedgerEvent::Commit {
                 block_id, block, ..
             } => {
+                let mut uid = self.records_mt.num_leaves();
+
+                // Add the record commitments from this block.
+                self.add_commitments(
+                    block
+                        .txns()
+                        .into_iter()
+                        .flat_map(|txn| txn.output_commitments()),
+                );
+
                 for (txn_id, txn) in block.txns().into_iter().enumerate() {
                     // Remove any records that were spent by this transaction.
                     for n in txn.input_nullifiers() {
@@ -233,13 +244,11 @@ impl<L: Ledger> BackgroundKeyScan<L> {
                     }
 
                     if let Some(records) = txn.output_openings() {
-                        // If the transaction exposes its records, add their commitments, and add
-                        // the records themselves if they belong to us.
+                        // If the transaction exposes its records, add the records themselves if
+                        // they belong to us; forget their Merkle paths if they do not.
                         let mut received_records = vec![];
                         for record in records {
                             let comm = RecordCommitment::from(&record);
-                            let uid = self.add_commitment(&comm);
-
                             if record.pub_key == self.key.pub_key() {
                                 received_records.push(record.clone());
                                 let nullifier = self.key.nullify(
@@ -247,11 +256,13 @@ impl<L: Ledger> BackgroundKeyScan<L> {
                                     uid,
                                     &comm,
                                 );
-                                // If the record belongs to us, add it to our records and remember
-                                // its Merkle path.
+                                // If the record belongs to us, add it to our records.
                                 self.records.insert(nullifier, (record, uid));
-                                self.leaf_to_forget = None;
+                            } else {
+                                self.forget(uid);
                             }
+
+                            uid += 1;
                         }
                         if !received_records.is_empty() {
                             self.history.push(receive_history_entry(
@@ -263,11 +274,12 @@ impl<L: Ledger> BackgroundKeyScan<L> {
                             ));
                         }
                     } else {
-                        // If the transaction does not expose its records, just add the output
-                        // commitments to the Merkle tree, updating the root hash and any paths we
-                        // have saved, before forgetting the new path.
-                        for comm in txn.output_commitments() {
-                            self.add_commitment(&comm);
+                        // If the transaction does not expose its records forget all of the Merkle
+                        // paths we added for it. If we are a receiver of this transaction, we will
+                        // remember the relevant paths later on when we get the owner memos.
+                        for _ in txn.output_commitments() {
+                            self.forget(uid);
+                            uid += 1;
                         }
                     }
                 }
@@ -337,30 +349,40 @@ impl<L: Ledger> BackgroundKeyScan<L> {
                 }
             }
 
-            // Add new commitments to the Merkle tree.
-            for comm in block
-                .txns()
-                .into_iter()
-                .flat_map(|txn| txn.output_commitments())
-            {
-                self.add_commitment(&comm);
+            // Add new commitments to the Merkle tree in order to update the root, then forget the
+            // new Merkle paths since we don't care about records in this range.
+            let first_uid = self.records_mt.num_leaves();
+            self.add_commitments(
+                block
+                    .txns()
+                    .into_iter()
+                    .flat_map(|txn| txn.output_commitments()),
+            );
+            for uid in first_uid..self.records_mt.num_leaves() {
+                self.forget(uid);
             }
         }
     }
 
-    fn add_commitment(&mut self, comm: &RecordCommitment) -> u64 {
-        let uid = self.records_mt.num_leaves();
-        self.records_mt.push(comm.to_field_element());
-        // We want to keep the Merkle tree sparse, but we can't forget the newly added path yet, as
-        // its part of the frontier. So we will make a note to forget it when we add more
-        // commitments. At the same time, we may need to forget the previous frontier leaf, for the
-        // same reason.
-        if let Some(leaf_to_forget) = self.leaf_to_forget {
-            self.records_mt.forget(leaf_to_forget);
+    fn add_commitments(&mut self, comms: impl IntoIterator<Item = RecordCommitment>) {
+        // FilledMTBuilder takes ownership of the MerkleTree, so we need to temporarily replace
+        // `self.records_mt` with a dummy value (since we can't move out of a mutable reference). We
+        // use a MerkleTree of height 0 as the dummy value, since its construction always succeeds
+        // and the computation of 3^0 is cheap.
+        let records_mt = std::mem::replace(&mut self.records_mt, MerkleTree::new(0).unwrap());
+        let mut builder = FilledMTBuilder::from_existing(records_mt)
+            .expect("failed to convert MerkleTree to FilledMTBuilder");
+        for comm in comms.into_iter() {
+            builder.push(comm.to_field_element());
         }
-        self.leaf_to_forget = Some(uid);
+        self.records_mt = builder.build();
 
-        uid
+        // Now that we have appended new leaves to the Merkle tree, we can forget the old last leaf,
+        // if needed.
+        if let Some(uid) = self.leaf_to_forget.take() {
+            assert!(uid < self.records_mt.num_leaves() - 1);
+            self.records_mt.forget(uid);
+        }
     }
 
     fn forget(&mut self, uid: u64) {

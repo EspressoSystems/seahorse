@@ -737,11 +737,14 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
                             self.txn_state.forget_merkle_leaf(record.uid);
                         }
                     }
-                    // Insert new records.
-                    for o in txn.output_commitments() {
-                        self.txn_state.append_merkle_leaf(o);
-                    }
                 }
+                // Insert new records.
+                self.txn_state.append_merkle_leaves(
+                    block
+                        .txns()
+                        .into_iter()
+                        .flat_map(|txn| txn.output_commitments()),
+                );
                 // Update nullifier set
                 let nullifier_proofs = block
                     .txns()

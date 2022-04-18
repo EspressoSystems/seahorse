@@ -30,6 +30,7 @@ use jf_cap::{
     transfer::{TransferNote, TransferNoteInput},
     AccMemberWitness, KeyPair, MerkleLeafProof, MerkleTree, Signature,
 };
+use jf_primitives::merkle_tree::FilledMTBuilder;
 use jf_utils::tagged_blob;
 use key_set::KeySet;
 use rand_chacha::ChaChaRng;
@@ -1532,10 +1533,20 @@ impl<L: Ledger> TransactionState<L> {
         }
     }
 
-    pub fn append_merkle_leaf(&mut self, comm: RecordCommitment) {
-        self.record_mt.push(comm.to_field_element());
+    pub fn append_merkle_leaves(&mut self, comms: impl IntoIterator<Item = RecordCommitment>) {
+        // FilledMTBuilder takes ownership of the MerkleTree, so we need to temporarily replace
+        // `self.record_mt` with a dummy value (since we can't move out of a mutable reference). We
+        // use a MerkleTree of height 0 as the dummy value, since its construction always succeeds
+        // and the computation of 3^0 is cheap.
+        let record_mt = std::mem::replace(&mut self.record_mt, MerkleTree::new(0).unwrap());
+        let mut builder = FilledMTBuilder::from_existing(record_mt)
+            .expect("failed to convert MerkleTree to FilledMTBuilder");
+        for comm in comms.into_iter() {
+            builder.push(comm.to_field_element());
+        }
+        self.record_mt = builder.build();
 
-        // Now that we have appended a new leaf to the Merkle tree, we can forget the old last leaf,
+        // Now that we have appended new leaves to the Merkle tree, we can forget the old last leaf,
         // if needed.
         if let Some(uid) = self.merkle_leaf_to_forget.take() {
             assert!(uid < self.record_mt.num_leaves() - 1);
