@@ -2,7 +2,7 @@
 
 A ledger-agnostic wallet toolkit for the [CAP](https://cap.docs.espressosys.com) protocol.
 
-[Documentation](https://seahorse.docs.espressosys.com) is in progress.
+Check the [code documentation](https://seahorse.docs.espressosys.com).
 
 ## Usage
 
@@ -25,4 +25,3 @@ You can now instantiate `Wallet` using your implementation of `WalletBackend`. A
 cryptocurrency wallet interface is available to you for building Rust applications. You can also use
 the built-in CLI application (`cli::cli_main`) to interact with your wallet using a command line
 REPL.
-
