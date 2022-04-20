@@ -121,17 +121,17 @@ impl<'a, L: reef::Ledger> KeystoreStorage<'a, L> for MockStorage<'a, L> {
     }
 }
 
-pub struct MockNetwork<'a> {
+pub struct MockNetworkWithHeight<'a, const H: u8> {
     validator: cap::Validator,
     nullifiers: HashSet<Nullifier>,
     records: MerkleTree,
     committed_blocks: Vec<(cap::Block, Vec<Vec<u64>>)>,
     proving_keys: Arc<ProverKeySet<'a, key_set::OrderByOutputs>>,
     pub address_map: HashMap<UserAddress, UserPubKey>,
-    events: MockEventSource<cap::Ledger>,
+    events: MockEventSource<cap::LedgerWithHeight<H>>,
 }
 
-impl<'a> MockNetwork<'a> {
+impl<'a, const H: u8> MockNetworkWithHeight<'a, H> {
     pub fn new(
         rng: &mut ChaChaRng,
         proof_crs: ProverKeySet<'a, OrderByOutputs>,
@@ -181,12 +181,14 @@ impl<'a> MockNetwork<'a> {
     }
 }
 
-impl<'a> super::MockNetwork<'a, cap::Ledger> for MockNetwork<'a> {
+impl<'a, const H: u8> super::MockNetwork<'a, cap::LedgerWithHeight<H>>
+    for MockNetworkWithHeight<'a, H>
+{
     fn now(&self) -> EventIndex {
         self.events.now()
     }
 
-    fn submit(&mut self, block: cap::Block) -> Result<(), KeystoreError<cap::Ledger>> {
+    fn submit(&mut self, block: cap::Block) -> Result<(), KeystoreError<cap::LedgerWithHeight<H>>> {
         match self.validator.validate_and_apply(block.clone()) {
             Ok(mut uids) => {
                 // Add nullifiers
@@ -228,7 +230,7 @@ impl<'a> super::MockNetwork<'a, cap::Ledger> for MockNetwork<'a> {
         txn_id: u64,
         memos: Vec<ReceiverMemo>,
         sig: Signature,
-    ) -> Result<(), KeystoreError<cap::Ledger>> {
+    ) -> Result<(), KeystoreError<cap::LedgerWithHeight<H>>> {
         let (block, block_uids) = &self.committed_blocks[block_id as usize];
         let txn = &block[txn_id as usize];
         let kind = txn.kind();
@@ -249,7 +251,7 @@ impl<'a> super::MockNetwork<'a, cap::Ledger> for MockNetwork<'a> {
                     .1
             })
             .collect::<Vec<_>>();
-        self.generate_event(LedgerEvent::<cap::Ledger>::Memos {
+        self.generate_event(LedgerEvent::<cap::LedgerWithHeight<H>>::Memos {
             outputs: izip!(memos, comms, uids, merkle_paths).collect(),
             transaction: Some((block_id, txn_id, kind)),
         });
@@ -261,7 +263,7 @@ impl<'a> super::MockNetwork<'a, cap::Ledger> for MockNetwork<'a> {
         EventSource::QueryService
     }
 
-    fn generate_event(&mut self, e: LedgerEvent<cap::Ledger>) {
+    fn generate_event(&mut self, e: LedgerEvent<cap::LedgerWithHeight<H>>) {
         println!(
             "generating event {}: {}",
             self.now(),
@@ -278,7 +280,7 @@ impl<'a> super::MockNetwork<'a, cap::Ledger> for MockNetwork<'a> {
         &self,
         index: EventIndex,
         source: EventSource,
-    ) -> Result<LedgerEvent<cap::Ledger>, KeystoreError<cap::Ledger>> {
+    ) -> Result<LedgerEvent<cap::LedgerWithHeight<H>>, KeystoreError<cap::LedgerWithHeight<H>>> {
         if source == EventSource::QueryService {
             self.events.get(index)
         } else {
@@ -290,20 +292,36 @@ impl<'a> super::MockNetwork<'a, cap::Ledger> for MockNetwork<'a> {
 }
 
 #[derive(Clone)]
-pub struct MockBackend<'a> {
-    storage: Arc<Mutex<MockStorage<'a, cap::Ledger>>>,
-    ledger: Arc<Mutex<MockLedger<'a, cap::Ledger, MockNetwork<'a>, MockStorage<'a, cap::Ledger>>>>,
+pub struct MockBackendWithHeight<'a, const H: u8> {
+    storage: Arc<Mutex<MockStorage<'a, cap::LedgerWithHeight<H>>>>,
+    ledger: Arc<
+        Mutex<
+            MockLedger<
+                'a,
+                cap::LedgerWithHeight<H>,
+                MockNetworkWithHeight<'a, H>,
+                MockStorage<'a, cap::LedgerWithHeight<H>>,
+            >,
+        >,
+    >,
     key_stream: hd::KeyTree,
 }
 
-impl<'a> MockBackend<'a> {
+impl<'a, const H: u8> MockBackendWithHeight<'a, H> {
     pub fn new(
         ledger: Arc<
-            Mutex<MockLedger<'a, cap::Ledger, MockNetwork<'a>, MockStorage<'a, cap::Ledger>>>,
+            Mutex<
+                MockLedger<
+                    'a,
+                    cap::LedgerWithHeight<H>,
+                    MockNetworkWithHeight<'a, H>,
+                    MockStorage<'a, cap::LedgerWithHeight<H>>,
+                >,
+            >,
         >,
-        storage: Arc<Mutex<MockStorage<'a, cap::Ledger>>>,
+        storage: Arc<Mutex<MockStorage<'a, cap::LedgerWithHeight<H>>>>,
         key_stream: hd::KeyTree,
-    ) -> MockBackend<'a> {
+    ) -> Self {
         Self {
             ledger,
             storage,
@@ -313,9 +331,10 @@ impl<'a> MockBackend<'a> {
 }
 
 #[async_trait]
-impl<'a> KeystoreBackend<'a, cap::Ledger> for MockBackend<'a> {
-    type EventStream = Pin<Box<dyn Stream<Item = (LedgerEvent<cap::Ledger>, EventSource)> + Send>>;
-    type Storage = MockStorage<'a, cap::Ledger>;
+impl<'a, const H: u8> KeystoreBackend<'a, cap::LedgerWithHeight<H>> for MockBackendWithHeight<'a, H> {
+    type EventStream =
+        Pin<Box<dyn Stream<Item = (LedgerEvent<cap::LedgerWithHeight<H>>, EventSource)> + Send>>;
+    type Storage = MockStorage<'a, cap::LedgerWithHeight<H>>;
 
     async fn storage<'l>(&'l mut self) -> MutexGuard<'l, Self::Storage> {
         self.storage.lock().await
@@ -323,7 +342,8 @@ impl<'a> KeystoreBackend<'a, cap::Ledger> for MockBackend<'a> {
 
     async fn create(
         &mut self,
-    ) -> Result<KeystoreState<'a, cap::Ledger>, KeystoreError<cap::Ledger>> {
+    ) -> Result<KeystoreState<'a, cap::LedgerWithHeight<H>>, KeystoreError<cap::LedgerWithHeight<H>>>
+    {
         let state = {
             let mut ledger = self.ledger.lock().await;
             let network = ledger.network();
@@ -380,11 +400,11 @@ impl<'a> KeystoreBackend<'a, cap::Ledger> for MockBackend<'a> {
     async fn get_public_key(
         &self,
         address: &UserAddress,
-    ) -> Result<UserPubKey, KeystoreError<cap::Ledger>> {
+    ) -> Result<UserPubKey, KeystoreError<cap::LedgerWithHeight<H>>> {
         let mut ledger = self.ledger.lock().await;
         match ledger.network().address_map.get(address) {
             Some(key) => Ok(key.clone()),
-            None => Err(KeystoreError::<cap::Ledger>::InvalidAddress {
+            None => Err(KeystoreError::<cap::LedgerWithHeight<H>>::InvalidAddress {
                 address: address.clone(),
             }),
         }
@@ -393,7 +413,7 @@ impl<'a> KeystoreBackend<'a, cap::Ledger> for MockBackend<'a> {
     async fn get_initial_scan_state(
         &self,
         _from: EventIndex,
-    ) -> Result<(MerkleTree, EventIndex), KeystoreError<cap::Ledger>> {
+    ) -> Result<(MerkleTree, EventIndex), KeystoreError<cap::LedgerWithHeight<H>>> {
         self.ledger.lock().await.get_initial_scan_state()
     }
 
@@ -401,7 +421,7 @@ impl<'a> KeystoreBackend<'a, cap::Ledger> for MockBackend<'a> {
         &self,
         _set: &mut cap::NullifierSet,
         nullifier: Nullifier,
-    ) -> Result<(bool, ()), KeystoreError<cap::Ledger>> {
+    ) -> Result<(bool, ()), KeystoreError<cap::LedgerWithHeight<H>>> {
         let mut ledger = self.ledger.lock().await;
         Ok((ledger.network().nullifiers.contains(&nullifier), ()))
     }
@@ -409,7 +429,7 @@ impl<'a> KeystoreBackend<'a, cap::Ledger> for MockBackend<'a> {
     async fn register_user_key(
         &mut self,
         key_pair: &UserKeyPair,
-    ) -> Result<(), KeystoreError<cap::Ledger>> {
+    ) -> Result<(), KeystoreError<cap::LedgerWithHeight<H>>> {
         let pub_key = key_pair.pub_key();
         let mut ledger = self.ledger.lock().await;
         ledger
@@ -422,12 +442,16 @@ impl<'a> KeystoreBackend<'a, cap::Ledger> for MockBackend<'a> {
     async fn submit(
         &mut self,
         txn: cap::Transaction,
-        _info: TransactionInfo<cap::Ledger>,
-    ) -> Result<(), KeystoreError<cap::Ledger>> {
+        _info: TransactionInfo<cap::LedgerWithHeight<H>>,
+    ) -> Result<(), KeystoreError<cap::LedgerWithHeight<H>>> {
         self.ledger.lock().await.submit(txn)
     }
 
-    async fn finalize(&mut self, txn: PendingTransaction<cap::Ledger>, txn_id: Option<(u64, u64)>) {
+    async fn finalize(
+        &mut self,
+        txn: PendingTransaction<cap::LedgerWithHeight<H>>,
+        txn_id: Option<(u64, u64)>,
+    ) {
         if let Some((block_id, txn_id)) = txn_id {
             self.ledger
                 .lock()
@@ -443,14 +467,14 @@ impl<'a> KeystoreBackend<'a, cap::Ledger> for MockBackend<'a> {
     }
 }
 
-#[derive(Default)]
-pub struct MockSystem;
+#[derive(Clone, Copy, Debug, Default)]
+pub struct MockSystemWithHeight<const H: u8>;
 
 #[async_trait]
-impl<'a> super::SystemUnderTest<'a> for MockSystem {
-    type Ledger = cap::Ledger;
-    type MockBackend = MockBackend<'a>;
-    type MockNetwork = MockNetwork<'a>;
+impl<'a, const H: u8> super::SystemUnderTest<'a> for MockSystemWithHeight<H> {
+    type Ledger = cap::LedgerWithHeight<H>;
+    type MockBackend = MockBackendWithHeight<'a, H>;
+    type MockNetwork = MockNetworkWithHeight<'a, H>;
     type MockStorage = MockStorage<'a, Self::Ledger>;
 
     async fn create_network(
@@ -461,7 +485,7 @@ impl<'a> super::SystemUnderTest<'a> for MockSystem {
         initial_grants: Vec<(RecordOpening, u64)>,
     ) -> Self::MockNetwork {
         let mut rng = ChaChaRng::from_seed([42u8; 32]);
-        MockNetwork::new(&mut rng, proof_crs, records, initial_grants)
+        MockNetworkWithHeight::new(&mut rng, proof_crs, records, initial_grants)
     }
 
     async fn create_storage(&mut self) -> Self::MockStorage {
@@ -475,9 +499,13 @@ impl<'a> super::SystemUnderTest<'a> for MockSystem {
         key_stream: hd::KeyTree,
         storage: Arc<Mutex<Self::MockStorage>>,
     ) -> Self::MockBackend {
-        MockBackend::new(ledger, storage, key_stream)
+        MockBackendWithHeight::new(ledger, storage, key_stream)
     }
 }
+
+pub type MockBackend<'a> = MockBackendWithHeight<'a, 5>;
+pub type MockNetwork<'a> = MockNetworkWithHeight<'a, 5>;
+pub type MockSystem = MockSystemWithHeight<5>;
 
 #[cfg(test)]
 mod tests {

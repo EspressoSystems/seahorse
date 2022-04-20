@@ -30,7 +30,7 @@ pub mod loader;
 pub mod persistence;
 pub mod reader;
 mod secret;
-#[cfg(any(test, feature = "testing"))]
+#[cfg(any(test, bench, feature = "testing"))]
 pub mod testing;
 pub mod txn_builder;
 
@@ -743,11 +743,14 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                             self.txn_state.forget_merkle_leaf(record.uid);
                         }
                     }
-                    // Insert new records.
-                    for o in txn.output_commitments() {
-                        self.txn_state.append_merkle_leaf(o);
-                    }
                 }
+                // Insert new records.
+                self.txn_state.append_merkle_leaves(
+                    block
+                        .txns()
+                        .into_iter()
+                        .flat_map(|txn| txn.output_commitments()),
+                );
                 // Update nullifier set
                 let nullifier_proofs = block
                     .txns()
@@ -1086,7 +1089,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         txn_hash: Option<TransactionHash<L>>,
         records: &[RecordOpening],
     ) {
-        let history = receive_history_entry(block_id, txn_id, kind, txn_hash, records);
+        let history = receive_history_entry(kind, txn_hash, records);
 
         if let Err(err) = session
             .backend
@@ -1724,6 +1727,10 @@ impl<'a, L: Ledger, Backend: KeystoreBackend<'a, L>> KeystoreSharedState<'a, L, 
         &mut self.session.backend
     }
 
+    pub fn state(&self) -> &KeystoreState<'a, L> {
+        &self.state
+    }
+
     pub fn rng(&mut self) -> &mut ChaChaRng {
         &mut self.session.rng
     }
@@ -1766,12 +1773,26 @@ impl<'a, L: 'static + Ledger, Backend: 'a + KeystoreBackend<'a, L> + Send + Sync
     // difference is that we use dynamic type erasure (Pin<Box<dyn Future>>) instead of static type
     // erasure. I don't know why this doesn't crash the compiler, but it doesn't.
     pub fn new(
-        backend: Backend,
+        mut backend: Backend,
     ) -> BoxFuture<'a, Result<Keystore<'a, Backend, L>, KeystoreError<L>>> {
-        Box::pin(async move { Self::new_impl(backend).await })
+        Box::pin(async move {
+            let state = backend.load().await?;
+            Self::new_impl(backend, state).await
+        })
     }
-    async fn new_impl(mut backend: Backend) -> Result<Keystore<'a, Backend, L>, KeystoreError<L>> {
-        let mut state = backend.load().await?;
+
+    #[cfg(any(test, bench, feature = "testing"))]
+    pub fn with_state(
+        backend: Backend,
+        state: KeystoreState<'a, L>,
+    ) -> BoxFuture<'a, Result<Keystore<'a, Backend, L>, KeystoreError<L>>> {
+        Box::pin(async move { Self::new_impl(backend, state).await })
+    }
+
+    async fn new_impl(
+        backend: Backend,
+        mut state: KeystoreState<'a, L>,
+    ) -> Result<Keystore<'a, Backend, L>, KeystoreError<L>> {
         let mut events = backend.subscribe(state.txn_state.now, None).await;
         let mut key_scans = vec![];
         for account in state.viewing_accounts.values() {
