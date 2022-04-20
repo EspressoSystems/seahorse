@@ -1,1 +1,1 @@
-initSidebarItems({"struct":[["Loader",""],["LoaderMetadata",""]],"trait":[["WalletLoader",""]]});
+initSidebarItems({"struct":[["Loader",""],["LoaderMetadata",""]],"trait":[["KeystoreLoader",""]]});

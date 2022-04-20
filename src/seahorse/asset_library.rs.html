@@ -649,7 +649,7 @@
 <span class="doccomment">//! Collections of and information on CAP assets.</span>
 <span class="doccomment">//!</span>
 <span class="doccomment">//! This module defines [AssetInfo] and [MintInfo], which store auxiliary information about assets</span>
-<span class="doccomment">//! which is useful to wallets but not present in [AssetDefinition]. For example, [AssetInfo] may</span>
+<span class="doccomment">//! which is useful to keystores but not present in [AssetDefinition]. For example, [AssetInfo] may</span>
 <span class="doccomment">//! include a [MintInfo], which contains the secret information needed by the asset creator to mint</span>
 <span class="doccomment">//! more of that asset type.</span>
 <span class="doccomment">//!</span>
@@ -816,9 +816,9 @@
     <span class="doccomment">/// UI-friendly name assigned to this asset.</span>
     <span class="doccomment">///</span>
     <span class="doccomment">/// The name is purely for display purposes. It is not bound to anything in the CAP protocol,</span>
-    <span class="doccomment">/// and will not be populated when a wallet discovers an asset, only when a user manually</span>
-    <span class="doccomment">/// imports or creates that asset with a particular name. Two wallets will only agree on the</span>
-    <span class="doccomment">/// name for an asset if both wallets have imported that asset with the same name.</span>
+    <span class="doccomment">/// and will not be populated when a keystore discovers an asset, only when a user manually</span>
+    <span class="doccomment">/// imports or creates that asset with a particular name. Two keystores will only agree on the</span>
+    <span class="doccomment">/// name for an asset if both keystores have imported that asset with the same name.</span>
     <span class="kw">pub</span> <span class="ident">name</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">String</span><span class="op">&gt;</span>,
     <span class="doccomment">/// UI-friendly description assigned to this asset.</span>
     <span class="doccomment">///</span>
@@ -826,17 +826,17 @@
     <span class="doccomment">/// can be used however the client wants.</span>
     <span class="doccomment">///</span>
     <span class="doccomment">/// The description is purely for display purposes. It is not bound to anything in the CAP</span>
-    <span class="doccomment">/// protocol, and will not be populated when a wallet discovers an asset, only when a user</span>
-    <span class="doccomment">/// manually imports or creates that asset with a particular description. Two wallets will only</span>
-    <span class="doccomment">/// agree on the description for an asset if both wallets have imported that asset with the same</span>
+    <span class="doccomment">/// protocol, and will not be populated when a keystore discovers an asset, only when a user</span>
+    <span class="doccomment">/// manually imports or creates that asset with a particular description. Two keystores will only</span>
+    <span class="doccomment">/// agree on the description for an asset if both keystores have imported that asset with the same</span>
     <span class="doccomment">/// description.</span>
     <span class="kw">pub</span> <span class="ident">description</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">String</span><span class="op">&gt;</span>,
     <span class="doccomment">/// Icon used when displaying this asset in a GUI.</span>
     <span class="doccomment">///</span>
     <span class="doccomment">/// The icon is purely for display purposes. It is not bound to anything in the CAP protocol,</span>
-    <span class="doccomment">/// and will not be populated when a wallet discovers an asset, only when a user manually</span>
-    <span class="doccomment">/// imports or creates that asset with a particular icon. Two wallets will only agree on the</span>
-    <span class="doccomment">/// icon for an asset if both wallets have imported that asset with the same icon.</span>
+    <span class="doccomment">/// and will not be populated when a keystore discovers an asset, only when a user manually</span>
+    <span class="doccomment">/// imports or creates that asset with a particular icon. Two keystores will only agree on the</span>
+    <span class="doccomment">/// icon for an asset if both keystores have imported that asset with the same icon.</span>
     <span class="kw">pub</span> <span class="ident">icon</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">Icon</span><span class="op">&gt;</span>,
     <span class="doccomment">/// Secret information required to mint an asset.</span>
     <span class="kw">pub</span> <span class="ident">mint_info</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">MintInfo</span><span class="op">&gt;</span>,
@@ -844,7 +844,7 @@
     <span class="kw">pub</span> <span class="ident">verified</span>: <span class="ident">bool</span>,
     <span class="doccomment">/// This asset is not included in the persistent asset library.</span>
     <span class="doccomment">///</span>
-    <span class="doccomment">/// It will need to be reloaded when the wallet is restarted.</span>
+    <span class="doccomment">/// It will need to be reloaded when the keystore is restarted.</span>
     <span class="kw">pub</span> <span class="ident">temporary</span>: <span class="ident">bool</span>,
 }
 
@@ -866,7 +866,7 @@
         <span class="self">self</span>.<span class="ident">mint_info</span> <span class="op">=</span> <span class="prelude-val">None</span>;
         <span class="self">self</span>.<span class="ident">verified</span> <span class="op">=</span> <span class="bool-val">true</span>;
         <span class="comment">// Assets loaded from verified libraries are not included in our persistent state. Instead,</span>
-        <span class="comment">// they should be loaded from the verified library each time the wallet is launched, in case</span>
+        <span class="comment">// they should be loaded from the verified library each time the keystore is launched, in case</span>
         <span class="comment">// the verified library changes.</span>
         <span class="comment">//</span>
         <span class="comment">// Note that if the same asset is imported manually, it will be persisted due to the</span>
@@ -977,7 +977,7 @@
         <span class="comment">//</span>
         <span class="comment">// Recognized fields are &quot;description&quot;, &quot;name&quot;, &quot;definition&quot;, &quot;mint_description&quot;, &quot;seed&quot;,</span>
         <span class="comment">// and &quot;temporary&quot;. Note that the `verified` field cannot be set this way. There is only one</span>
-        <span class="comment">// way to create verified `AssetInfo`: using [Wallet::verify_assets], which performs a</span>
+        <span class="comment">// way to create verified `AssetInfo`: using [Keystore::verify_assets], which performs a</span>
         <span class="comment">// signature check before marking assets verified.</span>
         <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">definition</span> <span class="op">=</span> <span class="prelude-val">None</span>;
         <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">name</span> <span class="op">=</span> <span class="prelude-val">None</span>;
@@ -1225,8 +1225,8 @@
 <span class="doccomment">///    writes it to a file (for example, using [bincode] serialization). The</span>
 <span class="doccomment">///    `gen_verified_asset_library` executable that ships with this crate can be used to do this.</span>
 <span class="doccomment">/// 3. The application developer distributes this file to users along with the client application.</span>
-<span class="doccomment">/// 4. The application, upon creating a [Wallet](crate::Wallet), deserializes the</span>
-<span class="doccomment">///    [VerifiedAssetLibrary] and calls [Wallet::verify_assets](crate::Wallet::verify_assets) with</span>
+<span class="doccomment">/// 4. The application, upon creating a [Keystore](crate::Keystore), deserializes the</span>
+<span class="doccomment">///    [VerifiedAssetLibrary] and calls [Keystore::verify_assets](crate::Keystore::verify_assets) with</span>
 <span class="doccomment">///    the public key from step 1. This key can be hard-coded in the client application.</span>
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Clone</span>, <span class="ident">Debug</span>, <span class="ident">Deserialize</span>, <span class="ident">Serialize</span>)]</span>
 <span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">VerifiedAssetLibrary</span> {

@@ -1,1 +1,1 @@
-initSidebarItems({"struct":[["AtomicWalletStorage",""]]});
+initSidebarItems({"struct":[["AtomicKeystoreStorage",""]]});

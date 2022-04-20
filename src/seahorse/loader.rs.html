@@ -356,13 +356,13 @@
 <span class="comment">// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.</span>
 <span class="comment">// You should have received a copy of the GNU General Public License along with this program. If not, see &lt;https://www.gnu.org/licenses/&gt;.</span>
 
-<span class="doccomment">//! Traits and types for creating and loading wallets.</span>
+<span class="doccomment">//! Traits and types for creating and loading keystores.</span>
 <span class="doccomment">//!</span>
-<span class="doccomment">//! This module defines the [WalletLoader] interface, which allows various implementations as</span>
+<span class="doccomment">//! This module defines the [KeystoreLoader] interface, which allows various implementations as</span>
 <span class="doccomment">//! plugins to the persistence layer. It also provides a generally useful implementation [Loader],</span>
-<span class="doccomment">//! which loads an encrypted wallet from the file system using a mnemonic phrase to generate keys</span>
+<span class="doccomment">//! which loads an encrypted keystore from the file system using a mnemonic phrase to generate keys</span>
 <span class="doccomment">//! and a password to provide a more convenient login interface.</span>
-<span class="kw">use</span> <span class="kw">super</span>::{<span class="ident">encryption</span>, <span class="ident">hd</span>, <span class="ident">reader</span>, <span class="ident">EncryptionSnafu</span>, <span class="ident">KeySnafu</span>, <span class="ident">MnemonicSnafu</span>, <span class="ident">WalletError</span>};
+<span class="kw">use</span> <span class="kw">super</span>::{<span class="ident">encryption</span>, <span class="ident">hd</span>, <span class="ident">reader</span>, <span class="ident">EncryptionSnafu</span>, <span class="ident">KeySnafu</span>, <span class="ident">KeystoreError</span>, <span class="ident">MnemonicSnafu</span>};
 <span class="kw">use</span> <span class="ident">encryption</span>::{<span class="ident">Cipher</span>, <span class="ident">CipherText</span>, <span class="ident">Salt</span>};
 <span class="kw">use</span> <span class="ident">hd</span>::{<span class="ident">KeyTree</span>, <span class="ident">Mnemonic</span>};
 <span class="kw">use</span> <span class="ident">rand_chacha</span>::{
@@ -375,15 +375,15 @@
 <span class="kw">use</span> <span class="ident">snafu::ResultExt</span>;
 <span class="kw">use</span> <span class="ident">std::path</span>::{<span class="ident">Path</span>, <span class="ident">PathBuf</span>};
 
-<span class="kw">pub</span> <span class="kw">trait</span> <span class="ident">WalletLoader</span><span class="op">&lt;</span><span class="ident">L</span>: <span class="ident">Ledger</span><span class="op">&gt;</span> {
-    <span class="kw">type</span> <span class="ident">Meta</span>; <span class="comment">// Metadata stored in plaintext and used by the loader to access the wallet.</span>
+<span class="kw">pub</span> <span class="kw">trait</span> <span class="ident">KeystoreLoader</span><span class="op">&lt;</span><span class="ident">L</span>: <span class="ident">Ledger</span><span class="op">&gt;</span> {
+    <span class="kw">type</span> <span class="ident">Meta</span>; <span class="comment">// Metadata stored in plaintext and used by the loader to access the keystore.</span>
     <span class="kw">fn</span> <span class="ident">location</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">PathBuf</span>;
-    <span class="kw">fn</span> <span class="ident">create</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(<span class="ident"><span class="self">Self</span>::Meta</span>, <span class="ident">KeyTree</span>), <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span>;
-    <span class="kw">fn</span> <span class="ident">load</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">meta</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident"><span class="self">Self</span>::Meta</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">KeyTree</span>, <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span>;
+    <span class="kw">fn</span> <span class="ident">create</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(<span class="ident"><span class="self">Self</span>::Meta</span>, <span class="ident">KeyTree</span>), <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span>;
+    <span class="kw">fn</span> <span class="ident">load</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">meta</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident"><span class="self">Self</span>::Meta</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">KeyTree</span>, <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span>;
 }
 
-<span class="comment">// Metadata about a wallet which is always stored unencrypted, so we can report some basic</span>
-<span class="comment">// information about the wallet without decrypting. This also aids in the key derivation process.</span>
+<span class="comment">// Metadata about a keystore which is always stored unencrypted, so we can report some basic</span>
+<span class="comment">// information about the keystore without decrypting. This also aids in the key derivation process.</span>
 <span class="comment">//</span>
 <span class="comment">// DO NOT put secrets in here.</span>
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Clone</span>, <span class="ident">Debug</span>, <span class="ident">PartialEq</span>, <span class="ident">Serialize</span>, <span class="ident">Deserialize</span>)]</span>
@@ -407,7 +407,7 @@
 }
 
 <span class="kw">impl</span> <span class="ident">LoaderInput</span> {
-    <span class="kw">fn</span> <span class="ident">create_password</span><span class="op">&lt;</span><span class="ident">L</span>: <span class="ident">Ledger</span><span class="op">&gt;</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">String</span>, <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
+    <span class="kw">fn</span> <span class="ident">create_password</span><span class="op">&lt;</span><span class="ident">L</span>: <span class="ident">Ledger</span><span class="op">&gt;</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">String</span>, <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
         <span class="kw">match</span> <span class="self">self</span> {
             <span class="ident"><span class="self">Self</span>::User</span>(<span class="ident">reader</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="kw">loop</span> {
                 <span class="kw">let</span> <span class="ident">password</span> <span class="op">=</span> <span class="ident">reader</span>.<span class="ident">read_password</span>(<span class="string">&quot;Create password: &quot;</span>)<span class="question-mark">?</span>;
@@ -425,7 +425,7 @@
         }
     }
 
-    <span class="kw">fn</span> <span class="ident">read_password</span><span class="op">&lt;</span><span class="ident">L</span>: <span class="ident">Ledger</span><span class="op">&gt;</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">String</span><span class="op">&gt;</span>, <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
+    <span class="kw">fn</span> <span class="ident">read_password</span><span class="op">&lt;</span><span class="ident">L</span>: <span class="ident">Ledger</span><span class="op">&gt;</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">String</span><span class="op">&gt;</span>, <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
         <span class="kw">match</span> <span class="self">self</span> {
             <span class="ident"><span class="self">Self</span>::User</span>(<span class="ident">reader</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="kw">loop</span> {
                 <span class="macro">println!</span>(<span class="string">&quot;Forgot your password? Want to change it? [y/n]&quot;</span>);
@@ -436,7 +436,7 @@
                         <span class="kw">_</span> <span class="op">=</span><span class="op">&gt;</span> <span class="macro">println!</span>(<span class="string">&quot;Please enter &#39;y&#39; or &#39;n&#39;.&quot;</span>),
                     },
                     <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> {
-                        <span class="kw">return</span> <span class="prelude-val">Err</span>(<span class="ident">WalletError::Failed</span> {
+                        <span class="kw">return</span> <span class="prelude-val">Err</span>(<span class="ident">KeystoreError::Failed</span> {
                             <span class="ident">msg</span>: <span class="ident">String::from</span>(<span class="string">&quot;eof&quot;</span>),
                         })
                     }
@@ -451,12 +451,12 @@
     <span class="kw">fn</span> <span class="ident">create_mnemonic</span><span class="op">&lt;</span><span class="ident">L</span>: <span class="ident">Ledger</span><span class="op">&gt;</span>(
         <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>,
         <span class="ident">rng</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">ChaChaRng</span>,
-    ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">Mnemonic</span>, <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
+    ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">Mnemonic</span>, <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
         <span class="kw">match</span> <span class="self">self</span> {
             <span class="ident"><span class="self">Self</span>::User</span>(<span class="ident">reader</span>) <span class="op">=</span><span class="op">&gt;</span> {
                 <span class="macro">println!</span>(
-                    <span class="string">&quot;Your wallet will be identified by a secret mnemonic phrase. This phrase will \
-                     allow you to recover your wallet if you lose access to it. Anyone who has access \
+                    <span class="string">&quot;Your keystore will be identified by a secret mnemonic phrase. This phrase will \
+                     allow you to recover your keystore if you lose access to it. Anyone who has access \
                      to this phrase will be able to view and spend your assets. Store this phrase in a \
                      safe, private place.&quot;</span>
                 );
@@ -465,10 +465,10 @@
                     <span class="macro">println!</span>(<span class="string">&quot;Your mnemonic phrase will be:&quot;</span>);
                     <span class="macro">println!</span>(<span class="string">&quot;{}&quot;</span>, <span class="ident">mnemonic</span>);
                     <span class="lifetime">&#39;inner</span>: <span class="kw">loop</span> {
-                        <span class="macro">println!</span>(<span class="string">&quot;1) Accept phrase and create wallet&quot;</span>);
+                        <span class="macro">println!</span>(<span class="string">&quot;1) Accept phrase and create keystore&quot;</span>);
                         <span class="macro">println!</span>(<span class="string">&quot;2) Generate a new phrase&quot;</span>);
                         <span class="macro">println!</span>(
-                            <span class="string">&quot;3) Manually enter a mnemonic (use this to recover a lost wallet)&quot;</span>
+                            <span class="string">&quot;3) Manually enter a mnemonic (use this to recover a lost keystore)&quot;</span>
                         );
                         <span class="kw">match</span> <span class="ident">reader</span>.<span class="ident">read_line</span>() {
                             <span class="prelude-val">Some</span>(<span class="ident">line</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="kw">match</span> <span class="ident">line</span>.<span class="ident">as_str</span>().<span class="ident">trim</span>() {
@@ -478,7 +478,7 @@
                                 <span class="kw">_</span> <span class="op">=</span><span class="op">&gt;</span> <span class="kw">continue</span> <span class="lifetime">&#39;inner</span>,
                             },
                             <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> {
-                                <span class="kw">return</span> <span class="prelude-val">Err</span>(<span class="ident">WalletError::Failed</span> {
+                                <span class="kw">return</span> <span class="prelude-val">Err</span>(<span class="ident">KeystoreError::Failed</span> {
                                     <span class="ident">msg</span>: <span class="ident">String::from</span>(<span class="string">&quot;eof&quot;</span>),
                                 })
                             }
@@ -487,7 +487,7 @@
                 }
             }
 
-            <span class="ident"><span class="self">Self</span>::PasswordLiteral</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Err</span>(<span class="ident">WalletError::Failed</span> {
+            <span class="ident"><span class="self">Self</span>::PasswordLiteral</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Err</span>(<span class="ident">KeystoreError::Failed</span> {
                 <span class="ident">msg</span>: <span class="ident">String::from</span>(<span class="string">&quot;missing mnemonic phrase&quot;</span>),
             }),
 
@@ -497,10 +497,10 @@
         }
     }
 
-    <span class="kw">fn</span> <span class="ident">read_mnemonic</span><span class="op">&lt;</span><span class="ident">L</span>: <span class="ident">Ledger</span><span class="op">&gt;</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">Mnemonic</span>, <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
+    <span class="kw">fn</span> <span class="ident">read_mnemonic</span><span class="op">&lt;</span><span class="ident">L</span>: <span class="ident">Ledger</span><span class="op">&gt;</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">Mnemonic</span>, <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
         <span class="kw">match</span> <span class="self">self</span> {
             <span class="ident"><span class="self">Self</span>::User</span>(<span class="ident">reader</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident"><span class="self">Self</span>::read_mnemonic_interactive</span>(<span class="ident">reader</span>),
-            <span class="ident"><span class="self">Self</span>::PasswordLiteral</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Err</span>(<span class="ident">WalletError::Failed</span> {
+            <span class="ident"><span class="self">Self</span>::PasswordLiteral</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Err</span>(<span class="ident">KeystoreError::Failed</span> {
                 <span class="ident">msg</span>: <span class="ident">String::from</span>(<span class="string">&quot;missing mnemonic phrase&quot;</span>),
             }),
             <span class="ident"><span class="self">Self</span>::MnemonicPasswordLiteral</span>(<span class="ident">mnemonic</span>, <span class="kw">_</span>) <span class="op">|</span> <span class="ident"><span class="self">Self</span>::RecoveryLiteral</span>(<span class="ident">mnemonic</span>, <span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> {
@@ -515,7 +515,7 @@
 
     <span class="kw">fn</span> <span class="ident">read_mnemonic_interactive</span><span class="op">&lt;</span><span class="ident">L</span>: <span class="ident">Ledger</span><span class="op">&gt;</span>(
         <span class="ident">reader</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">Reader</span>,
-    ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">Mnemonic</span>, <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
+    ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">Mnemonic</span>, <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
         <span class="kw">loop</span> {
             <span class="kw">let</span> <span class="ident">phrase</span> <span class="op">=</span> <span class="ident">reader</span>.<span class="ident">read_password</span>(<span class="string">&quot;Enter mnemonic phrase: &quot;</span>)<span class="question-mark">?</span>;
             <span class="kw">match</span> <span class="ident">Mnemonic::from_phrase</span>(<span class="kw-2">&amp;</span><span class="ident">phrase</span>) {
@@ -577,7 +577,7 @@
         <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">dir</span>
     }
 
-    <span class="kw">fn</span> <span class="ident">create_from_mnemonic</span><span class="op">&lt;</span><span class="ident">L</span>: <span class="ident">Ledger</span><span class="op">&gt;</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(<span class="ident">Mnemonic</span>, <span class="ident">KeyTree</span>), <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
+    <span class="kw">fn</span> <span class="ident">create_from_mnemonic</span><span class="op">&lt;</span><span class="ident">L</span>: <span class="ident">Ledger</span><span class="op">&gt;</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(<span class="ident">Mnemonic</span>, <span class="ident">KeyTree</span>), <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
         <span class="kw">let</span> <span class="ident">mnemonic</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">input</span>.<span class="ident">create_mnemonic</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>.<span class="ident">rng</span>)<span class="question-mark">?</span>;
         <span class="kw">let</span> <span class="ident">key</span> <span class="op">=</span> <span class="ident">KeyTree::from_mnemonic</span>(<span class="kw-2">&amp;</span><span class="ident">mnemonic</span>);
         <span class="prelude-val">Ok</span>((<span class="ident">mnemonic</span>, <span class="ident">key</span>))
@@ -587,7 +587,7 @@
     <span class="kw">fn</span> <span class="ident">create_password</span><span class="op">&lt;</span><span class="ident">L</span>: <span class="ident">Ledger</span><span class="op">&gt;</span>(
         <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>,
         <span class="ident">mnemonic</span>: <span class="ident">Mnemonic</span>,
-    ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(<span class="ident">Salt</span>, <span class="ident">CipherText</span>), <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
+    ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(<span class="ident">Salt</span>, <span class="ident">CipherText</span>), <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
         <span class="kw">let</span> <span class="ident">password</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">input</span>.<span class="ident">create_password</span>()<span class="question-mark">?</span>;
 
         <span class="comment">// Encrypt the mnemonic phrase, which we can decrypt on load to check the derived key.</span>
@@ -606,14 +606,14 @@
 
 <span class="kw">static</span> <span class="ident">KEY_CHECK_SUB_TREE</span>: <span class="kw-2">&amp;</span><span class="ident">str</span> <span class="op">=</span> <span class="string">&quot;key_check&quot;</span>;
 
-<span class="kw">impl</span><span class="op">&lt;</span><span class="ident">L</span>: <span class="ident">Ledger</span><span class="op">&gt;</span> <span class="ident">WalletLoader</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">Loader</span> {
+<span class="kw">impl</span><span class="op">&lt;</span><span class="ident">L</span>: <span class="ident">Ledger</span><span class="op">&gt;</span> <span class="ident">KeystoreLoader</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">Loader</span> {
     <span class="kw">type</span> <span class="ident">Meta</span> <span class="op">=</span> <span class="ident">LoaderMetadata</span>;
 
     <span class="kw">fn</span> <span class="ident">location</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">PathBuf</span> {
         <span class="self">self</span>.<span class="ident">dir</span>.<span class="ident">clone</span>()
     }
 
-    <span class="kw">fn</span> <span class="ident">create</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(<span class="ident">LoaderMetadata</span>, <span class="ident">KeyTree</span>), <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
+    <span class="kw">fn</span> <span class="ident">create</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(<span class="ident">LoaderMetadata</span>, <span class="ident">KeyTree</span>), <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
         <span class="kw">let</span> (<span class="ident">mnemonic</span>, <span class="ident">key</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">create_from_mnemonic</span>()<span class="question-mark">?</span>;
 
         <span class="comment">// Generate and encrypt some random bytes using the mnemonic, so in the future we can check</span>
@@ -642,7 +642,7 @@
         <span class="prelude-val">Ok</span>((<span class="ident">meta</span>, <span class="ident">key</span>))
     }
 
-    <span class="kw">fn</span> <span class="ident">load</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">meta</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident"><span class="self">Self</span>::Meta</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">KeyTree</span>, <span class="ident">WalletError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
+    <span class="kw">fn</span> <span class="ident">load</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">meta</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident"><span class="self">Self</span>::Meta</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">KeyTree</span>, <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
         <span class="kw">let</span> <span class="ident">key</span> <span class="op">=</span> <span class="kw">loop</span> {
             <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">password</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">input</span>.<span class="ident">read_password</span>()<span class="question-mark">?</span> {
                 <span class="comment">// Generate the decryption key and check that we can use it to decrypt</span>
@@ -665,7 +665,7 @@
                 } <span class="kw">else</span> <span class="kw">if</span> <span class="self">self</span>.<span class="ident">input</span>.<span class="ident">interactive</span>() {
                     <span class="macro">println!</span>(<span class="string">&quot;Sorry, that&#39;s incorrect.&quot;</span>);
                 } <span class="kw">else</span> {
-                    <span class="kw">return</span> <span class="prelude-val">Err</span>(<span class="ident">WalletError::Failed</span> {
+                    <span class="kw">return</span> <span class="prelude-val">Err</span>(<span class="ident">KeystoreError::Failed</span> {
                         <span class="ident">msg</span>: <span class="ident">String::from</span>(<span class="string">&quot;incorrect password&quot;</span>),
                     });
                 }
@@ -690,7 +690,7 @@
                 } <span class="kw">else</span> <span class="kw">if</span> <span class="self">self</span>.<span class="ident">input</span>.<span class="ident">interactive</span>() {
                     <span class="macro">println!</span>(<span class="string">&quot;Sorry, that&#39;s incorrect.&quot;</span>);
                 } <span class="kw">else</span> {
-                    <span class="kw">return</span> <span class="prelude-val">Err</span>(<span class="ident">WalletError::Failed</span> {
+                    <span class="kw">return</span> <span class="prelude-val">Err</span>(<span class="ident">KeystoreError::Failed</span> {
                         <span class="ident">msg</span>: <span class="ident">String::from</span>(<span class="string">&quot;incorrect mnemonic&quot;</span>),
                     });
                 }

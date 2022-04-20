@@ -285,7 +285,7 @@
 
 <span class="doccomment">/// An index into the [LedgerEvent] stream.</span>
 <span class="doccomment">///</span>
-<span class="doccomment">/// Wallets subscribe to events; this is how they keep in sync with the outside world. They need to</span>
+<span class="doccomment">/// Keystores subscribe to events; this is how they keep in sync with the outside world. They need to</span>
 <span class="doccomment">/// track their index into the event stream in case they get disconnected or closed, so that they</span>
 <span class="doccomment">/// can resubscribe starting at the appropriate event when they reconnect.</span>
 <span class="doccomment">///</span>
@@ -420,7 +420,7 @@
     }
 }
 
-<span class="doccomment">/// The event streams that the wallet can subscribe to.</span>
+<span class="doccomment">/// The event streams that the keystore can subscribe to.</span>
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Clone</span>, <span class="ident">Copy</span>, <span class="ident">Debug</span>, <span class="ident">PartialEq</span>, <span class="ident">Eq</span>)]</span>
 <span class="kw">pub</span> <span class="kw">enum</span> <span class="ident">EventSource</span> {
     <span class="ident">QueryService</span>,
