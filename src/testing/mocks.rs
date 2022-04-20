@@ -280,7 +280,8 @@ impl<'a, const H: u8> super::MockNetwork<'a, cap::LedgerWithHeight<H>>
         &self,
         index: EventIndex,
         source: EventSource,
-    ) -> Result<LedgerEvent<cap::LedgerWithHeight<H>>, KeystoreError<cap::LedgerWithHeight<H>>> {
+    ) -> Result<LedgerEvent<cap::LedgerWithHeight<H>>, KeystoreError<cap::LedgerWithHeight<H>>>
+    {
         if source == EventSource::QueryService {
             self.events.get(index)
         } else {
@@ -331,7 +332,9 @@ impl<'a, const H: u8> MockBackendWithHeight<'a, H> {
 }
 
 #[async_trait]
-impl<'a, const H: u8> KeystoreBackend<'a, cap::LedgerWithHeight<H>> for MockBackendWithHeight<'a, H> {
+impl<'a, const H: u8> KeystoreBackend<'a, cap::LedgerWithHeight<H>>
+    for MockBackendWithHeight<'a, H>
+{
     type EventStream =
         Pin<Box<dyn Stream<Item = (LedgerEvent<cap::LedgerWithHeight<H>>, EventSource)> + Send>>;
     type Storage = MockStorage<'a, cap::LedgerWithHeight<H>>;

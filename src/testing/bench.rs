@@ -109,8 +109,8 @@ async fn generate_independent_transactions<
     // Mint a viewable asset for each keystore.
     let viewing_key = AuditorKeyPair::generate(&mut rng);
     let freezing_key = FreezerKeyPair::generate(&mut rng);
-    let (assets, mints): (Vec<_>, Vec<_>) =
-        join_all(keystores.iter_mut().enumerate().map(|(i, (keystore, addrs))| {
+    let (assets, mints): (Vec<_>, Vec<_>) = join_all(keystores.iter_mut().enumerate().map(
+        |(i, (keystore, addrs))| {
             let viewing_key = viewing_key.pub_key();
             let freezing_key = freezing_key.pub_key();
             async move {
@@ -137,30 +137,36 @@ async fn generate_independent_transactions<
                 keystore.await_transaction(&receipt).await.unwrap();
                 (AssetInfo::from(asset), (mint_note, mint_info))
             }
-        }))
-        .await
-        .into_iter()
-        .unzip();
+        },
+    ))
+    .await
+    .into_iter()
+    .unzip();
 
     // Create events by making a number of transfers. We transfer from a number of different
     // keystores so we can easily parallelize the transfers, which speeds things up and allows
     // them all to be included in the same block.
-    let transfers = join_all(keystores.iter_mut().zip(&assets).map(|((keystore, _), asset)| {
-        let receiver = receiver.address();
-        async move {
-            keystore
-                .build_transfer(
-                    None,
-                    &asset.definition.code,
-                    &[(receiver, 1, false)],
-                    1,
-                    vec![],
-                    None,
-                )
-                .await
-                .unwrap()
-        }
-    }))
+    let transfers = join_all(
+        keystores
+            .iter_mut()
+            .zip(&assets)
+            .map(|((keystore, _), asset)| {
+                let receiver = receiver.address();
+                async move {
+                    keystore
+                        .build_transfer(
+                            None,
+                            &asset.definition.code,
+                            &[(receiver, 1, false)],
+                            1,
+                            vec![],
+                            None,
+                        )
+                        .await
+                        .unwrap()
+                }
+            }),
+    )
     .await;
 
     // Let the keystores finish processing events. This keeps the setup keystores' event threads from
