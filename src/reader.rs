@@ -10,7 +10,7 @@
 //! This module defines a [Reader] which can be used to read interactive input using [rustyline] for
 //! line editing and [rpassword] for hiding sensitive inputs like passwords and mnemonics. It also
 //! has an automated mode to circumvent the interactive features when scripting for the CLI.
-use crate::{io::SharedIO, WalletError};
+use crate::{io::SharedIO, KeystoreError};
 use async_std::{
     sync::{Arc, Mutex},
     task::{block_on, spawn_blocking},
@@ -45,12 +45,12 @@ impl Reader {
     pub async fn read_password<L: 'static + Ledger>(
         &mut self,
         prompt: &str,
-    ) -> Result<String, WalletError<L>> {
+    ) -> Result<String, KeystoreError<L>> {
         let prompt = prompt.to_owned();
         match self {
             Self::Interactive(_) => {
                 spawn_blocking(move || {
-                    prompt_password_stdout(&prompt).map_err(|err| WalletError::Failed {
+                    prompt_password_stdout(&prompt).map_err(|err| KeystoreError::Failed {
                         msg: err.to_string(),
                     })
                 })
@@ -59,13 +59,13 @@ impl Reader {
             Self::Automated(io) => {
                 let mut io = io.clone();
                 spawn_blocking(move || {
-                    writeln!(io, "{}", prompt).map_err(|err| WalletError::Failed {
+                    writeln!(io, "{}", prompt).map_err(|err| KeystoreError::Failed {
                         msg: err.to_string(),
                     })?;
                     let mut password = String::new();
                     match io.read_line(&mut password) {
                         Ok(_) => Ok(password),
-                        Err(err) => Err(WalletError::Failed {
+                        Err(err) => Err(KeystoreError::Failed {
                             msg: err.to_string(),
                         }),
                     }
