@@ -30,12 +30,12 @@ impl<L: Ledger> PartialEq<Self> for TxnHistoryWithTimeTolerantEq<L> {
 }
 
 #[async_std::test]
-pub async fn test_wallet_freeze_unregistered() -> std::io::Result<()> {
+pub async fn test_keystore_freeze_unregistered() -> std::io::Result<()> {
     let mut t = crate::testing::mocks::MockSystem::default();
     let mut now = Instant::now();
 
-    // Wallets[0], [1] and [2] will act as the sender, receiver and freezer, respectively.
-    let (ledger, mut wallets) = t
+    // Keystores[0], [1] and [2] will act as the sender, receiver and freezer, respectively.
+    let (ledger, mut keystores) = t
         .create_test_network(&[(3, 3)], vec![2, 0, 6], &mut now)
         .await;
 
@@ -52,69 +52,69 @@ pub async fn test_wallet_freeze_unregistered() -> std::io::Result<()> {
             .set_freezer_pub_key(freeze_key.pub_key())
             .reveal_record_opening()
             .unwrap();
-        wallets[2]
+        keystores[2]
             .0
             .add_audit_key(audit_key, "audit_key".into())
             .await
             .unwrap();
-        wallets[2]
+        keystores[2]
             .0
             .add_freeze_key(freeze_key, "freeze_key".into())
             .await
             .unwrap();
-        let asset = wallets[2]
+        let asset = keystores[2]
             .0
             .define_asset("test".into(), "test asset".as_bytes(), policy)
             .await
             .unwrap();
 
-        // The first address of wallets[0] gets 1 coin to transfer to wallets[1].
-        let src = wallets[2].1[0].clone();
-        let dst = wallets[0].1[0].clone();
-        wallets[2]
+        // The first address of keystores[0] gets 1 coin to transfer to keystores[1].
+        let src = keystores[2].1[0].clone();
+        let dst = keystores[0].1[0].clone();
+        keystores[2]
             .0
             .mint(&src, 1, &asset.code, 1, dst)
             .await
             .unwrap();
-        t.sync(&ledger, wallets.as_slice()).await;
+        t.sync(&ledger, keystores.as_slice()).await;
 
         asset
     };
 
     // Check the balance after minting.
     assert_eq!(
-        wallets[0]
+        keystores[0]
             .0
-            .balance_breakdown(&wallets[0].1[0], &asset.code)
+            .balance_breakdown(&keystores[0].1[0], &asset.code)
             .await,
         1
     );
     assert_eq!(
-        wallets[0]
+        keystores[0]
             .0
-            .frozen_balance_breakdown(&wallets[0].1[0], &asset.code)
+            .frozen_balance_breakdown(&keystores[0].1[0], &asset.code)
             .await,
         0
     );
 
-    // Unregister wallets[0]'s first address by removing it from the address map.
+    // Unregister keystores[0]'s first address by removing it from the address map.
     ledger
         .lock()
         .await
         .network()
         .address_map
-        .remove(&wallets[0].1[0]);
+        .remove(&keystores[0].1[0]);
 
-    // Freeze wallets[0]'s record.
+    // Freeze keystores[0]'s record.
     println!(
         "generating a freeze transaction: {}s",
         now.elapsed().as_secs_f32()
     );
     now = Instant::now();
-    let src = wallets[2].1[0].clone();
-    let dst = wallets[0].1[0].clone();
+    let src = keystores[2].1[0].clone();
+    let dst = keystores[0].1[0].clone();
     ledger.lock().await.hold_next_transaction();
-    wallets[2]
+    keystores[2]
         .0
         .freeze(&src, 1, &asset.code, 1, dst.clone())
         .await
@@ -122,18 +122,18 @@ pub async fn test_wallet_freeze_unregistered() -> std::io::Result<()> {
 
     // Check the balance after freezing.
     ledger.lock().await.release_held_transaction();
-    t.sync(&ledger, wallets.as_slice()).await;
+    t.sync(&ledger, keystores.as_slice()).await;
     assert_eq!(
-        wallets[0]
+        keystores[0]
             .0
-            .balance_breakdown(&wallets[0].1[0], &asset.code)
+            .balance_breakdown(&keystores[0].1[0], &asset.code)
             .await,
         0
     );
     assert_eq!(
-        wallets[0]
+        keystores[0]
             .0
-            .frozen_balance_breakdown(&wallets[0].1[0], &asset.code)
+            .frozen_balance_breakdown(&keystores[0].1[0], &asset.code)
             .await,
         1
     );
@@ -141,14 +141,14 @@ pub async fn test_wallet_freeze_unregistered() -> std::io::Result<()> {
     // Check that trying to transfer fails due to frozen balance.
     println!("generating a transfer: {}s", now.elapsed().as_secs_f32());
     now = Instant::now();
-    let src = wallets[0].1[0].clone();
-    let dst = wallets[1].1[0].clone();
-    match wallets[0]
+    let src = keystores[0].1[0].clone();
+    let dst = keystores[1].1[0].clone();
+    match keystores[0]
         .0
         .transfer(Some(&src), &asset.code, &[(dst, 1)], 1)
         .await
     {
-        Err(WalletError::TransactionError {
+        Err(KeystoreError::TransactionError {
             source: TransactionError::InsufficientBalance { .. },
         }) => {
             println!(
@@ -162,7 +162,7 @@ pub async fn test_wallet_freeze_unregistered() -> std::io::Result<()> {
 }
 
 #[generic_tests]
-pub mod generic_wallet_tests {
+pub mod generic_keystore_tests {
     use super::*;
     use crate::asset_library::Icon;
     use async_std::task::block_on;
@@ -176,9 +176,9 @@ pub mod generic_wallet_tests {
     use tempdir::TempDir;
 
     /*
-     * Test idea: simulate two wallets transferring funds back and forth. After initial
-     * setup, the wallets only receive publicly visible information (e.g. block commitment
-     * events and receiver memos posted on bulletin boards). Check that both wallets are
+     * Test idea: simulate two keystores transferring funds back and forth. After initial
+     * setup, the keystores only receive publicly visible information (e.g. block commitment
+     * events and receiver memos posted on bulletin boards). Check that both keystores are
      * able to maintain accurate balance statements and enough state to construct new transfers.
      *
      * - Alice magically starts with some coins, Bob starts empty.
@@ -189,10 +189,10 @@ pub mod generic_wallet_tests {
      * Limitations:
      * - Parts of the system are mocked (e.g. consensus is replaced by one omniscient validator,
      *   info event streams, query services, and bulletin boards is provided directly to the
-     *   wallets by the test)
+     *   keystores by the test)
      */
     #[allow(unused_assignments)]
-    async fn test_two_wallets<'a, T: SystemUnderTest<'a>>(native: bool) {
+    async fn test_two_keystores<'a, T: SystemUnderTest<'a>>(native: bool) {
         let mut t = T::default();
         let mut now = Instant::now();
 
@@ -205,46 +205,49 @@ pub mod generic_wallet_tests {
         // any native coins from Alice.
         let alice_grant = 10;
         let bob_grant = if native { 0 } else { 2 };
-        let (ledger, mut wallets) = t
+        let (ledger, mut keystores) = t
             .create_test_network(
                 &[(num_inputs, num_outputs)],
                 vec![alice_grant, bob_grant],
                 &mut now,
             )
             .await;
-        let alice_addresses = wallets[0].1.clone();
-        let bob_addresses = wallets[1].1.clone();
+        let alice_addresses = keystores[0].1.clone();
+        let bob_addresses = keystores[1].1.clone();
 
-        // Verify initial wallet state.
+        // Verify initial keystore state.
         assert_ne!(alice_addresses, bob_addresses);
         assert_eq!(
-            wallets[0].0.balance(&AssetCode::native()).await,
+            keystores[0].0.balance(&AssetCode::native()).await,
             alice_grant
         );
         assert_eq!(
-            wallets[0]
+            keystores[0]
                 .0
                 .balance_breakdown(&alice_addresses[0], &AssetCode::native())
                 .await,
             alice_grant / 2
         );
         assert_eq!(
-            wallets[0]
+            keystores[0]
                 .0
                 .balance_breakdown(&alice_addresses[1], &AssetCode::native())
                 .await,
             alice_grant - alice_grant / 2
         );
-        assert_eq!(wallets[1].0.balance(&AssetCode::native()).await, bob_grant);
         assert_eq!(
-            wallets[1]
+            keystores[1].0.balance(&AssetCode::native()).await,
+            bob_grant
+        );
+        assert_eq!(
+            keystores[1]
                 .0
                 .balance_breakdown(&bob_addresses[0], &AssetCode::native())
                 .await,
             bob_grant / 2
         );
         assert_eq!(
-            wallets[1]
+            keystores[1]
                 .0
                 .balance_breakdown(&bob_addresses[1], &AssetCode::native())
                 .await,
@@ -254,7 +257,7 @@ pub mod generic_wallet_tests {
         let coin = if native {
             AssetDefinition::native()
         } else {
-            let coin = wallets[0]
+            let coin = keystores[0]
                 .0
                 .define_asset(
                     "Alice".into(),
@@ -264,7 +267,7 @@ pub mod generic_wallet_tests {
                 .await
                 .unwrap();
             // Alice gives herself an initial grant of 5 coins.
-            wallets[0]
+            keystores[0]
                 .0
                 .mint(
                     &alice_addresses[0],
@@ -275,28 +278,28 @@ pub mod generic_wallet_tests {
                 )
                 .await
                 .unwrap();
-            t.sync(&ledger, wallets.as_slice()).await;
+            t.sync(&ledger, keystores.as_slice()).await;
             println!("Asset minted: {}s", now.elapsed().as_secs_f32());
             now = Instant::now();
 
-            assert_eq!(wallets[0].0.balance(&coin.code).await, 5);
+            assert_eq!(keystores[0].0.balance(&coin.code).await, 5);
             assert_eq!(
-                wallets[0]
+                keystores[0]
                     .0
                     .balance_breakdown(&alice_addresses[0], &coin.code)
                     .await,
                 5
             );
-            assert_eq!(wallets[1].0.balance(&coin.code).await, 0);
+            assert_eq!(keystores[1].0.balance(&coin.code).await, 0);
 
             coin
         };
 
-        let alice_initial_native_balance = wallets[0].0.balance(&AssetCode::native()).await;
-        let bob_initial_native_balance = wallets[1].0.balance(&AssetCode::native()).await;
+        let alice_initial_native_balance = keystores[0].0.balance(&AssetCode::native()).await;
+        let bob_initial_native_balance = keystores[1].0.balance(&AssetCode::native()).await;
 
         // Construct a transaction to transfer some coins from Alice to Bob.
-        wallets[0]
+        keystores[0]
             .0
             .transfer(
                 Some(&alice_addresses[0]),
@@ -306,16 +309,16 @@ pub mod generic_wallet_tests {
             )
             .await
             .unwrap();
-        t.sync(&ledger, wallets.as_slice()).await;
+        t.sync(&ledger, keystores.as_slice()).await;
         println!("Transfer generated: {}s", now.elapsed().as_secs_f32());
         now = Instant::now();
 
-        // Check that both wallets reflect the new balances (less any fees). This cannot be a
+        // Check that both keystores reflect the new balances (less any fees). This cannot be a
         // closure because rust infers the wrong lifetime for the references (it tries to use 'a,
-        // which is longer than we want to borrow `wallets` for).
+        // which is longer than we want to borrow `keystores` for).
         async fn check_balance<'b, L: 'static + Ledger>(
-            wallet: &(
-                Wallet<'b, impl WalletBackend<'b, L> + Sync + 'b, L>,
+            keystore: &(
+                Keystore<'b, impl KeystoreBackend<'b, L> + Sync + 'b, L>,
                 Vec<UserAddress>,
             ),
             expected_coin_balance: u64,
@@ -326,19 +329,22 @@ pub mod generic_wallet_tests {
         ) {
             if native {
                 assert_eq!(
-                    wallet.0.balance_breakdown(&wallet.1[0], &coin.code).await,
+                    keystore
+                        .0
+                        .balance_breakdown(&keystore.1[0], &coin.code)
+                        .await,
                     expected_coin_balance - fees_paid
                 );
             } else {
-                assert_eq!(wallet.0.balance(&coin.code).await, expected_coin_balance);
+                assert_eq!(keystore.0.balance(&coin.code).await, expected_coin_balance);
                 assert_eq!(
-                    wallet.0.balance(&AssetCode::native()).await,
+                    keystore.0.balance(&AssetCode::native()).await,
                     starting_native_balance - fees_paid
                 );
             }
         }
         check_balance(
-            &wallets[0],
+            &keystores[0],
             2,
             alice_initial_native_balance,
             1,
@@ -346,15 +352,23 @@ pub mod generic_wallet_tests {
             native,
         )
         .await;
-        check_balance(&wallets[1], 3, bob_initial_native_balance, 0, &coin, native).await;
+        check_balance(
+            &keystores[1],
+            3,
+            bob_initial_native_balance,
+            0,
+            &coin,
+            native,
+        )
+        .await;
 
-        // Check that Bob's wallet has sufficient information to access received funds by
+        // Check that Bob's keystore has sufficient information to access received funds by
         // transferring some back to Alice.
         //
         // This transaction should also result in a non-zero fee change record being
         // transferred back to Bob, since Bob's only sufficient record has an amount of 3 coins, but
         // the sum of the outputs and fee of this transaction is only 2.
-        wallets[1]
+        keystores[1]
             .0
             .transfer(
                 Some(&bob_addresses[0]),
@@ -364,12 +378,12 @@ pub mod generic_wallet_tests {
             )
             .await
             .unwrap();
-        t.sync(&ledger, wallets.as_slice()).await;
+        t.sync(&ledger, keystores.as_slice()).await;
         println!("Transfer generated: {}s", now.elapsed().as_secs_f32());
         now = Instant::now();
 
         check_balance(
-            &wallets[0],
+            &keystores[0],
             3,
             alice_initial_native_balance,
             1,
@@ -377,18 +391,27 @@ pub mod generic_wallet_tests {
             native,
         )
         .await;
-        check_balance(&wallets[1], 2, bob_initial_native_balance, 1, &coin, native).await;
+        check_balance(
+            &keystores[1],
+            2,
+            bob_initial_native_balance,
+            1,
+            &coin,
+            native,
+        )
+        .await;
     }
 
     #[async_std::test]
-    pub async fn test_two_wallets_native<'a, T: SystemUnderTest<'a>>() -> std::io::Result<()> {
-        test_two_wallets::<T>(true).await;
+    pub async fn test_two_keystores_native<'a, T: SystemUnderTest<'a>>() -> std::io::Result<()> {
+        test_two_keystores::<T>(true).await;
         Ok(())
     }
 
     #[async_std::test]
-    pub async fn test_two_wallets_non_native<'a, T: SystemUnderTest<'a>>() -> std::io::Result<()> {
-        test_two_wallets::<T>(false).await;
+    pub async fn test_two_keystores_non_native<'a, T: SystemUnderTest<'a>>() -> std::io::Result<()>
+    {
+        test_two_keystores::<T>(false).await;
         Ok(())
     }
 
@@ -403,7 +426,7 @@ pub mod generic_wallet_tests {
     // the failed transaction fails to verify and a Reject event is emitted.
     //
     // (native, mint), (native, freeze), and (mint, freeze) are pairs of mutually exclusive flags.
-    async fn test_wallet_rejected<'a, T: SystemUnderTest<'a>>(
+    async fn test_keystore_rejected<'a, T: SystemUnderTest<'a>>(
         native: bool,
         mint: bool,
         freeze: bool,
@@ -427,20 +450,20 @@ pub mod generic_wallet_tests {
         let num_inputs = if native { 1 } else { 2 };
         let num_outputs = if native { 2 } else { 3 };
 
-        // The sender wallet (wallets[0]) gets an initial grant of 2 for a transaction fee and a
-        // payment (or, for non-native transfers, a transaction fee and a mint fee). wallets[1] will
-        // act as the receiver, and wallets[2] will be a third party which generates
-        // RECORD_HOLD_TIME transfers while a transfer from wallets[0] is pending, causing the
+        // The sender keystore (keystores[0]) gets an initial grant of 2 for a transaction fee and a
+        // payment (or, for non-native transfers, a transaction fee and a mint fee). keystores[1] will
+        // act as the receiver, and keystores[2] will be a third party which generates
+        // RECORD_HOLD_TIME transfers while a transfer from keystores[0] is pending, causing the
         // transfer to time out.
-        let (ledger, mut wallets) = t
+        let (ledger, mut keystores) = t
             .create_test_network(
                 &[(num_inputs, num_outputs)],
-                // If native, each address of wallets[0] gets 1 coin to transfer and 1 for a
+                // If native, each address of keystores[0] gets 1 coin to transfer and 1 for a
                 // transaction fee. Otherwise, it gets
                 //  * 1 transaction fee
                 //  * 1 mint fee for its initial non-native record, if the test itself is not minting
                 //    that record
-                //  * 1 mint fee for wallets[2]'s initial non-native record in the timeout test.
+                //  * 1 mint fee for keystores[2]'s initial non-native record in the timeout test.
                 vec![
                     if native {
                         4
@@ -465,17 +488,17 @@ pub mod generic_wallet_tests {
                 .set_freezer_pub_key(freeze_key.pub_key())
                 .reveal_record_opening()
                 .unwrap();
-            wallets[0]
+            keystores[0]
                 .0
                 .add_audit_key(audit_key, "audit_key".into())
                 .await
                 .unwrap();
-            wallets[0]
+            keystores[0]
                 .0
                 .add_freeze_key(freeze_key, "freeze_key".into())
                 .await
                 .unwrap();
-            let asset = wallets[0]
+            let asset = keystores[0]
                 .0
                 .define_asset("test".into(), "test asset".as_bytes(), policy)
                 .await
@@ -483,30 +506,30 @@ pub mod generic_wallet_tests {
 
             if !mint {
                 // If we're freezing, the transaction is essentially taking balance away from
-                // wallets[1], so wallets[1] gets 1 coin to start with. Otherwise, the transaction
-                // is transferring balance from wallets[0] to wallets[1], so  wallets[0] gets 1
+                // keystores[1], so keystores[1] gets 1 coin to start with. Otherwise, the transaction
+                // is transferring balance from keystores[0] to keystores[1], so  keystores[0] gets 1
                 // coin. We only need this if the test itself is not minting the asset later on.
                 let dst = if freeze {
-                    wallets[1].1[0].clone()
+                    keystores[1].1[0].clone()
                 } else {
-                    wallets[0].1[0].clone()
+                    keystores[0].1[0].clone()
                 };
-                let src = wallets[0].1[0].clone();
-                wallets[0]
+                let src = keystores[0].1[0].clone();
+                keystores[0]
                     .0
                     .mint(&src, 1, &asset.code, 1, dst)
                     .await
                     .unwrap();
-                t.sync(&ledger, wallets.as_slice()).await;
+                t.sync(&ledger, keystores.as_slice()).await;
             }
 
             if timeout {
-                // If doing a timeout test, wallets[2] (the sender that will generate enough
-                // transactions to cause wallets[0]'s transaction to timeout) gets RECORD_HOLD_TIME
+                // If doing a timeout test, keystores[2] (the sender that will generate enough
+                // transactions to cause keystores[0]'s transaction to timeout) gets RECORD_HOLD_TIME
                 // coins.
-                let src = wallets[0].1[0].clone();
-                let dst = wallets[2].1[0].clone();
-                wallets[0]
+                let src = keystores[0].1[0].clone();
+                let dst = keystores[2].1[0].clone();
+                keystores[0]
                     .0
                     .mint(
                         &src,
@@ -517,7 +540,7 @@ pub mod generic_wallet_tests {
                     )
                     .await
                     .unwrap();
-                t.sync(&ledger, wallets.as_slice()).await;
+                t.sync(&ledger, keystores.as_slice()).await;
             }
 
             asset
@@ -530,22 +553,22 @@ pub mod generic_wallet_tests {
         );
         now = Instant::now();
         ledger.lock().await.hold_next_transaction();
-        let receiver = wallets[1].1[0].clone();
-        let sender = wallets[0].1[0].clone();
+        let receiver = keystores[1].1[0].clone();
+        let sender = keystores[0].1[0].clone();
         if mint {
-            wallets[0]
+            keystores[0]
                 .0
                 .mint(&sender, 1, &asset.code, 1, receiver.clone())
                 .await
                 .unwrap();
         } else if freeze {
-            wallets[0]
+            keystores[0]
                 .0
                 .freeze(&sender, 1, &asset.code, 1, receiver.clone())
                 .await
                 .unwrap();
         } else {
-            wallets[0]
+            keystores[0]
                 .0
                 .transfer(Some(&sender), &asset.code, &[(receiver.clone(), 1)], 1)
                 .await
@@ -556,17 +579,17 @@ pub mod generic_wallet_tests {
 
         // Check that the sender's balance is on hold (for the fee and the payment).
         assert_eq!(
-            wallets[0]
+            keystores[0]
                 .0
-                .balance_breakdown(&wallets[0].1[0], &AssetCode::native())
+                .balance_breakdown(&keystores[0].1[0], &AssetCode::native())
                 .await,
             0
         );
         if !freeze {
             assert_eq!(
-                wallets[0]
+                keystores[0]
                     .0
-                    .balance_breakdown(&wallets[0].1[0], &asset.code)
+                    .balance_breakdown(&keystores[0].1[0], &asset.code)
                     .await,
                 0
             );
@@ -584,35 +607,35 @@ pub mod generic_wallet_tests {
             for _ in 0..T::Ledger::record_root_history() {
                 // Check that the sender's balance is still on hold.
                 assert_eq!(
-                    wallets[0]
+                    keystores[0]
                         .0
-                        .balance_breakdown(&wallets[0].1[0], &AssetCode::native())
+                        .balance_breakdown(&keystores[0].1[0], &AssetCode::native())
                         .await,
                     0
                 );
                 if !freeze {
                     assert_eq!(
-                        wallets[0]
+                        keystores[0]
                             .0
-                            .balance_breakdown(&wallets[0].1[0], &asset.code)
+                            .balance_breakdown(&keystores[0].1[0], &asset.code)
                             .await,
                         0
                     );
                 }
 
-                let sender = wallets[2].1[0].clone();
-                wallets[2]
+                let sender = keystores[2].1[0].clone();
+                keystores[2]
                     .0
                     .transfer(Some(&sender), &asset.code, &[(receiver.clone(), 1)], 1)
                     .await
                     .unwrap();
-                t.sync(&ledger, wallets.as_slice()).await;
+                t.sync(&ledger, keystores.as_slice()).await;
             }
         } else {
             {
                 let mut ledger = ledger.lock().await;
 
-                // Change the validator state, so that the wallet's transaction (built against the
+                // Change the validator state, so that the keystore's transaction (built against the
                 // old validator state) will fail to validate.
                 ledger.mangle();
 
@@ -629,41 +652,41 @@ pub mod generic_wallet_tests {
                 ledger.unmangle();
             }
 
-            t.sync(&ledger, wallets.as_slice()).await;
+            t.sync(&ledger, keystores.as_slice()).await;
         }
 
         // Check that the sender got their balance back.
         if native {
             assert_eq!(
-                wallets[0]
+                keystores[0]
                     .0
-                    .balance_breakdown(&wallets[0].1[0], &AssetCode::native())
+                    .balance_breakdown(&keystores[0].1[0], &AssetCode::native())
                     .await,
                 2
             );
         } else {
             assert_eq!(
-                wallets[0]
+                keystores[0]
                     .0
-                    .balance_breakdown(&wallets[0].1[0], &AssetCode::native())
+                    .balance_breakdown(&keystores[0].1[0], &AssetCode::native())
                     .await,
                 1
             );
             if !(mint || freeze) {
                 // in the mint and freeze cases, we never had a non-native balance to start with
                 assert_eq!(
-                    wallets[0]
+                    keystores[0]
                         .0
-                        .balance_breakdown(&wallets[0].1[0], &asset.code)
+                        .balance_breakdown(&keystores[0].1[0], &asset.code)
                         .await,
                     1
                 );
             }
         }
         assert_eq!(
-            wallets[1]
+            keystores[1]
                 .0
-                .balance_breakdown(&wallets[1].1[0], &asset.code)
+                .balance_breakdown(&keystores[1].1[0], &asset.code)
                 .await,
             (if timeout {
                 T::Ledger::record_root_history() as u64
@@ -679,43 +702,43 @@ pub mod generic_wallet_tests {
             now.elapsed().as_secs_f32()
         );
         if mint {
-            wallets[0]
+            keystores[0]
                 .0
                 .mint(&sender, 1, &asset.code, 1, receiver)
                 .await
                 .unwrap();
         } else if freeze {
-            wallets[0]
+            keystores[0]
                 .0
                 .freeze(&sender, 1, &asset.code, 1, receiver)
                 .await
                 .unwrap();
         } else {
-            wallets[0]
+            keystores[0]
                 .0
                 .transfer(Some(&sender), &asset.code, &[(receiver, 1)], 1)
                 .await
                 .unwrap();
         }
-        t.sync(&ledger, wallets.as_slice()).await;
+        t.sync(&ledger, keystores.as_slice()).await;
         assert_eq!(
-            wallets[0]
+            keystores[0]
                 .0
-                .balance_breakdown(&wallets[0].1[0], &AssetCode::native())
+                .balance_breakdown(&keystores[0].1[0], &AssetCode::native())
                 .await,
             0
         );
         assert_eq!(
-            wallets[0]
+            keystores[0]
                 .0
-                .balance_breakdown(&wallets[0].1[0], &asset.code)
+                .balance_breakdown(&keystores[0].1[0], &asset.code)
                 .await,
             0
         );
         assert_eq!(
-            wallets[1]
+            keystores[1]
                 .0
-                .balance_breakdown(&wallets[1].1[0], &asset.code)
+                .balance_breakdown(&keystores[1].1[0], &asset.code)
                 .await,
             (if timeout {
                 T::Ledger::record_root_history() as u64
@@ -726,74 +749,74 @@ pub mod generic_wallet_tests {
     }
 
     #[async_std::test]
-    pub async fn test_wallet_rejected_native_xfr_invalid<'a, T: SystemUnderTest<'a>>(
+    pub async fn test_keystore_rejected_native_xfr_invalid<'a, T: SystemUnderTest<'a>>(
     ) -> std::io::Result<()> {
-        test_wallet_rejected::<T>(true, false, false, false).await;
+        test_keystore_rejected::<T>(true, false, false, false).await;
         Ok(())
     }
 
     #[async_std::test]
-    pub async fn test_wallet_rejected_native_xfr_timeout<'a, T: SystemUnderTest<'a>>(
+    pub async fn test_keystore_rejected_native_xfr_timeout<'a, T: SystemUnderTest<'a>>(
     ) -> std::io::Result<()> {
-        test_wallet_rejected::<T>(true, false, false, true).await;
+        test_keystore_rejected::<T>(true, false, false, true).await;
         Ok(())
     }
 
     #[async_std::test]
-    pub async fn test_wallet_rejected_non_native_xfr_invalid<'a, T: SystemUnderTest<'a>>(
+    pub async fn test_keystore_rejected_non_native_xfr_invalid<'a, T: SystemUnderTest<'a>>(
     ) -> std::io::Result<()> {
-        test_wallet_rejected::<T>(false, false, false, false).await;
+        test_keystore_rejected::<T>(false, false, false, false).await;
         Ok(())
     }
 
     #[async_std::test]
-    pub async fn test_wallet_rejected_non_native_xfr_timeout<'a, T: SystemUnderTest<'a>>(
+    pub async fn test_keystore_rejected_non_native_xfr_timeout<'a, T: SystemUnderTest<'a>>(
     ) -> std::io::Result<()> {
-        test_wallet_rejected::<T>(false, false, false, true).await;
+        test_keystore_rejected::<T>(false, false, false, true).await;
         Ok(())
     }
 
     #[async_std::test]
-    pub async fn test_wallet_rejected_non_native_mint_invalid<'a, T: SystemUnderTest<'a>>(
+    pub async fn test_keystore_rejected_non_native_mint_invalid<'a, T: SystemUnderTest<'a>>(
     ) -> std::io::Result<()> {
-        test_wallet_rejected::<T>(false, true, false, false).await;
+        test_keystore_rejected::<T>(false, true, false, false).await;
         Ok(())
     }
 
     #[async_std::test]
-    pub async fn test_wallet_rejected_non_native_mint_timeout<'a, T: SystemUnderTest<'a>>(
+    pub async fn test_keystore_rejected_non_native_mint_timeout<'a, T: SystemUnderTest<'a>>(
     ) -> std::io::Result<()> {
-        test_wallet_rejected::<T>(false, true, false, true).await;
+        test_keystore_rejected::<T>(false, true, false, true).await;
         Ok(())
     }
 
     #[async_std::test]
-    pub async fn test_wallet_rejected_non_native_freeze_invalid<'a, T: SystemUnderTest<'a>>(
+    pub async fn test_keystore_rejected_non_native_freeze_invalid<'a, T: SystemUnderTest<'a>>(
     ) -> std::io::Result<()> {
-        test_wallet_rejected::<T>(false, false, true, false).await;
+        test_keystore_rejected::<T>(false, false, true, false).await;
         Ok(())
     }
 
     #[async_std::test]
-    pub async fn test_wallet_rejected_non_native_freeze_timeout<'a, T: SystemUnderTest<'a>>(
+    pub async fn test_keystore_rejected_non_native_freeze_timeout<'a, T: SystemUnderTest<'a>>(
     ) -> std::io::Result<()> {
-        test_wallet_rejected::<T>(false, false, true, true).await;
+        test_keystore_rejected::<T>(false, false, true, true).await;
         Ok(())
     }
 
     #[async_std::test]
-    pub async fn test_wallet_freeze<'a, T: SystemUnderTest<'a>>() -> std::io::Result<()> {
+    pub async fn test_keystore_freeze<'a, T: SystemUnderTest<'a>>() -> std::io::Result<()> {
         let mut t = T::default();
         let mut now = Instant::now();
 
-        // Each of the two addresses of the sender wallet (wallets[0]) gets an initial grant of 1
-        // for a transfer fee. wallets[1] will act as the receiver, and wallets[2] will be a third
-        // party which creates and freezes some of wallets[0]'s assets. Each of its two addresses
+        // Each of the two addresses of the sender keystore (keystores[0]) gets an initial grant of 1
+        // for a transfer fee. keystores[1] will act as the receiver, and keystores[2] will be a third
+        // party which creates and freezes some of keystores[0]'s assets. Each of its two addresses
         // gets a grant of 3, for a mint fee, a freeze fee and an unfreeze fee.
         //
         // Note that the transfer proving key size (3, 4) used here is chosen to be 1 larger than
         // necessary in both inputs and outputs, to test dummy records.
-        let (ledger, mut wallets) = t
+        let (ledger, mut keystores) = t
             .create_test_network(&[(3, 4)], vec![2, 0, 6], &mut now)
             .await;
 
@@ -806,59 +829,59 @@ pub mod generic_wallet_tests {
                 .set_freezer_pub_key(freeze_key.pub_key())
                 .reveal_record_opening()
                 .unwrap();
-            wallets[2]
+            keystores[2]
                 .0
                 .add_audit_key(audit_key, "audit_key".into())
                 .await
                 .unwrap();
-            wallets[2]
+            keystores[2]
                 .0
                 .add_freeze_key(freeze_key, "freeze_key".into())
                 .await
                 .unwrap();
-            let asset = wallets[2]
+            let asset = keystores[2]
                 .0
                 .define_asset("test".into(), "test asset".as_bytes(), policy)
                 .await
                 .unwrap();
 
-            // wallets[0] gets 1 coin to transfer to wallets[1].
-            let src = wallets[2].1[0].clone();
-            let dst = wallets[0].1[0].clone();
-            wallets[2]
+            // keystores[0] gets 1 coin to transfer to keystores[1].
+            let src = keystores[2].1[0].clone();
+            let dst = keystores[0].1[0].clone();
+            keystores[2]
                 .0
                 .mint(&src, 1, &asset.code, 1, dst)
                 .await
                 .unwrap();
-            t.sync(&ledger, wallets.as_slice()).await;
+            t.sync(&ledger, keystores.as_slice()).await;
 
             asset
         };
         assert_eq!(
-            wallets[0]
+            keystores[0]
                 .0
-                .balance_breakdown(&wallets[0].1[0], &asset.code)
+                .balance_breakdown(&keystores[0].1[0], &asset.code)
                 .await,
             1
         );
         assert_eq!(
-            wallets[0]
+            keystores[0]
                 .0
-                .frozen_balance_breakdown(&wallets[0].1[0], &asset.code)
+                .frozen_balance_breakdown(&keystores[0].1[0], &asset.code)
                 .await,
             0
         );
 
-        // Now freeze wallets[0]'s record.
+        // Now freeze keystores[0]'s record.
         println!(
             "generating a freeze transaction: {}s",
             now.elapsed().as_secs_f32()
         );
         now = Instant::now();
-        let src = wallets[2].1[0].clone();
-        let dst = wallets[0].1[0].clone();
+        let src = keystores[2].1[0].clone();
+        let dst = keystores[0].1[0].clone();
         ledger.lock().await.hold_next_transaction();
-        wallets[2]
+        keystores[2]
             .0
             .freeze(&src, 1, &asset.code, 1, dst.clone())
             .await
@@ -866,8 +889,8 @@ pub mod generic_wallet_tests {
 
         // Check that, like transfer inputs, freeze inputs are placed on hold and unusable while a
         // freeze that uses them is pending.
-        match wallets[2].0.freeze(&src, 1, &asset.code, 1, dst).await {
-            Err(WalletError::TransactionError {
+        match keystores[2].0.freeze(&src, 1, &asset.code, 1, dst).await {
+            Err(KeystoreError::TransactionError {
                 source: TransactionError::InsufficientBalance { .. },
             }) => {}
             ret => panic!("expected InsufficientBalance, got {:?}", ret.map(|_| ())),
@@ -875,18 +898,18 @@ pub mod generic_wallet_tests {
 
         // Now go ahead with the original freeze.
         ledger.lock().await.release_held_transaction();
-        t.sync(&ledger, wallets.as_slice()).await;
+        t.sync(&ledger, keystores.as_slice()).await;
         assert_eq!(
-            wallets[0]
+            keystores[0]
                 .0
-                .balance_breakdown(&wallets[0].1[0], &asset.code)
+                .balance_breakdown(&keystores[0].1[0], &asset.code)
                 .await,
             0
         );
         assert_eq!(
-            wallets[0]
+            keystores[0]
                 .0
-                .frozen_balance_breakdown(&wallets[0].1[0], &asset.code)
+                .frozen_balance_breakdown(&keystores[0].1[0], &asset.code)
                 .await,
             1
         );
@@ -894,14 +917,14 @@ pub mod generic_wallet_tests {
         // Check that trying to transfer fails due to frozen balance.
         println!("generating a transfer: {}s", now.elapsed().as_secs_f32());
         now = Instant::now();
-        let src = wallets[0].1[0].clone();
-        let dst = wallets[1].1[0].clone();
-        match wallets[0]
+        let src = keystores[0].1[0].clone();
+        let dst = keystores[1].1[0].clone();
+        match keystores[0]
             .0
             .transfer(Some(&src), &asset.code, &[(dst, 1)], 1)
             .await
         {
-            Err(WalletError::TransactionError {
+            Err(KeystoreError::TransactionError {
                 source: TransactionError::InsufficientBalance { .. },
             }) => {
                 println!(
@@ -919,57 +942,57 @@ pub mod generic_wallet_tests {
             now.elapsed().as_secs_f32()
         );
         now = Instant::now();
-        let src = wallets[2].1[0].clone();
-        let dst = wallets[0].1[0].clone();
-        wallets[2]
+        let src = keystores[2].1[0].clone();
+        let dst = keystores[0].1[0].clone();
+        keystores[2]
             .0
             .unfreeze(&src, 1, &asset.code, 1, dst)
             .await
             .unwrap();
-        t.sync(&ledger, wallets.as_slice()).await;
+        t.sync(&ledger, keystores.as_slice()).await;
         assert_eq!(
-            wallets[0]
+            keystores[0]
                 .0
-                .balance_breakdown(&wallets[0].1[0], &asset.code)
+                .balance_breakdown(&keystores[0].1[0], &asset.code)
                 .await,
             1
         );
         assert_eq!(
-            wallets[0]
+            keystores[0]
                 .0
-                .frozen_balance_breakdown(&wallets[0].1[0], &asset.code)
+                .frozen_balance_breakdown(&keystores[0].1[0], &asset.code)
                 .await,
             0
         );
 
         println!("generating a transfer: {}s", now.elapsed().as_secs_f32());
-        let src = wallets[0].1[0].clone();
-        let dst = wallets[1].1[0].clone();
-        let xfr_receipt = wallets[0]
+        let src = keystores[0].1[0].clone();
+        let dst = keystores[1].1[0].clone();
+        let xfr_receipt = keystores[0]
             .0
             .transfer(Some(&src), &asset.code, &[(dst, 1)], 1)
             .await
             .unwrap()
             .clone();
-        t.sync(&ledger, wallets.as_slice()).await;
+        t.sync(&ledger, keystores.as_slice()).await;
         assert_eq!(
-            wallets[0]
+            keystores[0]
                 .0
-                .balance_breakdown(&wallets[0].1[0], &asset.code)
+                .balance_breakdown(&keystores[0].1[0], &asset.code)
                 .await,
             0
         );
         assert_eq!(
-            wallets[0]
+            keystores[0]
                 .0
-                .frozen_balance_breakdown(&wallets[0].1[0], &asset.code)
+                .frozen_balance_breakdown(&keystores[0].1[0], &asset.code)
                 .await,
             0
         );
         assert_eq!(
-            wallets[1]
+            keystores[1]
                 .0
-                .balance_breakdown(&wallets[1].1[0], &asset.code)
+                .balance_breakdown(&keystores[1].1[0], &asset.code)
                 .await,
             1
         );
@@ -982,7 +1005,7 @@ pub mod generic_wallet_tests {
                 kind: TransactionKind::<T::Ledger>::mint(),
                 hash: None,
                 senders: Vec::new(),
-                receivers: vec![(wallets[0].1[0].clone(), 1)],
+                receivers: vec![(keystores[0].1[0].clone(), 1)],
                 receipt: None,
             },
             TransactionHistoryEntry {
@@ -991,7 +1014,7 @@ pub mod generic_wallet_tests {
                 kind: TransactionKind::<T::Ledger>::freeze(),
                 hash: None,
                 senders: Vec::new(),
-                receivers: vec![(wallets[0].1[0].clone(), 1)],
+                receivers: vec![(keystores[0].1[0].clone(), 1)],
                 receipt: None,
             },
             TransactionHistoryEntry {
@@ -1000,7 +1023,7 @@ pub mod generic_wallet_tests {
                 kind: TransactionKind::<T::Ledger>::unfreeze(),
                 hash: None,
                 senders: Vec::new(),
-                receivers: vec![(wallets[0].1[0].clone(), 1)],
+                receivers: vec![(keystores[0].1[0].clone(), 1)],
                 receipt: None,
             },
             TransactionHistoryEntry {
@@ -1008,15 +1031,15 @@ pub mod generic_wallet_tests {
                 asset: asset.code,
                 kind: TransactionKind::<T::Ledger>::send(),
                 hash: None,
-                senders: wallets[0].1.clone(),
-                receivers: vec![(wallets[1].1[0].clone(), 1)],
+                senders: keystores[0].1.clone(),
+                receivers: vec![(keystores[1].1[0].clone(), 1)],
                 receipt: Some(xfr_receipt),
             },
         ]
         .into_iter()
         .map(TxnHistoryWithTimeTolerantEq)
         .collect::<Vec<_>>();
-        let actual_history = wallets[0]
+        let actual_history = keystores[0]
             .0
             .transaction_history()
             .await
@@ -1030,17 +1053,17 @@ pub mod generic_wallet_tests {
     }
 
     /*
-     * This test is very similar to test_two_wallets, but it is parameterized on the number of users,
+     * This test is very similar to test_two_keystores, but it is parameterized on the number of users,
      * number of asset types, initial ledger state, and transactions to do, so it can be used with
      * quickcheck or proptest to do randomized fuzzing.
      */
     #[allow(clippy::type_complexity)]
-    async fn test_multixfr_wallet<'a, T: SystemUnderTest<'a>>(
+    async fn test_multixfr_keystore<'a, T: SystemUnderTest<'a>>(
         // List of blocks containing (def,key1,key2,amount) transfer specs
         // An asset def of 0 in a transfer spec or record indicates the native asset type; other
         // asset types are indexed startin from 1.
         txs: Vec<Vec<(u8, u8, u8, u64)>>,
-        nwallets: u8,
+        nkeystores: u8,
         ndefs: u8,
         // (def,key,amount)
         init_rec: (u8, u8, u64),
@@ -1049,8 +1072,8 @@ pub mod generic_wallet_tests {
         let mut t = T::default();
 
         println!(
-            "multixfr_wallet test: {} users, {} assets, {} records, {} transfers",
-            nwallets,
+            "multixfr_keystore test: {} users, {} assets, {} records, {} transfers",
+            nkeystores,
             ndefs,
             init_recs.len() + 1,
             txs.iter().flatten().count()
@@ -1063,25 +1086,25 @@ pub mod generic_wallet_tests {
             (2, 3), // non-native transfer with change output
             (3, 2), // non-native merge
         ];
-        let mut balances = vec![vec![0; ndefs as usize + 1]; nwallets as usize];
-        // `histories` is a map from wallet indices to vectors of blocks of history entries. The
+        let mut balances = vec![vec![0; ndefs as usize + 1]; nkeystores as usize];
+        // `histories` is a map from keystore indices to vectors of blocks of history entries. The
         // reason for blocking the history entries is that entries corresponding to transactions
-        // that were validated in the same block can be recorded by the wallets in any order.
-        let mut histories = vec![vec![vec![]]; nwallets as usize];
+        // that were validated in the same block can be recorded by the keystores in any order.
+        let mut histories = vec![vec![vec![]]; nkeystores as usize];
         let grants =
-            // Each of the two addresses of the minter (wallet 0) gets 1 coin per initial record,
+            // Each of the two addresses of the minter (keystore 0) gets 1 coin per initial record,
             // to pay transaction fees while it mints and distributes the records, and 1 coin per
             // transaction, to pay transaction fees while minting additional records if test
-            // wallets run out of balance during the test.
+            // keystores run out of balance during the test.
             once((1 + init_recs.len() + txs.iter().flatten().count()) as u64 * 2).chain(
-                (0..nwallets)
+                (0..nkeystores)
                     .map(|i| {
-                        // The remaining wallets (the test wallets) get 1 coin for each transaction
+                        // The remaining keystores (the test keystores) get 1 coin for each transaction
                         // in which they are the sender, to pay transaction fees, plus...
                         let txn_fees = txs.iter()
                             .flatten()
                             .map(|(_, sender, _, _)| {
-                                if sender % nwallets == i {1} else {0}
+                                if sender % nkeystores == i {1} else {0}
                             })
                             .sum::<u64>();
                         balances[i as usize][0] += txn_fees;
@@ -1091,7 +1114,7 @@ pub mod generic_wallet_tests {
                         once(&init_rec).chain(&init_recs)
                             .map(|(def, owner, amount)| {
                                 let def = (def % (ndefs + 1)) as usize;
-                                let owner = (owner % nwallets) as usize;
+                                let owner = (owner % nkeystores) as usize;
                                 if def == 0 && owner == (i as usize) {
                                     balances[owner][def] += amount;
                                     *amount
@@ -1104,7 +1127,7 @@ pub mod generic_wallet_tests {
                         // insufficient funds, or worse, from dipping into native coins which were
                         // intended to be used later as transaction fees. Unlike non-native
                         // transfers, we can't mint more native coins during the test if we find
-                        // that one of the wallets is low on balance. So we give each wallet an
+                        // that one of the keystores is low on balance. So we give each keystore an
                         // extra grant of native coins large enough to cover all the native
                         // transactions it will need to make, when combined with its original grant
                         // of native coins.
@@ -1112,7 +1135,7 @@ pub mod generic_wallet_tests {
                             let total_txn_amount: u64 = txs.iter()
                                 .flatten()
                                 .map(|(def, sender, _, amount)| {
-                                    if (def % (ndefs + 1)) == 0 && (sender % nwallets) == i {
+                                    if (def % (ndefs + 1)) == 0 && (sender % nkeystores) == i {
                                         *amount
                                     } else {
                                         0
@@ -1127,12 +1150,12 @@ pub mod generic_wallet_tests {
                                 0
                             }
                         })
-                        // Give the same grant to the two addresses of each wallet.
+                        // Give the same grant to the two addresses of each keystore.
                         * 2
                     })
             ).collect();
 
-        let (ledger, mut wallets) = t.create_test_network(xfr_sizes, grants, &mut now).await;
+        let (ledger, mut keystores) = t.create_test_network(xfr_sizes, grants, &mut now).await;
         println!(
             "ceremony complete, minting initial records: {}s",
             now.elapsed().as_secs_f32()
@@ -1140,11 +1163,11 @@ pub mod generic_wallet_tests {
         now = Instant::now();
 
         fn push_history<L: Ledger>(
-            wallet_ix: usize,
+            keystore_ix: usize,
             histories: &mut [Vec<Vec<TransactionHistoryEntry<L>>>],
             entry: TransactionHistoryEntry<L>,
         ) {
-            histories[wallet_ix].last_mut().unwrap().push(entry);
+            histories[keystore_ix].last_mut().unwrap().push(entry);
         }
         fn close_history_block<L: Ledger>(histories: &mut [Vec<Vec<TransactionHistoryEntry<L>>>]) {
             for history in histories {
@@ -1157,7 +1180,7 @@ pub mod generic_wallet_tests {
         for i in 0..ndefs {
             let name = format!("Asset {}", i);
             assets.push(
-                wallets[0]
+                keystores[0]
                     .0
                     .define_asset(name.clone(), name.as_bytes(), Default::default())
                     .await
@@ -1170,16 +1193,16 @@ pub mod generic_wallet_tests {
                 // can't mint native assets
                 continue;
             }
-            let minter = wallets[0].1[0].clone();
-            let address = wallets[(owner % nwallets) as usize + 1].1[0].clone();
-            balances[(owner % nwallets) as usize][asset] += amount;
-            wallets[0]
+            let minter = keystores[0].1[0].clone();
+            let address = keystores[(owner % nkeystores) as usize + 1].1[0].clone();
+            balances[(owner % nkeystores) as usize][asset] += amount;
+            keystores[0]
                 .0
                 .mint(&minter, 1, &assets[asset - 1].code, amount, address.clone())
                 .await
                 .unwrap();
             push_history(
-                (owner % nwallets) as usize,
+                (owner % nkeystores) as usize,
                 &mut histories,
                 TransactionHistoryEntry {
                     time: Local::now(),
@@ -1191,7 +1214,7 @@ pub mod generic_wallet_tests {
                     receipt: None,
                 },
             );
-            t.sync(&ledger, wallets.as_slice()).await;
+            t.sync(&ledger, keystores.as_slice()).await;
             close_history_block(&mut histories);
         }
 
@@ -1199,62 +1222,62 @@ pub mod generic_wallet_tests {
         now = Instant::now();
 
         // Check initial balances. This cannot be a closure because rust infers the wrong lifetime
-        // for the references (it tries to use 'a, which is longer than we want to borrow `wallets`
+        // for the references (it tries to use 'a, which is longer than we want to borrow `keystores`
         // for).
         async fn check_balances<'b, L: Ledger + 'static>(
-            wallets: &[(
-                Wallet<'b, impl WalletBackend<'b, L> + Sync + 'b, L>,
+            keystores: &[(
+                Keystore<'b, impl KeystoreBackend<'b, L> + Sync + 'b, L>,
                 Vec<UserAddress>,
             )],
             balances: &[Vec<u64>],
             assets: &[AssetDefinition],
         ) {
             for (i, balance) in balances.iter().enumerate() {
-                let (wallet, addresses) = &wallets[i + 1];
+                let (keystore, addresses) = &keystores[i + 1];
 
                 // Check native asset balance.
                 assert_eq!(
-                    wallet
+                    keystore
                         .balance_breakdown(&addresses[0], &AssetCode::native())
                         .await,
                     balance[0]
                 );
                 for (j, asset) in assets.iter().enumerate() {
                     assert_eq!(
-                        wallet.balance_breakdown(&addresses[0], &asset.code).await,
+                        keystore.balance_breakdown(&addresses[0], &asset.code).await,
                         balance[j + 1]
                     );
                 }
             }
         }
-        check_balances(&wallets, &balances, &assets).await;
+        check_balances(&keystores, &balances, &assets).await;
 
         async fn check_histories<'b, L: Ledger + 'static>(
-            wallets: &[(
-                Wallet<'b, impl WalletBackend<'b, L> + Sync + 'b, L>,
+            keystores: &[(
+                Keystore<'b, impl KeystoreBackend<'b, L> + Sync + 'b, L>,
                 Vec<UserAddress>,
             )],
             histories: &[Vec<Vec<TransactionHistoryEntry<L>>>],
         ) {
-            assert_eq!(wallets.len(), histories.len() + 1);
-            for ((wallet, _), history) in wallets.iter().skip(1).zip(histories) {
-                let mut wallet_history = wallet.transaction_history().await.unwrap();
+            assert_eq!(keystores.len(), histories.len() + 1);
+            for ((keystore, _), history) in keystores.iter().skip(1).zip(histories) {
+                let mut keystore_history = keystore.transaction_history().await.unwrap();
                 assert_eq!(
-                    wallet_history.len(),
+                    keystore_history.len(),
                     history.iter().map(|block| block.len()).sum::<usize>()
                 );
 
                 for block in history {
-                    let remaining = wallet_history.split_off(block.len());
-                    let wallet_block = wallet_history;
-                    wallet_history = remaining;
+                    let remaining = keystore_history.split_off(block.len());
+                    let keystore_block = keystore_history;
+                    keystore_history = remaining;
 
                     // Compare the blocks, allowing for slight deviations in the timestamps of
                     // corresponding entries. We compare blocks modulo order by checking that they
                     // have the same length and that every entry in one is in the other, and vice
                     // versa.
-                    assert_eq!(wallet_block.len(), block.len());
-                    let wallet_block = wallet_block
+                    assert_eq!(keystore_block.len(), block.len());
+                    let keystore_block = keystore_block
                         .into_iter()
                         .map(TxnHistoryWithTimeTolerantEq)
                         .collect::<Vec<_>>();
@@ -1262,21 +1285,21 @@ pub mod generic_wallet_tests {
                         .iter()
                         .map(|txn| TxnHistoryWithTimeTolerantEq(txn.clone()))
                         .collect::<Vec<_>>();
-                    for txn in wallet_block.iter() {
+                    for txn in keystore_block.iter() {
                         assert!(
                             block.contains(txn),
-                            "wallet contains unexpected transaction history:\n  {:?}\nexpected:\n  {:?}",
+                            "keystore contains unexpected transaction history:\n  {:?}\nexpected:\n  {:?}",
                             txn,
                             block,
                         );
                     }
                     for txn in block.iter() {
-                        assert!(wallet_block.contains(txn));
+                        assert!(keystore_block.contains(txn));
                     }
                 }
             }
         }
-        check_histories(&wallets, &histories).await;
+        check_histories(&keystores, &histories).await;
 
         // Run the test transactions.
         for (i, block) in txs.iter().enumerate() {
@@ -1299,16 +1322,16 @@ pub mod generic_wallet_tests {
                 );
 
                 let asset_ix = (asset_ix % (ndefs + 1)) as usize;
-                let sender_ix = (sender_ix % nwallets) as usize;
-                let receiver_ix = (receiver_ix % nwallets) as usize;
+                let sender_ix = (sender_ix % nkeystores) as usize;
+                let receiver_ix = (receiver_ix % nkeystores) as usize;
                 let native = AssetDefinition::native();
                 let asset = if asset_ix == 0 {
                     &native
                 } else {
                     &assets[asset_ix - 1]
                 };
-                let receiver = wallets[receiver_ix + 1].1[0].clone();
-                let sender_address = wallets[sender_ix + 1].1[0].clone();
+                let receiver = keystores[receiver_ix + 1].1[0].clone();
+                let sender_address = keystores[sender_ix + 1].1[0].clone();
                 let sender_balance = balances[sender_ix][asset_ix];
 
                 let mut amount = if *amount <= sender_balance {
@@ -1335,7 +1358,7 @@ pub mod generic_wallet_tests {
                         now.elapsed().as_secs_f32()
                     );
                     now = Instant::now();
-                    let (minter, minter_addresses) = &mut wallets[0];
+                    let (minter, minter_addresses) = &mut keystores[0];
                     minter
                         .mint(
                             &minter_addresses[0],
@@ -1346,7 +1369,7 @@ pub mod generic_wallet_tests {
                         )
                         .await
                         .unwrap();
-                    t.sync(&ledger, wallets.as_slice()).await;
+                    t.sync(&ledger, keystores.as_slice()).await;
                     balances[sender_ix][asset_ix] += 2 * amount;
                     push_history(
                         sender_ix,
@@ -1368,7 +1391,7 @@ pub mod generic_wallet_tests {
                 };
 
                 ledger.lock().await.hold_next_transaction();
-                let sender = &mut wallets[sender_ix + 1].0;
+                let sender = &mut keystores[sender_ix + 1].0;
                 let receipt = match sender
                     .transfer(
                         Some(&sender_address),
@@ -1379,7 +1402,7 @@ pub mod generic_wallet_tests {
                     .await
                 {
                     Ok(receipt) => receipt.clone(),
-                    Err(WalletError::TransactionError {
+                    Err(KeystoreError::TransactionError {
                         source:
                             TransactionError::Fragmentation {
                                 suggested_amount, ..
@@ -1390,7 +1413,7 @@ pub mod generic_wallet_tests {
                         // arities, which requires either dummy records or multiple verifier keys in
                         // the validator.
                         if suggested_amount > 0 {
-                            // If the wallet suggested a transaction amount that it _can_ process,
+                            // If the keystore suggested a transaction amount that it _can_ process,
                             // try again with that amount.
                             println!(
                                 "decreasing transfer amount due to fragmentation: {} -> {}: {}s",
@@ -1420,7 +1443,7 @@ pub mod generic_wallet_tests {
                             continue;
                         }
                     }
-                    Err(WalletError::TransactionError {
+                    Err(KeystoreError::TransactionError {
                         source: TransactionError::InsufficientBalance { .. },
                     }) => {
                         // We should always have enough balance to make the transaction, because we
@@ -1434,8 +1457,8 @@ pub mod generic_wallet_tests {
                         // transaction should succeed after we flush any pending transactions.
                         println!("flushing pending blocks to retrieve change");
                         ledger.lock().await.flush().unwrap();
-                        t.sync(&ledger, wallets.as_slice()).await;
-                        let sender = &mut wallets[sender_ix + 1].0;
+                        t.sync(&ledger, keystores.as_slice()).await;
+                        let sender = &mut keystores[sender_ix + 1].0;
                         sender
                             .transfer(
                                 Some(&sender_address),
@@ -1496,10 +1519,10 @@ pub mod generic_wallet_tests {
                 ledger.lock().await.release_held_transaction();
             }
 
-            t.sync(&ledger, wallets.as_slice()).await;
+            t.sync(&ledger, keystores.as_slice()).await;
             close_history_block(&mut histories);
-            check_balances(&wallets, &balances, &assets).await;
-            check_histories(&wallets, &histories).await;
+            check_balances(&keystores, &balances, &assets).await;
+            check_histories(&keystores, &histories).await;
 
             println!(
                 "Finished block {}/{}: {}s",
@@ -1511,7 +1534,8 @@ pub mod generic_wallet_tests {
     }
 
     #[async_std::test]
-    pub async fn test_multixfr_wallet_simple<'a, T: SystemUnderTest<'a>>() -> std::io::Result<()> {
+    pub async fn test_multixfr_keystore_simple<'a, T: SystemUnderTest<'a>>() -> std::io::Result<()>
+    {
         let alice_grant = (0, 0, 3); // Alice gets 3 of coin 0 to start
         let bob_grant = (1, 1, 3); // Bob gets 3 of coin 1 to start
         let txns = vec![vec![
@@ -1519,12 +1543,12 @@ pub mod generic_wallet_tests {
             (2, 1, 0, 2), // Bob sends 2 of coin 2 to Alice
             (1, 1, 0, 1), // Bob sends 1 of coin 1 to Alice
         ]];
-        test_multixfr_wallet::<T>(txns, 2, 2, alice_grant, vec![bob_grant]).await;
+        test_multixfr_keystore::<T>(txns, 2, 2, alice_grant, vec![bob_grant]).await;
         Ok(())
     }
 
     #[async_std::test]
-    pub async fn test_multixfr_wallet_multi_xfr_block<'a, T: SystemUnderTest<'a>>(
+    pub async fn test_multixfr_keystore_multi_xfr_block<'a, T: SystemUnderTest<'a>>(
     ) -> std::io::Result<()> {
         // Alice and Bob each get 1 native token to start.
         let alice_grant = (0, 0, 1);
@@ -1535,12 +1559,12 @@ pub mod generic_wallet_tests {
             (0, 0, 1, 1), // Alice sends 1 coin to Bob
             (0, 1, 0, 1), // Bob sends 1 coin to Alice
         ]];
-        test_multixfr_wallet::<T>(txns, 2, 1, alice_grant, vec![bob_grant]).await;
+        test_multixfr_keystore::<T>(txns, 2, 1, alice_grant, vec![bob_grant]).await;
         Ok(())
     }
 
     #[async_std::test]
-    pub async fn test_multixfr_wallet_various_kinds<'a, T: SystemUnderTest<'a>>(
+    pub async fn test_multixfr_keystore_various_kinds<'a, T: SystemUnderTest<'a>>(
     ) -> std::io::Result<()> {
         let txns = vec![vec![
             (0, 0, 1, 1), // native asset transfer
@@ -1549,7 +1573,7 @@ pub mod generic_wallet_tests {
         ]];
         let native_grant = (0, 0, 1);
         let non_native_grant = (1, 0, 3);
-        test_multixfr_wallet::<T>(txns, 2, 1, native_grant, vec![non_native_grant]).await;
+        test_multixfr_keystore::<T>(txns, 2, 1, native_grant, vec![non_native_grant]).await;
         Ok(())
     }
 
@@ -1640,7 +1664,7 @@ pub mod generic_wallet_tests {
     const MULTI_XFR_LARGE: MultiXfrParams = MultiXfrParams::new(50, 1000);
 
     #[allow(clippy::type_complexity)]
-    fn proptest_multixfr_wallet<'a, T: SystemUnderTest<'a>>(
+    fn proptest_multixfr_keystore<'a, T: SystemUnderTest<'a>>(
         (txs, nkeys, ndefs, init_rec, init_recs): (
             Vec<Vec<(u8, u8, u8, u64)>>,
             u8,
@@ -1649,30 +1673,30 @@ pub mod generic_wallet_tests {
             Vec<(u8, u8, u64)>,
         ),
     ) -> test_runner::TestCaseResult {
-        block_on(test_multixfr_wallet::<T>(
+        block_on(test_multixfr_keystore::<T>(
             txs, nkeys, ndefs, init_rec, init_recs,
         ));
         Ok(())
     }
 
     #[test]
-    pub fn proptest_multixfr_wallet_regression1<'a, T: SystemUnderTest<'a>>() {
+    pub fn proptest_multixfr_keystore_regression1<'a, T: SystemUnderTest<'a>>() {
         // This input caused an assertion failure:
         //  assertion failed: block.contains(txn)
-        // when checking that an expected transaction was in a wallet's transaction history in the
+        // when checking that an expected transaction was in a keystore's transaction history in the
         // right place. The transaction which was actually in the history differed from the expected
         // one in that its `receivers` field was empty.
         //
         // The root cause was a `skip(1)` when iterating over the output records when creating the
         // transaction history entry. This was an attempt to skip the fee change record, but the
-        // records available at that point were only the records received by the current wallet,
+        // records available at that point were only the records received by the current keystore,
         // which does not necessarily include the fee change. (If the transaction was sent to us
         // from someone else, the first record we received would not be the fee change.)
         //
         // Removing this `skip(1)` fixed the bug, and the logic that skips records whose asset types
         // don't match the asset type of the overall transaction still causes the fee change record
         // to be skipped when present.
-        proptest_multixfr_wallet::<T>((
+        proptest_multixfr_keystore::<T>((
             vec![
                 vec![(0, 0, 0, 1)],
                 vec![(0, 0, 0, 1)],
@@ -1689,7 +1713,7 @@ pub mod generic_wallet_tests {
     }
 
     #[test]
-    pub fn proptest_multixfr_wallet_small<'a, T: SystemUnderTest<'a>>() {
+    pub fn proptest_multixfr_keystore_small<'a, T: SystemUnderTest<'a>>() {
         TestRunner::new(test_runner::Config {
             cases: 1,
             ..test_runner::Config::default()
@@ -1702,14 +1726,14 @@ pub mod generic_wallet_tests {
                 MULTI_XFR_SMALL.rec(),
                 MULTI_XFR_SMALL.recs(),
             ),
-            proptest_multixfr_wallet::<T>,
+            proptest_multixfr_keystore::<T>,
         )
         .unwrap();
     }
 
     #[test]
     #[ignore]
-    pub fn proptest_multixfr_wallet_many_small_tests<'a, T: SystemUnderTest<'a>>() {
+    pub fn proptest_multixfr_keystore_many_small_tests<'a, T: SystemUnderTest<'a>>() {
         TestRunner::new(test_runner::Config {
             cases: 10,
             ..test_runner::Config::default()
@@ -1722,14 +1746,14 @@ pub mod generic_wallet_tests {
                 MULTI_XFR_SMALL.rec(),
                 MULTI_XFR_SMALL.recs(),
             ),
-            proptest_multixfr_wallet::<T>,
+            proptest_multixfr_keystore::<T>,
         )
         .unwrap();
     }
 
     #[test]
     #[ignore]
-    pub fn proptest_multixfr_wallet_one_big_test<'a, T: SystemUnderTest<'a>>() {
+    pub fn proptest_multixfr_keystore_one_big_test<'a, T: SystemUnderTest<'a>>() {
         TestRunner::new(test_runner::Config {
             cases: 1,
             ..test_runner::Config::default()
@@ -1742,7 +1766,7 @@ pub mod generic_wallet_tests {
                 MULTI_XFR_LARGE.rec(),
                 MULTI_XFR_LARGE.recs(),
             ),
-            proptest_multixfr_wallet::<T>,
+            proptest_multixfr_keystore::<T>,
         )
         .unwrap();
     }
@@ -1751,16 +1775,16 @@ pub mod generic_wallet_tests {
     pub async fn test_generate_user_key<'a, T: SystemUnderTest<'a>>() {
         let mut t = T::default();
         let mut now = Instant::now();
-        let (ledger, mut wallets) = t
+        let (ledger, mut keystores) = t
             .create_test_network(&[(3, 4)], vec![0, 100], &mut now)
             .await;
 
-        // Figure out the next key in `wallets[0]`s deterministic key stream without adding it to
-        // the wallet. We will use this to create a record owned by this key, _and then_ generate
-        // the key through the wallet's public interface, triggering a background ledger scan which
+        // Figure out the next key in `keystores[0]`s deterministic key stream without adding it to
+        // the keystore. We will use this to create a record owned by this key, _and then_ generate
+        // the key through the keystore's public interface, triggering a background ledger scan which
         // should identify the existing record belonging to the key.
         let key = {
-            let WalletSharedState { state, session, .. } = &mut *wallets[0].0.lock().await;
+            let KeystoreSharedState { state, session, .. } = &mut *keystores[0].0.lock().await;
             let key = session
                 .backend
                 .key_stream()
@@ -1770,11 +1794,11 @@ pub mod generic_wallet_tests {
             key
         };
 
-        // Transfer a record to `key` before we tell `wallets[0]` to generate the key, so that we
-        // can check if the background ledger scan initiated when the wallet generates the key
+        // Transfer a record to `key` before we tell `keystores[0]` to generate the key, so that we
+        // can check if the background ledger scan initiated when the keystore generates the key
         // successfully discovers the record.
-        let send_addr = wallets[1].1[0].clone();
-        wallets[1]
+        let send_addr = keystores[1].1[0].clone();
+        keystores[1]
             .0
             .transfer(
                 Some(&send_addr),
@@ -1784,11 +1808,11 @@ pub mod generic_wallet_tests {
             )
             .await
             .unwrap();
-        t.sync(&ledger, wallets.as_slice()).await;
-        // The receiving wallet doesn't initially get the new balance, because it hasn't added the
+        t.sync(&ledger, keystores.as_slice()).await;
+        // The receiving keystore doesn't initially get the new balance, because it hasn't added the
         // key yet.
         assert_eq!(
-            wallets[0]
+            keystores[0]
                 .0
                 .balance_breakdown(&key.address(), &AssetCode::native())
                 .await,
@@ -1797,7 +1821,7 @@ pub mod generic_wallet_tests {
 
         // Generate a lot of events to slow down the key scan.
         for _ in 0..10 {
-            wallets[1]
+            keystores[1]
                 .0
                 .transfer(
                     Some(&send_addr),
@@ -1807,7 +1831,7 @@ pub mod generic_wallet_tests {
                 )
                 .await
                 .unwrap();
-            t.sync(&ledger, wallets.as_slice()).await;
+            t.sync(&ledger, keystores.as_slice()).await;
         }
 
         // Pre-compute a transaction to release after the key scan starts, so that the Merkle root
@@ -1818,7 +1842,7 @@ pub mod generic_wallet_tests {
             ledger.set_block_size(1).unwrap();
             ledger.hold_next_transaction();
         }
-        wallets[1]
+        keystores[1]
             .0
             .transfer(
                 Some(&send_addr),
@@ -1832,7 +1856,7 @@ pub mod generic_wallet_tests {
         // Now add the key and start a scan from event 0.
         assert_eq!(
             key.pub_key(),
-            wallets[0]
+            keystores[0]
                 .0
                 .generate_user_key("sending_key".into(), Some(Default::default()))
                 .await
@@ -1843,15 +1867,15 @@ pub mod generic_wallet_tests {
         {
             ledger.lock().await.release_held_transaction();
         }
-        t.sync(&ledger, &wallets).await;
+        t.sync(&ledger, &keystores).await;
 
-        // Check that the scan is persisted, so it would restart if the wallet crashed.
-        t.check_storage(&ledger, &wallets).await;
+        // Check that the scan is persisted, so it would restart if the keystore crashed.
+        t.check_storage(&ledger, &keystores).await;
 
         // Check that the scan discovered the existing record.
-        wallets[0].0.await_key_scan(&key.address()).await.unwrap();
+        keystores[0].0.await_key_scan(&key.address()).await.unwrap();
         assert_eq!(
-            wallets[0]
+            keystores[0]
                 .0
                 .balance_breakdown(&key.address(), &AssetCode::native())
                 .await,
@@ -1860,7 +1884,7 @@ pub mod generic_wallet_tests {
 
         // Now check that the regular event handling loop discovers records owned by this key going
         // forwards.
-        wallets[1]
+        keystores[1]
             .0
             .transfer(
                 Some(&send_addr),
@@ -1870,9 +1894,9 @@ pub mod generic_wallet_tests {
             )
             .await
             .unwrap();
-        t.sync(&ledger, wallets.as_slice()).await;
+        t.sync(&ledger, keystores.as_slice()).await;
         assert_eq!(
-            wallets[0]
+            keystores[0]
                 .0
                 .balance_breakdown(&key.address(), &AssetCode::native())
                 .await,
@@ -1885,16 +1909,16 @@ pub mod generic_wallet_tests {
         let mut t = T::default();
         let mut rng = ChaChaRng::from_seed([127u8; 32]);
 
-        // Initialize a ledger and wallet, and get the owner address.
+        // Initialize a ledger and keystore, and get the owner address.
         let mut now = Instant::now();
         let initial_grant = 10;
-        let (ledger, mut wallets) = t
+        let (ledger, mut keystores) = t
             .create_test_network(&[(2, 2)], vec![initial_grant * 2], &mut now)
             .await;
         ledger.lock().await.set_block_size(1).unwrap();
 
-        let (mut wallet1, addresses1) = wallets.remove(0);
-        let receipt = wallet1
+        let (mut keystore1, addresses1) = keystores.remove(0);
+        let receipt = keystore1
             .transfer(
                 Some(&addresses1[0]),
                 &AssetCode::native(),
@@ -1904,25 +1928,25 @@ pub mod generic_wallet_tests {
             .await
             .unwrap()
             .clone();
-        await_transaction(&receipt, &wallet1, &[]).await;
+        await_transaction(&receipt, &keystore1, &[]).await;
         assert_eq!(
-            wallet1
+            keystore1
                 .balance_breakdown(&addresses1[0], &AssetCode::native())
                 .await,
             initial_grant - 1
         );
 
-        // A new wallet joins the system after there are already some transactions on the ledger.
-        let mut wallet2 = t.create_wallet(&mut rng, &ledger).await;
-        wallet2.sync(ledger.lock().await.now()).await.unwrap();
-        let address2 = wallet2
+        // A new keystore joins the system after there are already some transactions on the ledger.
+        let mut keystore2 = t.create_keystore(&mut rng, &ledger).await;
+        keystore2.sync(ledger.lock().await.now()).await.unwrap();
+        let address2 = keystore2
             .generate_user_key("sending_key".into(), None)
             .await
             .unwrap()
             .address();
 
-        // Transfer to the late wallet.
-        let receipt = wallet1
+        // Transfer to the late keystore.
+        let receipt = keystore1
             .transfer(
                 Some(&addresses1[0]),
                 &AssetCode::native(),
@@ -1932,22 +1956,22 @@ pub mod generic_wallet_tests {
             .await
             .unwrap()
             .clone();
-        await_transaction(&receipt, &wallet1, &[&wallet2]).await;
+        await_transaction(&receipt, &keystore1, &[&keystore2]).await;
         assert_eq!(
-            wallet1
+            keystore1
                 .balance_breakdown(&addresses1[0], &AssetCode::native())
                 .await,
             initial_grant - 4
         );
         assert_eq!(
-            wallet2
+            keystore2
                 .balance_breakdown(&address2, &AssetCode::native())
                 .await,
             2
         );
 
         // Transfer back.
-        let receipt = wallet2
+        let receipt = keystore2
             .transfer(
                 Some(&address2),
                 &AssetCode::native(),
@@ -1957,15 +1981,15 @@ pub mod generic_wallet_tests {
             .await
             .unwrap()
             .clone();
-        await_transaction(&receipt, &wallet2, &[&wallet1]).await;
+        await_transaction(&receipt, &keystore2, &[&keystore1]).await;
         assert_eq!(
-            wallet1
+            keystore1
                 .balance_breakdown(&addresses1[0], &AssetCode::native())
                 .await,
             initial_grant - 3
         );
         assert_eq!(
-            wallet2
+            keystore2
                 .balance_breakdown(&address2, &AssetCode::native())
                 .await,
             0
@@ -1984,45 +2008,48 @@ pub mod generic_wallet_tests {
         // Give Alice and Bob some initial grants.
         let alice_grant = 21;
         let bob_grant = 10;
-        let (ledger, mut wallets) = t
+        let (ledger, mut keystores) = t
             .create_test_network(
                 &[(num_inputs, num_outputs)],
                 vec![alice_grant, bob_grant],
                 &mut now,
             )
             .await;
-        let alice_addresses = wallets[0].1.clone();
-        let bob_addresses = wallets[1].1.clone();
+        let alice_addresses = keystores[0].1.clone();
+        let bob_addresses = keystores[1].1.clone();
 
-        // Verify initial wallet state.
+        // Verify initial keystore state.
         assert_eq!(
-            wallets[0].0.balance(&AssetCode::native()).await,
+            keystores[0].0.balance(&AssetCode::native()).await,
             alice_grant
         );
         assert_eq!(
-            wallets[0]
+            keystores[0]
                 .0
                 .balance_breakdown(&alice_addresses[0], &AssetCode::native())
                 .await,
             alice_grant / 2
         );
         assert_eq!(
-            wallets[0]
+            keystores[0]
                 .0
                 .balance_breakdown(&alice_addresses[1], &AssetCode::native())
                 .await,
             alice_grant - alice_grant / 2
         );
-        assert_eq!(wallets[1].0.balance(&AssetCode::native()).await, bob_grant);
         assert_eq!(
-            wallets[1]
+            keystores[1].0.balance(&AssetCode::native()).await,
+            bob_grant
+        );
+        assert_eq!(
+            keystores[1]
                 .0
                 .balance_breakdown(&bob_addresses[0], &AssetCode::native())
                 .await,
             bob_grant / 2
         );
         assert_eq!(
-            wallets[1]
+            keystores[1]
                 .0
                 .balance_breakdown(&bob_addresses[1], &AssetCode::native())
                 .await,
@@ -2030,7 +2057,7 @@ pub mod generic_wallet_tests {
         );
 
         // Alice defines a coin and gives her first address some initial grant.
-        let coin = wallets[0]
+        let coin = keystores[0]
             .0
             .define_asset(
                 "Alice".into(),
@@ -2040,7 +2067,7 @@ pub mod generic_wallet_tests {
             .await
             .unwrap();
         let amount = 10;
-        wallets[0]
+        keystores[0]
             .0
             .mint(
                 &alice_addresses[0],
@@ -2051,21 +2078,21 @@ pub mod generic_wallet_tests {
             )
             .await
             .unwrap();
-        t.sync(&ledger, wallets.as_slice()).await;
+        t.sync(&ledger, keystores.as_slice()).await;
         println!("Asset minted: {}s", now.elapsed().as_secs_f32());
         now = Instant::now();
 
         // Verify the aggragated balance and the balance in each address of Alice.
-        assert_eq!(wallets[0].0.balance(&coin.code).await, amount);
+        assert_eq!(keystores[0].0.balance(&coin.code).await, amount);
         assert_eq!(
-            wallets[0]
+            keystores[0]
                 .0
                 .balance_breakdown(&alice_addresses[0], &coin.code)
                 .await,
             amount
         );
         assert_eq!(
-            wallets[0]
+            keystores[0]
                 .0
                 .balance_breakdown(&alice_addresses[1], &coin.code)
                 .await,
@@ -2076,7 +2103,7 @@ pub mod generic_wallet_tests {
         // balance.
         let transfer_amount = 3;
         let fee = 1;
-        match wallets[0]
+        match keystores[0]
             .0
             .transfer(
                 Some(&alice_addresses[1]),
@@ -2086,14 +2113,14 @@ pub mod generic_wallet_tests {
             )
             .await
         {
-            Err(WalletError::TransactionError {
+            Err(KeystoreError::TransactionError {
                 source: TransactionError::InsufficientBalance { .. },
             }) => {}
             ret => panic!("expected InsufficientBalance, got {:?}", ret.map(|_| ())),
         }
 
         // Transferring from Alice's first address to Bob should succeed.
-        wallets[0]
+        keystores[0]
             .0
             .transfer(
                 Some(&alice_addresses[0]),
@@ -2103,7 +2130,7 @@ pub mod generic_wallet_tests {
             )
             .await
             .unwrap();
-        t.sync(&ledger, wallets.as_slice()).await;
+        t.sync(&ledger, keystores.as_slice()).await;
         println!(
             "Transfer generated from a specified address: {}s",
             now.elapsed().as_secs_f32()
@@ -2111,7 +2138,7 @@ pub mod generic_wallet_tests {
         now = Instant::now();
 
         // Transferring from Alice to Bob without specifying Alice's address should also succeed.
-        wallets[0]
+        keystores[0]
             .0
             .transfer(
                 None,
@@ -2121,7 +2148,7 @@ pub mod generic_wallet_tests {
             )
             .await
             .unwrap();
-        t.sync(&ledger, wallets.as_slice()).await;
+        t.sync(&ledger, keystores.as_slice()).await;
         println!(
             "Transfer generated without a specified address: {}s",
             now.elapsed().as_secs_f32()
@@ -2129,15 +2156,21 @@ pub mod generic_wallet_tests {
 
         // Verify the balances of the native and defined coins.
         assert_eq!(
-            wallets[0].0.balance(&AssetCode::native()).await,
+            keystores[0].0.balance(&AssetCode::native()).await,
             alice_grant - fee * 3
         );
         assert_eq!(
-            wallets[0].0.balance(&coin.code).await,
+            keystores[0].0.balance(&coin.code).await,
             amount - transfer_amount * 2
         );
-        assert_eq!(wallets[1].0.balance(&AssetCode::native()).await, bob_grant);
-        assert_eq!(wallets[1].0.balance(&coin.code).await, transfer_amount * 2);
+        assert_eq!(
+            keystores[1].0.balance(&AssetCode::native()).await,
+            bob_grant
+        );
+        assert_eq!(
+            keystores[1].0.balance(&coin.code).await,
+            transfer_amount * 2
+        );
     }
 
     #[async_std::test]
@@ -2145,25 +2178,25 @@ pub mod generic_wallet_tests {
         let mut t = T::default();
         let mut now = Instant::now();
         let initial_grant = 10;
-        let (ledger, mut wallets) = t
+        let (ledger, mut keystores) = t
             .create_test_network(&[(2, 2)], vec![initial_grant, initial_grant], &mut now)
             .await;
 
-        // Test various ways of discovering assets. We will have wallets[0] discover assets by
+        // Test various ways of discovering assets. We will have keystores[0] discover assets by
         //  * defining one itself
-        //  * receiving one from wallets[1]
+        //  * receiving one from keystores[1]
         //  * importing one
         // All of these asset types should end up in the asset library, as well as the native asset
         // type which should always be present. The defined asset should also appear in the
         // auditable subset if we use the right auditor key, which we will define now:
-        let audit_key0 = wallets[0]
+        let audit_key0 = keystores[0]
             .0
             .generate_audit_key("audit_key".into())
             .await
             .unwrap();
 
         // Define an asset.
-        let defined_asset = wallets[0]
+        let defined_asset = keystores[0]
             .0
             .define_asset(
                 "defined_asset".into(),
@@ -2173,14 +2206,14 @@ pub mod generic_wallet_tests {
             .await
             .unwrap();
 
-        // Receive an asset. wallets[1] will define a new asset type (auditable by itself) and then
-        // mint some to wallets[0].
-        let audit_key1 = wallets[1]
+        // Receive an asset. keystores[1] will define a new asset type (auditable by itself) and then
+        // mint some to keystores[0].
+        let audit_key1 = keystores[1]
             .0
             .generate_audit_key("audit_key".into())
             .await
             .unwrap();
-        let minted_asset = wallets[1]
+        let minted_asset = keystores[1]
             .0
             .define_asset(
                 "minted_asset".into(),
@@ -2189,19 +2222,19 @@ pub mod generic_wallet_tests {
             )
             .await
             .unwrap();
-        let minter_addr = wallets[1].1[0].clone();
-        let receiver_addr = wallets[0].1[0].clone();
-        wallets[1]
+        let minter_addr = keystores[1].1[0].clone();
+        let receiver_addr = keystores[0].1[0].clone();
+        keystores[1]
             .0
             .mint(&minter_addr, 1, &minted_asset.code, 1, receiver_addr)
             .await
             .unwrap();
-        t.sync(&ledger, &wallets).await;
+        t.sync(&ledger, &keystores).await;
 
-        // Import an asset (we'll use `wallets[1]` to define it). As an added check, we will
-        // "maliciously" mark the imported `AssetInfo` as `verified`, to check that the wallet does
+        // Import an asset (we'll use `keystores[1]` to define it). As an added check, we will
+        // "maliciously" mark the imported `AssetInfo` as `verified`, to check that the keystore does
         // not actually consider this a verified asset without a signature check.
-        let imported_asset = wallets[1]
+        let imported_asset = keystores[1]
             .0
             .define_asset(
                 "imported_asset".into(),
@@ -2212,14 +2245,14 @@ pub mod generic_wallet_tests {
             .unwrap();
         let mut import_info = AssetInfo::from(imported_asset.clone());
         import_info.verified = true;
-        wallets[0].0.import_asset(import_info).await.unwrap();
+        keystores[0].0.import_asset(import_info).await.unwrap();
 
-        // Now check that all expected asset types appear in wallets[0]'s asset library.
+        // Now check that all expected asset types appear in keystores[0]'s asset library.
         let get_asset = |code| {
-            let wallet = &wallets[0].0;
+            let keystore = &keystores[0].0;
             async move {
-                let asset = wallet.asset(code).await.unwrap();
-                assert!(wallet.assets().await.contains(&asset));
+                let asset = keystore.asset(code).await.unwrap();
+                assert!(keystore.assets().await.contains(&asset));
                 asset
             }
         };
@@ -2263,25 +2296,25 @@ pub mod generic_wallet_tests {
         let mut rng = ChaChaRng::from_seed([37; 32]);
         let mut now = Instant::now();
         let initial_grant = 10;
-        let (ledger, mut wallets) = t
+        let (ledger, mut keystores) = t
             .create_test_network(&[(2, 2)], vec![initial_grant], &mut now)
             .await;
 
         // Discover a non-verified asset so we can later test verifying a non-verified asset.
-        let asset1 = wallets[0]
+        let asset1 = keystores[0]
             .0
             .define_asset("asset1".into(), &[], AssetPolicy::default())
             .await
             .unwrap();
         {
-            let asset1_info = wallets[0].0.asset(asset1.code).await.unwrap();
+            let asset1_info = keystores[0].0.asset(asset1.code).await.unwrap();
             assert!(!asset1_info.verified);
             assert!(!asset1_info.temporary);
         }
 
         // Now created a verified asset library with 2 assets:
         // * one that will update `asset1` to be marked verified
-        // * one that does not yet exist in the wallet (later we will import it to check updating
+        // * one that does not yet exist in the keystore (later we will import it to check updating
         //   verified assets with persistence and new information)
         let key_pair = KeyPair::generate(&mut rng);
         let (asset2, mint_info2) = {
@@ -2303,7 +2336,7 @@ pub mod generic_wallet_tests {
             VerifiedAssetLibrary::new(vec![asset2.clone().into()], &KeyPair::generate(&mut rng));
 
         // Import the verified asset library and check that the two expected assets are returned.
-        let imported = wallets[0]
+        let imported = keystores[0]
             .0
             .verify_assets(key_pair.ver_key_ref(), verified_assets)
             .await
@@ -2336,17 +2369,17 @@ pub mod generic_wallet_tests {
 
         // Check that importing an asset library signed by an imposter fails.
         assert!(matches!(
-            wallets[0]
+            keystores[0]
                 .0
                 .verify_assets(key_pair.ver_key_ref(), imposter_assets)
                 .await,
-            Err(WalletError::AssetVerificationError)
+            Err(KeystoreError::AssetVerificationError)
         ));
 
         // Check that `asset1` got updated, retaining it's mint info and persistence but attaining
         // verified status.
         {
-            let asset1_info = wallets[0].0.asset(asset1.code).await.unwrap();
+            let asset1_info = keystores[0].0.asset(asset1.code).await.unwrap();
             assert!(asset1_info.verified);
             assert!(!asset1_info.temporary);
             assert_eq!(asset1_info.definition, asset1);
@@ -2354,7 +2387,7 @@ pub mod generic_wallet_tests {
         }
         // Check that `asset2`, which was not present before, got imported as-is.
         assert_eq!(
-            wallets[0].0.asset(asset2.code).await.unwrap(),
+            keystores[0].0.asset(asset2.code).await.unwrap(),
             AssetInfo {
                 definition: asset2.clone(),
                 name: None,
@@ -2379,13 +2412,13 @@ pub mod generic_wallet_tests {
         }
 
         // Now import `asset2`, updating the existing verified asset with persistence and mint info.
-        wallets[0]
+        keystores[0]
             .0
             .import_asset(AssetInfo::new(asset2.clone(), mint_info2.clone()))
             .await
             .unwrap();
         assert_eq!(
-            wallets[0].0.asset(asset2.code).await.unwrap(),
+            keystores[0].0.asset(asset2.code).await.unwrap(),
             AssetInfo {
                 definition: asset2.clone(),
                 name: None,
@@ -2419,7 +2452,7 @@ pub mod generic_wallet_tests {
             }
             assets
         };
-        assert_eq!(loaded, wallets[0].0.lock().await.state.assets);
+        assert_eq!(loaded, keystores[0].0.lock().await.state.assets);
 
         // Check that the verified assets are marked verified once again.
         for asset in loaded {
@@ -2437,16 +2470,16 @@ pub mod generic_wallet_tests {
     pub async fn test_accounts<'a, T: SystemUnderTest<'a>>() {
         let mut t = T::default();
         let mut now = Instant::now();
-        let (ledger, mut wallets) = t
+        let (ledger, mut keystores) = t
             .create_test_network(&[(2, 2)], vec![10, 0], &mut now)
             .await;
         ledger.lock().await.set_block_size(1).unwrap();
-        t.check_storage(&ledger, &wallets).await;
+        t.check_storage(&ledger, &keystores).await;
         println!("Checking accounts");
 
         // The default accounts have no name and a balance of the native assets.
-        for address in &wallets[0].1 {
-            let account = wallets[0].0.sending_account(address).await.unwrap();
+        for address in &keystores[0].1 {
+            let account = keystores[0].0.sending_account(address).await.unwrap();
             assert!(account.used);
             assert_eq!(account.address, *address);
             assert_eq!(account.description, "");
@@ -2458,14 +2491,14 @@ pub mod generic_wallet_tests {
         }
 
         // Create a named sending account with no balance.
-        let address = wallets[0]
+        let address = keystores[0]
             .0
             .generate_user_key("sending_account".into(), None)
             .await
             .unwrap()
             .address();
         assert_eq!(
-            wallets[0].0.sending_account(&address).await.unwrap(),
+            keystores[0].0.sending_account(&address).await.unwrap(),
             AccountInfo {
                 address: address.clone(),
                 description: "sending_account".into(),
@@ -2476,18 +2509,18 @@ pub mod generic_wallet_tests {
                 scan_status: None,
             }
         );
-        t.check_storage(&ledger, &wallets).await;
+        t.check_storage(&ledger, &keystores).await;
 
         // Transfer to the new account, make sure it gets marked used and gets the new balance,
         // records, and assets.
-        let receipt = wallets[0]
+        let receipt = keystores[0]
             .0
             .transfer(None, &AssetCode::native(), &[(address.clone(), 2)], 1)
             .await
             .unwrap();
-        await_transaction(&receipt, &wallets[0].0, &[]).await;
+        await_transaction(&receipt, &keystores[0].0, &[]).await;
         {
-            let account = wallets[0].0.sending_account(&address).await.unwrap();
+            let account = keystores[0].0.sending_account(&address).await.unwrap();
             assert!(account.used);
             assert_eq!(account.balances, HashMap::from([(AssetCode::native(), 2)]));
             assert_eq!(account.assets, vec![AssetInfo::native::<T::Ledger>()]);
@@ -2495,21 +2528,21 @@ pub mod generic_wallet_tests {
             assert_eq!(account.records[0].ro.amount, 2);
             assert_eq!(account.records[0].ro.asset_def, AssetDefinition::native());
         }
-        t.check_storage(&ledger, &wallets).await;
+        t.check_storage(&ledger, &keystores).await;
 
         // Create empty viewing and freezing accounts.
-        let viewing_key = wallets[0]
+        let viewing_key = keystores[0]
             .0
             .generate_audit_key("viewing_account".into())
             .await
             .unwrap();
-        let freezing_key = wallets[0]
+        let freezing_key = keystores[0]
             .0
             .generate_freeze_key("freezing_account".into())
             .await
             .unwrap();
         assert_eq!(
-            wallets[0].0.viewing_account(&viewing_key).await.unwrap(),
+            keystores[0].0.viewing_account(&viewing_key).await.unwrap(),
             AccountInfo {
                 address: viewing_key.clone(),
                 description: "viewing_account".into(),
@@ -2521,7 +2554,11 @@ pub mod generic_wallet_tests {
             }
         );
         assert_eq!(
-            wallets[0].0.freezing_account(&freezing_key).await.unwrap(),
+            keystores[0]
+                .0
+                .freezing_account(&freezing_key)
+                .await
+                .unwrap(),
             AccountInfo {
                 address: freezing_key.clone(),
                 description: "freezing_account".into(),
@@ -2532,10 +2569,10 @@ pub mod generic_wallet_tests {
                 scan_status: None,
             }
         );
-        t.check_storage(&ledger, &wallets).await;
+        t.check_storage(&ledger, &keystores).await;
 
         // Generate one asset that is just viewable and one that is both viewable and freezable.
-        let viewable_asset = wallets[0]
+        let viewable_asset = keystores[0]
             .0
             .define_asset(
                 "asset1".into(),
@@ -2547,7 +2584,7 @@ pub mod generic_wallet_tests {
             )
             .await
             .unwrap();
-        let freezable_asset = wallets[0]
+        let freezable_asset = keystores[0]
             .0
             .define_asset(
                 "asset2".into(),
@@ -2562,7 +2599,7 @@ pub mod generic_wallet_tests {
             .unwrap();
         // Check that the new assets appear in the proper accounts.
         assert_eq!(
-            wallets[0]
+            keystores[0]
                 .0
                 .viewing_account(&viewing_key)
                 .await
@@ -2580,7 +2617,7 @@ pub mod generic_wallet_tests {
             .collect::<HashMap<_, _>>(),
         );
         assert_eq!(
-            wallets[0]
+            keystores[0]
                 .0
                 .freezing_account(&freezing_key)
                 .await
@@ -2592,17 +2629,17 @@ pub mod generic_wallet_tests {
             vec![freezable_asset.clone()]
         );
 
-        // Mint some of each asset for the other wallet (`wallets[1]`). Check that both accounts are
+        // Mint some of each asset for the other keystore (`keystores[1]`). Check that both accounts are
         // marked used and the freezable record is added to both accounts.
-        let receiver = wallets[1].1[0].clone();
-        let receipt = wallets[0]
+        let receiver = keystores[1].1[0].clone();
+        let receipt = keystores[0]
             .0
             .mint(&address, 1, &viewable_asset.code, 100, receiver.clone())
             .await
             .unwrap();
-        await_transaction(&receipt, &wallets[0].0, &[&wallets[1].0]).await;
+        await_transaction(&receipt, &keystores[0].0, &[&keystores[1].0]).await;
         assert!(
-            wallets[0]
+            keystores[0]
                 .0
                 .viewing_account(&viewing_key)
                 .await
@@ -2610,24 +2647,24 @@ pub mod generic_wallet_tests {
                 .used
         );
         assert!(
-            !wallets[0]
+            !keystores[0]
                 .0
                 .freezing_account(&freezing_key)
                 .await
                 .unwrap()
                 .used
         );
-        t.check_storage(&ledger, &wallets).await;
+        t.check_storage(&ledger, &keystores).await;
 
         // Mint the freezable asset.
-        let receipt = wallets[0]
+        let receipt = keystores[0]
             .0
             .mint(&address, 1, &freezable_asset.code, 200, receiver)
             .await
             .unwrap();
-        await_transaction(&receipt, &wallets[0].0, &[&wallets[1].0]).await;
+        await_transaction(&receipt, &keystores[0].0, &[&keystores[1].0]).await;
         {
-            let account = wallets[0].0.viewing_account(&viewing_key).await.unwrap();
+            let account = keystores[0].0.viewing_account(&viewing_key).await.unwrap();
             assert_eq!(
                 account.balances,
                 HashMap::from([(freezable_asset.code, 200)])
@@ -2636,7 +2673,11 @@ pub mod generic_wallet_tests {
             assert_eq!(account.records[0].ro.asset_def.code, freezable_asset.code);
         }
         {
-            let account = wallets[0].0.freezing_account(&freezing_key).await.unwrap();
+            let account = keystores[0]
+                .0
+                .freezing_account(&freezing_key)
+                .await
+                .unwrap();
             assert_eq!(
                 account.balances,
                 HashMap::from([(freezable_asset.code, 200)])
@@ -2644,12 +2685,12 @@ pub mod generic_wallet_tests {
             assert_eq!(account.records.len(), 1);
             assert_eq!(account.records[0].ro.asset_def.code, freezable_asset.code);
         }
-        t.check_storage(&ledger, &wallets).await;
+        t.check_storage(&ledger, &keystores).await;
 
         // Check that the native records consumed to pay the minting fees no longer show up in the
         // sending account.
         {
-            let account = wallets[0].0.sending_account(&address).await.unwrap();
+            let account = keystores[0].0.sending_account(&address).await.unwrap();
             assert_eq!(account.balances, HashMap::<AssetCode, u64>::new());
             assert_eq!(account.records.len(), 0);
         }
@@ -2660,10 +2701,10 @@ pub mod generic_wallet_tests {
         let mut t = T::default();
         let mut rng = ChaChaRng::from_seed([4; 32]);
         let mut now = Instant::now();
-        let (ledger, mut wallets) = t.create_test_network(&[(2, 2)], vec![0], &mut now).await;
+        let (ledger, mut keystores) = t.create_test_network(&[(2, 2)], vec![0], &mut now).await;
 
         // Case 1: update user-defined asset with user-defined asset.
-        let asset1 = wallets[0]
+        let asset1 = keystores[0]
             .0
             .define_asset(
                 "asset1_orig".into(),
@@ -2672,7 +2713,7 @@ pub mod generic_wallet_tests {
             )
             .await
             .unwrap();
-        wallets[0]
+        keystores[0]
             .0
             .import_asset(
                 AssetInfo::from(asset1.clone())
@@ -2681,10 +2722,10 @@ pub mod generic_wallet_tests {
             )
             .await
             .unwrap();
-        let info = wallets[0].0.asset(asset1.code).await.unwrap();
+        let info = keystores[0].0.asset(asset1.code).await.unwrap();
         assert_eq!(info.name, Some("asset1".into()));
         assert_eq!(info.description, Some("asset1 description".into()));
-        t.check_storage(&ledger, &wallets).await;
+        t.check_storage(&ledger, &keystores).await;
 
         // Create verified asset library containing one user-defined asset and one other asset.
         let key_pair = KeyPair::generate(&mut rng);
@@ -2702,18 +2743,18 @@ pub mod generic_wallet_tests {
             VerifiedAssetLibrary::new(vec![verified_asset1, verified_asset2], &key_pair);
 
         // Case 2: update user-defined asset with verified asset.
-        wallets[0]
+        keystores[0]
             .0
             .verify_assets(&key_pair.ver_key(), verified_assets)
             .await
             .unwrap();
-        let info = wallets[0].0.asset(asset1.code).await.unwrap();
+        let info = keystores[0].0.asset(asset1.code).await.unwrap();
         assert_eq!(info.name, Some("asset1_verified".into()));
         assert_eq!(info.description, Some("asset1_verified description".into()));
-        t.check_storage(&ledger, &wallets).await;
+        t.check_storage(&ledger, &keystores).await;
 
         // Case 3: update verified asset with user-defined asset.
-        wallets[0]
+        keystores[0]
             .0
             .import_asset(
                 AssetInfo::from(asset2.clone())
@@ -2722,10 +2763,10 @@ pub mod generic_wallet_tests {
             )
             .await
             .unwrap();
-        let info = wallets[0].0.asset(asset2.code).await.unwrap();
+        let info = keystores[0].0.asset(asset2.code).await.unwrap();
         assert_eq!(info.name, Some("asset2_verified".into()));
         assert_eq!(info.description, Some("asset2_verified description".into()));
-        t.check_storage(&ledger, &wallets).await;
+        t.check_storage(&ledger, &keystores).await;
 
         // Case 4: update verified asset with verified asset.
         let verified_assets = VerifiedAssetLibrary::new(
@@ -2734,37 +2775,37 @@ pub mod generic_wallet_tests {
                 .with_description("asset2_verified_new description".into())],
             &key_pair,
         );
-        wallets[0]
+        keystores[0]
             .0
             .verify_assets(&key_pair.ver_key(), verified_assets)
             .await
             .unwrap();
-        let info = wallets[0].0.asset(asset2.code).await.unwrap();
+        let info = keystores[0].0.asset(asset2.code).await.unwrap();
         assert_eq!(info.name, Some("asset2_verified_new".into()));
         assert_eq!(
             info.description,
             Some("asset2_verified_new description".into())
         );
-        t.check_storage(&ledger, &wallets).await;
+        t.check_storage(&ledger, &keystores).await;
     }
 
     #[async_std::test]
     pub async fn test_asset_icon<'a, T: SystemUnderTest<'a>>() {
         let mut t = T::default();
         let mut now = Instant::now();
-        let (_, mut wallets) = t.create_test_network(&[(2, 2)], vec![0], &mut now).await;
+        let (_, mut keystores) = t.create_test_network(&[(2, 2)], vec![0], &mut now).await;
 
         let jpeg_bytes = include_bytes!("icons/espresso.jpeg");
         let icon = Icon::load_jpeg(Cursor::new(jpeg_bytes)).unwrap();
         // Check that the icon is not the expected size, so we can check the resizing behavior.
         assert_ne!(icon.size(), (64, 64));
 
-        wallets[0]
+        keystores[0]
             .0
             .import_asset(AssetInfo::native::<T::Ledger>().with_icon(icon))
             .await
             .unwrap();
-        let icon = wallets[0]
+        let icon = keystores[0]
             .0
             .asset(AssetCode::native())
             .await
@@ -2787,7 +2828,7 @@ pub mod generic_wallet_tests {
     pub async fn test_txn_history<'a, T: SystemUnderTest<'a>>() {
         let mut t = T::default();
         let mut now = Instant::now();
-        let (ledger, mut wallets) = t.create_test_network(&[(2, 2)], vec![4, 0], &mut now).await;
+        let (ledger, mut keystores) = t.create_test_network(&[(2, 2)], vec![4, 0], &mut now).await;
         {
             let mut ledger = ledger.lock().await;
             ledger.set_block_size(1).unwrap();
@@ -2796,9 +2837,9 @@ pub mod generic_wallet_tests {
         }
 
         // Submit a transaction.
-        let src = wallets[0].1[0].clone();
-        let dst = wallets[1].1[0].clone();
-        let receipt = wallets[0]
+        let src = keystores[0].1[0].clone();
+        let dst = keystores[1].1[0].clone();
+        let receipt = keystores[0]
             .0
             .transfer(Some(&src), &AssetCode::native(), &[(dst.clone(), 1)], 1)
             .await
@@ -2814,7 +2855,7 @@ pub mod generic_wallet_tests {
             receivers: vec![(dst.clone(), 1)],
             receipt: Some(receipt.clone()),
         });
-        let entry = wallets[0]
+        let entry = keystores[0]
             .0
             .transaction_history()
             .await
@@ -2826,7 +2867,7 @@ pub mod generic_wallet_tests {
 
         // The status of the entry should be pending.
         assert_eq!(
-            wallets[0]
+            keystores[0]
                 .0
                 .transaction_status(entry.receipt.as_ref().unwrap())
                 .await
@@ -2836,7 +2877,7 @@ pub mod generic_wallet_tests {
 
         // Release the transfer so it can finalize.
         ledger.lock().await.release_held_transaction();
-        await_transaction(&receipt, &wallets[0].0, &[&wallets[1].0]).await;
+        await_transaction(&receipt, &keystores[0].0, &[&keystores[1].0]).await;
 
         // The receiver should have a new entry.
         let expected_entry = TxnHistoryWithTimeTolerantEq(TransactionHistoryEntry {
@@ -2850,7 +2891,7 @@ pub mod generic_wallet_tests {
         });
         assert_eq!(
             TxnHistoryWithTimeTolerantEq(
-                wallets[1]
+                keystores[1]
                     .0
                     .transaction_history()
                     .await
@@ -2865,7 +2906,7 @@ pub mod generic_wallet_tests {
         // The sender's entry should be unchanged...
         assert_eq!(
             entry,
-            wallets[0]
+            keystores[0]
                 .0
                 .transaction_history()
                 .await
@@ -2876,7 +2917,7 @@ pub mod generic_wallet_tests {
         );
         // ...but the status should be finalized.
         assert_eq!(
-            wallets[0]
+            keystores[0]
                 .0
                 .transaction_status(entry.receipt.as_ref().unwrap())
                 .await

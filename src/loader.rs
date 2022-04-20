@@ -5,13 +5,13 @@
 // This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 // You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-//! Traits and types for creating and loading wallets.
+//! Traits and types for creating and loading keystores.
 //!
-//! This module defines the [WalletLoader] interface, which allows various implementations as
+//! This module defines the [KeystoreLoader] interface, which allows various implementations as
 //! plugins to the persistence layer. It also provides a generally useful implementation [Loader],
-//! which loads an encrypted wallet from the file system using a mnemonic phrase to generate keys
+//! which loads an encrypted keystore from the file system using a mnemonic phrase to generate keys
 //! and a password to provide a more convenient login interface.
-use super::{encryption, hd, reader, EncryptionSnafu, KeySnafu, MnemonicSnafu, WalletError};
+use super::{encryption, hd, reader, EncryptionSnafu, KeySnafu, KeystoreError, MnemonicSnafu};
 use encryption::{Cipher, CipherText, Salt};
 use hd::{KeyTree, Mnemonic};
 use rand_chacha::{
@@ -24,15 +24,15 @@ use serde::{Deserialize, Serialize};
 use snafu::ResultExt;
 use std::path::{Path, PathBuf};
 
-pub trait WalletLoader<L: Ledger> {
-    type Meta; // Metadata stored in plaintext and used by the loader to access the wallet.
+pub trait KeystoreLoader<L: Ledger> {
+    type Meta; // Metadata stored in plaintext and used by the loader to access the keystore.
     fn location(&self) -> PathBuf;
-    fn create(&mut self) -> Result<(Self::Meta, KeyTree), WalletError<L>>;
-    fn load(&mut self, meta: &mut Self::Meta) -> Result<KeyTree, WalletError<L>>;
+    fn create(&mut self) -> Result<(Self::Meta, KeyTree), KeystoreError<L>>;
+    fn load(&mut self, meta: &mut Self::Meta) -> Result<KeyTree, KeystoreError<L>>;
 }
 
-// Metadata about a wallet which is always stored unencrypted, so we can report some basic
-// information about the wallet without decrypting. This also aids in the key derivation process.
+// Metadata about a keystore which is always stored unencrypted, so we can report some basic
+// information about the keystore without decrypting. This also aids in the key derivation process.
 //
 // DO NOT put secrets in here.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -56,7 +56,7 @@ enum LoaderInput {
 }
 
 impl LoaderInput {
-    fn create_password<L: Ledger>(&mut self) -> Result<String, WalletError<L>> {
+    fn create_password<L: Ledger>(&mut self) -> Result<String, KeystoreError<L>> {
         match self {
             Self::User(reader) => loop {
                 let password = reader.read_password("Create password: ")?;
@@ -74,7 +74,7 @@ impl LoaderInput {
         }
     }
 
-    fn read_password<L: Ledger>(&mut self) -> Result<Option<String>, WalletError<L>> {
+    fn read_password<L: Ledger>(&mut self) -> Result<Option<String>, KeystoreError<L>> {
         match self {
             Self::User(reader) => loop {
                 println!("Forgot your password? Want to change it? [y/n]");
@@ -85,7 +85,7 @@ impl LoaderInput {
                         _ => println!("Please enter 'y' or 'n'."),
                     },
                     None => {
-                        return Err(WalletError::Failed {
+                        return Err(KeystoreError::Failed {
                             msg: String::from("eof"),
                         })
                     }
@@ -100,12 +100,12 @@ impl LoaderInput {
     fn create_mnemonic<L: Ledger>(
         &mut self,
         rng: &mut ChaChaRng,
-    ) -> Result<Mnemonic, WalletError<L>> {
+    ) -> Result<Mnemonic, KeystoreError<L>> {
         match self {
             Self::User(reader) => {
                 println!(
-                    "Your wallet will be identified by a secret mnemonic phrase. This phrase will \
-                     allow you to recover your wallet if you lose access to it. Anyone who has access \
+                    "Your keystore will be identified by a secret mnemonic phrase. This phrase will \
+                     allow you to recover your keystore if you lose access to it. Anyone who has access \
                      to this phrase will be able to view and spend your assets. Store this phrase in a \
                      safe, private place."
                 );
@@ -114,10 +114,10 @@ impl LoaderInput {
                     println!("Your mnemonic phrase will be:");
                     println!("{}", mnemonic);
                     'inner: loop {
-                        println!("1) Accept phrase and create wallet");
+                        println!("1) Accept phrase and create keystore");
                         println!("2) Generate a new phrase");
                         println!(
-                            "3) Manually enter a mnemonic (use this to recover a lost wallet)"
+                            "3) Manually enter a mnemonic (use this to recover a lost keystore)"
                         );
                         match reader.read_line() {
                             Some(line) => match line.as_str().trim() {
@@ -127,7 +127,7 @@ impl LoaderInput {
                                 _ => continue 'inner,
                             },
                             None => {
-                                return Err(WalletError::Failed {
+                                return Err(KeystoreError::Failed {
                                     msg: String::from("eof"),
                                 })
                             }
@@ -136,7 +136,7 @@ impl LoaderInput {
                 }
             }
 
-            Self::PasswordLiteral(_) => Err(WalletError::Failed {
+            Self::PasswordLiteral(_) => Err(KeystoreError::Failed {
                 msg: String::from("missing mnemonic phrase"),
             }),
 
@@ -146,10 +146,10 @@ impl LoaderInput {
         }
     }
 
-    fn read_mnemonic<L: Ledger>(&mut self) -> Result<Mnemonic, WalletError<L>> {
+    fn read_mnemonic<L: Ledger>(&mut self) -> Result<Mnemonic, KeystoreError<L>> {
         match self {
             Self::User(reader) => Self::read_mnemonic_interactive(reader),
-            Self::PasswordLiteral(_) => Err(WalletError::Failed {
+            Self::PasswordLiteral(_) => Err(KeystoreError::Failed {
                 msg: String::from("missing mnemonic phrase"),
             }),
             Self::MnemonicPasswordLiteral(mnemonic, _) | Self::RecoveryLiteral(mnemonic, _) => {
@@ -164,7 +164,7 @@ impl LoaderInput {
 
     fn read_mnemonic_interactive<L: Ledger>(
         reader: &mut Reader,
-    ) -> Result<Mnemonic, WalletError<L>> {
+    ) -> Result<Mnemonic, KeystoreError<L>> {
         loop {
             let phrase = reader.read_password("Enter mnemonic phrase: ")?;
             match Mnemonic::from_phrase(&phrase) {
@@ -226,7 +226,7 @@ impl Loader {
         &self.dir
     }
 
-    fn create_from_mnemonic<L: Ledger>(&mut self) -> Result<(Mnemonic, KeyTree), WalletError<L>> {
+    fn create_from_mnemonic<L: Ledger>(&mut self) -> Result<(Mnemonic, KeyTree), KeystoreError<L>> {
         let mnemonic = self.input.create_mnemonic(&mut self.rng)?;
         let key = KeyTree::from_mnemonic(&mnemonic);
         Ok((mnemonic, key))
@@ -236,7 +236,7 @@ impl Loader {
     fn create_password<L: Ledger>(
         &mut self,
         mnemonic: Mnemonic,
-    ) -> Result<(Salt, CipherText), WalletError<L>> {
+    ) -> Result<(Salt, CipherText), KeystoreError<L>> {
         let password = self.input.create_password()?;
 
         // Encrypt the mnemonic phrase, which we can decrypt on load to check the derived key.
@@ -255,14 +255,14 @@ impl Loader {
 
 static KEY_CHECK_SUB_TREE: &str = "key_check";
 
-impl<L: Ledger> WalletLoader<L> for Loader {
+impl<L: Ledger> KeystoreLoader<L> for Loader {
     type Meta = LoaderMetadata;
 
     fn location(&self) -> PathBuf {
         self.dir.clone()
     }
 
-    fn create(&mut self) -> Result<(LoaderMetadata, KeyTree), WalletError<L>> {
+    fn create(&mut self) -> Result<(LoaderMetadata, KeyTree), KeystoreError<L>> {
         let (mnemonic, key) = self.create_from_mnemonic()?;
 
         // Generate and encrypt some random bytes using the mnemonic, so in the future we can check
@@ -291,7 +291,7 @@ impl<L: Ledger> WalletLoader<L> for Loader {
         Ok((meta, key))
     }
 
-    fn load(&mut self, meta: &mut Self::Meta) -> Result<KeyTree, WalletError<L>> {
+    fn load(&mut self, meta: &mut Self::Meta) -> Result<KeyTree, KeystoreError<L>> {
         let key = loop {
             if let Some(password) = self.input.read_password()? {
                 // Generate the decryption key and check that we can use it to decrypt
@@ -314,7 +314,7 @@ impl<L: Ledger> WalletLoader<L> for Loader {
                 } else if self.input.interactive() {
                     println!("Sorry, that's incorrect.");
                 } else {
-                    return Err(WalletError::Failed {
+                    return Err(KeystoreError::Failed {
                         msg: String::from("incorrect password"),
                     });
                 }
@@ -339,7 +339,7 @@ impl<L: Ledger> WalletLoader<L> for Loader {
                 } else if self.input.interactive() {
                     println!("Sorry, that's incorrect.");
                 } else {
-                    return Err(WalletError::Failed {
+                    return Err(KeystoreError::Failed {
                         msg: String::from("incorrect mnemonic"),
                     });
                 }

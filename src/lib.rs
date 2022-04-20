@@ -5,16 +5,16 @@
 // This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 // You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-//! # The Seahorse cryptographic wallet library
+//! # The Seahorse cryptographic keystore library
 //!
-//! This crate provides a ledger-agnostic toolkit for building cryptographic wallets for
+//! This crate provides a ledger-agnostic toolkit for building cryptographic keystores for
 //! implementations of the [jf_cap] protocol.
 //!
-//! The main types that users of this crate will interact with are [Wallet] and [WalletBackend].
-//! The former represents the generic wallet interface that this crate provides, including basic
-//! wallet functionality like generating and viewing keys or sending and receiving assets. The
+//! The main types that users of this crate will interact with are [Keystore] and [KeystoreBackend].
+//! The former represents the generic keystore interface that this crate provides, including basic
+//! keystore functionality like generating and viewing keys or sending and receiving assets. The
 //! latter represents the interface to a specific ledger that the user must provide in order to
-//! instantiate the ledger-agnostic [Wallet] interface for their particular system.
+//! instantiate the ledger-agnostic [Keystore] interface for their particular system.
 //!
 //! Users should also be familiar with [reef], which provides traits to adapt a particular CAP
 //! ledger to the ledger-agnostic interfaces defined here.
@@ -91,7 +91,7 @@ use std::sync::Arc;
 
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
-pub enum WalletError<L: Ledger> {
+pub enum KeystoreError<L: Ledger> {
     UndefinedAsset {
         asset: AssetCode,
     },
@@ -167,13 +167,13 @@ pub enum WalletError<L: Ledger> {
     },
 }
 
-impl<L: Ledger> From<crate::txn_builder::TransactionError> for WalletError<L> {
+impl<L: Ledger> From<crate::txn_builder::TransactionError> for KeystoreError<L> {
     fn from(source: crate::txn_builder::TransactionError) -> Self {
         Self::TransactionError { source }
     }
 }
 
-impl<L: Ledger> From<bincode::Error> for WalletError<L> {
+impl<L: Ledger> From<bincode::Error> for KeystoreError<L> {
     fn from(source: bincode::Error) -> Self {
         Self::BincodeError { source }
     }
@@ -190,25 +190,25 @@ pub struct KeyStreamState {
     pub user: u64,
 }
 
-/// The data that determines a wallet.
+/// The data that determines a keystore.
 ///
-/// This struct is where the wallet keeps its keys, assets, and records, as well as any information
+/// This struct is where the keystore keeps its keys, assets, and records, as well as any information
 /// about the current ledger state needed to build transactions.
 #[derive(Debug, Clone)]
-pub struct WalletState<'a, L: Ledger> {
+pub struct KeystoreState<'a, L: Ledger> {
     // For persistence, the fields in this struct are grouped into three categories based on how
     // they can be efficiently saved to disk:
-    // 1. Static data, which never changes once a wallet is created, and so can be written to a
+    // 1. Static data, which never changes once a keystore is created, and so can be written to a
     //    single, static file.
     // 2. Dynamic data, which changes frequently and requires some kind of persistent snapshotting.
     // 3. Monotonic data, which consists of sets of objects which only grow over the lifetime of the
-    //    wallet, and so can be persisted in an append-only log.
+    //    keystore, and so can be persisted in an append-only log.
     //
     ////////////////////////////////////////////////////////////////////////////////////////////////
     // Static data
     //
     // proving key set. The proving keys are ordered by number of outputs first and number of inputs
-    // second, because the wallet is less flexible with respect to number of outputs. If we are
+    // second, because the keystore is less flexible with respect to number of outputs. If we are
     // building a transaction and find we have too many inputs we can always generate a merge
     // transaction to defragment, but if the user requests a transaction with N independent outputs,
     // there is nothing we can do to decrease that number. So when searching for an appropriate
@@ -217,7 +217,7 @@ pub struct WalletState<'a, L: Ledger> {
     //
     // We keep the prover keys in an Arc because they are large, constant, and depend only on the
     // universal parameters of the system. This allows sharing them, which drastically decreases the
-    // memory requirements of applications that create multiple wallets. This is not very realistic
+    // memory requirements of applications that create multiple keystores. This is not very realistic
     // for real applications, but it is very important for tests and costs little.
     //
     /// Proving keys.
@@ -227,7 +227,7 @@ pub struct WalletState<'a, L: Ledger> {
     /// numbers of input and output records). The supported transaction types must match the
     /// transaction types supported by the verifying keys maintained by validators.
     ///
-    /// These keys are constructed when the wallet is created, and they never change afterwards.
+    /// These keys are constructed when the keystore is created, and they never change afterwards.
     pub proving_keys: Arc<ProverKeySet<'a, key_set::OrderByOutputs>>,
 
     ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -247,7 +247,7 @@ pub struct WalletState<'a, L: Ledger> {
     ///
     /// Each public key in this set also includes a [UserAddress], which can be used to sign
     /// outgoing transactions, as well as an encryption public key used by other users to encrypt
-    /// owner memos when sending records to this wallet.
+    /// owner memos when sending records to this keystore.
     pub sending_accounts: HashMap<UserAddress, Account<L, UserKeyPair>>,
 
     ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -256,72 +256,75 @@ pub struct WalletState<'a, L: Ledger> {
     /// Asset library.
     ///
     /// This contains information about all of the asset types imported or discovered by this
-    /// wallet. For assets created by this wallets, in includes information needed to mint the
+    /// keystore. For assets created by this keystores, in includes information needed to mint the
     /// assets, including the asset description and the private asset code seed.
     pub assets: AssetLibrary,
 }
 
-/// The interface required by the wallet from the persistence layer.
+/// The interface required by the keystore from the persistence layer.
 ///
-/// See [persistence::AtomicWalletStorage] for an implementation of this interface which works for
+/// See [persistence::AtomicKeystoreStorage] for an implementation of this interface which works for
 /// any CAP ledger.
 ///
-/// Most code should not use this interface directly. Instead, use [WalletBackend::store] with
+/// Most code should not use this interface directly. Instead, use [KeystoreBackend::store] with
 /// [StorageTransaction] for a safer, RAII-based transactional interface.
 ///
-/// The persistent storage needed by the wallet is divided into 3 categories, based on usage
+/// The persistent storage needed by the keystore is divided into 3 categories, based on usage
 /// patterns and how often they change.
 ///
-/// 1. Static data. This is data which is initialized when the wallet is created and never changes.
+/// 1. Static data. This is data which is initialized when the keystore is created and never changes.
 ///
-///    There is no interface in the [WalletStorage] trait for storing static data. When a new wallet
-///    is created, the [Wallet] will call [WalletBackend::create], which is responsible for working
-///    with the storage layer to persist the wallet's static data.
+///    There is no interface in the [KeystoreStorage] trait for storing static data. When a new keystore
+///    is created, the [Keystore] will call [KeystoreBackend::create], which is responsible for working
+///    with the storage layer to persist the keystore's static data.
 ///
 /// 2. Dynamic state. This is data which changes frequently, but grows boundedly or very slowly.
 ///
-///    This includes the state of the ledger and the set of records owned by this wallet.
+///    This includes the state of the ledger and the set of records owned by this keystore.
 ///
 /// 3. Monotonic data. This is data which grows monotonically and never shrinks.
 ///
-///    The monotonic data of a wallet is the set of assets types in the asset library and the
+///    The monotonic data of a keystore is the set of assets types in the asset library and the
 ///    transaction history.
 ///
 /// The storage layer must provide a transactional interface. Updates to the individual storage
 /// categories have no observable affects (that is, their results will not affect the next call to
-/// [WalletStorage::load]) until [WalletStorage::commit] succeeds. If there are outstanding changes
-/// that have not been committed, [WalletStorage::revert] can be used to roll back the entire state
+/// [KeystoreStorage::load]) until [KeystoreStorage::commit] succeeds. If there are outstanding changes
+/// that have not been committed, [KeystoreStorage::revert] can be used to roll back the entire state
 /// of the persistent store to its state at the most recent commit.
 ///
-/// This interface is specified separately from the [WalletBackend] interface to allow the
+/// This interface is specified separately from the [KeystoreBackend] interface to allow the
 /// implementation to separate the persistence layer from the network layer that implements the rest
 /// of the backend with minimal boilerplate. This allows a ledger-agnostic implementation of the
 /// storage layer to work with multiple ledger-specific implementations of the networking layer. It
 /// is also useful for mocking the storage layer during testing.
 #[async_trait]
-pub trait WalletStorage<'a, L: Ledger> {
-    /// Check if there is already a stored wallet with this key.
+pub trait KeystoreStorage<'a, L: Ledger> {
+    /// Check if there is already a stored keystore with this key.
     fn exists(&self) -> bool;
 
-    /// Load the stored wallet identified by the given key.
+    /// Load the stored keystore identified by the given key.
     ///
     /// This function may assume `self.exists()`.
-    async fn load(&mut self) -> Result<WalletState<'a, L>, WalletError<L>>;
+    async fn load(&mut self) -> Result<KeystoreState<'a, L>, KeystoreError<L>>;
 
-    /// Store a snapshot of the wallet's dynamic state.
-    async fn store_snapshot(&mut self, state: &WalletState<'a, L>) -> Result<(), WalletError<L>>;
+    /// Store a snapshot of the keystore's dynamic state.
+    async fn store_snapshot(
+        &mut self,
+        state: &KeystoreState<'a, L>,
+    ) -> Result<(), KeystoreError<L>>;
 
     /// Append a new asset to the growing asset library.
-    async fn store_asset(&mut self, asset: &AssetInfo) -> Result<(), WalletError<L>>;
+    async fn store_asset(&mut self, asset: &AssetInfo) -> Result<(), KeystoreError<L>>;
 
     /// Add a transaction to the transaction history.
     async fn store_transaction(
         &mut self,
         txn: TransactionHistoryEntry<L>,
-    ) -> Result<(), WalletError<L>>;
+    ) -> Result<(), KeystoreError<L>>;
     async fn transaction_history(
         &mut self,
-    ) -> Result<Vec<TransactionHistoryEntry<L>>, WalletError<L>>;
+    ) -> Result<Vec<TransactionHistoryEntry<L>>, KeystoreError<L>>;
 
     /// Commit to outstanding changes.
     async fn commit(&mut self);
@@ -337,16 +340,16 @@ pub trait WalletStorage<'a, L: Ledger> {
 /// being committed, the entire transaction will be reverted and have no effect.
 ///
 /// This struct should not be constructed directly, but instead a transaction should be obtained
-/// through the [WalletBackend::store] method, which will automatically commit the transaction after
+/// through the [KeystoreBackend::store] method, which will automatically commit the transaction after
 /// it succeeds.
-pub struct StorageTransaction<'a, 'l, L: Ledger, Backend: WalletBackend<'a, L> + ?Sized> {
+pub struct StorageTransaction<'a, 'l, L: Ledger, Backend: KeystoreBackend<'a, L> + ?Sized> {
     pub backend: &'l mut Backend,
     cancelled: bool,
     _phantom: std::marker::PhantomData<&'a ()>,
     _phantom2: std::marker::PhantomData<L>,
 }
 
-impl<'a, 'l, L: Ledger, Backend: WalletBackend<'a, L> + ?Sized>
+impl<'a, 'l, L: Ledger, Backend: KeystoreBackend<'a, L> + ?Sized>
     StorageTransaction<'a, 'l, L, Backend>
 {
     fn new(backend: &'l mut Backend) -> Self {
@@ -358,7 +361,10 @@ impl<'a, 'l, L: Ledger, Backend: WalletBackend<'a, L> + ?Sized>
         }
     }
 
-    async fn store_snapshot(&mut self, state: &WalletState<'a, L>) -> Result<(), WalletError<L>> {
+    async fn store_snapshot(
+        &mut self,
+        state: &KeystoreState<'a, L>,
+    ) -> Result<(), KeystoreError<L>> {
         if !self.cancelled {
             let res = self.storage().await.store_snapshot(state).await;
             if res.is_err() {
@@ -370,7 +376,7 @@ impl<'a, 'l, L: Ledger, Backend: WalletBackend<'a, L> + ?Sized>
         }
     }
 
-    async fn store_asset(&mut self, asset: &AssetInfo) -> Result<(), WalletError<L>> {
+    async fn store_asset(&mut self, asset: &AssetInfo) -> Result<(), KeystoreError<L>> {
         // We should never mark assets as verified in persistent storage. The single source of truth
         // for verified assets is a verified asset library loaded independently from our own
         // persistent storage.
@@ -390,7 +396,7 @@ impl<'a, 'l, L: Ledger, Backend: WalletBackend<'a, L> + ?Sized>
     async fn store_transaction(
         &mut self,
         transaction: TransactionHistoryEntry<L>,
-    ) -> Result<(), WalletError<L>> {
+    ) -> Result<(), KeystoreError<L>> {
         if !self.cancelled {
             let res = self.storage().await.store_transaction(transaction).await;
             if res.is_err() {
@@ -409,12 +415,12 @@ impl<'a, 'l, L: Ledger, Backend: WalletBackend<'a, L> + ?Sized>
         }
     }
 
-    async fn storage(&mut self) -> MutexGuard<'_, <Backend as WalletBackend<'a, L>>::Storage> {
+    async fn storage(&mut self) -> MutexGuard<'_, <Backend as KeystoreBackend<'a, L>>::Storage> {
         self.backend.storage().await
     }
 }
 
-impl<'a, 'l, L: Ledger, Backend: WalletBackend<'a, L> + ?Sized> Drop
+impl<'a, 'l, L: Ledger, Backend: KeystoreBackend<'a, L> + ?Sized> Drop
     for StorageTransaction<'a, 'l, L, Backend>
 {
     fn drop(&mut self) {
@@ -422,35 +428,35 @@ impl<'a, 'l, L: Ledger, Backend: WalletBackend<'a, L> + ?Sized> Drop
     }
 }
 
-/// The interface required by the wallet from a specific network/ledger implementation.
+/// The interface required by the keystore from a specific network/ledger implementation.
 ///
-/// This trait is the adaptor for ledger-specific plugins into the ledger-agnostic [Wallet]
-/// implementation. It provides an interface for the ledger-agnostic wallet to communicate with
+/// This trait is the adaptor for ledger-specific plugins into the ledger-agnostic [Keystore]
+/// implementation. It provides an interface for the ledger-agnostic keystore to communicate with
 /// remote network participants for a particular ledger. Implementing this trait for your specific
-/// ledger enables the use of the full generic [Wallet] interface with your ledger.
+/// ledger enables the use of the full generic [Keystore] interface with your ledger.
 #[async_trait]
-pub trait WalletBackend<'a, L: Ledger>: Send {
+pub trait KeystoreBackend<'a, L: Ledger>: Send {
     /// Notifications about ledger state changes.
     ///
-    /// The wallet must be able to subscribe to a stream of events from the backend. These events
+    /// The keystore must be able to subscribe to a stream of events from the backend. These events
     /// occur whenever the ledger state changes, including new blocks being committed and owner
     /// memos being published. The backend may also include events when blocks are rejected. This is
-    /// not required, but it can help the wallet report failures more quickly (if a rejection is not
+    /// not required, but it can help the keystore report failures more quickly (if a rejection is not
     /// reported, the rejected transaction will eventually be considered timed out).
     ///
     /// Each event yielded by the stream must be tagged with an [EventSource] indicating where the
-    /// event came from. Implementations of [WalletBackend] may provide events from multiple sources
+    /// event came from. Implementations of [KeystoreBackend] may provide events from multiple sources
     /// (for example, block events from a network query service and memo events from a centralized
     /// memo store) or they may aggregate all events into a single stream from a single source.
     type EventStream: 'a + Stream<Item = (LedgerEvent<L>, EventSource)> + Unpin + Send;
 
     /// The storage layer used by this implementation.
-    type Storage: WalletStorage<'a, L> + Send;
+    type Storage: KeystoreStorage<'a, L> + Send;
 
     /// Access the persistent storage layer.
     ///
     /// The interface is specified this way, with the main storage interface in a separate trait and
-    /// an accessor function here, to allow implementations of [WalletBackend] to split the storage
+    /// an accessor function here, to allow implementations of [KeystoreBackend] to split the storage
     /// layer from the networking layer, since the two concerns are generally separate.
     ///
     /// Note that the return type of this function requires the implementation to guard the storage
@@ -463,17 +469,17 @@ pub trait WalletBackend<'a, L: Ledger>: Send {
     /// up if and when GATs stabilize.
     async fn storage<'l>(&'l mut self) -> MutexGuard<'l, Self::Storage>;
 
-    /// Load a wallet or create a new one.
+    /// Load a keystore or create a new one.
     ///
-    /// If a wallet exists in storage, it is loaded. Otherwise, [WalletBackend::create] is called to
-    /// create a new wallet.
-    async fn load(&mut self) -> Result<WalletState<'a, L>, WalletError<L>> {
+    /// If a keystore exists in storage, it is loaded. Otherwise, [KeystoreBackend::create] is called to
+    /// create a new keystore.
+    async fn load(&mut self) -> Result<KeystoreState<'a, L>, KeystoreError<L>> {
         let mut storage = self.storage().await;
         if storage.exists() {
-            // If there is a stored wallet with this key pair, load it.
+            // If there is a stored keystore with this key pair, load it.
             storage.load().await
         } else {
-            // Otherwise, ask the network layer to create and register a brand new wallet.
+            // Otherwise, ask the network layer to create and register a brand new keystore.
             drop(storage);
             self.create().await
         }
@@ -485,19 +491,19 @@ pub trait WalletBackend<'a, L: Ledger>: Send {
     ///
     /// ```ignore
     /// backend.store(key_pair, |mut t| async move {
-    ///     t.store_snapshot(wallet_state).await?;
+    ///     t.store_snapshot(keystore_state).await?;
     ///     // If this store fails, the effects of the previous store will be reverted.
-    ///     t.store_asset(wallet_state, asset).await?;
+    ///     t.store_asset(keystore_state, asset).await?;
     ///     // Use `t.backend` to access other backend functions during the transaction. Any
     ///     // failures here will revert all previous stores.
     ///     t.backend.do_something().await?;
     ///     Ok(t)
     /// }).await?;
     /// ```
-    async fn store<'l, F, Fut>(&'l mut self, update: F) -> Result<(), WalletError<L>>
+    async fn store<'l, F, Fut>(&'l mut self, update: F) -> Result<(), KeystoreError<L>>
     where
         F: Send + FnOnce(StorageTransaction<'a, 'l, L, Self>) -> Fut,
-        Fut: Send + Future<Output = Result<StorageTransaction<'a, 'l, L, Self>, WalletError<L>>>,
+        Fut: Send + Future<Output = Result<StorageTransaction<'a, 'l, L, Self>, KeystoreError<L>>>,
     {
         let fut = update(StorageTransaction::new(self)).and_then(|txn| async move {
             txn.backend.storage().await.commit().await;
@@ -506,18 +512,18 @@ pub trait WalletBackend<'a, L: Ledger>: Send {
         fut.await
     }
 
-    /// Get the HD key tree which the wallet should use to generate keys.
+    /// Get the HD key tree which the keystore should use to generate keys.
     ///
-    /// This should be configured when the wallet is created, for example, by deriving a key tree
+    /// This should be configured when the keystore is created, for example, by deriving a key tree
     /// from a mnemonic phrase.
     fn key_stream(&self) -> hd::KeyTree;
 
-    /// Create a new wallet.
+    /// Create a new keystore.
     ///
     /// This method should query the current state of the network (or at least some past state) and
-    /// create a [WalletState] consistent with that state. It must also persist the initial state by
+    /// create a [KeystoreState] consistent with that state. It must also persist the initial state by
     /// interacting with the storage layer directly.
-    async fn create(&mut self) -> Result<WalletState<'a, L>, WalletError<L>>;
+    async fn create(&mut self) -> Result<KeystoreState<'a, L>, KeystoreError<L>>;
 
     /// Subscribe to the asynchronous ledgerevent stream.
     async fn subscribe(&self, from: EventIndex, to: Option<EventIndex>) -> Self::EventStream;
@@ -527,10 +533,10 @@ pub trait WalletBackend<'a, L: Ledger>: Send {
     /// Users in CAP are identified by addresses, but sending to a user also requires access to
     /// their public encryption key, for encrypting owner memos. This information must be published
     /// in some way, and accessed by the backend in this method.
-    async fn get_public_key(&self, address: &UserAddress) -> Result<UserPubKey, WalletError<L>>;
+    async fn get_public_key(&self, address: &UserAddress) -> Result<UserPubKey, KeystoreError<L>>;
 
-    /// Publish an encryption key so that other wallets can access it using [WalletBackend::get_public_key].
-    async fn register_user_key(&mut self, pub_key: &UserKeyPair) -> Result<(), WalletError<L>>;
+    /// Publish an encryption key so that other keystores can access it using [KeystoreBackend::get_public_key].
+    async fn register_user_key(&mut self, pub_key: &UserKeyPair) -> Result<(), KeystoreError<L>>;
 
     /// Get a ledger state from which to start a scan.
     ///
@@ -541,7 +547,7 @@ pub trait WalletBackend<'a, L: Ledger>: Send {
     async fn get_initial_scan_state(
         &self,
         from: EventIndex,
-    ) -> Result<(MerkleTree, EventIndex), WalletError<L>>;
+    ) -> Result<(MerkleTree, EventIndex), KeystoreError<L>>;
 
     /// Determine whether a nullifier is spent and obtain a proof.
     ///
@@ -553,14 +559,14 @@ pub trait WalletBackend<'a, L: Ledger>: Send {
         &self,
         nullifiers: &mut NullifierSet<L>,
         nullifier: Nullifier,
-    ) -> Result<(bool, NullifierProof<L>), WalletError<L>>;
+    ) -> Result<(bool, NullifierProof<L>), KeystoreError<L>>;
 
     /// Submit a transaction to a validator.
     async fn submit(
         &mut self,
         note: Transaction<L>,
         info: TransactionInfo<L>,
-    ) -> Result<(), WalletError<L>>;
+    ) -> Result<(), KeystoreError<L>>;
 
     /// Record a finalized transaction.
     ///
@@ -575,8 +581,8 @@ pub trait WalletBackend<'a, L: Ledger>: Send {
     }
 }
 
-/// Transient state derived from the persistent [WalletState].
-pub struct WalletSession<'a, L: Ledger, Backend: WalletBackend<'a, L>> {
+/// Transient state derived from the persistent [KeystoreState].
+pub struct KeystoreSession<'a, L: Ledger, Backend: KeystoreBackend<'a, L>> {
     backend: Backend,
     rng: ChaChaRng,
     auditor_key_stream: hd::KeyTree,
@@ -613,7 +619,7 @@ impl<L: Ledger> Default for EventSummary<L> {
     }
 }
 
-impl<'a, L: 'static + Ledger> WalletState<'a, L> {
+impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
     fn key_pairs(&self) -> Vec<UserKeyPair> {
         self.sending_accounts
             .values()
@@ -652,9 +658,9 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
 
     pub async fn transaction_status(
         &mut self,
-        session: &mut WalletSession<'a, L, impl WalletBackend<'a, L>>,
+        session: &mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>>,
         receipt: &TransactionReceipt<L>,
-    ) -> Result<TransactionStatus, WalletError<L>> {
+    ) -> Result<TransactionStatus, KeystoreError<L>> {
         match self.txn_state.transactions.status(&receipt.uid) {
             TransactionStatus::Unknown => {
                 // If the transactions database returns Unknown, it means the transaction is not in-
@@ -686,7 +692,7 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
 
     async fn handle_event(
         &mut self,
-        session: &mut WalletSession<'a, L, impl WalletBackend<'a, L>>,
+        session: &mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>>,
         event: LedgerEvent<L>,
         source: EventSource,
     ) -> EventSummary<L> {
@@ -715,7 +721,7 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
                         // Get a list of new uids and whether we want to remember them in our record
                         // Merkle tree. Initially, set `remember` to false for all uids, to maximize
                         // sparseness. If any of the consumers of this block (for example, the
-                        // auditor component, or the owner of this wallet) care about a uid, they
+                        // auditor component, or the owner of this keystore) care about a uid, they
                         // will set its `remember` flag to true.
                         uids.into_iter().map(|uid| (uid, false)).collect::<Vec<_>>()
                     }
@@ -790,7 +796,7 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
                         }
                     }
 
-                    // Different concerns within the wallet consume transactions in different ways.
+                    // Different concerns within the keystore consume transactions in different ways.
                     // Now we give each concern a chance to consume this transaction, performing any
                     // processing they need to do and possibly setting the `remember` flag for
                     // output records they care about.
@@ -960,7 +966,7 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
             // We can ignore errors when saving the snapshot. If the save fails and then we crash,
             // we will replay this event when we load from the previously saved snapshot. Just print
             // a warning and move on.
-            println!("warning: failed to save wallet state to disk: {}", err);
+            println!("warning: failed to save keystore state to disk: {}", err);
         }
 
         summary
@@ -968,7 +974,7 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
 
     async fn try_open_memos(
         &mut self,
-        session: &mut WalletSession<'a, L, impl WalletBackend<'a, L>>,
+        session: &mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>>,
         key_pair: &UserKeyPair,
         memos: &[(ReceiverMemo, RecordCommitment, u64, MerklePath)],
         transaction: Option<(u64, u64, TransactionKind<L>)>,
@@ -1007,18 +1013,18 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
 
     async fn receive_attached_records(
         &mut self,
-        session: &mut WalletSession<'a, L, impl WalletBackend<'a, L>>,
+        session: &mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>>,
         block_id: u64,
         txn_id: u64,
         txn: &Transaction<L>,
         uids: &mut [(u64, bool)],
         add_to_history: bool,
-    ) -> Result<(), WalletError<L>> {
+    ) -> Result<(), KeystoreError<L>> {
         let records = txn.output_openings().into_iter().flatten().zip(uids);
         let mut my_records = vec![];
         for (ro, (uid, remember)) in records {
             if let Some(account) = self.sending_accounts.get(&ro.pub_key.address()).cloned() {
-                // If this record is for us, add it to the wallet and include it in the
+                // If this record is for us, add it to the keystore and include it in the
                 // list of received records for created a received transaction history
                 // entry.
                 *remember = true;
@@ -1076,7 +1082,7 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
 
     async fn add_receive_history(
         &mut self,
-        session: &mut WalletSession<'a, L, impl WalletBackend<'a, L>>,
+        session: &mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>>,
         block_id: u64,
         txn_id: u64,
         kind: TransactionKind<L>,
@@ -1102,17 +1108,17 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
 
     async fn add_records(
         &mut self,
-        session: &mut WalletSession<'a, L, impl WalletBackend<'a, L>>,
+        session: &mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>>,
         key_pair: &UserKeyPair,
         records: Vec<(RecordOpening, u64, MerklePath)>,
-    ) -> Result<(), WalletError<L>> {
+    ) -> Result<(), KeystoreError<L>> {
         for (record, uid, proof) in records {
             let comm = RecordCommitment::from(&record);
             if !self
                 .txn_state
                 .remember_merkle_leaf(uid, &MerkleLeafProof::new(comm.to_field_element(), proof))
             {
-                return Err(WalletError::BadMerkleProof {
+                return Err(KeystoreError::BadMerkleProof {
                     commitment: comm,
                     uid,
                 });
@@ -1134,12 +1140,12 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
 
     async fn import_memo(
         &mut self,
-        session: &mut WalletSession<'a, L, impl WalletBackend<'a, L>>,
+        session: &mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>>,
         memo: ReceiverMemo,
         comm: RecordCommitment,
         uid: u64,
         proof: MerklePath,
-    ) -> Result<(), WalletError<L>> {
+    ) -> Result<(), KeystoreError<L>> {
         for account in self.sending_accounts.values().cloned().collect::<Vec<_>>() {
             let records = self
                 .try_open_memos(
@@ -1155,7 +1161,7 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
             }
         }
 
-        Err(WalletError::<L>::CannotDecryptMemo {})
+        Err(KeystoreError::<L>::CannotDecryptMemo {})
     }
 
     async fn clear_pending_transaction<'t>(
@@ -1189,7 +1195,7 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
 
     async fn audit_transaction(
         &mut self,
-        session: &mut WalletSession<'a, L, impl WalletBackend<'a, L>>,
+        session: &mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>>,
         txn: &Transaction<L>,
         uids: &mut [(u64, bool)],
     ) {
@@ -1257,9 +1263,9 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
 
     async fn update_nullifier_proofs(
         &mut self,
-        session: &mut WalletSession<'a, L, impl WalletBackend<'a, L>>,
+        session: &mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>>,
         txn: &mut Transaction<L>,
-    ) -> Result<(), WalletError<L>> {
+    ) -> Result<(), KeystoreError<L>> {
         let mut proofs = Vec::new();
         for n in txn.input_nullifiers() {
             let (spent, proof) = session
@@ -1267,7 +1273,7 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
                 .get_nullifier_proof(&mut self.txn_state.nullifiers, n)
                 .await?;
             if spent {
-                return Err(WalletError::<L>::NullifierAlreadyPublished { nullifier: n });
+                return Err(KeystoreError::<L>::NullifierAlreadyPublished { nullifier: n });
             }
             proofs.push(proof);
         }
@@ -1281,11 +1287,11 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
     // desugaring the type signature.
     fn define_asset<'b>(
         &'b mut self,
-        session: &'b mut WalletSession<'a, L, impl WalletBackend<'a, L>>,
+        session: &'b mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>>,
         name: String,
         description: &'b [u8],
         policy: AssetPolicy,
-    ) -> impl 'b + Captures<'a> + Future<Output = Result<AssetDefinition, WalletError<L>>> + Send
+    ) -> impl 'b + Captures<'a> + Future<Output = Result<AssetDefinition, KeystoreError<L>>> + Send
     where
         'a: 'b,
     {
@@ -1321,9 +1327,9 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
 
     async fn import_asset(
         &mut self,
-        session: &mut WalletSession<'a, L, impl WalletBackend<'a, L>>,
+        session: &mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>>,
         asset: AssetInfo,
-    ) -> Result<(), WalletError<L>> {
+    ) -> Result<(), KeystoreError<L>> {
         if let Some(old) = self.assets.get(asset.definition.code) {
             if old == &asset {
                 // If we already have this asset and it is up-to-date with the new info, there is no
@@ -1348,16 +1354,16 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
     // Add a new user key and set up a scan of the ledger to import records belonging to this key.
     //
     // `user_key` can be provided to add an arbitrary key, not necessarily derived from this
-    // wallet's deterministic key stream. Otherwise, the next key in the key stream will be derived
+    // keystore's deterministic key stream. Otherwise, the next key in the key stream will be derived
     // and added.
     //
     // If `scan_from` is provided, a new ledger scan will be created and the corresponding event
     // stream will be returned. Note that the caller is responsible for actually starting the task
-    // which processes this scan, since the Wallet (not the WalletState) has the data structures
+    // which processes this scan, since the Keystore (not the KeystoreState) has the data structures
     // needed to manage tasks (the AsyncScope, mutexes, etc.).
     async fn add_user_key(
         &mut self,
-        session: &mut WalletSession<'a, L, impl WalletBackend<'a, L>>,
+        session: &mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>>,
         user_key: Option<UserKeyPair>,
         description: String,
         scan_from: Option<EventIndex>,
@@ -1366,7 +1372,7 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
             UserKeyPair,
             Option<impl 'a + Stream<Item = (LedgerEvent<L>, EventSource)> + Send + Unpin>,
         ),
-        WalletError<L>,
+        KeystoreError<L>,
     > {
         let (user_key, revert_key_state) = match user_key {
             Some(user_key) => {
@@ -1376,7 +1382,7 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
                     // report an error, since the user may have attempted to add the same key with
                     // two different `scan_from` parameters, and we have not actually started the
                     // second scan in this case.
-                    return Err(WalletError::<L>::UserKeyExists {
+                    return Err(KeystoreError::<L>::UserKeyExists {
                         pub_key: user_key.pub_key(),
                     });
                 }
@@ -1386,9 +1392,9 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
                 let revert_key_state = self.key_state.user;
 
                 // It is possible that we already have some of the keys that will be yielded by the
-                // deterministic key stream. For example, the user could create a second wallet with
+                // deterministic key stream. For example, the user could create a second keystore with
                 // the same mnemonic, generate some keys, and then manually add those keys to this
-                // wallet. If `user_key` is not provided, this function is required to generate a
+                // keystore. If `user_key` is not provided, this function is required to generate a
                 // new key, so keep incrementing the key stream state and generating keys until we
                 // find one that is new.
                 let user_key = loop {
@@ -1454,10 +1460,10 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
 
     async fn add_audit_key(
         &mut self,
-        session: &mut WalletSession<'a, L, impl WalletBackend<'a, L>>,
+        session: &mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>>,
         audit_key: AuditorKeyPair,
         description: String,
-    ) -> Result<(), WalletError<L>> {
+    ) -> Result<(), KeystoreError<L>> {
         if self.viewing_accounts.contains_key(&audit_key.pub_key()) {
             return Ok(());
         }
@@ -1480,10 +1486,10 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
 
     async fn add_freeze_key(
         &mut self,
-        session: &mut WalletSession<'a, L, impl WalletBackend<'a, L>>,
+        session: &mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>>,
         freeze_key: FreezerKeyPair,
         description: String,
-    ) -> Result<(), WalletError<L>> {
+    ) -> Result<(), KeystoreError<L>> {
         if self.freezing_accounts.contains_key(&freeze_key.pub_key()) {
             return Ok(());
         }
@@ -1503,9 +1509,9 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
 
     fn build_transfer<'k>(
         &mut self,
-        session: &mut WalletSession<'a, L, impl WalletBackend<'a, L>>,
+        session: &mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>>,
         spec: TransferSpec<'k>,
-    ) -> Result<(TransferNote, TransactionInfo<L>), WalletError<L>> {
+    ) -> Result<(TransferNote, TransactionInfo<L>), KeystoreError<L>> {
         self.txn_state
             .transfer(spec, &self.proving_keys.xfr, &mut session.rng)
             .context(TransactionSnafu)
@@ -1513,22 +1519,22 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
 
     async fn build_mint(
         &mut self,
-        session: &mut WalletSession<'a, L, impl WalletBackend<'a, L>>,
+        session: &mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>>,
         minter: &UserAddress,
         fee: u64,
         asset_code: &AssetCode,
         amount: u64,
         receiver: UserAddress,
-    ) -> Result<(MintNote, TransactionInfo<L>), WalletError<L>> {
+    ) -> Result<(MintNote, TransactionInfo<L>), KeystoreError<L>> {
         let asset = self
             .assets
             .get(*asset_code)
-            .ok_or(WalletError::<L>::UndefinedAsset { asset: *asset_code })?;
+            .ok_or(KeystoreError::<L>::UndefinedAsset { asset: *asset_code })?;
         let MintInfo { seed, description } =
             asset
                 .mint_info
                 .clone()
-                .ok_or(WalletError::<L>::AssetNotMintable {
+                .ok_or(KeystoreError::<L>::AssetNotMintable {
                     asset: asset.definition.clone(),
                 })?;
         self.txn_state
@@ -1547,24 +1553,24 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
     #[allow(clippy::too_many_arguments)]
     async fn build_freeze(
         &mut self,
-        session: &mut WalletSession<'a, L, impl WalletBackend<'a, L>>,
+        session: &mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>>,
         fee_address: &UserAddress,
         fee: u64,
         asset: &AssetCode,
         amount: u64,
         owner: UserAddress,
         outputs_frozen: FreezeFlag,
-    ) -> Result<(FreezeNote, TransactionInfo<L>), WalletError<L>> {
+    ) -> Result<(FreezeNote, TransactionInfo<L>), KeystoreError<L>> {
         let asset = match self.assets.get(*asset) {
             Some(asset) => asset.definition.clone(),
-            None => return Err(WalletError::<L>::UndefinedAsset { asset: *asset }),
+            None => return Err(KeystoreError::<L>::UndefinedAsset { asset: *asset }),
         };
         let freeze_key = match self
             .freezing_accounts
             .get(asset.policy_ref().freezer_pub_key())
         {
             Some(account) => &account.key,
-            None => return Err(WalletError::<L>::AssetNotFreezable { asset }),
+            None => return Err(KeystoreError::<L>::AssetNotFreezable { asset }),
         };
 
         self.txn_state
@@ -1584,10 +1590,10 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
 
     async fn submit_transaction(
         &mut self,
-        session: &mut WalletSession<'a, L, impl WalletBackend<'a, L>>,
+        session: &mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>>,
         note: TransactionNote,
         info: TransactionInfo<L>,
-    ) -> Result<TransactionReceipt<L>, WalletError<L>> {
+    ) -> Result<TransactionReceipt<L>, KeystoreError<L>> {
         let mut nullifier_pfs = Vec::new();
         for n in note.nullifiers() {
             let (spent, proof) = session
@@ -1595,7 +1601,7 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
                 .get_nullifier_proof(&mut self.txn_state.nullifiers, n)
                 .await?;
             if spent {
-                return Err(WalletError::<L>::NullifierAlreadyPublished { nullifier: n });
+                return Err(KeystoreError::<L>::NullifierAlreadyPublished { nullifier: n });
             }
             nullifier_pfs.push(proof);
         }
@@ -1618,10 +1624,10 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
     // to indicate the captured lifetime using the Captures trait.
     fn submit_elaborated_transaction<'b>(
         &'b mut self,
-        session: &'b mut WalletSession<'a, L, impl WalletBackend<'a, L>>,
+        session: &'b mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>>,
         txn: Transaction<L>,
         mut info: TransactionInfo<L>,
-    ) -> impl 'b + Captures<'a> + Future<Output = Result<TransactionReceipt<L>, WalletError<L>>> + Send
+    ) -> impl 'b + Captures<'a> + Future<Output = Result<TransactionReceipt<L>, KeystoreError<L>>> + Send
     where
         'a: 'b,
     {
@@ -1674,45 +1680,45 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
     fn account_key_pair(
         &'_ self,
         address: &UserAddress,
-    ) -> Result<&'_ UserKeyPair, WalletError<L>> {
+    ) -> Result<&'_ UserKeyPair, KeystoreError<L>> {
         match self.sending_accounts.get(address) {
             Some(account) => Ok(&account.key),
-            None => Err(WalletError::<L>::NoSuchAccount {
+            None => Err(KeystoreError::<L>::NoSuchAccount {
                 address: address.clone(),
             }),
         }
     }
 }
 
-/// The generic CAP wallet implementation.
+/// The generic CAP keystore implementation.
 ///
-/// It is a soundness requirement that the destructor of a [Wallet] run when the [Wallet] is
-/// dropped. Therefore, [std::mem::forget] must not be used to forget a [Wallet] without running its
+/// It is a soundness requirement that the destructor of a [Keystore] run when the [Keystore] is
+/// dropped. Therefore, [std::mem::forget] must not be used to forget a [Keystore] without running its
 /// destructor.
-pub struct Wallet<'a, Backend: WalletBackend<'a, L>, L: Ledger> {
+pub struct Keystore<'a, Backend: KeystoreBackend<'a, L>, L: Ledger> {
     // Data shared between the main thread and the event handling thread:
-    //  * the trusted, persistent wallet state
-    //  * the trusted, ephemeral wallet session
+    //  * the trusted, persistent keystore state
+    //  * the trusted, ephemeral keystore session
     //  * promise completion handles for futures returned by sync(), indexed by the timestamp at
     //    which the corresponding future is supposed to complete. Handles are added in sync() (main
     //    thread) and removed and completed in the event thread
-    mutex: Arc<Mutex<WalletSharedState<'a, L, Backend>>>,
+    mutex: Arc<Mutex<KeystoreSharedState<'a, L, Backend>>>,
     // Handle for the background tasks running the event handling loop and retroactive ledger scans.
     // When dropped, this handle will cancel the tasks.
     task_scope: AsyncScope<'a, ()>,
 }
 
-/// Wallet state which is shared with event handling threads.
-pub struct WalletSharedState<'a, L: Ledger, Backend: WalletBackend<'a, L>> {
-    state: WalletState<'a, L>,
-    session: WalletSession<'a, L, Backend>,
+/// Keystore state which is shared with event handling threads.
+pub struct KeystoreSharedState<'a, L: Ledger, Backend: KeystoreBackend<'a, L>> {
+    state: KeystoreState<'a, L>,
+    session: KeystoreSession<'a, L, Backend>,
     sync_handles: Vec<(EventIndex, oneshot::Sender<()>)>,
     txn_subscribers: HashMap<TransactionUID<L>, Vec<oneshot::Sender<TransactionStatus>>>,
     pending_foreign_txns: HashMap<Nullifier, Vec<oneshot::Sender<TransactionStatus>>>,
     pending_key_scans: HashMap<UserAddress, Vec<oneshot::Sender<()>>>,
 }
 
-impl<'a, L: Ledger, Backend: WalletBackend<'a, L>> WalletSharedState<'a, L, Backend> {
+impl<'a, L: Ledger, Backend: KeystoreBackend<'a, L>> KeystoreSharedState<'a, L, Backend> {
     pub fn backend(&self) -> &Backend {
         &self.session.backend
     }
@@ -1721,7 +1727,7 @@ impl<'a, L: Ledger, Backend: WalletBackend<'a, L>> WalletSharedState<'a, L, Back
         &mut self.session.backend
     }
 
-    pub fn state(&self) -> &WalletState<'a, L> {
+    pub fn state(&self) -> &KeystoreState<'a, L> {
         &self.state
     }
 
@@ -1731,7 +1737,7 @@ impl<'a, L: Ledger, Backend: WalletBackend<'a, L>> WalletSharedState<'a, L, Back
 }
 
 // Fun fact: replacing `std::pin::Pin` with `Pin` and adding `use std::pin::Pin` causes the compiler
-// to panic where this type alias is used in `Wallet::new`. As a result, the type alias `BoxFuture`
+// to panic where this type alias is used in `Keystore::new`. As a result, the type alias `BoxFuture`
 // from `futures::future` does not work, so we define our own.
 type BoxFuture<'a, T> = std::pin::Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
@@ -1752,8 +1758,8 @@ type BoxFuture<'a, T> = std::pin::Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 pub trait SendFuture<'a, T>: Future<Output = T> + Captures<'a> + Send {}
 impl<'a, T, F: Future<Output = T> + Captures<'a> + Send> SendFuture<'a, T> for F {}
 
-impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
-    Wallet<'a, Backend, L>
+impl<'a, L: 'static + Ledger, Backend: 'a + KeystoreBackend<'a, L> + Send + Sync>
+    Keystore<'a, Backend, L>
 {
     // This function suffers from github.com/rust-lang/rust/issues/89657, in which, if we define it
     // as an async function, the compiler loses track of the fact that the resulting opaque Future
@@ -1768,7 +1774,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
     // erasure. I don't know why this doesn't crash the compiler, but it doesn't.
     pub fn new(
         mut backend: Backend,
-    ) -> BoxFuture<'a, Result<Wallet<'a, Backend, L>, WalletError<L>>> {
+    ) -> BoxFuture<'a, Result<Keystore<'a, Backend, L>, KeystoreError<L>>> {
         Box::pin(async move {
             let state = backend.load().await?;
             Self::new_impl(backend, state).await
@@ -1778,15 +1784,15 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
     #[cfg(any(test, bench, feature = "testing"))]
     pub fn with_state(
         backend: Backend,
-        state: WalletState<'a, L>,
-    ) -> BoxFuture<'a, Result<Wallet<'a, Backend, L>, WalletError<L>>> {
+        state: KeystoreState<'a, L>,
+    ) -> BoxFuture<'a, Result<Keystore<'a, Backend, L>, KeystoreError<L>>> {
         Box::pin(async move { Self::new_impl(backend, state).await })
     }
 
     async fn new_impl(
         backend: Backend,
-        mut state: WalletState<'a, L>,
-    ) -> Result<Wallet<'a, Backend, L>, WalletError<L>> {
+        mut state: KeystoreState<'a, L>,
+    ) -> Result<Keystore<'a, Backend, L>, KeystoreError<L>> {
         let mut events = backend.subscribe(state.txn_state.now, None).await;
         let mut key_scans = vec![];
         for account in state.viewing_accounts.values() {
@@ -1798,7 +1804,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
             }
         }
         let key_tree = backend.key_stream();
-        let mut session = WalletSession {
+        let mut session = KeystoreSession {
             backend,
             rng: ChaChaRng::from_entropy(),
             auditor_key_stream: key_tree.derive_sub_tree("auditor".as_bytes()),
@@ -1816,7 +1822,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
         let sync_handles = Vec::new();
         let txn_subscribers = HashMap::new();
         let pending_foreign_txns = HashMap::new();
-        let mutex = Arc::new(Mutex::new(WalletSharedState {
+        let mutex = Arc::new(Mutex::new(KeystoreSharedState {
             state,
             session,
             sync_handles,
@@ -1832,9 +1838,9 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
             // normally the destructor of the scope ensures that its futures are driven to
             // completion before its lifetime ends.
             //
-            // Since we are immediately going to store `scope` in the resulting `Wallet`, its
-            // lifetime will be the same as the `Wallet`, and its destructor will run as long as
-            // no one calls `forget` on the `Wallet` -- which no one should ever have any reason
+            // Since we are immediately going to store `scope` in the resulting `Keystore`, its
+            // lifetime will be the same as the `Keystore`, and its destructor will run as long as
+            // no one calls `forget` on the `Keystore` -- which no one should ever have any reason
             // to.
             AsyncScope::create()
         };
@@ -1846,7 +1852,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
                 async move {
                     let mut foreign_txns_awaiting_memos = HashMap::new();
                     while let Some((event, source)) = events.next().await {
-                        let WalletSharedState {
+                        let KeystoreSharedState {
                             state,
                             session,
                             sync_handles,
@@ -1918,40 +1924,40 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
             );
         };
 
-        let mut wallet = Self {
+        let mut keystore = Self {
             mutex,
             task_scope: scope,
         };
 
-        // Spawn background tasks for any scans which were in progress when the wallet was last shut
+        // Spawn background tasks for any scans which were in progress when the keystore was last shut
         // down.
         for (key, events) in key_scans {
-            wallet.spawn_key_scan(key, events).await;
+            keystore.spawn_key_scan(key, events).await;
         }
 
-        Ok(wallet)
+        Ok(keystore)
     }
 
     /// Access the shared state directly.
-    pub async fn lock(&self) -> MutexGuard<'_, WalletSharedState<'a, L, Backend>> {
+    pub async fn lock(&self) -> MutexGuard<'_, KeystoreSharedState<'a, L, Backend>> {
         self.mutex.lock().await
     }
 
     /// List sending keys.
     pub async fn pub_keys(&self) -> Vec<UserPubKey> {
-        let WalletSharedState { state, .. } = &*self.mutex.lock().await;
+        let KeystoreSharedState { state, .. } = &*self.mutex.lock().await;
         state.pub_keys()
     }
 
     /// List viewing keys.
     pub async fn auditor_pub_keys(&self) -> Vec<AuditorPubKey> {
-        let WalletSharedState { state, .. } = &*self.mutex.lock().await;
+        let KeystoreSharedState { state, .. } = &*self.mutex.lock().await;
         state.viewing_accounts.keys().cloned().collect()
     }
 
     /// List freezing keys.
     pub async fn freezer_pub_keys(&self) -> Vec<FreezerPubKey> {
-        let WalletSharedState { state, .. } = &*self.mutex.lock().await;
+        let KeystoreSharedState { state, .. } = &*self.mutex.lock().await;
         state.freezing_accounts.keys().cloned().collect()
     }
 
@@ -1959,11 +1965,11 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
     pub async fn get_user_private_key(
         &self,
         address: &UserAddress,
-    ) -> Result<UserKeyPair, WalletError<L>> {
-        let WalletSharedState { state, .. } = &*self.mutex.lock().await;
+    ) -> Result<UserKeyPair, KeystoreError<L>> {
+        let KeystoreSharedState { state, .. } = &*self.mutex.lock().await;
         match state.sending_accounts.get(address) {
             Some(account) => Ok(account.key.clone()),
-            None => Err(WalletError::<L>::InvalidAddress {
+            None => Err(KeystoreError::<L>::InvalidAddress {
                 address: address.clone(),
             }),
         }
@@ -1973,11 +1979,11 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
     pub async fn get_freezer_private_key(
         &self,
         pub_key: &FreezerPubKey,
-    ) -> Result<FreezerKeyPair, WalletError<L>> {
-        let WalletSharedState { state, .. } = &*self.mutex.lock().await;
+    ) -> Result<FreezerKeyPair, KeystoreError<L>> {
+        let KeystoreSharedState { state, .. } = &*self.mutex.lock().await;
         match state.freezing_accounts.get(pub_key) {
             Some(account) => Ok(account.key.clone()),
-            None => Err(WalletError::<L>::InvalidFreezerKey {
+            None => Err(KeystoreError::<L>::InvalidFreezerKey {
                 key: pub_key.clone(),
             }),
         }
@@ -1987,11 +1993,11 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
     pub async fn get_auditor_private_key(
         &self,
         pub_key: &AuditorPubKey,
-    ) -> Result<AuditorKeyPair, WalletError<L>> {
-        let WalletSharedState { state, .. } = &*self.mutex.lock().await;
+    ) -> Result<AuditorKeyPair, KeystoreError<L>> {
+        let KeystoreSharedState { state, .. } = &*self.mutex.lock().await;
         match state.viewing_accounts.get(pub_key) {
             Some(account) => Ok(account.key.clone()),
-            None => Err(WalletError::<L>::InvalidAuditorKey {
+            None => Err(KeystoreError::<L>::InvalidAuditorKey {
                 key: pub_key.clone(),
             }),
         }
@@ -2001,10 +2007,10 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
     pub async fn sending_account(
         &self,
         address: &UserAddress,
-    ) -> Result<AccountInfo<UserKeyPair>, WalletError<L>> {
-        let WalletSharedState { state, .. } = &*self.mutex.lock().await;
+    ) -> Result<AccountInfo<UserKeyPair>, KeystoreError<L>> {
+        let KeystoreSharedState { state, .. } = &*self.mutex.lock().await;
         let account = state.sending_accounts.get(address).cloned().ok_or(
-            WalletError::<L>::InvalidAddress {
+            KeystoreError::<L>::InvalidAddress {
                 address: address.clone(),
             },
         )?;
@@ -2026,10 +2032,10 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
     pub async fn viewing_account(
         &self,
         address: &AuditorPubKey,
-    ) -> Result<AccountInfo<AuditorKeyPair>, WalletError<L>> {
-        let WalletSharedState { state, .. } = &*self.mutex.lock().await;
+    ) -> Result<AccountInfo<AuditorKeyPair>, KeystoreError<L>> {
+        let KeystoreSharedState { state, .. } = &*self.mutex.lock().await;
         let account = state.viewing_accounts.get(address).cloned().ok_or(
-            WalletError::<L>::InvalidAuditorKey {
+            KeystoreError::<L>::InvalidAuditorKey {
                 key: address.clone(),
             },
         )?;
@@ -2066,10 +2072,10 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
     pub async fn freezing_account(
         &self,
         address: &FreezerPubKey,
-    ) -> Result<AccountInfo<FreezerKeyPair>, WalletError<L>> {
-        let WalletSharedState { state, .. } = &*self.mutex.lock().await;
+    ) -> Result<AccountInfo<FreezerKeyPair>, KeystoreError<L>> {
+        let KeystoreSharedState { state, .. } = &*self.mutex.lock().await;
         let account = state.freezing_accounts.get(address).cloned().ok_or(
-            WalletError::<L>::InvalidFreezerKey {
+            KeystoreError::<L>::InvalidFreezerKey {
                 key: address.clone(),
             },
         )?;
@@ -2106,19 +2112,19 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
 
     /// Compute the spendable balance of the given asset type owned by all addresses.
     pub async fn balance(&self, asset: &AssetCode) -> u64 {
-        let WalletSharedState { state, .. } = &*self.mutex.lock().await;
+        let KeystoreSharedState { state, .. } = &*self.mutex.lock().await;
         state.balance(asset, FreezeFlag::Unfrozen)
     }
 
     /// Compute the spendable balance of the given asset type owned by the given address.
     pub async fn balance_breakdown(&self, account: &UserAddress, asset: &AssetCode) -> u64 {
-        let WalletSharedState { state, .. } = &*self.mutex.lock().await;
+        let KeystoreSharedState { state, .. } = &*self.mutex.lock().await;
         state.balance_breakdown(account, asset, FreezeFlag::Unfrozen)
     }
 
-    /// List records owned or viewable by this wallet.
+    /// List records owned or viewable by this keystore.
     pub async fn records(&self) -> impl Iterator<Item = RecordInfo> {
-        let WalletSharedState { state, .. } = &*self.mutex.lock().await;
+        let KeystoreSharedState { state, .. } = &*self.mutex.lock().await;
         state
             .txn_state
             .records
@@ -2130,31 +2136,31 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
 
     /// Compute the balance frozen records of the given asset type owned by the given address.
     pub async fn frozen_balance_breakdown(&self, account: &UserAddress, asset: &AssetCode) -> u64 {
-        let WalletSharedState { state, .. } = &*self.mutex.lock().await;
+        let KeystoreSharedState { state, .. } = &*self.mutex.lock().await;
         state.balance_breakdown(account, asset, FreezeFlag::Frozen)
     }
 
-    /// List assets discovered or imported by this wallet.
+    /// List assets discovered or imported by this keystore.
     pub async fn assets(&self) -> Vec<AssetInfo> {
-        let WalletSharedState { state, .. } = &*self.mutex.lock().await;
+        let KeystoreSharedState { state, .. } = &*self.mutex.lock().await;
         state.assets.iter().cloned().collect()
     }
 
     /// Get details about an asset type using its code.
     pub async fn asset(&self, code: AssetCode) -> Option<AssetInfo> {
-        let WalletSharedState { state, .. } = &*self.mutex.lock().await;
+        let KeystoreSharedState { state, .. } = &*self.mutex.lock().await;
         state.assets.get(code).cloned()
     }
 
-    /// List past transactions involving this wallet.
+    /// List past transactions involving this keystore.
     #[allow(clippy::type_complexity)]
     pub fn transaction_history<'l>(
         &'l self,
     ) -> std::pin::Pin<
-        Box<dyn SendFuture<'a, Result<Vec<TransactionHistoryEntry<L>>, WalletError<L>>> + 'l>,
+        Box<dyn SendFuture<'a, Result<Vec<TransactionHistoryEntry<L>>, KeystoreError<L>>> + 'l>,
     > {
         Box::pin(async move {
-            let WalletSharedState { session, .. } = &mut *self.mutex.lock().await;
+            let KeystoreSharedState { session, .. } = &mut *self.mutex.lock().await;
             let mut storage = session.backend.storage().await;
             storage.transaction_history().await
         })
@@ -2162,7 +2168,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
 
     /// Basic transfer without customization.
     ///
-    /// To add transfer size requirement, call [Wallet::build_transfer] with a specified
+    /// To add transfer size requirement, call [Keystore::build_transfer] with a specified
     /// `xfr_size_requirement`.
     ///
     /// `sender`
@@ -2175,7 +2181,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
         asset: &AssetCode,
         receivers: &[(UserAddress, u64)],
         fee: u64,
-    ) -> Result<TransactionReceipt<L>, WalletError<L>> {
+    ) -> Result<TransactionReceipt<L>, KeystoreError<L>> {
         let receivers = receivers
             .iter()
             .map(|(addr, amount)| (addr.clone(), *amount, false))
@@ -2198,13 +2204,13 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
         fee: u64,
         bound_data: Vec<u8>,
         xfr_size_requirement: Option<(usize, usize)>,
-    ) -> Result<(TransferNote, TransactionInfo<L>), WalletError<L>> {
-        let WalletSharedState { state, session, .. } = &mut *self.mutex.lock().await;
+    ) -> Result<(TransferNote, TransactionInfo<L>), KeystoreError<L>> {
+        let KeystoreSharedState { state, session, .. } = &mut *self.mutex.lock().await;
         let receivers = iter(receivers)
             .then(|(addr, amt, burn)| {
                 let session = &session;
                 async move {
-                    Ok::<_, WalletError<L>>((
+                    Ok::<_, KeystoreError<L>>((
                         session.backend.get_public_key(addr).await?,
                         *amt,
                         *burn,
@@ -2238,8 +2244,8 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
         &mut self,
         txn: Transaction<L>,
         info: TransactionInfo<L>,
-    ) -> Result<TransactionReceipt<L>, WalletError<L>> {
-        let WalletSharedState { state, session, .. } = &mut *self.mutex.lock().await;
+    ) -> Result<TransactionReceipt<L>, KeystoreError<L>> {
+        let KeystoreSharedState { state, session, .. } = &mut *self.mutex.lock().await;
         state
             .submit_elaborated_transaction(session, txn, info)
             .await
@@ -2250,8 +2256,8 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
         &mut self,
         txn: TransactionNote,
         info: TransactionInfo<L>,
-    ) -> Result<TransactionReceipt<L>, WalletError<L>> {
-        let WalletSharedState { state, session, .. } = &mut *self.mutex.lock().await;
+    ) -> Result<TransactionReceipt<L>, KeystoreError<L>> {
+        let KeystoreSharedState { state, session, .. } = &mut *self.mutex.lock().await;
         state.submit_transaction(session, txn, info).await
     }
 
@@ -2261,8 +2267,8 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
         name: String,
         description: &[u8],
         policy: AssetPolicy,
-    ) -> Result<AssetDefinition, WalletError<L>> {
-        let WalletSharedState { state, session, .. } = &mut *self.mutex.lock().await;
+    ) -> Result<AssetDefinition, KeystoreError<L>> {
+        let KeystoreSharedState { state, session, .. } = &mut *self.mutex.lock().await;
         state.define_asset(session, name, description, policy).await
     }
 
@@ -2270,10 +2276,10 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
     ///
     /// Note that this function cannot be used to import verified assets. If the `verified` flag is
     /// set on `asset`, it will simply be ignored. Verified assets can only be imported using
-    /// [Wallet::verify_assets], conditional on a signature check.
-    pub async fn import_asset(&mut self, mut asset: AssetInfo) -> Result<(), WalletError<L>> {
+    /// [Keystore::verify_assets], conditional on a signature check.
+    pub async fn import_asset(&mut self, mut asset: AssetInfo) -> Result<(), KeystoreError<L>> {
         asset.verified = false;
-        let WalletSharedState { state, session, .. } = &mut *self.mutex.lock().await;
+        let KeystoreSharedState { state, session, .. } = &mut *self.mutex.lock().await;
         state.import_asset(session, asset).await
     }
 
@@ -2283,18 +2289,18 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
     /// assets. It must also be the public key which was used to sign `library`.
     ///
     /// If successful, the assets loaded from `library` are returned as well as being added to this
-    /// wallet's asset library. Note that assets loaded from a verified library are not persisted
-    /// (unless the same assets are imported as unverified using [Wallet::import_asset]) in order to
+    /// keystore's asset library. Note that assets loaded from a verified library are not persisted
+    /// (unless the same assets are imported as unverified using [Keystore::import_asset]) in order to
     /// preserve the verified library as the single source of truth about verified assets.
-    /// Therefore, this function must be called each time a wallet is created or opened in order to
-    /// ensure that the verified assets show up in the wallet's library.
+    /// Therefore, this function must be called each time a keystore is created or opened in order to
+    /// ensure that the verified assets show up in the keystore's library.
     pub async fn verify_assets(
         &mut self,
         trusted_signer: &VerKey,
         library: VerifiedAssetLibrary,
-    ) -> Result<Vec<AssetInfo>, WalletError<L>> {
+    ) -> Result<Vec<AssetInfo>, KeystoreError<L>> {
         if let Some(assets) = library.open(trusted_signer) {
-            let WalletSharedState { state, .. } = &mut *self.lock().await;
+            let KeystoreSharedState { state, .. } = &mut *self.lock().await;
             for asset in &assets {
                 // `import_asset` is only for unverified assets. It automatically persists the asset
                 // being imported. We explicitly do not want to persist verified assets (unless
@@ -2304,35 +2310,35 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
             }
             Ok(assets)
         } else {
-            Err(WalletError::AssetVerificationError)
+            Err(KeystoreError::AssetVerificationError)
         }
     }
 
-    /// Add a viewing key to the wallet's key set.
+    /// Add a viewing key to the keystore's key set.
     pub fn add_audit_key<'l>(
         &'l mut self,
         audit_key: AuditorKeyPair,
         description: String,
-    ) -> std::pin::Pin<Box<dyn SendFuture<'a, Result<(), WalletError<L>>> + 'l>>
+    ) -> std::pin::Pin<Box<dyn SendFuture<'a, Result<(), KeystoreError<L>>> + 'l>>
     where
         'a: 'l,
     {
         Box::pin(async move {
-            let WalletSharedState { state, session, .. } = &mut *self.mutex.lock().await;
+            let KeystoreSharedState { state, session, .. } = &mut *self.mutex.lock().await;
             state.add_audit_key(session, audit_key, description).await
         })
     }
 
-    /// Generate a new viewing key and add it to the wallet's key set.
+    /// Generate a new viewing key and add it to the keystore's key set.
     pub fn generate_audit_key<'l>(
         &'l mut self,
         description: String,
-    ) -> std::pin::Pin<Box<dyn SendFuture<'a, Result<AuditorPubKey, WalletError<L>>> + 'l>>
+    ) -> std::pin::Pin<Box<dyn SendFuture<'a, Result<AuditorPubKey, KeystoreError<L>>> + 'l>>
     where
         'a: 'l,
     {
         Box::pin(async move {
-            let WalletSharedState { state, session, .. } = &mut *self.mutex.lock().await;
+            let KeystoreSharedState { state, session, .. } = &mut *self.mutex.lock().await;
             let audit_key = session
                 .auditor_key_stream
                 .derive_auditor_key_pair(&state.key_state.auditor.to_le_bytes());
@@ -2344,31 +2350,31 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
         })
     }
 
-    /// Add a freezing key to the wallet's key set.
+    /// Add a freezing key to the keystore's key set.
     pub fn add_freeze_key<'l>(
         &'l mut self,
         freeze_key: FreezerKeyPair,
         description: String,
-    ) -> std::pin::Pin<Box<dyn SendFuture<'a, Result<(), WalletError<L>>> + 'l>>
+    ) -> std::pin::Pin<Box<dyn SendFuture<'a, Result<(), KeystoreError<L>>> + 'l>>
     where
         'a: 'l,
     {
         Box::pin(async move {
-            let WalletSharedState { state, session, .. } = &mut *self.mutex.lock().await;
+            let KeystoreSharedState { state, session, .. } = &mut *self.mutex.lock().await;
             state.add_freeze_key(session, freeze_key, description).await
         })
     }
 
-    /// Generate a new freezing key and add it to the wallet's key set.
+    /// Generate a new freezing key and add it to the keystore's key set.
     pub fn generate_freeze_key<'l>(
         &'l mut self,
         description: String,
-    ) -> std::pin::Pin<Box<dyn SendFuture<'a, Result<FreezerPubKey, WalletError<L>>> + 'l>>
+    ) -> std::pin::Pin<Box<dyn SendFuture<'a, Result<FreezerPubKey, KeystoreError<L>>> + 'l>>
     where
         'a: 'l,
     {
         Box::pin(async move {
-            let WalletSharedState { state, session, .. } = &mut *self.mutex.lock().await;
+            let KeystoreSharedState { state, session, .. } = &mut *self.mutex.lock().await;
             let freeze_key = session
                 .freezer_key_stream
                 .derive_freezer_key_pair(&state.key_state.freezer.to_le_bytes());
@@ -2380,23 +2386,23 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
         })
     }
 
-    /// Add a sending key to the wallet's key set.
+    /// Add a sending key to the keystore's key set.
     ///
-    /// Since this key was not generated by this wallet, it may have already been used and thus may
-    /// own existing records. The wallet will start a scan of the ledger in the background to find
+    /// Since this key was not generated by this keystore, it may have already been used and thus may
+    /// own existing records. The keystore will start a scan of the ledger in the background to find
     /// records owned by this key. The scan will start from the event specified by `scan_from`.
     pub fn add_user_key<'l>(
         &'l mut self,
         user_key: UserKeyPair,
         description: String,
         scan_from: EventIndex,
-    ) -> std::pin::Pin<Box<dyn SendFuture<'a, Result<(), WalletError<L>>> + 'l>>
+    ) -> std::pin::Pin<Box<dyn SendFuture<'a, Result<(), KeystoreError<L>>> + 'l>>
     where
         'a: 'l,
     {
         Box::pin(async move {
             let (user_key, events) = {
-                let WalletSharedState { state, session, .. } = &mut *self.mutex.lock().await;
+                let KeystoreSharedState { state, session, .. } = &mut *self.mutex.lock().await;
                 state
                     .add_user_key(session, Some(user_key), description, Some(scan_from))
                     .await?
@@ -2411,23 +2417,23 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
         })
     }
 
-    /// Generate a new sending key and add it to the wallet's key set.
+    /// Generate a new sending key and add it to the keystore's key set.
     ///
-    /// Keys are generated deterministically based on the mnemonic phrase used to load the wallet.
-    /// If this is a recovery of an HD wallet from a mnemonic phrase, `scan_from` can be used to
+    /// Keys are generated deterministically based on the mnemonic phrase used to load the keystore.
+    /// If this is a recovery of an HD keystore from a mnemonic phrase, `scan_from` can be used to
     /// initiate a background scan of the ledger from the given event index to find records already
     /// belonging to the new key.
     pub fn generate_user_key<'l>(
         &'l mut self,
         description: String,
         scan_from: Option<EventIndex>,
-    ) -> std::pin::Pin<Box<dyn SendFuture<'a, Result<UserPubKey, WalletError<L>>> + 'l>>
+    ) -> std::pin::Pin<Box<dyn SendFuture<'a, Result<UserPubKey, KeystoreError<L>>> + 'l>>
     where
         'a: 'l,
     {
         Box::pin(async move {
             let (user_key, events) = {
-                let WalletSharedState { state, session, .. } = &mut *self.mutex.lock().await;
+                let KeystoreSharedState { state, session, .. } = &mut *self.mutex.lock().await;
                 state
                     .add_user_key(session, None, description, scan_from)
                     .await?
@@ -2445,15 +2451,15 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
     /// Manually add an encrypted record.
     ///
     /// This can be used to access assets more quickly than waiting for a ledger scan when
-    /// recovering a wallet.
+    /// recovering a keystore.
     pub async fn import_memo(
         &mut self,
         memo: ReceiverMemo,
         comm: RecordCommitment,
         uid: u64,
         proof: MerklePath,
-    ) -> Result<(), WalletError<L>> {
-        let WalletSharedState { state, session, .. } = &mut *self.mutex.lock().await;
+    ) -> Result<(), KeystoreError<L>> {
+        let KeystoreSharedState { state, session, .. } = &mut *self.mutex.lock().await;
         state.import_memo(session, memo, comm, uid, proof).await
     }
 
@@ -2465,8 +2471,8 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
         asset_code: &AssetCode,
         amount: u64,
         receiver: UserAddress,
-    ) -> Result<(MintNote, TransactionInfo<L>), WalletError<L>> {
-        let WalletSharedState { state, session, .. } = &mut *self.mutex.lock().await;
+    ) -> Result<(MintNote, TransactionInfo<L>), KeystoreError<L>> {
+        let KeystoreSharedState { state, session, .. } = &mut *self.mutex.lock().await;
         state
             .build_mint(session, minter, fee, asset_code, amount, receiver)
             .await
@@ -2474,7 +2480,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
 
     /// Build and submit a mint transaction.
     ///
-    /// See [Wallet::build_mint].
+    /// See [Keystore::build_mint].
     pub async fn mint(
         &mut self,
         minter: &UserAddress,
@@ -2482,7 +2488,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
         asset_code: &AssetCode,
         amount: u64,
         receiver: UserAddress,
-    ) -> Result<TransactionReceipt<L>, WalletError<L>> {
+    ) -> Result<TransactionReceipt<L>, KeystoreError<L>> {
         let (note, info) = self
             .build_mint(minter, fee, asset_code, amount, receiver)
             .await?;
@@ -2492,7 +2498,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
 
     /// Build a transaction to freeze at least `amount` of a particular asset owned by a given user.
     ///
-    /// In order to freeze an asset, this wallet must be a viewer of that asset type, and it must
+    /// In order to freeze an asset, this keystore must be a viewer of that asset type, and it must
     /// have observed enough transactions to determine that the target user owns at least `amount`
     /// of that asset.
     ///
@@ -2503,8 +2509,8 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
     /// Some of these restrictions will be rolled back in the future:
     /// * An API can be provided for freezing without being a viewer, if a freezable record
     ///   opening is provided to us out of band by a viewer.
-    /// * [Wallet::build_freeze] uses the same allocation scheme for input records as
-    ///   [Wallet::build_transfer], which tries to minimize fragmentation. But freeze transactions
+    /// * [Keystore::build_freeze] uses the same allocation scheme for input records as
+    ///   [Keystore::build_transfer], which tries to minimize fragmentation. But freeze transactions
     ///   do not increase fragmentation because they have no change output, so we could use a
     ///   different allocation scheme that tries to minimize change, which would limit the amount we
     ///   can over-freeze, and would guarantee that we freeze the exact amount if it is possible to
@@ -2516,8 +2522,8 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
         asset: &AssetCode,
         amount: u64,
         owner: UserAddress,
-    ) -> Result<(FreezeNote, TransactionInfo<L>), WalletError<L>> {
-        let WalletSharedState { state, session, .. } = &mut *self.mutex.lock().await;
+    ) -> Result<(FreezeNote, TransactionInfo<L>), KeystoreError<L>> {
+        let KeystoreSharedState { state, session, .. } = &mut *self.mutex.lock().await;
         state
             .build_freeze(
                 session,
@@ -2533,7 +2539,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
 
     /// Build an submit a freeze transaction.
     ///
-    /// See [Wallet::build_freeze].    
+    /// See [Keystore::build_freeze].    
     pub async fn freeze(
         &mut self,
         freezer: &UserAddress,
@@ -2541,7 +2547,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
         asset: &AssetCode,
         amount: u64,
         owner: UserAddress,
-    ) -> Result<TransactionReceipt<L>, WalletError<L>> {
+    ) -> Result<TransactionReceipt<L>, KeystoreError<L>> {
         let (note, info) = self
             .build_freeze(freezer, fee, asset, amount, owner)
             .await?;
@@ -2551,7 +2557,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
 
     /// Build a transaction to unfreeze at least `amount` of a particular asset owned by a given user.
     ///
-    /// In order to unfreeze, this wallet must have previously been used to freeze at least `amount`
+    /// In order to unfreeze, this keystore must have previously been used to freeze at least `amount`
     /// of the target's assets.
     pub async fn build_unfreeze(
         &mut self,
@@ -2560,8 +2566,8 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
         asset: &AssetCode,
         amount: u64,
         owner: UserAddress,
-    ) -> Result<(FreezeNote, TransactionInfo<L>), WalletError<L>> {
-        let WalletSharedState { state, session, .. } = &mut *self.mutex.lock().await;
+    ) -> Result<(FreezeNote, TransactionInfo<L>), KeystoreError<L>> {
+        let KeystoreSharedState { state, session, .. } = &mut *self.mutex.lock().await;
         state
             .build_freeze(
                 session,
@@ -2577,7 +2583,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
 
     /// Build and submit an unfreeze transaction.
     ///
-    /// See [Wallet::build_unfreeze].
+    /// See [Keystore::build_unfreeze].
     pub async fn unfreeze(
         &mut self,
         freezer: &UserAddress,
@@ -2585,7 +2591,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
         asset: &AssetCode,
         amount: u64,
         owner: UserAddress,
-    ) -> Result<TransactionReceipt<L>, WalletError<L>> {
+    ) -> Result<TransactionReceipt<L>, KeystoreError<L>> {
         let (note, info) = self
             .build_unfreeze(freezer, fee, asset, amount, owner)
             .await?;
@@ -2597,8 +2603,8 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
     pub async fn transaction_status(
         &self,
         receipt: &TransactionReceipt<L>,
-    ) -> Result<TransactionStatus, WalletError<L>> {
-        let WalletSharedState { state, session, .. } = &mut *self.mutex.lock().await;
+    ) -> Result<TransactionStatus, KeystoreError<L>> {
+        let KeystoreSharedState { state, session, .. } = &mut *self.mutex.lock().await;
         state.transaction_status(session, receipt).await
     }
 
@@ -2606,9 +2612,9 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
     pub async fn await_transaction(
         &self,
         receipt: &TransactionReceipt<L>,
-    ) -> Result<TransactionStatus, WalletError<L>> {
+    ) -> Result<TransactionStatus, KeystoreError<L>> {
         let mut guard = self.mutex.lock().await;
-        let WalletSharedState {
+        let KeystoreSharedState {
             state,
             session,
             txn_subscribers,
@@ -2634,7 +2640,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
                     .or_insert_with(Vec::new)
                     .push(sender);
             } else {
-                // Transaction uids are unique only to a given wallet, so if we're trying to track
+                // Transaction uids are unique only to a given keystore, so if we're trying to track
                 // somebody else's transaction, the best we can do is wait for one of its nullifiers
                 // to be published on the ledger.
                 pending_foreign_txns
@@ -2643,14 +2649,14 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
                     .push(sender);
             }
             drop(guard);
-            receiver.await.map_err(|_| WalletError::<L>::Cancelled {})
+            receiver.await.map_err(|_| KeystoreError::<L>::Cancelled {})
         }
     }
 
-    /// A future which completes when the wallet has processed events at least including `t`.
+    /// A future which completes when the keystore has processed events at least including `t`.
     pub async fn sync(&self, t: EventIndex) -> Result<(), oneshot::Canceled> {
         let mut guard = self.mutex.lock().await;
-        let WalletSharedState {
+        let KeystoreSharedState {
             state,
             sync_handles,
             ..
@@ -2676,7 +2682,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
         self.mutex.lock().await.state.txn_state.now
     }
 
-    /// A future which completes when the wallet has processed at least as many events as `peer`.
+    /// A future which completes when the keystore has processed at least as many events as `peer`.
     pub async fn sync_with_peer(&self, peer: &Self) -> Result<(), oneshot::Canceled> {
         self.sync(peer.now().await).await
     }
@@ -2684,7 +2690,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
     /// A future which completes when there are no more in-progress ledger scans for `address`.
     pub async fn await_key_scan(&self, address: &UserAddress) -> Result<(), oneshot::Canceled> {
         let mut guard = self.mutex.lock().await;
-        let WalletSharedState {
+        let KeystoreSharedState {
             pending_key_scans, ..
         } = &mut *guard;
         let senders = match pending_key_scans.get_mut(address) {
@@ -2706,7 +2712,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
     ) {
         {
             // Register the key scan in `pending_key_scans` so that `await_key_scan` will work.
-            let WalletSharedState {
+            let KeystoreSharedState {
                 pending_key_scans, ..
             } = &mut *self.mutex.lock().await;
             pending_key_scans.insert(address.clone(), vec![]);
@@ -2719,7 +2725,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
                 while !finished {
                     let (next_event, source) = events.next().await.unwrap();
 
-                    let WalletSharedState {
+                    let KeystoreSharedState {
                         state,
                         session,
                         pending_key_scans,

@@ -57,7 +57,7 @@ pub enum LedgerEvent<L: Ledger> {
 
 /// An index into the [LedgerEvent] stream.
 ///
-/// Wallets subscribe to events; this is how they keep in sync with the outside world. They need to
+/// Keystores subscribe to events; this is how they keep in sync with the outside world. They need to
 /// track their index into the event stream in case they get disconnected or closed, so that they
 /// can resubscribe starting at the appropriate event when they reconnect.
 ///
@@ -192,7 +192,7 @@ impl FromStr for EventIndex {
     }
 }
 
-/// The event streams that the wallet can subscribe to.
+/// The event streams that the keystore can subscribe to.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum EventSource {
     QueryService,

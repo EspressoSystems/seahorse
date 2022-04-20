@@ -1,6 +1,6 @@
 [package]
 name = "seahorse"
-description = "A generic cap-style cryptocurrency wallet."
+description = "A generic cap-style cryptocurrency keystore."
 authors = ["Espresso Systems <hello@espressosys.com>"]
 version = "0.2.0"
 edition = "2018"
