@@ -34,7 +34,7 @@ mod secret;
 pub mod testing;
 pub mod txn_builder;
 
-pub use crate::asset_library::{AssetInfo, MintInfo};
+pub use crate::asset_library::{AssetId, AssetInfo, MintInfo};
 pub use jf_cap;
 pub use reef;
 
@@ -66,8 +66,8 @@ use jf_cap::{
     },
     mint::MintNote,
     structs::{
-        AssetCode, AssetDefinition, AssetPolicy, FreezeFlag, Nullifier, ReceiverMemo,
-        RecordCommitment, RecordOpening,
+        AssetDefinition, AssetPolicy, FreezeFlag, Nullifier, ReceiverMemo, RecordCommitment,
+        RecordOpening,
     },
     transfer::TransferNote,
     MerkleLeafProof, MerklePath, MerkleTree, TransactionNote, VerKey,
@@ -83,7 +83,7 @@ use reef::{
     *,
 };
 use serde::{Deserialize, Serialize};
-use snafu::{ResultExt, Snafu};
+use snafu::{OptionExt, ResultExt, Snafu};
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::iter::repeat;
@@ -93,7 +93,7 @@ use std::sync::Arc;
 #[snafu(visibility(pub))]
 pub enum WalletError<L: Ledger> {
     UndefinedAsset {
-        asset: AssetCode,
+        asset: AssetId,
     },
     InvalidBlock {
         source: ValidationError<L>,
@@ -628,7 +628,7 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
             .collect()
     }
 
-    pub fn balance(&self, asset: &AssetCode, frozen: FreezeFlag) -> u64 {
+    pub fn balance(&self, asset: AssetId, frozen: FreezeFlag) -> u64 {
         let mut balance = 0;
         for pub_key in self.pub_keys() {
             balance += self.txn_state.balance(asset, &pub_key, frozen);
@@ -639,7 +639,7 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
     pub fn balance_breakdown(
         &self,
         address: &UserAddress,
-        asset: &AssetCode,
+        asset: AssetId,
         frozen: FreezeFlag,
     ) -> u64 {
         match self.sending_accounts.get(address) {
@@ -1195,7 +1195,7 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
     ) {
         // Try to decrypt auditor memos.
         if let Ok(memo) = txn.open_audit_memo(
-            self.assets.auditable(),
+            &self.assets.auditable(),
             &self
                 .viewing_accounts
                 .iter()
@@ -1324,7 +1324,7 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
         session: &mut WalletSession<'a, L, impl WalletBackend<'a, L>>,
         asset: AssetInfo,
     ) -> Result<(), WalletError<L>> {
-        if let Some(old) = self.assets.get(asset.definition.code) {
+        if let Some(old) = self.assets.get((&asset.definition).into()) {
             if old == &asset {
                 // If we already have this asset and it is up-to-date with the new info, there is no
                 // need to go to the trouble of updating storage.
@@ -1501,42 +1501,25 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
         Ok(())
     }
 
-    fn build_transfer<'k>(
-        &mut self,
-        session: &mut WalletSession<'a, L, impl WalletBackend<'a, L>>,
-        spec: TransferSpec<'k>,
-    ) -> Result<(TransferNote, TransactionInfo<L>), WalletError<L>> {
-        self.txn_state
-            .transfer(spec, &self.proving_keys.xfr, &mut session.rng)
-            .context(TransactionSnafu)
-    }
-
     async fn build_mint(
         &mut self,
         session: &mut WalletSession<'a, L, impl WalletBackend<'a, L>>,
         minter: &UserAddress,
         fee: u64,
-        asset_code: &AssetCode,
+        asset: AssetId,
         amount: u64,
         receiver: UserAddress,
     ) -> Result<(MintNote, TransactionInfo<L>), WalletError<L>> {
         let asset = self
             .assets
-            .get(*asset_code)
-            .ok_or(WalletError::<L>::UndefinedAsset { asset: *asset_code })?;
-        let MintInfo { seed, description } =
-            asset
-                .mint_info
-                .clone()
-                .ok_or(WalletError::<L>::AssetNotMintable {
-                    asset: asset.definition.clone(),
-                })?;
+            .get(asset)
+            .ok_or(WalletError::<L>::UndefinedAsset { asset })?;
         self.txn_state
             .mint(
                 &self.account_key_pair(minter)?.clone(),
                 &self.proving_keys.mint,
                 fee,
-                &(asset.definition.clone(), seed, description),
+                asset,
                 amount,
                 session.backend.get_public_key(&receiver).await?,
                 &mut session.rng,
@@ -1550,21 +1533,25 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
         session: &mut WalletSession<'a, L, impl WalletBackend<'a, L>>,
         fee_address: &UserAddress,
         fee: u64,
-        asset: &AssetCode,
+        asset: AssetId,
         amount: u64,
         owner: UserAddress,
         outputs_frozen: FreezeFlag,
     ) -> Result<(FreezeNote, TransactionInfo<L>), WalletError<L>> {
-        let asset = match self.assets.get(*asset) {
-            Some(asset) => asset.definition.clone(),
-            None => return Err(WalletError::<L>::UndefinedAsset { asset: *asset }),
-        };
+        let asset = self
+            .assets
+            .get(asset)
+            .context(UndefinedAssetSnafu { asset })?;
         let freeze_key = match self
             .freezing_accounts
-            .get(asset.policy_ref().freezer_pub_key())
+            .get(asset.definition.policy_ref().freezer_pub_key())
         {
             Some(account) => &account.key,
-            None => return Err(WalletError::<L>::AssetNotFreezable { asset }),
+            None => {
+                return Err(WalletError::<L>::AssetNotFreezable {
+                    asset: asset.definition.clone(),
+                })
+            }
         };
 
         self.txn_state
@@ -1573,7 +1560,7 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
                 freeze_key,
                 &self.proving_keys.freeze,
                 fee,
-                &asset,
+                asset,
                 amount,
                 owner,
                 outputs_frozen,
@@ -2017,7 +2004,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
             .collect::<Vec<_>>();
         let assets = records
             .iter()
-            .map(|rec| state.assets.get(rec.ro.asset_def.code).unwrap().clone())
+            .map(|rec| state.assets.get(rec.asset).unwrap().clone())
             .collect();
         Ok(AccountInfo::new(account, assets, records))
     }
@@ -2045,7 +2032,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
         let assets = records
             .iter()
             // Get assets which are currently viewable.
-            .map(|rec| state.assets.get(rec.ro.asset_def.code).unwrap().clone())
+            .map(|rec| state.assets.get(rec.asset).unwrap().clone())
             // Get known assets which list this key as a viewer.
             .chain(state.assets.iter().filter_map(|asset| {
                 if asset.definition.policy_ref().auditor_pub_key() == address {
@@ -2087,7 +2074,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
         let assets = records
             .iter()
             // Get assets which are currently freezable.
-            .map(|rec| state.assets.get(rec.ro.asset_def.code).unwrap().clone())
+            .map(|rec| state.assets.get(rec.asset).unwrap().clone())
             // Get known assets which list this key as a freezer.
             .chain(state.assets.iter().filter_map(|asset| {
                 if asset.definition.policy_ref().freezer_pub_key() == address {
@@ -2105,13 +2092,13 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
     }
 
     /// Compute the spendable balance of the given asset type owned by all addresses.
-    pub async fn balance(&self, asset: &AssetCode) -> u64 {
+    pub async fn balance(&self, asset: AssetId) -> u64 {
         let WalletSharedState { state, .. } = &*self.mutex.lock().await;
         state.balance(asset, FreezeFlag::Unfrozen)
     }
 
     /// Compute the spendable balance of the given asset type owned by the given address.
-    pub async fn balance_breakdown(&self, account: &UserAddress, asset: &AssetCode) -> u64 {
+    pub async fn balance_breakdown(&self, account: &UserAddress, asset: AssetId) -> u64 {
         let WalletSharedState { state, .. } = &*self.mutex.lock().await;
         state.balance_breakdown(account, asset, FreezeFlag::Unfrozen)
     }
@@ -2129,7 +2116,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
     }
 
     /// Compute the balance frozen records of the given asset type owned by the given address.
-    pub async fn frozen_balance_breakdown(&self, account: &UserAddress, asset: &AssetCode) -> u64 {
+    pub async fn frozen_balance_breakdown(&self, account: &UserAddress, asset: AssetId) -> u64 {
         let WalletSharedState { state, .. } = &*self.mutex.lock().await;
         state.balance_breakdown(account, asset, FreezeFlag::Frozen)
     }
@@ -2141,9 +2128,9 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
     }
 
     /// Get details about an asset type using its code.
-    pub async fn asset(&self, code: AssetCode) -> Option<AssetInfo> {
+    pub async fn asset(&self, id: AssetId) -> Option<AssetInfo> {
         let WalletSharedState { state, .. } = &*self.mutex.lock().await;
-        state.assets.get(code).cloned()
+        state.assets.get(id).cloned()
     }
 
     /// List past transactions involving this wallet.
@@ -2172,7 +2159,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
     pub async fn transfer(
         &mut self,
         sender: Option<&UserAddress>,
-        asset: &AssetCode,
+        asset: AssetId,
         receivers: &[(UserAddress, u64)],
         fee: u64,
     ) -> Result<TransactionReceipt<L>, WalletError<L>> {
@@ -2193,13 +2180,17 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
     pub async fn build_transfer(
         &mut self,
         sender: Option<&UserAddress>,
-        asset: &AssetCode,
+        asset: AssetId,
         receivers: &[(UserAddress, u64, bool)],
         fee: u64,
         bound_data: Vec<u8>,
         xfr_size_requirement: Option<(usize, usize)>,
     ) -> Result<(TransferNote, TransactionInfo<L>), WalletError<L>> {
         let WalletSharedState { state, session, .. } = &mut *self.mutex.lock().await;
+        let asset = state
+            .assets
+            .get(asset)
+            .context(UndefinedAssetSnafu { asset })?;
         let receivers = iter(receivers)
             .then(|(addr, amt, burn)| {
                 let session = &session;
@@ -2227,7 +2218,10 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
             bound_data,
             xfr_size_requirement,
         };
-        state.build_transfer(session, spec)
+        state
+            .txn_state
+            .transfer(spec, &state.proving_keys.xfr, &mut session.rng)
+            .context(TransactionSnafu)
     }
 
     /// Submit a transaction to be validated.
@@ -2462,13 +2456,13 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
         &mut self,
         minter: &UserAddress,
         fee: u64,
-        asset_code: &AssetCode,
+        asset: AssetId,
         amount: u64,
         receiver: UserAddress,
     ) -> Result<(MintNote, TransactionInfo<L>), WalletError<L>> {
         let WalletSharedState { state, session, .. } = &mut *self.mutex.lock().await;
         state
-            .build_mint(session, minter, fee, asset_code, amount, receiver)
+            .build_mint(session, minter, fee, asset, amount, receiver)
             .await
     }
 
@@ -2479,12 +2473,12 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
         &mut self,
         minter: &UserAddress,
         fee: u64,
-        asset_code: &AssetCode,
+        asset: AssetId,
         amount: u64,
         receiver: UserAddress,
     ) -> Result<TransactionReceipt<L>, WalletError<L>> {
         let (note, info) = self
-            .build_mint(minter, fee, asset_code, amount, receiver)
+            .build_mint(minter, fee, asset, amount, receiver)
             .await?;
         self.submit_cap(TransactionNote::Mint(Box::new(note)), info)
             .await
@@ -2513,7 +2507,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
         &mut self,
         freezer: &UserAddress,
         fee: u64,
-        asset: &AssetCode,
+        asset: AssetId,
         amount: u64,
         owner: UserAddress,
     ) -> Result<(FreezeNote, TransactionInfo<L>), WalletError<L>> {
@@ -2538,7 +2532,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
         &mut self,
         freezer: &UserAddress,
         fee: u64,
-        asset: &AssetCode,
+        asset: AssetId,
         amount: u64,
         owner: UserAddress,
     ) -> Result<TransactionReceipt<L>, WalletError<L>> {
@@ -2557,7 +2551,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
         &mut self,
         freezer: &UserAddress,
         fee: u64,
-        asset: &AssetCode,
+        asset: AssetId,
         amount: u64,
         owner: UserAddress,
     ) -> Result<(FreezeNote, TransactionInfo<L>), WalletError<L>> {
@@ -2582,7 +2576,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
         &mut self,
         freezer: &UserAddress,
         fee: u64,
-        asset: &AssetCode,
+        asset: AssetId,
         amount: u64,
         owner: UserAddress,
     ) -> Result<TransactionReceipt<L>, WalletError<L>> {

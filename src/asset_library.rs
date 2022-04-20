@@ -21,6 +21,7 @@
 //! and thus should be defined in clients of this crate.
 use arbitrary::{Arbitrary, Unstructured};
 use ark_serialize::*;
+use commit::{Commitment, Committable};
 use espresso_macros::ser_test;
 use image::{imageops, ImageFormat, ImageResult, RgbImage};
 use jf_cap::{
@@ -41,6 +42,26 @@ use tagged_base64::TaggedBase64;
 
 const ICON_WIDTH: u32 = 64;
 const ICON_HEIGHT: u32 = 64;
+
+/// A short code which uniquely identifies and [AssetDefinition].
+#[ser_test]
+#[tagged_blob("ASSETID")]
+#[derive(
+    Arbitrary, Clone, Copy, Debug, PartialEq, Eq, Hash, CanonicalSerialize, CanonicalDeserialize,
+)]
+pub struct AssetId(Commitment<AssetDefinition>);
+
+impl<'a> From<&'a AssetDefinition> for AssetId {
+    fn from(def: &'a AssetDefinition) -> Self {
+        Self(def.commit())
+    }
+}
+
+impl AssetId {
+    pub fn native() -> Self {
+        (&AssetDefinition::native()).into()
+    }
+}
 
 /// A small icon to display with an asset in a GUI interface.
 #[ser_test(arbitrary)]
@@ -170,6 +191,8 @@ impl From<RgbImage> for Icon {
 /// Details about an asset type.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct AssetInfo {
+    /// Unique identifier.
+    pub id: AssetId,
     /// CAP asset definition.
     pub definition: AssetDefinition,
     /// UI-friendly name assigned to this asset.
@@ -210,6 +233,7 @@ pub struct AssetInfo {
 impl AssetInfo {
     pub fn new(definition: AssetDefinition, mint_info: MintInfo) -> Self {
         Self {
+            id: (&definition).into(),
             definition,
             name: None,
             description: None,
@@ -290,11 +314,16 @@ impl AssetInfo {
         self.temporary &= info.temporary;
         self.verified |= info.verified;
     }
+
+    pub fn is_native(&self) -> bool {
+        self.definition.code == AssetCode::native()
+    }
 }
 
 impl From<AssetDefinition> for AssetInfo {
     fn from(definition: AssetDefinition) -> Self {
         Self {
+            id: (&definition).into(),
             definition,
             name: None,
             description: None,
@@ -338,7 +367,7 @@ impl FromStr for AssetInfo {
         // and "temporary". Note that the `verified` field cannot be set this way. There is only one
         // way to create verified `AssetInfo`: using [Wallet::verify_assets], which performs a
         // signature check before marking assets verified.
-        let mut definition = None;
+        let mut definition: Option<AssetDefinition> = None;
         let mut name = None;
         let mut description = None;
         let mut mint_description = None;
@@ -394,6 +423,7 @@ impl FromStr for AssetInfo {
             }
         };
         Ok(AssetInfo {
+            id: (&definition).into(),
             definition,
             name,
             description,
@@ -445,10 +475,10 @@ impl MintInfo {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct AssetLibrary {
     assets: Vec<AssetInfo>,
-    // Map from AssetCode to index in `assets`.
-    index: HashMap<AssetCode, usize>,
-    // Map from auditable AssetCode to its definition.
-    auditable: HashMap<AssetCode, AssetDefinition>,
+    // Map from AssetId to index in `assets`.
+    index: HashMap<AssetId, usize>,
+    // Map from auditable AssetId to its definition.
+    auditable: HashMap<AssetId, AssetDefinition>,
     // Auditor keys, so we can tell when an asset is supposed to be in `auditable`.
     audit_keys: HashSet<AuditorPubKey>,
 }
@@ -476,16 +506,16 @@ impl AssetLibrary {
     /// If `asset` is already in the library it is updated (by `AssetInfo::update`). Otherwise, it
     /// is inserted at the end of the library.
     pub fn insert(&mut self, asset: AssetInfo) {
-        if let Some(i) = self.index.get(&asset.definition.code) {
+        let id = asset.id;
+        if let Some(i) = self.index.get(&id) {
             self.assets[*i].update(asset);
         } else {
-            self.index.insert(asset.definition.code, self.assets.len());
+            self.index.insert(id, self.assets.len());
             if self
                 .audit_keys
                 .contains(asset.definition.policy_ref().auditor_pub_key())
             {
-                self.auditable
-                    .insert(asset.definition.code, asset.definition.clone());
+                self.auditable.insert(id, asset.definition.clone());
             }
             self.assets.push(asset);
         }
@@ -500,16 +530,15 @@ impl AssetLibrary {
         // auditable.
         for asset in &self.assets {
             if asset.definition.policy_ref().auditor_pub_key() == &key {
-                self.auditable
-                    .insert(asset.definition.code, asset.definition.clone());
+                self.auditable.insert(asset.id, asset.definition.clone());
             }
         }
         self.audit_keys.insert(key);
     }
 
     /// List viewable assets.
-    pub fn auditable(&self) -> &HashMap<AssetCode, AssetDefinition> {
-        &self.auditable
+    pub fn auditable(&self) -> Vec<AssetDefinition> {
+        self.auditable.values().cloned().collect()
     }
 
     /// Iterate over all assets in the library.
@@ -518,12 +547,12 @@ impl AssetLibrary {
     }
 
     /// Check if the library contains an asset with the given code.
-    pub fn contains(&self, code: AssetCode) -> bool {
+    pub fn contains(&self, code: AssetId) -> bool {
         self.index.contains_key(&code)
     }
 
     /// Get the asset with the given code, if there is one.
-    pub fn get(&self, code: AssetCode) -> Option<&AssetInfo> {
+    pub fn get(&self, code: AssetId) -> Option<&AssetInfo> {
         self.index.get(&code).map(|i| &self.assets[*i])
     }
 
@@ -564,10 +593,10 @@ impl FromIterator<AssetInfo> for AssetLibrary {
     }
 }
 
-impl Index<AssetCode> for AssetLibrary {
+impl Index<AssetId> for AssetLibrary {
     type Output = AssetInfo;
 
-    fn index(&self, code: AssetCode) -> &AssetInfo {
+    fn index(&self, code: AssetId) -> &AssetInfo {
         self.get(code).unwrap()
     }
 }

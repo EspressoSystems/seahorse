@@ -9,7 +9,7 @@
 //!
 //! This module defines the subset of ledger state required by a wallet to build transactions, and
 //! provides an interface for building them.
-use crate::events::EventIndex;
+use crate::{events::EventIndex, AssetId, AssetInfo, MintInfo};
 use arbitrary::{Arbitrary, Unstructured};
 use arbitrary_wrappers::*;
 use ark_serialize::*;
@@ -52,24 +52,24 @@ use std::ops::{Index, IndexMut};
 #[snafu(visibility(pub))]
 pub enum TransactionError {
     InsufficientBalance {
-        asset: AssetCode,
+        asset: AssetId,
         required: u64,
         actual: u64,
     },
     Fragmentation {
-        asset: AssetCode,
+        asset: AssetId,
         amount: u64,
         suggested_amount: u64,
         max_records: usize,
     },
     TooManyOutputs {
-        asset: AssetCode,
+        asset: AssetId,
         max_records: usize,
         num_receivers: usize,
         num_change_records: usize,
     },
     InvalidSize {
-        asset: AssetCode,
+        asset: AssetId,
         num_inputs_required: usize,
         num_inputs_actual: usize,
         num_outputs_required: usize,
@@ -95,6 +95,7 @@ pub enum TransactionError {
 #[ser_test(arbitrary, ark(false))]
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Hash)]
 pub struct RecordInfo {
+    pub asset: AssetId,
     pub ro: RecordOpening,
     pub uid: u64,
     pub nullifier: Nullifier,
@@ -119,8 +120,10 @@ impl RecordInfo {
 
 impl<'a> Arbitrary<'a> for RecordInfo {
     fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
+        let ro: RecordOpening = u.arbitrary::<ArbitraryRecordOpening>()?.into();
         Ok(Self {
-            ro: u.arbitrary::<ArbitraryRecordOpening>()?.into(),
+            asset: (&ro.asset_def).into(),
+            ro,
             uid: u.arbitrary()?,
             nullifier: u.arbitrary::<ArbitraryNullifier>()?.into(),
             hold_until: u.arbitrary()?,
@@ -138,7 +141,7 @@ pub struct RecordDatabase {
     // record (size, uid) indexed by asset type, owner, and freeze status, for easy allocation as
     // transfer or freeze inputs. The records for each asset are ordered by increasing size, which
     // makes it easy to implement a worst-fit allocator that minimizes fragmentation.
-    asset_records: HashMap<(AssetCode, UserAddress, FreezeFlag), BTreeSet<(u64, u64)>>,
+    asset_records: HashMap<(AssetId, UserAddress, FreezeFlag), BTreeSet<(u64, u64)>>,
     // record uids indexed by nullifier, for easy removal when confirmed as transfer inputs
     nullifier_records: HashMap<Nullifier, u64>,
 }
@@ -150,7 +153,7 @@ impl RecordDatabase {
         for (uid, record) in &self.record_info {
             assert_eq!(*uid, record.uid);
             assert!(self.asset_records[&(
-                record.ro.asset_def.code,
+                record.asset,
                 record.ro.pub_key.address(),
                 record.ro.freeze_flag
             )]
@@ -174,13 +177,13 @@ impl RecordDatabase {
     /// Find records which can be the input to a transaction, matching the given parameters.
     pub fn input_records<'a>(
         &'a self,
-        asset: &AssetCode,
+        asset: AssetId,
         owner: &UserAddress,
         frozen: FreezeFlag,
         now: u64,
     ) -> impl Iterator<Item = &'a RecordInfo> {
         self.asset_records
-            .get(&(*asset, owner.clone(), frozen))
+            .get(&(asset, owner.clone(), frozen))
             .into_iter()
             .flatten()
             .rev()
@@ -198,13 +201,13 @@ impl RecordDatabase {
     /// matching the given parameters.
     pub fn input_record_with_amount(
         &self,
-        asset: &AssetCode,
+        asset: AssetId,
         owner: &UserAddress,
         frozen: FreezeFlag,
         amount: u64,
         now: u64,
     ) -> Option<&RecordInfo> {
-        let unspent_records = self.asset_records.get(&(*asset, owner.clone(), frozen))?;
+        let unspent_records = self.asset_records.get(&(asset, owner.clone(), frozen))?;
         let exact_matches = unspent_records.range((amount, 0)..(amount + 1, 0));
         for (match_amount, uid) in exact_matches {
             assert_eq!(*match_amount, amount);
@@ -246,6 +249,7 @@ impl RecordDatabase {
 
     pub fn insert_with_nullifier(&mut self, ro: RecordOpening, uid: u64, nullifier: Nullifier) {
         self.insert_record(RecordInfo {
+            asset: (&ro.asset_def).into(),
             ro,
             uid,
             nullifier,
@@ -259,11 +263,7 @@ impl RecordDatabase {
             return;
         }
         self.asset_records
-            .entry((
-                rec.ro.asset_def.code,
-                rec.ro.pub_key.address(),
-                rec.ro.freeze_flag,
-            ))
+            .entry((rec.asset, rec.ro.pub_key.address(), rec.ro.freeze_flag))
             .or_insert_with(BTreeSet::new)
             .insert((rec.ro.amount, rec.uid));
         self.nullifier_records.insert(rec.nullifier, rec.uid);
@@ -279,7 +279,7 @@ impl RecordDatabase {
             // Remove the record from `asset_records`, and if the sub-collection it was in becomes
             // empty, remove the whole collection.
             let asset_key = &(
-                record.ro.asset_def.code,
+                record.asset,
                 record.ro.pub_key.address(),
                 record.ro.freeze_flag,
             );
@@ -721,7 +721,7 @@ where
 #[serde(bound = "")]
 pub struct TransactionHistoryEntry<L: Ledger> {
     pub time: DateTime<Local>,
-    pub asset: AssetCode,
+    pub asset: AssetId,
     pub kind: TransactionKind<L>,
     pub hash: Option<TransactionHash<L>>,
     // If we sent this transaction, `senders` records the addresses of the spending keys used to
@@ -753,7 +753,7 @@ where
     fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
         Ok(Self {
             time: Local::now(),
-            asset: AssetCode::native(),
+            asset: AssetId::native(),
             kind: TransactionKind::<L>::send(),
             hash: u.arbitrary()?,
             senders: u
@@ -859,7 +859,7 @@ pub struct TransferSpec<'a> {
     /// The list may contain multiple key_pairs, or only one key_pair in which case only the
     /// associated records can be transferred.
     pub sender_key_pairs: &'a Vec<UserKeyPair>,
-    pub asset: &'a AssetCode,
+    pub asset: &'a AssetInfo,
     pub receivers: &'a [(UserPubKey, u64, bool)],
     pub fee: u64,
     pub bound_data: Vec<u8>,
@@ -925,7 +925,7 @@ where
 }
 
 impl<L: Ledger> TransactionState<L> {
-    pub fn balance(&self, asset: &AssetCode, pub_key: &UserPubKey, frozen: FreezeFlag) -> u64 {
+    pub fn balance(&self, asset: AssetId, pub_key: &UserPubKey, frozen: FreezeFlag) -> u64 {
         self.records
             .input_records(asset, &pub_key.address(), frozen, self.validator.now())
             .map(|record| record.ro.amount)
@@ -1024,7 +1024,7 @@ impl<L: Ledger> TransactionState<L> {
         proving_keys: &'k KeySet<TransferProvingKey<'a>, key_set::OrderByOutputs>,
         rng: &mut ChaChaRng,
     ) -> Result<(TransferNote, TransactionInfo<L>), TransactionError> {
-        if *spec.asset == AssetCode::native() {
+        if spec.asset.is_native() {
             self.transfer_native(spec, proving_keys, rng)
         } else {
             self.transfer_non_native(spec, proving_keys, rng)
@@ -1045,7 +1045,7 @@ impl<L: Ledger> TransactionState<L> {
 
         // find input records which account for at least the total amount, and possibly some change.
         let records = self.find_records(
-            &AssetCode::native(),
+            AssetId::native(),
             spec.sender_key_pairs,
             FreezeFlag::Unfrozen,
             total_output_amount,
@@ -1084,7 +1084,7 @@ impl<L: Ledger> TransactionState<L> {
             rng,
             records[0].0.pub_key(),
             proving_keys,
-            &AssetDefinition::native(),
+            &AssetInfo::native::<L>(),
             &mut inputs,
             &mut outputs,
             spec.xfr_size_requirement,
@@ -1135,7 +1135,7 @@ impl<L: Ledger> TransactionState<L> {
             .collect::<Vec<UserAddress>>();
         let history = TransactionHistoryEntry {
             time: Local::now(),
-            asset: AssetCode::native(),
+            asset: AssetId::native(),
             kind: TransactionKind::<L>::send(),
             hash: None,
             senders: owner_addresses.clone(),
@@ -1167,11 +1167,7 @@ impl<L: Ledger> TransactionState<L> {
         proving_keys: &'k KeySet<TransferProvingKey<'a>, key_set::OrderByOutputs>,
         rng: &mut ChaChaRng,
     ) -> Result<(TransferNote, TransactionInfo<L>), TransactionError> {
-        assert_ne!(
-            *spec.asset,
-            AssetCode::native(),
-            "call `transfer_native()` instead"
-        );
+        assert!(!spec.asset.is_native(), "call `transfer_native()` instead");
         let total_output_amount: u64 = spec
             .receivers
             .iter()
@@ -1179,14 +1175,12 @@ impl<L: Ledger> TransactionState<L> {
 
         // find input records of the asset type to spend (this does not include the fee input)
         let records = self.find_records(
-            spec.asset,
+            spec.asset.id,
             spec.sender_key_pairs,
             FreezeFlag::Unfrozen,
             total_output_amount,
             None,
         )?;
-
-        let asset = records[0].1[0].0.asset_def.clone();
 
         let mut inputs = Vec::new();
         let mut input_ros = Vec::new();
@@ -1210,7 +1204,7 @@ impl<L: Ledger> TransactionState<L> {
                 change_ro = Some(RecordOpening::new(
                     rng,
                     *change,
-                    asset.clone(),
+                    spec.asset.definition.clone(),
                     me,
                     FreezeFlag::Unfrozen,
                 ));
@@ -1221,7 +1215,7 @@ impl<L: Ledger> TransactionState<L> {
             .iter()
             .find_map(|key| self.find_fee_input(key, spec.fee).ok())
             .ok_or(TransactionError::InsufficientBalance {
-                asset: AssetCode::native(),
+                asset: AssetId::native(),
                 required: spec.fee,
                 actual: 0,
             })?;
@@ -1232,7 +1226,7 @@ impl<L: Ledger> TransactionState<L> {
             outputs.push(RecordOpening::new(
                 rng,
                 *amount,
-                asset.clone(),
+                spec.asset.definition.clone(),
                 pub_key.clone(),
                 FreezeFlag::Unfrozen,
             ));
@@ -1246,7 +1240,7 @@ impl<L: Ledger> TransactionState<L> {
             rng,
             records[0].0.pub_key(),
             proving_keys,
-            &asset,
+            spec.asset,
             &mut inputs,
             &mut outputs,
             spec.xfr_size_requirement,
@@ -1302,7 +1296,7 @@ impl<L: Ledger> TransactionState<L> {
             .collect::<Vec<UserAddress>>();
         let history = TransactionHistoryEntry {
             time: Local::now(),
-            asset: asset.code,
+            asset: spec.asset.id,
             kind: TransactionKind::<L>::send(),
             hash: None,
             senders: owner_addresses.clone(),
@@ -1366,15 +1360,15 @@ impl<L: Ledger> TransactionState<L> {
         minter_key_pair: &UserKeyPair,
         proving_key: &MintProvingKey<'a>,
         fee: u64,
-        asset: &(AssetDefinition, AssetCodeSeed, Vec<u8>),
+        asset: &AssetInfo,
         amount: u64,
         receiver: UserPubKey,
         rng: &mut ChaChaRng,
     ) -> Result<(MintNote, TransactionInfo<L>), TransactionError> {
-        let (asset_def, seed, asset_description) = asset;
+        let MintInfo { description, seed } = asset.mint_info.as_ref().unwrap();
         let mint_record = RecordOpening {
             amount,
-            asset_def: asset_def.clone(),
+            asset_def: asset.definition.clone(),
             pub_key: receiver.clone(),
             freeze_flag: FreezeFlag::Unfrozen,
             blind: BlindFactor::rand(rng),
@@ -1388,7 +1382,7 @@ impl<L: Ledger> TransactionState<L> {
             rng,
             mint_record.clone(),
             *seed,
-            asset_description.as_slice(),
+            description.as_slice(),
             fee_info,
             proving_key,
         )
@@ -1399,7 +1393,7 @@ impl<L: Ledger> TransactionState<L> {
         // Build auxiliary info.
         let history = TransactionHistoryEntry {
             time: Local::now(),
-            asset: asset_def.code,
+            asset: asset.id,
             kind: TransactionKind::<L>::mint(),
             hash: None,
             senders: vec![minter_key_pair.address()],
@@ -1428,7 +1422,7 @@ impl<L: Ledger> TransactionState<L> {
         freezer_key_pair: &FreezerKeyPair,
         proving_keys: &KeySet<FreezeProvingKey<'a>, key_set::OrderByOutputs>,
         fee: u64,
-        asset: &AssetDefinition,
+        asset: &AssetInfo,
         amount: u64,
         owner: UserAddress,
         outputs_frozen: FreezeFlag,
@@ -1439,14 +1433,8 @@ impl<L: Ledger> TransactionState<L> {
             FreezeFlag::Frozen => FreezeFlag::Unfrozen,
             FreezeFlag::Unfrozen => FreezeFlag::Frozen,
         };
-        let (input_records, _) = self.find_records_with_pub_key(
-            &asset.code,
-            &owner,
-            inputs_frozen,
-            amount,
-            None,
-            false,
-        )?;
+        let (input_records, _) =
+            self.find_records_with_pub_key(asset.id, &owner, inputs_frozen, amount, None, false)?;
 
         // prepare inputs
         let mut inputs = vec![];
@@ -1477,7 +1465,7 @@ impl<L: Ledger> TransactionState<L> {
         // Build auxiliary info.
         let history = TransactionHistoryEntry {
             time: Local::now(),
-            asset: asset.code,
+            asset: asset.id,
             kind: match outputs_frozen {
                 FreezeFlag::Frozen => TransactionKind::<L>::freeze(),
                 FreezeFlag::Unfrozen => TransactionKind::<L>::unfreeze(),
@@ -1564,7 +1552,7 @@ impl<L: Ledger> TransactionState<L> {
     #[allow(clippy::type_complexity)]
     fn find_records_with_pub_key(
         &self,
-        asset: &AssetCode,
+        asset: AssetId,
         owner: &UserAddress,
         frozen: FreezeFlag,
         amount: u64,
@@ -1604,7 +1592,7 @@ impl<L: Ledger> TransactionState<L> {
                     // Automatically merging assets would implicitly incur extra transaction fees,
                     // so for now we do the simple, uncontroversial thing and error out.
                     return Err(TransactionError::Fragmentation {
-                        asset: *asset,
+                        asset,
                         amount,
                         suggested_amount: current_amount,
                         max_records,
@@ -1622,7 +1610,7 @@ impl<L: Ledger> TransactionState<L> {
             Ok((result, (current_amount as i64 - amount as i64)))
         } else {
             Err(TransactionError::InsufficientBalance {
-                asset: *asset,
+                asset,
                 required: amount,
                 actual: current_amount,
             })
@@ -1632,7 +1620,7 @@ impl<L: Ledger> TransactionState<L> {
     #[allow(clippy::type_complexity)]
     fn find_records(
         &self,
-        asset: &AssetCode,
+        asset: AssetId,
         owner_key_pairs: &[UserKeyPair],
         frozen: FreezeFlag,
         amount: u64,
@@ -1662,7 +1650,7 @@ impl<L: Ledger> TransactionState<L> {
         }
 
         Err(TransactionError::InsufficientBalance {
-            asset: *asset,
+            asset,
             required: amount,
             actual: amount - target_amount,
         })
@@ -1676,7 +1664,7 @@ impl<L: Ledger> TransactionState<L> {
     ) -> Result<FeeInput<'l>, TransactionError> {
         let (ro, uid) = self
             .find_records_with_pub_key(
-                &AssetCode::native(),
+                AssetId::native(),
                 &owner_key_pair.pub_key().address(),
                 FreezeFlag::Unfrozen,
                 fee,
@@ -1717,7 +1705,7 @@ impl<L: Ledger> TransactionState<L> {
         rng: &mut ChaChaRng,
         any_key: UserPubKey,
         proving_keys: &'k KeySet<TransferProvingKey<'a>, key_set::OrderByOutputs>,
-        asset: &AssetDefinition,
+        asset: &AssetInfo,
         inputs: &mut Vec<TransferNoteInput<'k>>,
         outputs: &mut Vec<RecordOpening>,
         xfr_size_requirement: Option<(usize, usize)>,
@@ -1725,11 +1713,7 @@ impl<L: Ledger> TransactionState<L> {
     ) -> Result<(&'k TransferProvingKey<'a>, usize), TransactionError> {
         let total_output_amount = outputs.iter().map(|ro| ro.amount).sum();
         // non-native transfers have an extra fee input, which is not included in `inputs`.
-        let fee_inputs = if *asset == AssetDefinition::native() {
-            0
-        } else {
-            1
-        };
+        let fee_inputs = if asset.is_native() { 0 } else { 1 };
         // both native and non-native transfers have an extra fee change output which is
         // automatically generated and not included in `outputs`.
         let fee_outputs = 1;
@@ -1740,7 +1724,7 @@ impl<L: Ledger> TransactionState<L> {
             Some((input_size, output_size)) => {
                 if (input_size, output_size) != (min_num_inputs, min_num_outputs) {
                     return Err(TransactionError::InvalidSize {
-                        asset: asset.code,
+                        asset: asset.id,
                         num_inputs_required: input_size,
                         num_inputs_actual: min_num_inputs,
                         num_outputs_required: output_size,
@@ -1763,7 +1747,7 @@ impl<L: Ledger> TransactionState<L> {
                             // If there is a key that can fit the correct number of outputs had we only
                             // managed to find fewer inputs, call this a fragmentation error.
                             TransactionError::Fragmentation {
-                                asset: asset.code,
+                                asset: asset.id,
                                 amount: total_output_amount,
                                 suggested_amount: inputs
                                     .iter()
@@ -1776,7 +1760,7 @@ impl<L: Ledger> TransactionState<L> {
                             // Otherwise, we just have too many outputs for any of our available keys. There
                             // is nothing we can do about that on the transaction builder side.
                             TransactionError::TooManyOutputs {
-                                asset: asset.code,
+                                asset: asset.id,
                                 max_records: max_outputs,
                                 num_receivers: outputs.len() - change_record as usize,
                                 num_change_records: 1 + change_record as usize,
@@ -1792,7 +1776,7 @@ impl<L: Ledger> TransactionState<L> {
                         outputs.push(RecordOpening::new(
                             rng,
                             0,
-                            asset.clone(),
+                            asset.definition.clone(),
                             any_key.clone(),
                             FreezeFlag::Unfrozen,
                         ));
@@ -1814,7 +1798,7 @@ impl<L: Ledger> TransactionState<L> {
     fn freeze_proving_key<'a, 'k>(
         rng: &mut ChaChaRng,
         proving_keys: &'k KeySet<FreezeProvingKey<'a>, key_set::OrderByOutputs>,
-        asset: &AssetDefinition,
+        asset: &AssetInfo,
         inputs: &mut Vec<FreezeNoteInput<'k>>,
         key_pair: &'k FreezerKeyPair,
     ) -> Result<&'k FreezeProvingKey<'a>, TransactionError> {
@@ -1826,7 +1810,7 @@ impl<L: Ledger> TransactionState<L> {
             .best_fit_key(num_inputs, num_outputs)
             .map_err(|(max_inputs, _)| {
                 TransactionError::Fragmentation {
-                    asset: asset.code,
+                    asset: asset.id,
                     amount: total_output_amount,
                     suggested_amount: inputs
                         .iter()

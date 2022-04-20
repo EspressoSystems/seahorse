@@ -408,10 +408,10 @@ pub fn receive_history_entry<L: Ledger>(
         kind
     };
 
-    let txn_asset = last_record.asset_def.code;
+    let txn_asset = &last_record.asset_def;
     TransactionHistoryEntry {
         time: Local::now(),
-        asset: txn_asset,
+        asset: txn_asset.into(),
         kind,
         hash,
         // When we receive transactions, we can't tell from the protocol who sent it to us.
@@ -419,7 +419,7 @@ pub fn receive_history_entry<L: Ledger>(
         receivers: records
             .iter()
             .filter_map(|ro| {
-                if ro.asset_def.code == txn_asset {
+                if &ro.asset_def == txn_asset {
                     Some((ro.pub_key.address(), ro.amount))
                 } else {
                     // Ignore records of the wrong asset type (e.g. the fee change output for a non-

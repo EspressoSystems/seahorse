@@ -21,8 +21,8 @@ use crate::{
     io::SharedIO,
     loader::{Loader, LoaderMetadata, WalletLoader},
     reader::Reader,
-    AssetInfo, BincodeSnafu, IoSnafu, TransactionReceipt, TransactionStatus, WalletBackend,
-    WalletError,
+    AssetId, AssetInfo, BincodeSnafu, IoSnafu, TransactionReceipt, TransactionStatus,
+    WalletBackend, WalletError,
 };
 use async_std::task::block_on;
 use async_trait::async_trait;
@@ -161,7 +161,7 @@ macro_rules! cli_input_from_str {
 }
 
 cli_input_from_str! {
-    bool, u64, String, AssetCode, AssetInfo, AuditorPubKey, FreezerPubKey, UserAddress,
+    bool, u64, String, AssetCode, AssetId, AssetInfo, AuditorPubKey, FreezerPubKey, UserAddress,
     PathBuf, ReceiverMemo, RecordCommitment, MerklePath, EventIndex
 }
 
@@ -328,7 +328,7 @@ impl<'a, C: CLI<'a>, T: Listable<'a, C> + CLIInput<'a, C>> CLIInput<'a, C> for L
 }
 
 #[async_trait]
-impl<'a, C: CLI<'a>> Listable<'a, C> for AssetCode {
+impl<'a, C: CLI<'a>> Listable<'a, C> for AssetId {
     async fn list(wallet: &mut Wallet<'a, C>) -> Vec<ListItem<Self>> {
         // Get our viewing and freezing keys so we can check if the asset types are
         // viewable/freezable.
@@ -343,7 +343,7 @@ impl<'a, C: CLI<'a>> Listable<'a, C> for AssetCode {
             .enumerate()
             .map(|(index, asset)| ListItem {
                 index,
-                annotation: if asset.definition.code == AssetCode::native() {
+                annotation: if asset.is_native() {
                     Some(String::from("native"))
                 } else {
                     // Annotate the listing with attributes indicating whether the asset is
@@ -365,7 +365,7 @@ impl<'a, C: CLI<'a>> Listable<'a, C> for AssetCode {
                         Some(attributes)
                     }
                 },
-                item: asset.definition.code,
+                item: asset.id,
             })
             .collect()
     }
@@ -399,7 +399,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             "list assets known to the wallet",
             C,
             |io, wallet| {
-                for item in <AssetCode as Listable<C>>::list(wallet).await {
+                for item in <AssetId as Listable<C>>::list(wallet).await {
                     cli_writeln!(io, "{}", item);
                 }
                 cli_writeln!(io, "(v=viewable, f=freezeable, m=mintable)");
@@ -409,7 +409,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             asset,
             "print information about an asset",
             C,
-            |io, wallet, asset: ListItem<AssetCode>| {
+            |io, wallet, asset: ListItem<AssetId>| {
                 let asset = match wallet.asset(asset.item).await {
                     Some(asset) => asset.clone(),
                     None => {
@@ -421,7 +421,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                 // Try to format the asset description as human-readable as possible.
                 let desc = if let Some(mint_info) = &asset.mint_info {
                     mint_info.fmt_description()
-                } else if asset.definition.code == AssetCode::native() {
+                } else if asset.is_native() {
                     String::from("Native")
                 } else {
                     String::from("Asset")
@@ -456,7 +456,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                 // Print the minter, noting if it is us.
                 if asset.mint_info.is_some() {
                     cli_writeln!(io, "Minter: me");
-                } else if asset.definition.code == AssetCode::native() {
+                } else if asset.is_native() {
                     cli_writeln!(io, "Not mintable");
                 } else {
                     cli_writeln!(io, "Minter: unknown");
@@ -467,20 +467,20 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             balance,
             "print owned balances of asset",
             C,
-            |io, wallet, asset: ListItem<AssetCode>| {
+            |io, wallet, asset: ListItem<AssetId>| {
                 cli_writeln!(io, "Address Balance");
                 for pub_key in wallet.pub_keys().await {
                     cli_writeln!(
                         io,
                         "{} {}",
                         UserAddress(pub_key.address()),
-                        wallet.balance_breakdown(&pub_key.address(), &asset.item).await
+                        wallet.balance_breakdown(&pub_key.address(), asset.item).await
                     );
                 }
                 cli_writeln!(
                     io,
                     "Total {}",
-                    wallet.balance(&asset.item).await
+                    wallet.balance(asset.item).await
                 );
             }
         ),
@@ -488,8 +488,8 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             transfer,
             "transfer some owned assets to another user",
             C,
-            |io, wallet, asset: ListItem<AssetCode>, to: UserAddress, amount: u64, fee: u64; wait: Option<bool>| {
-                let res = wallet.transfer(None, &asset.item, &[(to.0, amount)], fee).await;
+            |io, wallet, asset: ListItem<AssetId>, to: UserAddress, amount: u64, fee: u64; wait: Option<bool>| {
+                let res = wallet.transfer(None, asset.item, &[(to.0, amount)], fee).await;
                 finish_transaction::<C>(io, wallet, res, wait, "transferred").await;
             }
         ),
@@ -497,8 +497,8 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             transfer_from,
             "transfer some assets from an owned address to another user",
             C,
-            |io, wallet, asset: ListItem<AssetCode>, from: UserAddress, to: UserAddress, amount: u64, fee: u64; wait: Option<bool>| {
-                let res = wallet.transfer(Some(&from.0), &asset.item, &[(to.0, amount)], fee).await;
+            |io, wallet, asset: ListItem<AssetId>, from: UserAddress, to: UserAddress, amount: u64, fee: u64; wait: Option<bool>| {
+                let res = wallet.transfer(Some(&from.0), asset.item, &[(to.0, amount)], fee).await;
                 finish_transaction::<C>(io, wallet, res, wait, "transferred").await;
             }
         ),
@@ -561,8 +561,8 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             mint,
             "mint an asset",
             C,
-            |io, wallet, asset: ListItem<AssetCode>, from: UserAddress, to: UserAddress, amount: u64, fee: u64; wait: Option<bool>| {
-                let res = wallet.mint(&from.0, fee, &asset.item, amount, to.0).await;
+            |io, wallet, asset: ListItem<AssetId>, from: UserAddress, to: UserAddress, amount: u64, fee: u64; wait: Option<bool>| {
+                let res = wallet.mint(&from.0, fee, asset.item, amount, to.0).await;
                 finish_transaction::<C>(io, wallet, res, wait, "minted").await;
             }
         ),
@@ -570,10 +570,10 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             freeze,
             "freeze assets owned by another users",
             C,
-            |io, wallet, asset: ListItem<AssetCode>, fee_account: UserAddress, target: UserAddress,
+            |io, wallet, asset: ListItem<AssetId>, fee_account: UserAddress, target: UserAddress,
              amount: u64, fee: u64; wait: Option<bool>|
             {
-                let res = wallet.freeze(&fee_account.0, fee, &asset.item, amount, target.0).await;
+                let res = wallet.freeze(&fee_account.0, fee, asset.item, amount, target.0).await;
                 finish_transaction::<C>(io, wallet, res, wait, "frozen").await;
             }
         ),
@@ -581,10 +581,10 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             unfreeze,
             "unfreeze previously frozen assets owned by another users",
             C,
-            |io, wallet, asset: ListItem<AssetCode>, fee_account: UserAddress, target: UserAddress,
+            |io, wallet, asset: ListItem<AssetId>, fee_account: UserAddress, target: UserAddress,
              amount: u64, fee: u64; wait: Option<bool>|
             {
-                let res = wallet.unfreeze(&fee_account.0, fee, &asset.item, amount, target.0).await;
+                let res = wallet.unfreeze(&fee_account.0, fee, asset.item, amount, target.0).await;
                 finish_transaction::<C>(io, wallet, res, wait, "unfrozen").await;
             }
         ),
@@ -610,7 +610,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                                 }
                             };
                             // Try to get a readable name for the asset.
-                            let asset = if txn.asset == AssetCode::native() {
+                            let asset = if txn.asset == AssetId::native() {
                                 String::from("Native")
                             } else if let Some(AssetInfo {
                                 mint_info: Some(mint_info),
@@ -812,11 +812,11 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             view,
             "list unspent records of viewable asset types",
             C,
-            |io, wallet, asset: ListItem<AssetCode>; account: Option<UserAddress>| {
+            |io, wallet, asset: ListItem<AssetId>; account: Option<UserAddress>| {
                 let records = wallet
                     .records()
                     .await
-                    .filter(|rec| rec.ro.asset_def.code == asset.item && match &account {
+                    .filter(|rec| rec.asset == asset.item && match &account {
                         Some(address) => rec.ro.pub_key.address() == address.0,
                         None => true
                     });
