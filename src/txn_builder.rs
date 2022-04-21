@@ -18,7 +18,7 @@ use espresso_macros::ser_test;
 use jf_cap::{
     errors::TxnApiError,
     freeze::{FreezeNote, FreezeNoteInput},
-    keys::{AuditorPubKey, FreezerKeyPair, FreezerPubKey, UserAddress, UserKeyPair, UserPubKey},
+    keys::{ViewerPubKey, FreezerKeyPair, FreezerPubKey, UserAddress, UserKeyPair, UserPubKey},
     mint::MintNote,
     proof::freeze::FreezeProvingKey,
     proof::{mint::MintProvingKey, transfer::TransferProvingKey},
@@ -83,8 +83,8 @@ pub enum TransactionError {
         source: TxnApiError,
     },
     InvalidAuditorKey {
-        my_key: AuditorPubKey,
-        asset_key: AuditorPubKey,
+        my_key: ViewerPubKey,
+        asset_key: ViewerPubKey,
     },
     InvalidFreezerKey {
         my_key: FreezerPubKey,

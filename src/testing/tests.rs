@@ -45,7 +45,7 @@ pub async fn test_keystore_freeze_unregistered() -> std::io::Result<()> {
 
     let asset = {
         let mut rng = ChaChaRng::from_seed([42u8; 32]);
-        let audit_key = AuditorKeyPair::generate(&mut rng);
+        let audit_key = ViewerKeyPair::generate(&mut rng);
         let freeze_key = FreezerKeyPair::generate(&mut rng);
         let policy = AssetPolicy::default()
             .set_auditor_pub_key(audit_key.pub_key())
@@ -481,7 +481,7 @@ pub mod generic_keystore_tests {
             AssetDefinition::native()
         } else {
             let mut rng = ChaChaRng::from_seed([42u8; 32]);
-            let audit_key = AuditorKeyPair::generate(&mut rng);
+            let audit_key = ViewerKeyPair::generate(&mut rng);
             let freeze_key = FreezerKeyPair::generate(&mut rng);
             let policy = AssetPolicy::default()
                 .set_auditor_pub_key(audit_key.pub_key())
@@ -822,7 +822,7 @@ pub mod generic_keystore_tests {
 
         let asset = {
             let mut rng = ChaChaRng::from_seed([42u8; 32]);
-            let audit_key = AuditorKeyPair::generate(&mut rng);
+            let audit_key = ViewerKeyPair::generate(&mut rng);
             let freeze_key = FreezerKeyPair::generate(&mut rng);
             let policy = AssetPolicy::default()
                 .set_auditor_pub_key(audit_key.pub_key())

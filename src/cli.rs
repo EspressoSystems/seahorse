@@ -29,7 +29,7 @@ use async_trait::async_trait;
 use fmt::{Display, Formatter};
 use futures::future::BoxFuture;
 use jf_cap::{
-    keys::{AuditorKeyPair, AuditorPubKey, FreezerKeyPair, FreezerPubKey, UserKeyPair},
+    keys::{ViewerKeyPair, ViewerPubKey, FreezerKeyPair, FreezerPubKey, UserKeyPair},
     proof::UniversalParam,
     structs::{AssetCode, AssetPolicy, FreezeFlag, ReceiverMemo, RecordCommitment},
 };
@@ -161,7 +161,7 @@ macro_rules! cli_input_from_str {
 }
 
 cli_input_from_str! {
-    bool, u64, String, AssetCode, AssetInfo, AuditorPubKey, FreezerPubKey, UserAddress,
+    bool, u64, String, AssetCode, AssetInfo, ViewerPubKey, FreezerPubKey, UserAddress,
     PathBuf, ReceiverMemo, RecordCommitment, MerklePath, EventIndex
 }
 
@@ -506,7 +506,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             create_asset,
             "create a new asset",
             C,
-            |io, keystore, desc: String; name: Option<String>, viewing_key: Option<AuditorPubKey>,
+            |io, keystore, desc: String; name: Option<String>, viewing_key: Option<ViewerPubKey>,
              freezing_key: Option<FreezerPubKey>, view_amount: Option<bool>,
              view_address: Option<bool>, view_blind: Option<bool>, viewing_threshold: Option<u64>|
             {
@@ -734,7 +734,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
 
                 let description = description.unwrap_or_default();
                 match key_type {
-                    KeyType::Viewing => match bincode::deserialize::<AuditorKeyPair>(&bytes) {
+                    KeyType::Viewing => match bincode::deserialize::<ViewerKeyPair>(&bytes) {
                         Ok(key) => match keystore.add_audit_key(key.clone(), description).await {
                             Ok(()) => cli_writeln!(io, "{}", key.pub_key()),
                             Err(err) => cli_writeln!(io, "Error saving viewing key: {}", err),

@@ -61,7 +61,7 @@ use jf_cap::{
     errors::TxnApiError,
     freeze::FreezeNote,
     keys::{
-        AuditorKeyPair, AuditorPubKey, FreezerKeyPair, FreezerPubKey, UserAddress, UserKeyPair,
+        ViewerKeyPair, ViewerPubKey, FreezerKeyPair, FreezerPubKey, UserAddress, UserKeyPair,
         UserPubKey,
     },
     mint::MintNote,
@@ -163,7 +163,7 @@ pub enum KeystoreError<L: Ledger> {
         key: FreezerPubKey,
     },
     InvalidAuditorKey {
-        key: AuditorPubKey,
+        key: ViewerPubKey,
     },
 }
 
@@ -240,7 +240,7 @@ pub struct KeystoreState<'a, L: Ledger> {
     /// HD key generation state.
     pub key_state: KeyStreamState,
     /// Viewing keys.
-    pub viewing_accounts: HashMap<AuditorPubKey, Account<L, AuditorKeyPair>>,
+    pub viewing_accounts: HashMap<ViewerPubKey, Account<L, ViewerKeyPair>>,
     /// Freezing keys.
     pub freezing_accounts: HashMap<FreezerPubKey, Account<L, FreezerKeyPair>>,
     /// Sending keys, for spending owned records and receiving new records.
@@ -1461,7 +1461,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
     async fn add_audit_key(
         &mut self,
         session: &mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>>,
-        audit_key: AuditorKeyPair,
+        audit_key: ViewerKeyPair,
         description: String,
     ) -> Result<(), KeystoreError<L>> {
         if self.viewing_accounts.contains_key(&audit_key.pub_key()) {
@@ -1950,7 +1950,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + KeystoreBackend<'a, L> + Send + Sync
     }
 
     /// List viewing keys.
-    pub async fn auditor_pub_keys(&self) -> Vec<AuditorPubKey> {
+    pub async fn auditor_pub_keys(&self) -> Vec<ViewerPubKey> {
         let KeystoreSharedState { state, .. } = &*self.mutex.lock().await;
         state.viewing_accounts.keys().cloned().collect()
     }
@@ -1992,8 +1992,8 @@ impl<'a, L: 'static + Ledger, Backend: 'a + KeystoreBackend<'a, L> + Send + Sync
     /// Get auditing private key
     pub async fn get_auditor_private_key(
         &self,
-        pub_key: &AuditorPubKey,
-    ) -> Result<AuditorKeyPair, KeystoreError<L>> {
+        pub_key: &ViewerPubKey,
+    ) -> Result<ViewerKeyPair, KeystoreError<L>> {
         let KeystoreSharedState { state, .. } = &*self.mutex.lock().await;
         match state.viewing_accounts.get(pub_key) {
             Some(account) => Ok(account.key.clone()),
@@ -2031,8 +2031,8 @@ impl<'a, L: 'static + Ledger, Backend: 'a + KeystoreBackend<'a, L> + Send + Sync
     /// Get information about a viewing account.
     pub async fn viewing_account(
         &self,
-        address: &AuditorPubKey,
-    ) -> Result<AccountInfo<AuditorKeyPair>, KeystoreError<L>> {
+        address: &ViewerPubKey,
+    ) -> Result<AccountInfo<ViewerKeyPair>, KeystoreError<L>> {
         let KeystoreSharedState { state, .. } = &*self.mutex.lock().await;
         let account = state.viewing_accounts.get(address).cloned().ok_or(
             KeystoreError::<L>::InvalidAuditorKey {
@@ -2317,7 +2317,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + KeystoreBackend<'a, L> + Send + Sync
     /// Add a viewing key to the keystore's key set.
     pub fn add_audit_key<'l>(
         &'l mut self,
-        audit_key: AuditorKeyPair,
+        audit_key: ViewerKeyPair,
         description: String,
     ) -> std::pin::Pin<Box<dyn SendFuture<'a, Result<(), KeystoreError<L>>> + 'l>>
     where
@@ -2333,7 +2333,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + KeystoreBackend<'a, L> + Send + Sync
     pub fn generate_audit_key<'l>(
         &'l mut self,
         description: String,
-    ) -> std::pin::Pin<Box<dyn SendFuture<'a, Result<AuditorPubKey, KeystoreError<L>>> + 'l>>
+    ) -> std::pin::Pin<Box<dyn SendFuture<'a, Result<ViewerPubKey, KeystoreError<L>>> + 'l>>
     where
         'a: 'l,
     {

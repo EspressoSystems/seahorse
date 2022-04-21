@@ -34,7 +34,7 @@ pub use crate::secret::Secret;
 
 pub use bip0039::Mnemonic;
 
-use jf_cap::keys::{AuditorKeyPair, FreezerKeyPair, UserKeyPair};
+use jf_cap::keys::{ViewerKeyPair, FreezerKeyPair, UserKeyPair};
 use rand_chacha::rand_core::SeedableRng;
 use rand_chacha::rand_core::{CryptoRng, RngCore};
 use rand_chacha::ChaChaRng;
@@ -194,8 +194,8 @@ impl KeyTree {
     }
 
     /// Derive a viewing key from the [KeyTree] with a certain id.
-    pub fn derive_auditor_key_pair(&self, id: &[u8]) -> AuditorKeyPair {
-        derive_key_pair!(self, "auditor key pair", id, AuditorKeyPair)
+    pub fn derive_auditor_key_pair(&self, id: &[u8]) -> ViewerKeyPair {
+        derive_key_pair!(self, "auditor key pair", id, ViewerKeyPair)
     }
 
     /// Derive a freezing key from the [KeyTree] with a certain id.
@@ -221,7 +221,7 @@ impl KeyTree {
     }
 
     /// The `n`th key pair in a viewing key stream.
-    pub fn viewing_key(&self, n: u64) -> AuditorKeyPair {
+    pub fn viewing_key(&self, n: u64) -> ViewerKeyPair {
         self.derive_auditor_key_pair(&n.to_le_bytes())
     }
 

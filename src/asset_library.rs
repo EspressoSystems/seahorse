@@ -24,7 +24,7 @@ use ark_serialize::*;
 use espresso_macros::ser_test;
 use image::{imageops, ImageFormat, ImageResult, RgbImage};
 use jf_cap::{
-    keys::AuditorPubKey,
+    keys::ViewerPubKey,
     structs::{AssetCode, AssetCodeSeed, AssetDefinition},
     BaseField, KeyPair, Signature, VerKey,
 };
@@ -450,12 +450,12 @@ pub struct AssetLibrary {
     // Map from auditable AssetCode to its definition.
     auditable: HashMap<AssetCode, AssetDefinition>,
     // Auditor keys, so we can tell when an asset is supposed to be in `auditable`.
-    audit_keys: HashSet<AuditorPubKey>,
+    audit_keys: HashSet<ViewerPubKey>,
 }
 
 impl AssetLibrary {
     /// Create an [AssetLibrary] with the given assets and viewing keys.
-    pub fn new(assets: Vec<AssetInfo>, audit_keys: HashSet<AuditorPubKey>) -> Self {
+    pub fn new(assets: Vec<AssetInfo>, audit_keys: HashSet<ViewerPubKey>) -> Self {
         // Create the library empty so that we can use `insert` to add the assets, which will ensure
         // that all of the data structures (assets, index, and auditable) are populated consistently.
         let mut lib = Self {
@@ -495,7 +495,7 @@ impl AssetLibrary {
     ///
     /// Any assets which were already in the library and can be viewed using this key will be marked
     /// as viewable.
-    pub fn add_audit_key(&mut self, key: AuditorPubKey) {
+    pub fn add_audit_key(&mut self, key: ViewerPubKey) {
         // Upon discovering a new audit key, we need to check if any existing assets have now become
         // auditable.
         for asset in &self.assets {

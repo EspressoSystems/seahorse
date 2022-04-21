@@ -24,7 +24,7 @@ use atomic_store::{
     AppendLog, AtomicStore, AtomicStoreLoader, RollingLog,
 };
 use espresso_macros::ser_test;
-use jf_cap::keys::{AuditorKeyPair, FreezerKeyPair, UserKeyPair};
+use jf_cap::keys::{ViewerKeyPair, FreezerKeyPair, UserKeyPair};
 use key_set::{OrderByOutputs, ProverKeySet};
 use rand_chacha::{rand_core::SeedableRng, ChaChaRng};
 use reef::*;
@@ -78,7 +78,7 @@ mod serde_ark_unchecked {
 struct KeystoreSnapshot<L: Ledger> {
     txn_state: TransactionState<L>,
     key_state: KeyStreamState,
-    viewing_accounts: Vec<Account<L, AuditorKeyPair>>,
+    viewing_accounts: Vec<Account<L, ViewerKeyPair>>,
     freezing_accounts: Vec<Account<L, FreezerKeyPair>>,
     sending_accounts: Vec<Account<L, UserKeyPair>>,
 }
@@ -479,7 +479,7 @@ mod tests {
     use chrono::Local;
     use commit::Commitment;
     use jf_cap::{
-        keys::{AuditorKeyPair, UserKeyPair},
+        keys::{ViewerKeyPair, UserKeyPair},
         sign_receiver_memos,
         structs::{
             AssetCode, AssetDefinition, FreezeFlag, ReceiverMemo, RecordCommitment, RecordOpening,
@@ -683,7 +683,7 @@ mod tests {
         let definition =
             AssetDefinition::new(AssetCode::random(&mut rng).0, Default::default()).unwrap();
         let asset = AssetInfo::from(definition);
-        let audit_key = AuditorKeyPair::generate(&mut rng);
+        let audit_key = ViewerKeyPair::generate(&mut rng);
         stored.assets.insert(asset.clone());
         stored.assets.add_audit_key(audit_key.pub_key());
         // Audit keys for the asset library get persisted with the audit accounts.
