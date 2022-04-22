@@ -61,7 +61,7 @@ jobs:
       - name: Test
         run: |
           cargo test --workspace --release --verbose -- -Zunstable-options --report-time --test-threads 2
-        timeout-minutes: 60
+        timeout-minutes: 90
 
       - name: Generate Documentation
         run: |
