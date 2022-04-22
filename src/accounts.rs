@@ -6,7 +6,7 @@ use crate::{
     AssetInfo,
 };
 use arbitrary::{Arbitrary, Unstructured};
-use arbitrary_wrappers::{ArbitraryAuditorKeyPair, ArbitraryFreezerKeyPair, ArbitraryUserKeyPair};
+use arbitrary_wrappers::{ArbitraryViewerKeyPair, ArbitraryFreezerKeyPair, ArbitraryUserKeyPair};
 use derivative::Derivative;
 use espresso_macros::ser_test;
 use jf_cap::{
@@ -87,7 +87,7 @@ where
 {
     fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
         Ok(Self {
-            key: u.arbitrary::<ArbitraryAuditorKeyPair>()?.into(),
+            key: u.arbitrary::<ArbitraryViewerKeyPair>()?.into(),
             description: u.arbitrary()?,
             used: u.arbitrary()?,
             scan: u.arbitrary()?,
