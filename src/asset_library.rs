@@ -447,22 +447,22 @@ pub struct AssetLibrary {
     assets: Vec<AssetInfo>,
     // Map from AssetCode to index in `assets`.
     index: HashMap<AssetCode, usize>,
-    // Map from auditable AssetCode to its definition.
-    auditable: HashMap<AssetCode, AssetDefinition>,
-    // Auditor keys, so we can tell when an asset is supposed to be in `auditable`.
-    audit_keys: HashSet<ViewerPubKey>,
+    // Map from viewable AssetCode to its definition.
+    viewable: HashMap<AssetCode, AssetDefinition>,
+    // Viewing keys, so we can tell when an asset is supposed to be in `viewable`.
+    viewing_keys: HashSet<ViewerPubKey>,
 }
 
 impl AssetLibrary {
     /// Create an [AssetLibrary] with the given assets and viewing keys.
-    pub fn new(assets: Vec<AssetInfo>, audit_keys: HashSet<ViewerPubKey>) -> Self {
+    pub fn new(assets: Vec<AssetInfo>, viewing_keys: HashSet<ViewerPubKey>) -> Self {
         // Create the library empty so that we can use `insert` to add the assets, which will ensure
-        // that all of the data structures (assets, index, and auditable) are populated consistently.
+        // that all of the data structures (assets, index, and viewable) are populated consistently.
         let mut lib = Self {
             assets: Default::default(),
             index: Default::default(),
-            auditable: Default::default(),
-            audit_keys,
+            viewable: Default::default(),
+            viewing_keys,
         };
 
         for asset in assets {
@@ -481,10 +481,10 @@ impl AssetLibrary {
         } else {
             self.index.insert(asset.definition.code, self.assets.len());
             if self
-                .audit_keys
-                .contains(asset.definition.policy_ref().auditor_pub_key())
+                .viewing_keys
+                .contains(asset.definition.policy_ref().viewer_pub_key())
             {
-                self.auditable
+                self.viewable
                     .insert(asset.definition.code, asset.definition.clone());
             }
             self.assets.push(asset);
@@ -495,21 +495,21 @@ impl AssetLibrary {
     ///
     /// Any assets which were already in the library and can be viewed using this key will be marked
     /// as viewable.
-    pub fn add_audit_key(&mut self, key: ViewerPubKey) {
-        // Upon discovering a new audit key, we need to check if any existing assets have now become
-        // auditable.
+    pub fn add_viewing_key(&mut self, key: ViewerPubKey) {
+        // Upon discovering a new viewing key, we need to check if any existing assets have now become
+        // viewable.
         for asset in &self.assets {
-            if asset.definition.policy_ref().auditor_pub_key() == &key {
-                self.auditable
+            if asset.definition.policy_ref().viewer_pub_key() == &key {
+                self.viewable
                     .insert(asset.definition.code, asset.definition.clone());
             }
         }
-        self.audit_keys.insert(key);
+        self.viewing_keys.insert(key);
     }
 
     /// List viewable assets.
-    pub fn auditable(&self) -> &HashMap<AssetCode, AssetDefinition> {
-        &self.auditable
+    pub fn viewable(&self) -> &HashMap<AssetCode, AssetDefinition> {
+        &self.viewable
     }
 
     /// Iterate over all assets in the library.

@@ -18,7 +18,7 @@ use espresso_macros::ser_test;
 use jf_cap::{
     errors::TxnApiError,
     freeze::{FreezeNote, FreezeNoteInput},
-    keys::{ViewerPubKey, FreezerKeyPair, FreezerPubKey, UserAddress, UserKeyPair, UserPubKey},
+    keys::{FreezerKeyPair, FreezerPubKey, UserAddress, UserKeyPair, UserPubKey, ViewerPubKey},
     mint::MintNote,
     proof::freeze::FreezeProvingKey,
     proof::{mint::MintProvingKey, transfer::TransferProvingKey},

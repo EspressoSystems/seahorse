@@ -6,13 +6,11 @@ use crate::{
     AssetInfo,
 };
 use arbitrary::{Arbitrary, Unstructured};
-use arbitrary_wrappers::{ArbitraryViewerKeyPair, ArbitraryFreezerKeyPair, ArbitraryUserKeyPair};
+use arbitrary_wrappers::{ArbitraryFreezerKeyPair, ArbitraryUserKeyPair, ArbitraryViewerKeyPair};
 use derivative::Derivative;
 use espresso_macros::ser_test;
 use jf_cap::{
-    keys::{
-        ViewerKeyPair, ViewerPubKey, FreezerKeyPair, FreezerPubKey, UserAddress, UserKeyPair,
-    },
+    keys::{FreezerKeyPair, FreezerPubKey, UserAddress, UserKeyPair, ViewerKeyPair, ViewerPubKey},
     structs::AssetCode,
     MerkleCommitment,
 };

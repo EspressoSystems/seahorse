@@ -24,7 +24,7 @@ use atomic_store::{
     AppendLog, AtomicStore, AtomicStoreLoader, RollingLog,
 };
 use espresso_macros::ser_test;
-use jf_cap::keys::{ViewerKeyPair, FreezerKeyPair, UserKeyPair};
+use jf_cap::keys::{FreezerKeyPair, UserKeyPair, ViewerKeyPair};
 use key_set::{OrderByOutputs, ProverKeySet};
 use rand_chacha::{rand_core::SeedableRng, ChaChaRng};
 use reef::*;
@@ -479,7 +479,7 @@ mod tests {
     use chrono::Local;
     use commit::Commitment;
     use jf_cap::{
-        keys::{ViewerKeyPair, UserKeyPair},
+        keys::{UserKeyPair, ViewerKeyPair},
         sign_receiver_memos,
         structs::{
             AssetCode, AssetDefinition, FreezeFlag, ReceiverMemo, RecordCommitment, RecordOpening,
@@ -683,13 +683,13 @@ mod tests {
         let definition =
             AssetDefinition::new(AssetCode::random(&mut rng).0, Default::default()).unwrap();
         let asset = AssetInfo::from(definition);
-        let audit_key = ViewerKeyPair::generate(&mut rng);
+        let viewing_key = ViewerKeyPair::generate(&mut rng);
         stored.assets.insert(asset.clone());
-        stored.assets.add_audit_key(audit_key.pub_key());
-        // Audit keys for the asset library get persisted with the audit accounts.
+        stored.assets.add_viewing_key(viewing_key.pub_key());
+        // viewing keys for the asset library get persisted with the viewing accounts.
         stored.viewing_accounts.insert(
-            audit_key.pub_key(),
-            Account::new(audit_key, "viewing_account".into()),
+            viewing_key.pub_key(),
+            Account::new(viewing_key, "viewing_account".into()),
         );
         {
             let mut storage =

@@ -119,7 +119,7 @@ async fn generate_independent_transactions<
                         format!("asset {}", i),
                         &[],
                         AssetPolicy::default()
-                            .set_auditor_pub_key(viewing_key)
+                            .set_viewer_pub_key(viewing_key)
                             .set_freezer_pub_key(freezing_key)
                             .reveal_record_opening()
                             .unwrap(),
@@ -296,7 +296,7 @@ fn bench_ledger_scanner_run<
                 bench.viewing_key.pub_key(),
                 Account::new(bench.viewing_key.clone(), "viewing".into()),
             );
-            state.assets.add_audit_key(bench.viewing_key.pub_key());
+            state.assets.add_viewing_key(bench.viewing_key.pub_key());
             state.assets.insert(asset.clone());
         }
     }

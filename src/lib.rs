@@ -61,8 +61,8 @@ use jf_cap::{
     errors::TxnApiError,
     freeze::FreezeNote,
     keys::{
-        ViewerKeyPair, ViewerPubKey, FreezerKeyPair, FreezerPubKey, UserAddress, UserKeyPair,
-        UserPubKey,
+        FreezerKeyPair, FreezerPubKey, UserAddress, UserKeyPair, UserPubKey, ViewerKeyPair,
+        ViewerPubKey,
     },
     mint::MintNote,
     structs::{
@@ -113,7 +113,7 @@ pub enum KeystoreError<L: Ledger> {
     InvalidAddress {
         address: UserAddress,
     },
-    AssetNotAuditable {
+    AssetNotViewable {
         asset: AssetDefinition,
     },
     AssetNotFreezable {
@@ -162,7 +162,7 @@ pub enum KeystoreError<L: Ledger> {
     InvalidFreezerKey {
         key: FreezerPubKey,
     },
-    InvalidAuditorKey {
+    InvalidViewerKey {
         key: ViewerPubKey,
     },
 }
@@ -185,7 +185,7 @@ impl<L: Ledger> From<bincode::Error> for KeystoreError<L> {
 #[ser_test(arbitrary, ark(false))]
 #[derive(Arbitrary, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct KeyStreamState {
-    pub auditor: u64,
+    pub viewer: u64,
     pub freezer: u64,
     pub user: u64,
 }
@@ -585,7 +585,7 @@ pub trait KeystoreBackend<'a, L: Ledger>: Send {
 pub struct KeystoreSession<'a, L: Ledger, Backend: KeystoreBackend<'a, L>> {
     backend: Backend,
     rng: ChaChaRng,
-    auditor_key_stream: hd::KeyTree,
+    viewer_key_stream: hd::KeyTree,
     user_key_stream: hd::KeyTree,
     freezer_key_stream: hd::KeyTree,
     _marker: std::marker::PhantomData<&'a ()>,
@@ -721,7 +721,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                         // Get a list of new uids and whether we want to remember them in our record
                         // Merkle tree. Initially, set `remember` to false for all uids, to maximize
                         // sparseness. If any of the consumers of this block (for example, the
-                        // auditor component, or the owner of this keystore) care about a uid, they
+                        // viewer component, or the owner of this keystore) care about a uid, they
                         // will set its `remember` flag to true.
                         uids.into_iter().map(|uid| (uid, false)).collect::<Vec<_>>()
                     }
@@ -831,8 +831,8 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                         self_published = true;
                     }
 
-                    // This is someone else's transaction but we can audit it.
-                    self.audit_transaction(session, &txn, &mut this_txn_uids)
+                    // This is someone else's transaction but we can view it.
+                    self.view_transaction(session, &txn, &mut this_txn_uids)
                         .await;
 
                     // If this transaction has record openings attached, check if they are for us
@@ -1047,7 +1047,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                 .cloned()
             {
                 // If this record is not for us, but we can freeze it, then this
-                // becomes like an audit. Add the record to our collection of freezable
+                // becomes like an view. Add the record to our collection of freezable
                 // records, but do not include it in the history entry.
                 *remember = true;
                 // Add the asset type if it is not already in the asset library.
@@ -1193,32 +1193,32 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         pending
     }
 
-    async fn audit_transaction(
+    async fn view_transaction(
         &mut self,
         session: &mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>>,
         txn: &Transaction<L>,
         uids: &mut [(u64, bool)],
     ) {
-        // Try to decrypt auditor memos.
-        if let Ok(memo) = txn.open_audit_memo(
-            self.assets.auditable(),
+        // Try to decrypt viewer memos.
+        if let Ok(memo) = txn.open_viewing_memo(
+            self.assets.viewable(),
             &self
                 .viewing_accounts
                 .iter()
                 .map(|(pub_key, account)| (pub_key.clone(), account.key.clone()))
                 .collect(),
         ) {
-            // Mark the auditing account used.
+            // Mark the viewing account used.
             self.viewing_accounts
-                .get_mut(memo.asset.policy_ref().auditor_pub_key())
+                .get_mut(memo.asset.policy_ref().viewer_pub_key())
                 .unwrap()
                 .used = true;
 
-            //todo !jeb.bearer eventually, we will probably want to save all the audit memos for
+            //todo !jeb.bearer eventually, we will probably want to save all the viewing memos for
             // the whole transaction (inputs and outputs) regardless of whether any of the outputs
-            // are freezeable, just for general auditing purposes.
+            // are freezeable, just for general viewing purposes.
 
-            // the first uid corresponds to the fee change output, which has no audit memo, so skip
+            // the first uid corresponds to the fee change output, which has no view memo, so skip
             // that one
             for ((uid, remember), output) in uids.iter_mut().skip(1).zip(memo.outputs) {
                 let pub_key = match output.user_address {
@@ -1235,7 +1235,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                 if let (Some(pub_key), Some(amount), Some(blind)) =
                     (pub_key, output.amount, output.blinding_factor)
                 {
-                    // If the audit memo contains all the information we need to potentially freeze
+                    // If the viewing memo contains all the information we need to potentially freeze
                     // this record, save it in our database for later freezing.
                     if let Some(account) = self
                         .freezing_accounts
@@ -1458,20 +1458,20 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         Ok((user_key, events))
     }
 
-    async fn add_audit_key(
+    async fn add_viewing_key(
         &mut self,
         session: &mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>>,
-        audit_key: ViewerKeyPair,
+        viewing_key: ViewerKeyPair,
         description: String,
     ) -> Result<(), KeystoreError<L>> {
-        if self.viewing_accounts.contains_key(&audit_key.pub_key()) {
+        if self.viewing_accounts.contains_key(&viewing_key.pub_key()) {
             return Ok(());
         }
 
-        self.assets.add_audit_key(audit_key.pub_key());
+        self.assets.add_viewing_key(viewing_key.pub_key());
         self.viewing_accounts.insert(
-            audit_key.pub_key(),
-            Account::new(audit_key.clone(), description),
+            viewing_key.pub_key(),
+            Account::new(viewing_key.clone(), description),
         );
         session
             .backend
@@ -1742,7 +1742,7 @@ impl<'a, L: Ledger, Backend: KeystoreBackend<'a, L>> KeystoreSharedState<'a, L, 
 type BoxFuture<'a, T> = std::pin::Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
 // `SendFuture` trait is needed for the cape repo to compile when calling key generation functions,
-// `generate_audit_key`, `generate_freeze_key`, and `generate_user_key`.
+// `generate_viewing_key`, `generate_freeze_key`, and `generate_user_key`.
 //
 // Workaround:
 // 1. Wrap code of the key generation functions with `async move` to fix the implementation "not
@@ -1807,7 +1807,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + KeystoreBackend<'a, L> + Send + Sync
         let mut session = KeystoreSession {
             backend,
             rng: ChaChaRng::from_entropy(),
-            auditor_key_stream: key_tree.derive_sub_tree("auditor".as_bytes()),
+            viewer_key_stream: key_tree.derive_sub_tree("viewer".as_bytes()),
             freezer_key_stream: key_tree.derive_sub_tree("freezer".as_bytes()),
             user_key_stream: key_tree.derive_sub_tree("user".as_bytes()),
             _marker: Default::default(),
@@ -1950,7 +1950,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + KeystoreBackend<'a, L> + Send + Sync
     }
 
     /// List viewing keys.
-    pub async fn auditor_pub_keys(&self) -> Vec<ViewerPubKey> {
+    pub async fn viewer_pub_keys(&self) -> Vec<ViewerPubKey> {
         let KeystoreSharedState { state, .. } = &*self.mutex.lock().await;
         state.viewing_accounts.keys().cloned().collect()
     }
@@ -1989,15 +1989,15 @@ impl<'a, L: 'static + Ledger, Backend: 'a + KeystoreBackend<'a, L> + Send + Sync
         }
     }
 
-    /// Get auditing private key
-    pub async fn get_auditor_private_key(
+    /// Get viewing private key
+    pub async fn get_viewer_private_key(
         &self,
         pub_key: &ViewerPubKey,
     ) -> Result<ViewerKeyPair, KeystoreError<L>> {
         let KeystoreSharedState { state, .. } = &*self.mutex.lock().await;
         match state.viewing_accounts.get(pub_key) {
             Some(account) => Ok(account.key.clone()),
-            None => Err(KeystoreError::<L>::InvalidAuditorKey {
+            None => Err(KeystoreError::<L>::InvalidViewerKey {
                 key: pub_key.clone(),
             }),
         }
@@ -2035,7 +2035,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + KeystoreBackend<'a, L> + Send + Sync
     ) -> Result<AccountInfo<ViewerKeyPair>, KeystoreError<L>> {
         let KeystoreSharedState { state, .. } = &*self.mutex.lock().await;
         let account = state.viewing_accounts.get(address).cloned().ok_or(
-            KeystoreError::<L>::InvalidAuditorKey {
+            KeystoreError::<L>::InvalidViewerKey {
                 key: address.clone(),
             },
         )?;
@@ -2044,7 +2044,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + KeystoreBackend<'a, L> + Send + Sync
             .records
             .iter()
             .filter(|rec| {
-                rec.ro.asset_def.policy_ref().auditor_pub_key() == address && rec.ro.amount > 0
+                rec.ro.asset_def.policy_ref().viewer_pub_key() == address && rec.ro.amount > 0
             })
             .cloned()
             .collect::<Vec<_>>();
@@ -2054,7 +2054,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + KeystoreBackend<'a, L> + Send + Sync
             .map(|rec| state.assets.get(rec.ro.asset_def.code).unwrap().clone())
             // Get known assets which list this key as a viewer.
             .chain(state.assets.iter().filter_map(|asset| {
-                if asset.definition.policy_ref().auditor_pub_key() == address {
+                if asset.definition.policy_ref().viewer_pub_key() == address {
                     Some(asset.clone())
                 } else {
                     None
@@ -2315,9 +2315,9 @@ impl<'a, L: 'static + Ledger, Backend: 'a + KeystoreBackend<'a, L> + Send + Sync
     }
 
     /// Add a viewing key to the keystore's key set.
-    pub fn add_audit_key<'l>(
+    pub fn add_viewing_key<'l>(
         &'l mut self,
-        audit_key: ViewerKeyPair,
+        viewing_key: ViewerKeyPair,
         description: String,
     ) -> std::pin::Pin<Box<dyn SendFuture<'a, Result<(), KeystoreError<L>>> + 'l>>
     where
@@ -2325,12 +2325,14 @@ impl<'a, L: 'static + Ledger, Backend: 'a + KeystoreBackend<'a, L> + Send + Sync
     {
         Box::pin(async move {
             let KeystoreSharedState { state, session, .. } = &mut *self.mutex.lock().await;
-            state.add_audit_key(session, audit_key, description).await
+            state
+                .add_viewing_key(session, viewing_key, description)
+                .await
         })
     }
 
     /// Generate a new viewing key and add it to the keystore's key set.
-    pub fn generate_audit_key<'l>(
+    pub fn generate_viewing_key<'l>(
         &'l mut self,
         description: String,
     ) -> std::pin::Pin<Box<dyn SendFuture<'a, Result<ViewerPubKey, KeystoreError<L>>> + 'l>>
@@ -2339,14 +2341,14 @@ impl<'a, L: 'static + Ledger, Backend: 'a + KeystoreBackend<'a, L> + Send + Sync
     {
         Box::pin(async move {
             let KeystoreSharedState { state, session, .. } = &mut *self.mutex.lock().await;
-            let audit_key = session
-                .auditor_key_stream
-                .derive_auditor_key_pair(&state.key_state.auditor.to_le_bytes());
-            state.key_state.auditor += 1;
+            let viewing_key = session
+                .viewer_key_stream
+                .derive_viewer_key_pair(&state.key_state.viewer.to_le_bytes());
+            state.key_state.viewer += 1;
             state
-                .add_audit_key(session, audit_key.clone(), description)
+                .add_viewing_key(session, viewing_key.clone(), description)
                 .await?;
-            Ok(audit_key.pub_key())
+            Ok(viewing_key.pub_key())
         })
     }
 

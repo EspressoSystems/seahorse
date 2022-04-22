@@ -29,7 +29,7 @@ use async_trait::async_trait;
 use fmt::{Display, Formatter};
 use futures::future::BoxFuture;
 use jf_cap::{
-    keys::{ViewerKeyPair, ViewerPubKey, FreezerKeyPair, FreezerPubKey, UserKeyPair},
+    keys::{FreezerKeyPair, FreezerPubKey, UserKeyPair, ViewerKeyPair, ViewerPubKey},
     proof::UniversalParam,
     structs::{AssetCode, AssetPolicy, FreezeFlag, ReceiverMemo, RecordCommitment},
 };
@@ -332,7 +332,7 @@ impl<'a, C: CLI<'a>> Listable<'a, C> for AssetCode {
     async fn list(keystore: &mut Keystore<'a, C>) -> Vec<ListItem<Self>> {
         // Get our viewing and freezing keys so we can check if the asset types are
         // viewable/freezable.
-        let viewing_keys = keystore.auditor_pub_keys().await;
+        let viewing_keys = keystore.viewer_pub_keys().await;
         let freezing_keys = keystore.freezer_pub_keys().await;
 
         // Get the keystore's asset library and convert to ListItems.
@@ -350,7 +350,7 @@ impl<'a, C: CLI<'a>> Listable<'a, C> for AssetCode {
                     // viewable, freezable, and mintable by us.
                     let mut attributes = String::new();
                     let policy = asset.definition.policy_ref();
-                    if viewing_keys.contains(policy.auditor_pub_key()) {
+                    if viewing_keys.contains(policy.viewer_pub_key()) {
                         attributes.push('v');
                     }
                     if freezing_keys.contains(policy.freezer_pub_key()) {
@@ -430,9 +430,9 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
 
                 // Print the viewer, noting if it is us.
                 let policy = asset.definition.policy_ref();
-                if policy.is_auditor_pub_key_set() {
-                    let viewing_key = policy.auditor_pub_key();
-                    if keystore.auditor_pub_keys().await.contains(viewing_key) {
+                if policy.is_viewer_pub_key_set() {
+                    let viewing_key = policy.viewer_pub_key();
+                    if keystore.viewer_pub_keys().await.contains(viewing_key) {
                         cli_writeln!(io, "Viewer: me");
                     } else {
                         cli_writeln!(io, "Viewer: {}", *viewing_key);
@@ -512,7 +512,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             {
                 let mut policy = AssetPolicy::default();
                 if let Some(viewing_key) = viewing_key {
-                    policy = policy.set_auditor_pub_key(viewing_key);
+                    policy = policy.set_viewer_pub_key(viewing_key);
                 }
                 if let Some(freezing_key) = freezing_key {
                     policy = policy.set_freezer_pub_key(freezing_key);
@@ -691,7 +691,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
              description: Option<String>, scan_from: Option<EventIndex>, wait: Option<bool>| {
                 let description = description.unwrap_or_default();
                 match key_type {
-                    KeyType::Viewing => match keystore.generate_audit_key(description).await {
+                    KeyType::Viewing => match keystore.generate_viewing_key(description).await {
                         Ok(pub_key) => cli_writeln!(io, "{}", pub_key),
                         Err(err) => cli_writeln!(io, "Error generating viewing key: {}", err),
                     },
@@ -735,7 +735,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                 let description = description.unwrap_or_default();
                 match key_type {
                     KeyType::Viewing => match bincode::deserialize::<ViewerKeyPair>(&bytes) {
-                        Ok(key) => match keystore.add_audit_key(key.clone(), description).await {
+                        Ok(key) => match keystore.add_viewing_key(key.clone(), description).await {
                             Ok(()) => cli_writeln!(io, "{}", key.pub_key()),
                             Err(err) => cli_writeln!(io, "Error saving viewing key: {}", err),
                         },
@@ -883,7 +883,7 @@ async fn print_keys<'a, C: CLI<'a>>(io: &mut SharedIO, keystore: &Keystore<'a, C
         cli_writeln!(io, "  {} {}", key, account.description);
     }
     cli_writeln!(io, "Viewing keys:");
-    for key in keystore.auditor_pub_keys().await {
+    for key in keystore.viewer_pub_keys().await {
         let account = keystore.viewing_account(&key).await.unwrap();
         cli_writeln!(io, "  {} {}", key, account.description);
     }
@@ -1219,7 +1219,7 @@ mod test {
         writeln!(viewer_input, "gen_key freezing").unwrap();
         let matches = match_output(&mut viewer_output, &["(?P<freeze_key>FREEZEPUBKEY~.*)"]);
         let freeze_key = matches.get("freeze_key");
-        // Define an auditable asset.
+        // Define an viewable asset.
         writeln!(
             viewer_input,
             "create_asset my_asset viewing_key={} freezing_key={} view_amount=true view_address=true view_blind=true",
