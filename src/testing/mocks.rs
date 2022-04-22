@@ -85,7 +85,7 @@ impl<'a, L: reef::Ledger> KeystoreStorage<'a, L> for MockStorage<'a, L> {
             working.freezing_accounts = state.freezing_accounts.clone();
             working.sending_accounts = state.sending_accounts.clone();
             for account in working.viewing_accounts.values() {
-                working.assets.add_audit_key(account.key.pub_key());
+                working.assets.add_viewing_key(account.key.pub_key());
             }
         }
         Ok(())

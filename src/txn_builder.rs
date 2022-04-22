@@ -82,7 +82,7 @@ pub enum TransactionError {
     CryptoError {
         source: TxnApiError,
     },
-    InvalidAuditorKey {
+    InvalidViewerKey {
         my_key: ViewerPubKey,
         asset_key: ViewerPubKey,
     },
@@ -879,7 +879,7 @@ pub struct TransactionState<L: Ledger> {
     pub now: EventIndex,
     // validator
     pub validator: Validator<L>,
-    // all records we care about, including records we own, records we have audited, and records we
+    // all records we care about, including records we own, records we have viewed, and records we
     // can freeze or unfreeze
     pub records: RecordDatabase,
     // sparse nullifier set Merkle tree mirrored from validators
