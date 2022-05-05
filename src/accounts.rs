@@ -6,13 +6,11 @@ use crate::{
     AssetInfo,
 };
 use arbitrary::{Arbitrary, Unstructured};
-use arbitrary_wrappers::{ArbitraryAuditorKeyPair, ArbitraryFreezerKeyPair, ArbitraryUserKeyPair};
+use arbitrary_wrappers::{ArbitraryFreezerKeyPair, ArbitraryUserKeyPair, ArbitraryViewerKeyPair};
 use derivative::Derivative;
 use espresso_macros::ser_test;
 use jf_cap::{
-    keys::{
-        AuditorKeyPair, AuditorPubKey, FreezerKeyPair, FreezerPubKey, UserAddress, UserKeyPair,
-    },
+    keys::{FreezerKeyPair, FreezerPubKey, UserAddress, UserKeyPair, ViewerKeyPair, ViewerPubKey},
     structs::AssetCode,
     MerkleCommitment,
 };
@@ -25,7 +23,7 @@ use std::fmt::Debug;
 #[ser_test(
     arbitrary,
     ark(false),
-    types(reef::cap::Ledger, AuditorKeyPair),
+    types(reef::cap::Ledger, ViewerKeyPair),
     types(reef::cap::Ledger, FreezerKeyPair),
     types(reef::cap::Ledger, UserKeyPair)
 )]
@@ -81,13 +79,13 @@ impl<L: Ledger, Key: KeyPair> PartialEq<Self> for Account<L, Key> {
     }
 }
 
-impl<'a, L: Ledger> Arbitrary<'a> for Account<L, AuditorKeyPair>
+impl<'a, L: Ledger> Arbitrary<'a> for Account<L, ViewerKeyPair>
 where
     TransactionHash<L>: Arbitrary<'a>,
 {
     fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
         Ok(Self {
-            key: u.arbitrary::<ArbitraryAuditorKeyPair>()?.into(),
+            key: u.arbitrary::<ArbitraryViewerKeyPair>()?.into(),
             description: u.arbitrary()?,
             used: u.arbitrary()?,
             scan: u.arbitrary()?,
@@ -183,8 +181,8 @@ pub trait KeyPair: Clone + Send + Sync {
     fn pub_key(&self) -> Self::PubKey;
 }
 
-impl KeyPair for AuditorKeyPair {
-    type PubKey = AuditorPubKey;
+impl KeyPair for ViewerKeyPair {
+    type PubKey = ViewerPubKey;
 
     fn pub_key(&self) -> Self::PubKey {
         self.pub_key()

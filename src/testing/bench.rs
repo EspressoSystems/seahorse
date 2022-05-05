@@ -35,7 +35,7 @@ struct BenchLedgerScannerTransactions<L: Ledger> {
     // Asset types used in the transactions.
     assets: Vec<AssetInfo>,
     // Viewing key for assets used in the transactions.
-    viewing_key: AuditorKeyPair,
+    viewing_key: ViewerKeyPair,
     // Freezing key for assets used in the transactions.
     freezing_key: FreezerKeyPair,
 }
@@ -51,7 +51,7 @@ struct BenchLedgerScanner<'a, T: SystemUnderTest<'a> + Clone> {
     // Viewable and freezable assets used in pregenerated transactions.
     assets: Vec<AssetInfo>,
     // Viewing key for assets used in the transactions.
-    viewing_key: AuditorKeyPair,
+    viewing_key: ViewerKeyPair,
     // Freezing key for assets used in the transactions.
     freezing_key: FreezerKeyPair,
     // The index of the first event for the benchmark to scan.
@@ -107,7 +107,7 @@ async fn generate_independent_transactions<
         .unwrap();
 
     // Mint a viewable asset for each keystore.
-    let viewing_key = AuditorKeyPair::generate(&mut rng);
+    let viewing_key = ViewerKeyPair::generate(&mut rng);
     let freezing_key = FreezerKeyPair::generate(&mut rng);
     let (assets, mints): (Vec<_>, Vec<_>) = join_all(keystores.iter_mut().enumerate().map(
         |(i, (keystore, addrs))| {
@@ -119,7 +119,7 @@ async fn generate_independent_transactions<
                         format!("asset {}", i),
                         &[],
                         AssetPolicy::default()
-                            .set_auditor_pub_key(viewing_key)
+                            .set_viewer_pub_key(viewing_key)
                             .set_freezer_pub_key(freezing_key)
                             .reveal_record_opening()
                             .unwrap(),
@@ -296,7 +296,7 @@ fn bench_ledger_scanner_run<
                 bench.viewing_key.pub_key(),
                 Account::new(bench.viewing_key.clone(), "viewing".into()),
             );
-            state.assets.add_audit_key(bench.viewing_key.pub_key());
+            state.assets.add_viewing_key(bench.viewing_key.pub_key());
             state.assets.insert(asset.clone());
         }
     }

@@ -2,7 +2,7 @@
 name = "seahorse"
 description = "A generic cap-style cryptocurrency keystore."
 authors = ["Espresso Systems <hello@espressosys.com>"]
-version = "0.2.0"
+version = "0.3.0"
 edition = "2018"
 license = "GPL-3.0-or-later"
 
@@ -45,20 +45,20 @@ zeroize = "1.3"
 # local dependencies
 atomic_store = { git = "https://github.com/EspressoSystems/atomicstore.git", tag = "0.1.1" }
 commit = { git = "https://github.com/EspressoSystems/commit.git", tag = "0.1.0" }
-key-set = { git = "https://github.com/EspressoSystems/key-set.git", tag = "0.2.2" }
+key-set = { git = "https://github.com/EspressoSystems/key-set.git" }
 espresso-macros = { git = "https://github.com/EspressoSystems/espresso-macros.git", tag = "0.1.0" }
-jf-cap = { features=["std"], git = "https://github.com/EspressoSystems/cap.git", tag = "0.0.2" }
+jf-cap = { features=["std"], git = "https://github.com/EspressoSystems/cap.git", branch = "testnet-v1" }
 jf-primitives = { features=["std"], git = "https://github.com/EspressoSystems/jellyfish.git", tag = "0.1.0" }
 jf-utils = { features=["std"], git = "https://github.com/EspressoSystems/jellyfish.git", tag = "0.1.0" }
-arbitrary-wrappers = { git = "https://github.com/EspressoSystems/arbitrary-wrappers.git", tag = "0.2.1" }
-net = { git = "https://github.com/EspressoSystems/net.git", tag = "0.2.1" }
-reef = {  git = "https://github.com/EspressoSystems/reef.git", tag = "0.2.1" }
+arbitrary-wrappers = { git = "https://github.com/EspressoSystems/arbitrary-wrappers.git"}
+net = { git = "https://github.com/EspressoSystems/net.git" }
+reef = {  git = "https://github.com/EspressoSystems/reef.git" }
 tagged-base64 = { git = "https://github.com/EspressoSystems/tagged-base64.git", tag = "0.1.0" }
 
 [dev-dependencies]
 criterion = {version = "0.3.3", features = ["async_std", "html_reports", "cargo_bench_support", "csv_output"] }
 proptest = "0.8.7"
-reef = { git = "https://github.com/EspressoSystems/reef.git", tag = "0.2.1", features = ["testing"] }
+reef = { git = "https://github.com/EspressoSystems/reef.git", features = ["testing"] }
 
 [features]
 testing = ["proptest", "criterion", "reef/testing"]

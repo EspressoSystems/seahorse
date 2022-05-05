@@ -18,7 +18,7 @@ use espresso_macros::ser_test;
 use jf_cap::{
     errors::TxnApiError,
     freeze::{FreezeNote, FreezeNoteInput},
-    keys::{AuditorPubKey, FreezerKeyPair, FreezerPubKey, UserAddress, UserKeyPair, UserPubKey},
+    keys::{FreezerKeyPair, FreezerPubKey, UserAddress, UserKeyPair, UserPubKey, ViewerPubKey},
     mint::MintNote,
     proof::freeze::FreezeProvingKey,
     proof::{mint::MintProvingKey, transfer::TransferProvingKey},
@@ -82,9 +82,9 @@ pub enum TransactionError {
     CryptoError {
         source: TxnApiError,
     },
-    InvalidAuditorKey {
-        my_key: AuditorPubKey,
-        asset_key: AuditorPubKey,
+    InvalidViewerKey {
+        my_key: ViewerPubKey,
+        asset_key: ViewerPubKey,
     },
     InvalidFreezerKey {
         my_key: FreezerPubKey,
@@ -879,7 +879,7 @@ pub struct TransactionState<L: Ledger> {
     pub now: EventIndex,
     // validator
     pub validator: Validator<L>,
-    // all records we care about, including records we own, records we have audited, and records we
+    // all records we care about, including records we own, records we have viewed, and records we
     // can freeze or unfreeze
     pub records: RecordDatabase,
     // sparse nullifier set Merkle tree mirrored from validators

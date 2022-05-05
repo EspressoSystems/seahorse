@@ -34,7 +34,7 @@ pub use crate::secret::Secret;
 
 pub use bip0039::Mnemonic;
 
-use jf_cap::keys::{AuditorKeyPair, FreezerKeyPair, UserKeyPair};
+use jf_cap::keys::{FreezerKeyPair, UserKeyPair, ViewerKeyPair};
 use rand_chacha::rand_core::SeedableRng;
 use rand_chacha::rand_core::{CryptoRng, RngCore};
 use rand_chacha::ChaChaRng;
@@ -194,8 +194,8 @@ impl KeyTree {
     }
 
     /// Derive a viewing key from the [KeyTree] with a certain id.
-    pub fn derive_auditor_key_pair(&self, id: &[u8]) -> AuditorKeyPair {
-        derive_key_pair!(self, "auditor key pair", id, AuditorKeyPair)
+    pub fn derive_viewer_key_pair(&self, id: &[u8]) -> ViewerKeyPair {
+        derive_key_pair!(self, "viewer key pair", id, ViewerKeyPair)
     }
 
     /// Derive a freezing key from the [KeyTree] with a certain id.
@@ -217,12 +217,12 @@ impl KeyTree {
     /// The sub-tree of the top-level tree used by the keystore to derive viewing keys.
     pub fn viewing_key_stream(&self) -> KeyTree {
         self.derive_sub_tree("keystore".as_bytes())
-            .derive_sub_tree("auditor".as_bytes())
+            .derive_sub_tree("viewer".as_bytes())
     }
 
     /// The `n`th key pair in a viewing key stream.
-    pub fn viewing_key(&self, n: u64) -> AuditorKeyPair {
-        self.derive_auditor_key_pair(&n.to_le_bytes())
+    pub fn viewing_key(&self, n: u64) -> ViewerKeyPair {
+        self.derive_viewer_key_pair(&n.to_le_bytes())
     }
 
     /// The sub-tree of the top-level tree used by the keystore to derive freezing keys.
@@ -306,8 +306,8 @@ mod tests {
 
         let (key_tree, _) = KeyTree::random(&mut rng);
         let all_keys = vec![
-            bincode::serialize(&key_tree.derive_auditor_key_pair(&id1)).unwrap(),
-            bincode::serialize(&key_tree.derive_auditor_key_pair(&id2)).unwrap(),
+            bincode::serialize(&key_tree.derive_viewer_key_pair(&id1)).unwrap(),
+            bincode::serialize(&key_tree.derive_viewer_key_pair(&id2)).unwrap(),
             bincode::serialize(&key_tree.derive_freezer_key_pair(&id1)).unwrap(),
             bincode::serialize(&key_tree.derive_freezer_key_pair(&id2)).unwrap(),
             bincode::serialize(&key_tree.derive_user_key_pair(&id1)).unwrap(),

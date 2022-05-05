@@ -45,16 +45,16 @@ pub async fn test_keystore_freeze_unregistered() -> std::io::Result<()> {
 
     let asset = {
         let mut rng = ChaChaRng::from_seed([42u8; 32]);
-        let audit_key = AuditorKeyPair::generate(&mut rng);
+        let viewing_key = ViewerKeyPair::generate(&mut rng);
         let freeze_key = FreezerKeyPair::generate(&mut rng);
         let policy = AssetPolicy::default()
-            .set_auditor_pub_key(audit_key.pub_key())
+            .set_viewer_pub_key(viewing_key.pub_key())
             .set_freezer_pub_key(freeze_key.pub_key())
             .reveal_record_opening()
             .unwrap();
         keystores[2]
             .0
-            .add_audit_key(audit_key, "audit_key".into())
+            .add_viewing_key(viewing_key, "viewing_key".into())
             .await
             .unwrap();
         keystores[2]
@@ -481,16 +481,16 @@ pub mod generic_keystore_tests {
             AssetDefinition::native()
         } else {
             let mut rng = ChaChaRng::from_seed([42u8; 32]);
-            let audit_key = AuditorKeyPair::generate(&mut rng);
+            let viewing_key = ViewerKeyPair::generate(&mut rng);
             let freeze_key = FreezerKeyPair::generate(&mut rng);
             let policy = AssetPolicy::default()
-                .set_auditor_pub_key(audit_key.pub_key())
+                .set_viewer_pub_key(viewing_key.pub_key())
                 .set_freezer_pub_key(freeze_key.pub_key())
                 .reveal_record_opening()
                 .unwrap();
             keystores[0]
                 .0
-                .add_audit_key(audit_key, "audit_key".into())
+                .add_viewing_key(viewing_key, "viewing_key".into())
                 .await
                 .unwrap();
             keystores[0]
@@ -822,16 +822,16 @@ pub mod generic_keystore_tests {
 
         let asset = {
             let mut rng = ChaChaRng::from_seed([42u8; 32]);
-            let audit_key = AuditorKeyPair::generate(&mut rng);
+            let viewing_key = ViewerKeyPair::generate(&mut rng);
             let freeze_key = FreezerKeyPair::generate(&mut rng);
             let policy = AssetPolicy::default()
-                .set_auditor_pub_key(audit_key.pub_key())
+                .set_viewer_pub_key(viewing_key.pub_key())
                 .set_freezer_pub_key(freeze_key.pub_key())
                 .reveal_record_opening()
                 .unwrap();
             keystores[2]
                 .0
-                .add_audit_key(audit_key, "audit_key".into())
+                .add_viewing_key(viewing_key, "viewing_key".into())
                 .await
                 .unwrap();
             keystores[2]
@@ -2188,10 +2188,10 @@ pub mod generic_keystore_tests {
         //  * importing one
         // All of these asset types should end up in the asset library, as well as the native asset
         // type which should always be present. The defined asset should also appear in the
-        // auditable subset if we use the right auditor key, which we will define now:
-        let audit_key0 = keystores[0]
+        // viewable subset if we use the right viewer key, which we will define now:
+        let viewing_key0 = keystores[0]
             .0
-            .generate_audit_key("audit_key".into())
+            .generate_viewing_key("viewing_key".into())
             .await
             .unwrap();
 
@@ -2201,16 +2201,16 @@ pub mod generic_keystore_tests {
             .define_asset(
                 "defined_asset".into(),
                 "defined_asset description".as_bytes(),
-                AssetPolicy::default().set_auditor_pub_key(audit_key0),
+                AssetPolicy::default().set_viewer_pub_key(viewing_key0),
             )
             .await
             .unwrap();
 
-        // Receive an asset. keystores[1] will define a new asset type (auditable by itself) and then
+        // Receive an asset. keystores[1] will define a new asset type (viewable by itself) and then
         // mint some to keystores[0].
-        let audit_key1 = keystores[1]
+        let viewing_key1 = keystores[1]
             .0
-            .generate_audit_key("audit_key".into())
+            .generate_viewing_key("viewing_key".into())
             .await
             .unwrap();
         let minted_asset = keystores[1]
@@ -2218,7 +2218,7 @@ pub mod generic_keystore_tests {
             .define_asset(
                 "minted_asset".into(),
                 "minted_asset description".as_bytes(),
-                AssetPolicy::default().set_auditor_pub_key(audit_key1),
+                AssetPolicy::default().set_viewer_pub_key(viewing_key1),
             )
             .await
             .unwrap();
@@ -2533,7 +2533,7 @@ pub mod generic_keystore_tests {
         // Create empty viewing and freezing accounts.
         let viewing_key = keystores[0]
             .0
-            .generate_audit_key("viewing_account".into())
+            .generate_viewing_key("viewing_account".into())
             .await
             .unwrap();
         let freezing_key = keystores[0]
@@ -2578,7 +2578,7 @@ pub mod generic_keystore_tests {
                 "asset1".into(),
                 "asset1".as_bytes(),
                 AssetPolicy::default()
-                    .set_auditor_pub_key(viewing_key.clone())
+                    .set_viewer_pub_key(viewing_key.clone())
                     .reveal_amount()
                     .unwrap(),
             )
@@ -2590,7 +2590,7 @@ pub mod generic_keystore_tests {
                 "asset2".into(),
                 "asset2".as_bytes(),
                 AssetPolicy::default()
-                    .set_auditor_pub_key(viewing_key.clone())
+                    .set_viewer_pub_key(viewing_key.clone())
                     .set_freezer_pub_key(freezing_key.clone())
                     .reveal_record_opening()
                     .unwrap(),
