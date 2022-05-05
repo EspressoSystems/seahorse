@@ -639,6 +639,15 @@
 <span id="639">639</span>
 <span id="640">640</span>
 <span id="641">641</span>
+<span id="642">642</span>
+<span id="643">643</span>
+<span id="644">644</span>
+<span id="645">645</span>
+<span id="646">646</span>
+<span id="647">647</span>
+<span id="648">648</span>
+<span id="649">649</span>
+<span id="650">650</span>
 </pre><pre class="rust"><code><span class="comment">// Copyright (c) 2022 Espresso Systems (espressosys.com)</span>
 <span class="comment">// This file is part of the Seahorse library.</span>
 
@@ -663,7 +672,7 @@
 <span class="kw">use</span> <span class="ident">arbitrary</span>::{<span class="ident">Arbitrary</span>, <span class="ident">Unstructured</span>};
 <span class="kw">use</span> <span class="ident">ark_serialize</span>::<span class="kw-2">*</span>;
 <span class="kw">use</span> <span class="ident">espresso_macros::ser_test</span>;
-<span class="kw">use</span> <span class="ident">image</span>::{<span class="ident">imageops</span>, <span class="ident">ImageFormat</span>, <span class="ident">ImageResult</span>, <span class="ident">RgbImage</span>};
+<span class="kw">use</span> <span class="ident">image</span>::{<span class="ident">imageops</span>, <span class="ident">ImageBuffer</span>, <span class="ident">ImageFormat</span>, <span class="ident">ImageResult</span>, <span class="ident">Pixel</span>, <span class="ident">Rgba</span>};
 <span class="kw">use</span> <span class="ident">jf_cap</span>::{
     <span class="ident">keys::ViewerPubKey</span>,
     <span class="ident">structs</span>::{<span class="ident">AssetCode</span>, <span class="ident">AssetCodeSeed</span>, <span class="ident">AssetDefinition</span>},
@@ -683,11 +692,13 @@
 <span class="kw">const</span> <span class="ident">ICON_WIDTH</span>: <span class="ident">u32</span> <span class="op">=</span> <span class="number">64</span>;
 <span class="kw">const</span> <span class="ident">ICON_HEIGHT</span>: <span class="ident">u32</span> <span class="op">=</span> <span class="number">64</span>;
 
+<span class="kw">type</span> <span class="ident">IconPixel</span> <span class="op">=</span> <span class="ident">Rgba</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span>;
+
 <span class="doccomment">/// A small icon to display with an asset in a GUI interface.</span>
 <span class="attribute">#[<span class="ident">ser_test</span>(<span class="ident">arbitrary</span>)]</span>
 <span class="attribute">#[<span class="ident">tagged_blob</span>(<span class="string">&quot;ICON&quot;</span>)]</span>
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Clone</span>, <span class="ident">Debug</span>, <span class="ident">PartialEq</span>)]</span>
-<span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">Icon</span>(<span class="ident">RgbImage</span>);
+<span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">Icon</span>(<span class="ident">ImageBuffer</span><span class="op">&lt;</span><span class="ident">IconPixel</span>, <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span><span class="op">&gt;</span>);
 
 <span class="kw">impl</span> <span class="ident">CanonicalSerialize</span> <span class="kw">for</span> <span class="ident">Icon</span> {
     <span class="kw">fn</span> <span class="ident">serialize</span><span class="op">&lt;</span><span class="ident">W</span>: <span class="ident">Write</span><span class="op">&gt;</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="kw-2">mut</span> <span class="ident">writer</span>: <span class="ident">W</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(), <span class="ident">SerializationError</span><span class="op">&gt;</span> {
@@ -705,8 +716,11 @@
     }
 
     <span class="kw">fn</span> <span class="ident">serialized_size</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">usize</span> {
-        <span class="comment">// 8 bytes for the width and height (4 bytes each) plus 3 bytes for each RGB pixel.</span>
-        <span class="number">8</span> <span class="op">+</span> <span class="number">3</span> <span class="op">*</span> <span class="self">self</span>.<span class="number">0</span>.<span class="ident">as_raw</span>().<span class="ident">len</span>()
+        <span class="comment">// 8 bytes for the width and height (4 bytes each) plus 1 byte for each pixel channel in the</span>
+        <span class="comment">// data.</span>
+        <span class="macro">assert_eq!</span>(<span class="self">self</span>.<span class="ident">width</span>().<span class="ident">to_le_bytes</span>().<span class="ident">len</span>(), <span class="number">4</span>);
+        <span class="macro">assert_eq!</span>(<span class="self">self</span>.<span class="ident">height</span>().<span class="ident">to_le_bytes</span>().<span class="ident">len</span>(), <span class="number">4</span>);
+        <span class="number">8</span> <span class="op">+</span> (<span class="ident">IconPixel::CHANNEL_COUNT</span> <span class="kw">as</span> <span class="ident">usize</span>) <span class="op">*</span> <span class="self">self</span>.<span class="number">0</span>.<span class="ident">as_raw</span>().<span class="ident">len</span>()
     }
 }
 
@@ -721,28 +735,32 @@
         <span class="ident">reader</span>
             .<span class="ident">read_exact</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">height_buf</span>)
             .<span class="ident">map_err</span>(<span class="ident">SerializationError::IoError</span>)<span class="question-mark">?</span>;
-        <span class="comment">// The raw buffer has size 3*width*height, since each RGB pixel takes 3 bytes.</span>
+        <span class="comment">// The raw buffer has size c*width*height, where c is the channel count of the pixel type.</span>
         <span class="kw">let</span> <span class="ident">width</span> <span class="op">=</span> <span class="ident">u32::from_le_bytes</span>(<span class="ident">width_buf</span>);
         <span class="kw">let</span> <span class="ident">height</span> <span class="op">=</span> <span class="ident">u32::from_le_bytes</span>(<span class="ident">height_buf</span>);
-        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">image_buf</span> <span class="op">=</span> <span class="macro">vec!</span>[<span class="number">0</span>; (<span class="ident">width</span> <span class="kw">as</span> <span class="ident">usize</span>) <span class="op">*</span> (<span class="ident">height</span> <span class="kw">as</span> <span class="ident">usize</span>) <span class="op">*</span> <span class="number">3</span>];
+        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">image_buf</span> <span class="op">=</span>
+            <span class="macro">vec!</span>[<span class="number">0</span>; (<span class="ident">width</span> <span class="kw">as</span> <span class="ident">usize</span>) <span class="op">*</span> (<span class="ident">height</span> <span class="kw">as</span> <span class="ident">usize</span>) <span class="op">*</span> (<span class="ident">IconPixel::CHANNEL_COUNT</span> <span class="kw">as</span> <span class="ident">usize</span>)];
         <span class="ident">reader</span>
             .<span class="ident">read_exact</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">image_buf</span>)
             .<span class="ident">map_err</span>(<span class="ident">SerializationError::IoError</span>)<span class="question-mark">?</span>;
-        <span class="prelude-val">Ok</span>(<span class="self">Self</span>(<span class="ident">RgbImage::from_raw</span>(<span class="ident">width</span>, <span class="ident">height</span>, <span class="ident">image_buf</span>).<span class="ident">unwrap</span>()))
+        <span class="prelude-val">Ok</span>(<span class="self">Self</span>(
+            <span class="ident">ImageBuffer::from_raw</span>(<span class="ident">width</span>, <span class="ident">height</span>, <span class="ident">image_buf</span>).<span class="ident">unwrap</span>(),
+        ))
     }
 }
 
 <span class="kw">impl</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span><span class="op">&gt;</span> <span class="ident">Arbitrary</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">Icon</span> {
     <span class="kw">fn</span> <span class="ident">arbitrary</span>(<span class="ident">u</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">Unstructured</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span><span class="op">&gt;</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">arbitrary::Result</span><span class="op">&lt;</span><span class="self">Self</span><span class="op">&gt;</span> {
-        <span class="comment">// Each row in the image is an array of pixels, which are each 3 u8&#39;s.</span>
-        <span class="kw">let</span> <span class="ident">width</span> <span class="op">=</span> <span class="ident">u</span>.<span class="ident">arbitrary_len</span>::<span class="op">&lt;</span>[<span class="ident">u8</span>; <span class="number">3</span>]<span class="op">&gt;</span>()<span class="question-mark">?</span>;
+        <span class="comment">// Each row in the image is an array of pixels, which are each CHANNEL_COUNT u8&#39;s.</span>
+        <span class="kw">let</span> <span class="ident">width</span> <span class="op">=</span> <span class="ident">u</span>.<span class="ident">arbitrary_len</span>::<span class="op">&lt;</span>[<span class="ident">u8</span>; <span class="ident">IconPixel::CHANNEL_COUNT</span> <span class="kw">as</span> <span class="ident">usize</span>]<span class="op">&gt;</span>()<span class="question-mark">?</span>;
         <span class="comment">// The height corresponds to the length of an array of rows; that is, a container whose</span>
-        <span class="comment">// elements are arrays (`Vec`) of pixels (`[u8; 3]`), hence `Vec&lt;[u8; 3]&gt;`.</span>
-        <span class="kw">let</span> <span class="ident">height</span> <span class="op">=</span> <span class="ident">u</span>.<span class="ident">arbitrary_len</span>::<span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span>[<span class="ident">u8</span>; <span class="number">3</span>]<span class="op">&gt;</span><span class="op">&gt;</span>()<span class="question-mark">?</span>;
-        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">buf</span> <span class="op">=</span> <span class="macro">vec!</span>[<span class="number">0</span>; <span class="ident">width</span> <span class="op">*</span> <span class="ident">height</span> <span class="op">*</span> <span class="number">3</span>];
+        <span class="comment">// elements are arrays (`Vec`) of pixels (`[u8; CHANNEL_COUNT]`), hence</span>
+        <span class="comment">// `Vec&lt;[u8; CHANNEL_COUNT]&gt;`.</span>
+        <span class="kw">let</span> <span class="ident">height</span> <span class="op">=</span> <span class="ident">u</span>.<span class="ident">arbitrary_len</span>::<span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span>[<span class="ident">u8</span>; <span class="ident">IconPixel::CHANNEL_COUNT</span> <span class="kw">as</span> <span class="ident">usize</span>]<span class="op">&gt;</span><span class="op">&gt;</span>()<span class="question-mark">?</span>;
+        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">buf</span> <span class="op">=</span> <span class="macro">vec!</span>[<span class="number">0</span>; <span class="ident">width</span> <span class="op">*</span> <span class="ident">height</span> <span class="op">*</span> (<span class="ident">IconPixel::CHANNEL_COUNT</span> <span class="kw">as</span> <span class="ident">usize</span>)];
         <span class="ident">u</span>.<span class="ident">fill_buffer</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">buf</span>)<span class="question-mark">?</span>;
         <span class="prelude-val">Ok</span>(<span class="self">Self</span>(
-            <span class="ident">RgbImage::from_raw</span>(<span class="ident">width</span> <span class="kw">as</span> <span class="ident">u32</span>, <span class="ident">height</span> <span class="kw">as</span> <span class="ident">u32</span>, <span class="ident">buf</span>).<span class="ident">unwrap</span>(),
+            <span class="ident">ImageBuffer::from_raw</span>(<span class="ident">width</span> <span class="kw">as</span> <span class="ident">u32</span>, <span class="ident">height</span> <span class="kw">as</span> <span class="ident">u32</span>, <span class="ident">buf</span>).<span class="ident">unwrap</span>(),
         ))
     }
 }
@@ -773,7 +791,7 @@
 
     <span class="doccomment">/// Load from a byte stream.</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">load</span>(<span class="ident">r</span>: <span class="kw">impl</span> <span class="ident">BufRead</span> <span class="op">+</span> <span class="ident">Seek</span>, <span class="ident">format</span>: <span class="ident">ImageFormat</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">ImageResult</span><span class="op">&lt;</span><span class="self">Self</span><span class="op">&gt;</span> {
-        <span class="prelude-val">Ok</span>(<span class="self">Self</span>(<span class="ident">image::load</span>(<span class="ident">r</span>, <span class="ident">format</span>)<span class="question-mark">?</span>.<span class="ident">into_rgb8</span>()))
+        <span class="prelude-val">Ok</span>(<span class="self">Self</span>(<span class="ident">image::load</span>(<span class="ident">r</span>, <span class="ident">format</span>)<span class="question-mark">?</span>.<span class="ident">into_rgba8</span>()))
     }
 
     <span class="doccomment">/// Load from a PNG byte stream.</span>
@@ -802,8 +820,8 @@
     }
 }
 
-<span class="kw">impl</span> <span class="ident">From</span><span class="op">&lt;</span><span class="ident">RgbImage</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">Icon</span> {
-    <span class="kw">fn</span> <span class="ident">from</span>(<span class="ident">image</span>: <span class="ident">RgbImage</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span> {
+<span class="kw">impl</span> <span class="ident">From</span><span class="op">&lt;</span><span class="ident">ImageBuffer</span><span class="op">&lt;</span><span class="ident">IconPixel</span>, <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span><span class="op">&gt;</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">Icon</span> {
+    <span class="kw">fn</span> <span class="ident">from</span>(<span class="ident">image</span>: <span class="ident">ImageBuffer</span><span class="op">&lt;</span><span class="ident">IconPixel</span>, <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span><span class="op">&gt;</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span> {
         <span class="self">Self</span>(<span class="ident">image</span>)
     }
 }
