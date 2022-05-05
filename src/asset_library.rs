@@ -22,7 +22,7 @@
 use arbitrary::{Arbitrary, Unstructured};
 use ark_serialize::*;
 use espresso_macros::ser_test;
-use image::{imageops, ImageFormat, ImageResult, RgbImage};
+use image::{imageops, ImageBuffer, ImageFormat, ImageResult, Pixel, Rgba};
 use jf_cap::{
     keys::ViewerPubKey,
     structs::{AssetCode, AssetCodeSeed, AssetDefinition},
@@ -42,11 +42,13 @@ use tagged_base64::TaggedBase64;
 const ICON_WIDTH: u32 = 64;
 const ICON_HEIGHT: u32 = 64;
 
+type IconPixel = Rgba<u8>;
+
 /// A small icon to display with an asset in a GUI interface.
 #[ser_test(arbitrary)]
 #[tagged_blob("ICON")]
 #[derive(Clone, Debug, PartialEq)]
-pub struct Icon(RgbImage);
+pub struct Icon(ImageBuffer<IconPixel, Vec<u8>>);
 
 impl CanonicalSerialize for Icon {
     fn serialize<W: Write>(&self, mut writer: W) -> Result<(), SerializationError> {
@@ -64,8 +66,11 @@ impl CanonicalSerialize for Icon {
     }
 
     fn serialized_size(&self) -> usize {
-        // 8 bytes for the width and height (4 bytes each) plus 3 bytes for each RGB pixel.
-        8 + 3 * self.0.as_raw().len()
+        // 8 bytes for the width and height (4 bytes each) plus 1 byte for each pixel channel in the
+        // data.
+        assert_eq!(self.width().to_le_bytes().len(), 4);
+        assert_eq!(self.height().to_le_bytes().len(), 4);
+        8 + (IconPixel::CHANNEL_COUNT as usize) * self.0.as_raw().len()
     }
 }
 
@@ -80,28 +85,32 @@ impl CanonicalDeserialize for Icon {
         reader
             .read_exact(&mut height_buf)
             .map_err(SerializationError::IoError)?;
-        // The raw buffer has size 3*width*height, since each RGB pixel takes 3 bytes.
+        // The raw buffer has size c*width*height, where c is the channel count of the pixel type.
         let width = u32::from_le_bytes(width_buf);
         let height = u32::from_le_bytes(height_buf);
-        let mut image_buf = vec![0; (width as usize) * (height as usize) * 3];
+        let mut image_buf =
+            vec![0; (width as usize) * (height as usize) * (IconPixel::CHANNEL_COUNT as usize)];
         reader
             .read_exact(&mut image_buf)
             .map_err(SerializationError::IoError)?;
-        Ok(Self(RgbImage::from_raw(width, height, image_buf).unwrap()))
+        Ok(Self(
+            ImageBuffer::from_raw(width, height, image_buf).unwrap(),
+        ))
     }
 }
 
 impl<'a> Arbitrary<'a> for Icon {
     fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
-        // Each row in the image is an array of pixels, which are each 3 u8's.
-        let width = u.arbitrary_len::<[u8; 3]>()?;
+        // Each row in the image is an array of pixels, which are each CHANNEL_COUNT u8's.
+        let width = u.arbitrary_len::<[u8; IconPixel::CHANNEL_COUNT as usize]>()?;
         // The height corresponds to the length of an array of rows; that is, a container whose
-        // elements are arrays (`Vec`) of pixels (`[u8; 3]`), hence `Vec<[u8; 3]>`.
-        let height = u.arbitrary_len::<Vec<[u8; 3]>>()?;
-        let mut buf = vec![0; width * height * 3];
+        // elements are arrays (`Vec`) of pixels (`[u8; CHANNEL_COUNT]`), hence
+        // `Vec<[u8; CHANNEL_COUNT]>`.
+        let height = u.arbitrary_len::<Vec<[u8; IconPixel::CHANNEL_COUNT as usize]>>()?;
+        let mut buf = vec![0; width * height * (IconPixel::CHANNEL_COUNT as usize)];
         u.fill_buffer(&mut buf)?;
         Ok(Self(
-            RgbImage::from_raw(width as u32, height as u32, buf).unwrap(),
+            ImageBuffer::from_raw(width as u32, height as u32, buf).unwrap(),
         ))
     }
 }
@@ -132,7 +141,7 @@ impl Icon {
 
     /// Load from a byte stream.
     pub fn load(r: impl BufRead + Seek, format: ImageFormat) -> ImageResult<Self> {
-        Ok(Self(image::load(r, format)?.into_rgb8()))
+        Ok(Self(image::load(r, format)?.into_rgba8()))
     }
 
     /// Load from a PNG byte stream.
@@ -161,8 +170,8 @@ impl Icon {
     }
 }
 
-impl From<RgbImage> for Icon {
-    fn from(image: RgbImage) -> Self {
+impl From<ImageBuffer<IconPixel, Vec<u8>>> for Icon {
+    fn from(image: ImageBuffer<IconPixel, Vec<u8>>) -> Self {
         Self(image)
     }
 }
