@@ -133,7 +133,7 @@ dependencies = [
 [[package]]
 name = "arbitrary-wrappers"
 version = "0.2.1"
-source = "git+https://github.com/EspressoSystems/arbitrary-wrappers.git?branch=bfish-update-cap-termonology#d1a7c25ed08c673b19b1c0fe74cb0d8ebdcb6d40"
+source = "git+https://github.com/EspressoSystems/arbitrary-wrappers.git#d5595e71885c822e0417cb07d4696e05c64abb58"
 dependencies = [
  "arbitrary",
  "ark-std",
@@ -2240,8 +2240,8 @@ checksum = "67c21572b4949434e4fc1e1978b99c5f77064153c59d998bf13ecd96fb5ecba7"
 
 [[package]]
 name = "key-set"
-version = "0.2.2"
-source = "git+https://github.com/EspressoSystems/key-set.git?branch=bfish-update-cap-termonology#5dd179a9e42151bce5900c394c9d4c1eaaf1eae8"
+version = "0.3.0"
+source = "git+https://github.com/EspressoSystems/key-set.git#63444d8ad69f8d910a7fa0f4c35b60904b3c7dcf"
 dependencies = [
  "ark-serialize",
  "bincode",
@@ -2406,8 +2406,8 @@ dependencies = [
 
 [[package]]
 name = "net"
-version = "0.2.1"
-source = "git+https://github.com/EspressoSystems/net.git?branch=bfish-update-cap-termonology#3cd5e817d8c3a1aa47e7e9de992e65821bfcbffb"
+version = "0.3.0"
+source = "git+https://github.com/EspressoSystems/net.git#1bbfad0236758b3202eec30893c01cf501eaf0eb"
 dependencies = [
  "ark-serialize",
  "ark-std",
@@ -3078,8 +3078,8 @@ dependencies = [
 
 [[package]]
 name = "reef"
-version = "0.2.1"
-source = "git+https://github.com/EspressoSystems/reef.git?branch=bfish-update-cap-termonology#47edf1bca8640b67d110f1c46c36bcfcb37f0dda"
+version = "0.3.0"
+source = "git+https://github.com/EspressoSystems/reef.git#7b45d90bcf1894a4a542e1680ccdf8cb7e6df247"
 dependencies = [
  "arbitrary",
  "arbitrary-wrappers",
