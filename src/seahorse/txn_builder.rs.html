@@ -1878,7 +1878,7 @@
 <span class="kw">use</span> <span class="ident">jf_cap</span>::{
     <span class="ident">errors::TxnApiError</span>,
     <span class="ident">freeze</span>::{<span class="ident">FreezeNote</span>, <span class="ident">FreezeNoteInput</span>},
-    <span class="ident">keys</span>::{<span class="ident">AuditorPubKey</span>, <span class="ident">FreezerKeyPair</span>, <span class="ident">FreezerPubKey</span>, <span class="ident">UserAddress</span>, <span class="ident">UserKeyPair</span>, <span class="ident">UserPubKey</span>},
+    <span class="ident">keys</span>::{<span class="ident">FreezerKeyPair</span>, <span class="ident">FreezerPubKey</span>, <span class="ident">UserAddress</span>, <span class="ident">UserKeyPair</span>, <span class="ident">UserPubKey</span>, <span class="ident">ViewerPubKey</span>},
     <span class="ident">mint::MintNote</span>,
     <span class="ident">proof::freeze::FreezeProvingKey</span>,
     <span class="ident">proof</span>::{<span class="ident">mint::MintProvingKey</span>, <span class="ident">transfer::TransferProvingKey</span>},
@@ -1942,9 +1942,9 @@
     <span class="ident">CryptoError</span> {
         <span class="ident">source</span>: <span class="ident">TxnApiError</span>,
     },
-    <span class="ident">InvalidAuditorKey</span> {
-        <span class="ident">my_key</span>: <span class="ident">AuditorPubKey</span>,
-        <span class="ident">asset_key</span>: <span class="ident">AuditorPubKey</span>,
+    <span class="ident">InvalidViewerKey</span> {
+        <span class="ident">my_key</span>: <span class="ident">ViewerPubKey</span>,
+        <span class="ident">asset_key</span>: <span class="ident">ViewerPubKey</span>,
     },
     <span class="ident">InvalidFreezerKey</span> {
         <span class="ident">my_key</span>: <span class="ident">FreezerPubKey</span>,
@@ -2739,7 +2739,7 @@
     <span class="kw">pub</span> <span class="ident">now</span>: <span class="ident">EventIndex</span>,
     <span class="comment">// validator</span>
     <span class="kw">pub</span> <span class="ident">validator</span>: <span class="ident">Validator</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span>,
-    <span class="comment">// all records we care about, including records we own, records we have audited, and records we</span>
+    <span class="comment">// all records we care about, including records we own, records we have viewed, and records we</span>
     <span class="comment">// can freeze or unfreeze</span>
     <span class="kw">pub</span> <span class="ident">records</span>: <span class="ident">RecordDatabase</span>,
     <span class="comment">// sparse nullifier set Merkle tree mirrored from validators</span>
