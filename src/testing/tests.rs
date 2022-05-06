@@ -2884,4 +2884,62 @@ pub mod generic_wallet_tests {
             TransactionStatus::Retired
         );
     }
+
+    // Regression test for a bug where submitting an empty block would sometimes cause the event
+    // handling thread to panic.
+    #[async_std::test]
+    pub async fn test_empty_block_after_record_to_forget<'a, T: SystemUnderTest<'a>>() {
+        let mut t = T::default();
+        let mut now = Instant::now();
+        let (ledger, mut wallets) = t.create_test_network(&[(2, 2)], vec![3, 0], &mut now).await;
+        ledger.lock().await.set_block_size(1).unwrap();
+
+        let addr0 = wallets[0].1[0].clone();
+        let addr1 = wallets[1].1[0].clone();
+
+        // Transfer from wallet 0 to wallet 1, creating a last Merkle leaf that wallet 0 wants to
+        // forget.
+        wallets[0]
+            .0
+            .transfer(None, &AssetCode::native(), &[(addr1, 2)], 1)
+            .await
+            .unwrap();
+        t.sync(&ledger, &wallets).await;
+        assert_eq!(wallets[0].0.balance(&AssetCode::native()).await, 0);
+        assert_eq!(wallets[1].0.balance(&AssetCode::native()).await, 2);
+
+        // Submit an empty block.
+        ledger
+            .lock()
+            .await
+            .network()
+            .submit(Block::<T::Ledger>::new(vec![]))
+            .unwrap();
+        t.sync(&ledger, &wallets).await;
+
+        // Submit a non-empty block after the empty one. If we don't do this, the background scan
+        // (see below) can "cheat" by terminating before it processes the empty block event, since
+        // at that point its Merkle root would be equivalent to the overall Merkle root.
+        wallets[1]
+            .0
+            .transfer(None, &AssetCode::native(), &[(addr0, 1)], 1)
+            .await
+            .unwrap();
+        t.sync(&ledger, &wallets).await;
+        assert_eq!(wallets[0].0.balance(&AssetCode::native()).await, 1);
+        assert_eq!(wallets[1].0.balance(&AssetCode::native()).await, 0);
+
+        // Add a new key to an existing wallet, causing it to process the events (including the
+        // empty block) on the background scan code path.
+        let pub_key = wallets[0]
+            .0
+            .generate_user_key("key".into(), Some(EventIndex::default()))
+            .await
+            .unwrap();
+        wallets[0]
+            .0
+            .await_key_scan(&pub_key.address())
+            .await
+            .unwrap();
+    }
 }
