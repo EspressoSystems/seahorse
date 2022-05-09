@@ -13,7 +13,7 @@ use crate::{
     hd::KeyTree,
     loader::KeystoreLoader,
     txn_builder::TransactionState,
-    KeyStreamState, KeystoreError, KeystoreState, KeystoreStorage, TransactionHistoryEntry,
+    KeyStreamState, KeystoreError, KeystoreState, TransactionHistoryEntry,
 };
 use arbitrary::{Arbitrary, Unstructured};
 use async_std::sync::Arc;
@@ -323,15 +323,13 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicKeystoreSto
     }
 }
 
-#[async_trait]
-impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> KeystoreStorage<'a, L>
-    for AtomicKeystoreStorage<'a, L, Meta>
+impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicKeystoreStorage<'a, L, Meta>
 {
-    fn exists(&self) -> bool {
+    pub fn exists(&self) -> bool {
         self.persisted_meta.load_latest().is_ok()
     }
 
-    async fn load(&mut self) -> Result<KeystoreState<'a, L>, KeystoreError<L>> {
+    pub async fn load(&mut self) -> Result<KeystoreState<'a, L>, KeystoreError<L>> {
         // This function is called once, when the keystore is loaded. It is a good place to persist
         // changes to the metadata that happened during loading.
         self.commit().await;
@@ -381,7 +379,7 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> KeystoreStorage<'
         })
     }
 
-    async fn store_snapshot(&mut self, w: &KeystoreState<'a, L>) -> Result<(), KeystoreError<L>> {
+    pub async fn store_snapshot(&mut self, w: &KeystoreState<'a, L>) -> Result<(), KeystoreError<L>> {
         self.dynamic_state
             .store_resource(&KeystoreSnapshot::from(w))
             .context(crate::PersistenceSnafu)?;
@@ -389,7 +387,7 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> KeystoreStorage<'
         Ok(())
     }
 
-    async fn store_asset(&mut self, asset: &AssetInfo) -> Result<(), KeystoreError<L>> {
+    pub async fn store_asset(&mut self, asset: &AssetInfo) -> Result<(), KeystoreError<L>> {
         self.assets
             .store_resource(asset)
             .context(crate::PersistenceSnafu)?;
@@ -397,7 +395,7 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> KeystoreStorage<'
         Ok(())
     }
 
-    async fn store_transaction(
+    pub async fn store_transaction(
         &mut self,
         txn: TransactionHistoryEntry<L>,
     ) -> Result<(), KeystoreError<L>> {
@@ -408,7 +406,7 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> KeystoreStorage<'
         Ok(())
     }
 
-    async fn transaction_history(
+    pub async fn transaction_history(
         &mut self,
     ) -> Result<Vec<TransactionHistoryEntry<L>>, KeystoreError<L>> {
         self.txn_history
@@ -417,7 +415,7 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> KeystoreStorage<'
             .collect()
     }
 
-    async fn commit(&mut self) {
+    pub async fn commit(&mut self) {
         {
             if self.meta_dirty {
                 self.persisted_meta.commit_version().unwrap();
@@ -459,7 +457,7 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> KeystoreStorage<'
         self.txn_history_dirty = false;
     }
 
-    async fn revert(&mut self) {
+    pub async fn revert(&mut self) {
         self.persisted_meta.revert_version().unwrap();
         self.static_data.revert_version().unwrap();
         self.dynamic_state.revert_version().unwrap();

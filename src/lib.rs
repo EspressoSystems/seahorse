@@ -276,7 +276,8 @@ pub struct KeystoreState<'a, L: Ledger> {
 ///
 /// 1. Static data. This is data which is initialized when the keystore is created and never changes.
 ///
-///    There is no interface in the [KeystoreStorage] trait for storing static data. When a new keystore
+///    There is no interface in the [
+/// ] trait for storing static data. When a new keystore
 ///    is created, the [Keystore] will call [KeystoreBackend::create], which is responsible for working
 ///    with the storage layer to persist the keystore's static data.
 ///
@@ -300,40 +301,39 @@ pub struct KeystoreState<'a, L: Ledger> {
 /// of the backend with minimal boilerplate. This allows a ledger-agnostic implementation of the
 /// storage layer to work with multiple ledger-specific implementations of the networking layer. It
 /// is also useful for mocking the storage layer during testing.
-#[async_trait]
-pub trait KeystoreStorage<'a, L: Ledger> {
+// pub struct KeystoreStorage<'a, L: Ledger> {
     /// Check if there is already a stored keystore with this key.
-    fn exists(&self) -> bool;
+//     fn exists(&self) -> bool;
 
-    /// Load the stored keystore identified by the given key.
-    ///
-    /// This function may assume `self.exists()`.
-    async fn load(&mut self) -> Result<KeystoreState<'a, L>, KeystoreError<L>>;
+//     /// Load the stored keystore identified by the given key.
+//     ///
+//     /// This function may assume `self.exists()`.
+//     async fn load(&mut self) -> Result<KeystoreState<'a, L>, KeystoreError<L>>;
 
-    /// Store a snapshot of the keystore's dynamic state.
-    async fn store_snapshot(
-        &mut self,
-        state: &KeystoreState<'a, L>,
-    ) -> Result<(), KeystoreError<L>>;
+//     /// Store a snapshot of the keystore's dynamic state.
+//     async fn store_snapshot(
+//         &mut self,
+//         state: &KeystoreState<'a, L>,
+//     ) -> Result<(), KeystoreError<L>>;
 
-    /// Append a new asset to the growing asset library.
-    async fn store_asset(&mut self, asset: &AssetInfo) -> Result<(), KeystoreError<L>>;
+//     /// Append a new asset to the growing asset library.
+//     async fn store_asset(&mut self, asset: &AssetInfo) -> Result<(), KeystoreError<L>>;
 
-    /// Add a transaction to the transaction history.
-    async fn store_transaction(
-        &mut self,
-        txn: TransactionHistoryEntry<L>,
-    ) -> Result<(), KeystoreError<L>>;
-    async fn transaction_history(
-        &mut self,
-    ) -> Result<Vec<TransactionHistoryEntry<L>>, KeystoreError<L>>;
+//     /// Add a transaction to the transaction history.
+//     async fn store_transaction(
+//         &mut self,
+//         txn: TransactionHistoryEntry<L>,
+//     ) -> Result<(), KeystoreError<L>>;
+//     async fn transaction_history(
+//         &mut self,
+//     ) -> Result<Vec<TransactionHistoryEntry<L>>, KeystoreError<L>>;
 
-    /// Commit to outstanding changes.
-    async fn commit(&mut self);
+//     /// Commit to outstanding changes.
+//     async fn commit(&mut self);
 
-    /// Roll back the persisted state to the previous commit.
-    async fn revert(&mut self);
-}
+//     /// Roll back the persisted state to the previous commit.
+//     async fn revert(&mut self);
+// }
 
 /// Interface for atomic storage transactions.
 ///
@@ -346,6 +346,7 @@ pub trait KeystoreStorage<'a, L: Ledger> {
 /// it succeeds.
 pub struct StorageTransaction<'a, 'l, L: Ledger, Backend: KeystoreBackend<'a, L> + ?Sized> {
     pub backend: &'l mut Backend,
+    storage: Arc<Mutex<AtomicKeystoreStorage<'a, L, LoaderMetadata>>>,
     cancelled: bool,
     _phantom: std::marker::PhantomData<&'a ()>,
     _phantom2: std::marker::PhantomData<L>,
@@ -354,9 +355,11 @@ pub struct StorageTransaction<'a, 'l, L: Ledger, Backend: KeystoreBackend<'a, L>
 impl<'a, 'l, L: Ledger, Backend: KeystoreBackend<'a, L> + ?Sized>
     StorageTransaction<'a, 'l, L, Backend>
 {
-    fn new(backend: &'l mut Backend) -> Self {
+    // type Storage = AtomicKeystoreStorage<'a, L, LoaderMetadata>;
+    fn new(backend: &'l mut Backend, storage: Arc<Mutex<AtomicKeystoreStorage<'a, L, LoaderMetadata>>>) -> Self {
         Self {
             backend,
+            storage,
             cancelled: false,
             _phantom: Default::default(),
             _phantom2: Default::default(),
@@ -417,8 +420,8 @@ impl<'a, 'l, L: Ledger, Backend: KeystoreBackend<'a, L> + ?Sized>
         }
     }
 
-    async fn storage(&mut self) -> MutexGuard<'_, <Backend as KeystoreBackend<'a, L>>::Storage> {
-        self.backend.storage().await
+    async fn storage(&mut self) -> MutexGuard<'_, AtomicKeystoreStorage<'a, L, LoaderMetadata>> {
+        self.storage.lock().await
     }
 }
 
@@ -451,68 +454,6 @@ pub trait KeystoreBackend<'a, L: Ledger>: Send {
     /// (for example, block events from a network query service and memo events from a centralized
     /// memo store) or they may aggregate all events into a single stream from a single source.
     type EventStream: 'a + Stream<Item = (LedgerEvent<L>, EventSource)> + Unpin + Send;
-
-    /// The storage layer used by this implementation.
-    type Storage: KeystoreStorage<'a, L> + Send;
-
-    /// Access the persistent storage layer.
-    ///
-    /// The interface is specified this way, with the main storage interface in a separate trait and
-    /// an accessor function here, to allow implementations of [KeystoreBackend] to split the storage
-    /// layer from the networking layer, since the two concerns are generally separate.
-    ///
-    /// Note that the return type of this function requires the implementation to guard the storage
-    /// layer with a mutex, even if it is not internally shared between threads. This is meant to
-    /// allow shared access to the storage layer internally, but not to require it. A better
-    /// interface would be to have an associated type
-    ///         `type<'l> StorageRef: 'l +  Deref<Target = Self::Storage> + DerefMut`
-    /// This could be [MutexGuard], [async_std::sync::RwLockWriteGuard], or just
-    /// `&mut Self::Storage`, depending on the needs of the implementation. This should be cleaned
-    /// up if and when GATs stabilize.
-    async fn storage<'l>(&'l mut self) -> MutexGuard<'l, Self::Storage>;
-
-    /// Load a keystore or create a new one.
-    ///
-    /// If a keystore exists in storage, it is loaded. Otherwise, [KeystoreBackend::create] is called to
-    /// create a new keystore.
-    async fn load(&mut self) -> Result<KeystoreState<'a, L>, KeystoreError<L>> {
-        let mut storage = self.storage().await;
-        if storage.exists() {
-            // If there is a stored keystore with this key pair, load it.
-            storage.load().await
-        } else {
-            // Otherwise, ask the network layer to create and register a brand new keystore.
-            drop(storage);
-            self.create().await
-        }
-    }
-
-    /// Make a change to the persisted state using a function describing a transaction.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// backend.store(key_pair, |mut t| async move {
-    ///     t.store_snapshot(keystore_state).await?;
-    ///     // If this store fails, the effects of the previous store will be reverted.
-    ///     t.store_asset(keystore_state, asset).await?;
-    ///     // Use `t.backend` to access other backend functions during the transaction. Any
-    ///     // failures here will revert all previous stores.
-    ///     t.backend.do_something().await?;
-    ///     Ok(t)
-    /// }).await?;
-    /// ```
-    async fn store<'l, F, Fut>(&'l mut self, update: F) -> Result<(), KeystoreError<L>>
-    where
-        F: Send + FnOnce(StorageTransaction<'a, 'l, L, Self>) -> Fut,
-        Fut: Send + Future<Output = Result<StorageTransaction<'a, 'l, L, Self>, KeystoreError<L>>>,
-    {
-        let fut = update(StorageTransaction::new(self)).and_then(|txn| async move {
-            txn.backend.storage().await.commit().await;
-            Ok(())
-        });
-        fut.await
-    }
 
     /// Get the HD key tree which the keystore should use to generate keys.
     ///
@@ -586,13 +527,82 @@ pub trait KeystoreBackend<'a, L: Ledger>: Send {
 /// Transient state derived from the persistent [KeystoreState].
 pub struct KeystoreSession<'a, L: Ledger, Backend: KeystoreBackend<'a, L>> {
     backend: Backend,
-    storage: AtomicKeystoreStorage<'a, L, LoaderMetadata>,
+    storage: Arc<Mutex<AtomicKeystoreStorage<'a, L, LoaderMetadata>>>,
     rng: ChaChaRng,
     viewer_key_stream: hd::KeyTree,
     user_key_stream: hd::KeyTree,
     freezer_key_stream: hd::KeyTree,
     _marker: std::marker::PhantomData<&'a ()>,
     _marker2: std::marker::PhantomData<L>,
+}
+
+impl<'a, L: Ledger, Backend: KeystoreBackend<'a, L>> KeystoreSession<'a, L, Backend> {
+   /// The storage layer used by this implementation.
+    // type Storage: KeystoreStorage<'a, L> + Send;
+
+    /// Access the persistent storage layer.
+    ///
+    /// The interface is specified this way, with the main storage interface in a separate trait and
+    /// an accessor function here, to allow implementations of [KeystoreBackend] to split the storage
+    /// layer from the networking layer, since the two concerns are generally separate.
+    ///
+    /// Note that the return type of this function requires the implementation to guard the storage
+    /// layer with a mutex, even if it is not internally shared between threads. This is meant to
+    /// allow shared access to the storage layer internally, but not to require it. A better
+    /// interface would be to have an associated type
+    ///         `type<'l> StorageRef: 'l +  Deref<Target = Self::Storage> + DerefMut`
+    /// This could be [MutexGuard], [async_std::sync::RwLockWriteGuard], or just
+    /// `&mut Self::Storage`, depending on the needs of the implementation. This should be cleaned
+    /// up if and when GATs stabilize.
+    // async fn storage<'l>(&'l mut self) -> MutexGuard<'l, Self::Storage>;
+
+    /// Load a keystore or create a new one.
+    ///
+    /// If a keystore exists in storage, it is loaded. Otherwise, [KeystoreBackend::create] is called to
+    /// create a new keystore.
+    async fn load(&mut self) -> Result<KeystoreState<'a, L>, KeystoreError<L>> {
+        let mut storage = self.storage.lock().await;
+        if storage.exists() {
+            // If there is a stored keystore with this key pair, load it.
+            storage.load().await
+        } else {
+            // Otherwise, ask the network layer to create and register a brand new keystore.
+            drop(storage);
+            self.backend.create().await
+        }
+    }
+
+    /// Make a change to the persisted state using a function describing a transaction.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// backend.store(key_pair, |mut t| async move {
+    ///     t.store_snapshot(keystore_state).await?;
+    ///     // If this store fails, the effects of the previous store will be reverted.
+    ///     t.store_asset(keystore_state, asset).await?;
+    ///     // Use `t.backend` to access other backend functions during the transaction. Any
+    ///     // failures here will revert all previous stores.
+    ///     t.backend.do_something().await?;
+    ///     Ok(t)
+    /// }).await?;
+    /// ```
+    async fn store<'l, F, Fut>(&'l mut self, update: F) -> Result<(), KeystoreError<L>>
+    where
+        F: Send + FnOnce(StorageTransaction<'a, 'l, L, Backend>) -> Fut,
+        Fut: Send + Future<Output = Result<StorageTransaction<'a, 'l, L, Backend>, KeystoreError<L>>>,
+    {
+        let fut = update(StorageTransaction::new(&mut self.backend, self.storage)).and_then(|txn| async move {
+            txn.storage().await.commit().await;
+            Ok(())
+        });
+        fut.await
+    }
+
+    async fn storage(&mut self) -> MutexGuard<'_, AtomicKeystoreStorage<'a, L, LoaderMetadata>> {
+        self.storage.lock().await
+    }
+    
 }
 
 // Trait used to indicate that an abstract return type captures a reference with the lifetime 'a.
@@ -1812,7 +1822,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + KeystoreBackend<'a, L> + Send + Sync
         let key_tree = backend.key_stream();
         let mut session = KeystoreSession {
             backend,
-            storage,
+            storage: Arc::new(Mutex::new(storage)),
             rng: ChaChaRng::from_entropy(),
             viewer_key_stream: key_tree.derive_sub_tree("viewer".as_bytes()),
             freezer_key_stream: key_tree.derive_sub_tree("freezer".as_bytes()),
@@ -2168,7 +2178,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + KeystoreBackend<'a, L> + Send + Sync
     > {
         Box::pin(async move {
             let KeystoreSharedState { session, .. } = &mut *self.mutex.lock().await;
-            let mut storage = session.backend.storage().await;
+            let mut storage = session.storage.lock().await;
             storage.transaction_history().await
         })
     }
