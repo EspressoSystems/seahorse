@@ -1534,6 +1534,14 @@ impl<L: Ledger> TransactionState<L> {
     }
 
     pub fn append_merkle_leaves(&mut self, comms: impl IntoIterator<Item = RecordCommitment>) {
+        let mut comms = comms.into_iter().peekable();
+        if comms.peek().is_none() {
+            // If there are no records to insert, just return. This is both an optimization and a
+            // precondition of the following code -- in particular the logic involving
+            // `merkle_leaf_to_forget` -- which assumes the iterator is non-empty.
+            return;
+        }
+
         // FilledMTBuilder takes ownership of the MerkleTree, so we need to temporarily replace
         // `self.record_mt` with a dummy value (since we can't move out of a mutable reference). We
         // use a MerkleTree of height 0 as the dummy value, since its construction always succeeds
@@ -1541,7 +1549,7 @@ impl<L: Ledger> TransactionState<L> {
         let record_mt = std::mem::replace(&mut self.record_mt, MerkleTree::new(0).unwrap());
         let mut builder = FilledMTBuilder::from_existing(record_mt)
             .expect("failed to convert MerkleTree to FilledMTBuilder");
-        for comm in comms.into_iter() {
+        for comm in comms {
             builder.push(comm.to_field_element());
         }
         self.record_mt = builder.build();
