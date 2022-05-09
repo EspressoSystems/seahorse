@@ -43,6 +43,8 @@ use crate::{
     asset_library::{AssetLibrary, VerifiedAssetLibrary},
     events::{EventIndex, EventSource, LedgerEvent},
     key_scan::{receive_history_entry, BackgroundKeyScan, ScanOutputs},
+    loader::LoaderMetadata,
+    persistence::AtomicKeystoreStorage,
     txn_builder::*,
 };
 use arbitrary::Arbitrary;
@@ -584,6 +586,7 @@ pub trait KeystoreBackend<'a, L: Ledger>: Send {
 /// Transient state derived from the persistent [KeystoreState].
 pub struct KeystoreSession<'a, L: Ledger, Backend: KeystoreBackend<'a, L>> {
     backend: Backend,
+    storage: AtomicKeystoreStorage<'a, L, LoaderMetadata>,
     rng: ChaChaRng,
     viewer_key_stream: hd::KeyTree,
     user_key_stream: hd::KeyTree,
@@ -1774,23 +1777,26 @@ impl<'a, L: 'static + Ledger, Backend: 'a + KeystoreBackend<'a, L> + Send + Sync
     // erasure. I don't know why this doesn't crash the compiler, but it doesn't.
     pub fn new(
         mut backend: Backend,
+        mut storage: AtomicKeystoreStorage<'a, L, LoaderMetadata>,
     ) -> BoxFuture<'a, Result<Keystore<'a, Backend, L>, KeystoreError<L>>> {
         Box::pin(async move {
             let state = backend.load().await?;
-            Self::new_impl(backend, state).await
+            Self::new_impl(backend, storage, state).await
         })
     }
 
     #[cfg(any(test, bench, feature = "testing"))]
     pub fn with_state(
         backend: Backend,
+        mut storage: AtomicKeystoreStorage<'a, L, LoaderMetadata>,
         state: KeystoreState<'a, L>,
     ) -> BoxFuture<'a, Result<Keystore<'a, Backend, L>, KeystoreError<L>>> {
-        Box::pin(async move { Self::new_impl(backend, state).await })
+        Box::pin(async move { Self::new_impl(backend, storage, state).await })
     }
 
     async fn new_impl(
         backend: Backend,
+        storage: AtomicKeystoreStorage<'a, L, LoaderMetadata>,
         mut state: KeystoreState<'a, L>,
     ) -> Result<Keystore<'a, Backend, L>, KeystoreError<L>> {
         let mut events = backend.subscribe(state.txn_state.now, None).await;
@@ -1806,6 +1812,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + KeystoreBackend<'a, L> + Send + Sync
         let key_tree = backend.key_stream();
         let mut session = KeystoreSession {
             backend,
+            storage,
             rng: ChaChaRng::from_entropy(),
             viewer_key_stream: key_tree.derive_sub_tree("viewer".as_bytes()),
             freezer_key_stream: key_tree.derive_sub_tree("freezer".as_bytes()),

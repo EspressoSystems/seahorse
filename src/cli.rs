@@ -20,6 +20,7 @@ use crate::{
     events::EventIndex,
     io::SharedIO,
     loader::{KeystoreLoader, Loader, LoaderMetadata},
+    persistence::AtomicKeystoreStorage,
     reader::Reader,
     AssetInfo, BincodeSnafu, IoSnafu, KeystoreBackend, KeystoreError, TransactionReceipt,
     TransactionStatus,
@@ -1016,7 +1017,11 @@ async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
     // Loading the keystore takes a while. Let the user know that's expected.
     //todo !jeb.bearer Make it faster
     cli_writeln!(io, "connecting...");
-    let mut keystore = Keystore::<C>::new(backend).await?;
+    let mut keystore = Keystore::<C>::new(
+        backend,
+        AtomicKeystoreStorage::new(&mut loader, 10).unwrap(),
+    )
+    .await?;
     cli_writeln!(io, "Type 'help' for a list of commands.");
     let commands = init_commands::<C>();
 
