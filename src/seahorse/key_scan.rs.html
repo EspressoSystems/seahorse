@@ -431,6 +431,14 @@
 <span id="431">431</span>
 <span id="432">432</span>
 <span id="433">433</span>
+<span id="434">434</span>
+<span id="435">435</span>
+<span id="436">436</span>
+<span id="437">437</span>
+<span id="438">438</span>
+<span id="439">439</span>
+<span id="440">440</span>
+<span id="441">441</span>
 </pre><pre class="rust"><code><span class="doccomment">/// Ledger scanning utilities.</span>
 <span class="doccomment">///</span>
 <span class="doccomment">/// This module provides an interface for searching a ledger for records belonging to a particular</span>
@@ -792,6 +800,14 @@
     }
 
     <span class="kw">fn</span> <span class="ident">add_commitments</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">comms</span>: <span class="kw">impl</span> <span class="ident">IntoIterator</span><span class="op">&lt;</span><span class="ident">Item</span> <span class="op">=</span> <span class="ident">RecordCommitment</span><span class="op">&gt;</span>) {
+        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">comms</span> <span class="op">=</span> <span class="ident">comms</span>.<span class="ident">into_iter</span>().<span class="ident">peekable</span>();
+        <span class="kw">if</span> <span class="ident">comms</span>.<span class="ident">peek</span>().<span class="ident">is_none</span>() {
+            <span class="comment">// If there are no records to insert, just return. This is both an optimization and a</span>
+            <span class="comment">// precondition of the following code -- in particular the logic involving</span>
+            <span class="comment">// `leaf_to_forget` -- which assumes the iterator is non-empty.</span>
+            <span class="kw">return</span>;
+        }
+
         <span class="comment">// FilledMTBuilder takes ownership of the MerkleTree, so we need to temporarily replace</span>
         <span class="comment">// `self.records_mt` with a dummy value (since we can&#39;t move out of a mutable reference). We</span>
         <span class="comment">// use a MerkleTree of height 0 as the dummy value, since its construction always succeeds</span>
@@ -799,7 +815,7 @@
         <span class="kw">let</span> <span class="ident">records_mt</span> <span class="op">=</span> <span class="ident">std::mem::replace</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>.<span class="ident">records_mt</span>, <span class="ident">MerkleTree::new</span>(<span class="number">0</span>).<span class="ident">unwrap</span>());
         <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">builder</span> <span class="op">=</span> <span class="ident">FilledMTBuilder::from_existing</span>(<span class="ident">records_mt</span>)
             .<span class="ident">expect</span>(<span class="string">&quot;failed to convert MerkleTree to FilledMTBuilder&quot;</span>);
-        <span class="kw">for</span> <span class="ident">comm</span> <span class="kw">in</span> <span class="ident">comms</span>.<span class="ident">into_iter</span>() {
+        <span class="kw">for</span> <span class="ident">comm</span> <span class="kw">in</span> <span class="ident">comms</span> {
             <span class="ident">builder</span>.<span class="ident">push</span>(<span class="ident">comm</span>.<span class="ident">to_field_element</span>());
         }
         <span class="self">self</span>.<span class="ident">records_mt</span> <span class="op">=</span> <span class="ident">builder</span>.<span class="ident">build</span>();
