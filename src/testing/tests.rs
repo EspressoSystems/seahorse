@@ -116,7 +116,7 @@ pub async fn test_keystore_freeze_unregistered() -> std::io::Result<()> {
     ledger.lock().await.hold_next_transaction();
     keystores[2]
         .0
-        .freeze(&src, 1, &asset.code, 1, dst.clone())
+        .freeze(&src, 1, &asset.code, 1u64.into(), dst.clone())
         .await
         .unwrap();
 
@@ -571,7 +571,7 @@ pub mod generic_keystore_tests {
         } else if freeze {
             keystores[0]
                 .0
-                .freeze(&sender, 1, &asset.code, 1, receiver.clone())
+                .freeze(&sender, 1, &asset.code, 1u64.into(), receiver.clone())
                 .await
                 .unwrap();
         } else {
@@ -717,7 +717,7 @@ pub mod generic_keystore_tests {
         } else if freeze {
             keystores[0]
                 .0
-                .freeze(&sender, 1, &asset.code, 1, receiver)
+                .freeze(&sender, 1, &asset.code, 1u64.into(), receiver)
                 .await
                 .unwrap();
         } else {
@@ -890,13 +890,17 @@ pub mod generic_keystore_tests {
         ledger.lock().await.hold_next_transaction();
         keystores[2]
             .0
-            .freeze(&src, 1, &asset.code, 1, dst.clone())
+            .freeze(&src, 1, &asset.code, 1u64.into(), dst.clone())
             .await
             .unwrap();
 
         // Check that, like transfer inputs, freeze inputs are placed on hold and unusable while a
         // freeze that uses them is pending.
-        match keystores[2].0.freeze(&src, 1, &asset.code, 1, dst).await {
+        match keystores[2]
+            .0
+            .freeze(&src, 1, &asset.code, 1u64.into(), dst)
+            .await
+        {
             Err(KeystoreError::TransactionError {
                 source: TransactionError::InsufficientBalance { .. },
             }) => {}
@@ -953,7 +957,7 @@ pub mod generic_keystore_tests {
         let dst = keystores[0].1[0].clone();
         keystores[2]
             .0
-            .unfreeze(&src, 1, &asset.code, 1, dst)
+            .unfreeze(&src, 1, &asset.code, 1u64.into(), dst)
             .await
             .unwrap();
         t.sync(&ledger, keystores.as_slice()).await;
@@ -1419,7 +1423,7 @@ pub mod generic_keystore_tests {
                         // do to prevent it, and merge transactions require multiple transaction
                         // arities, which requires either dummy records or multiple verifier keys in
                         // the validator.
-                        if suggested_amount > 0 {
+                        if suggested_amount > 0u64.into() {
                             // If the keystore suggested a transaction amount that it _can_ process,
                             // try again with that amount.
                             println!(
@@ -1430,7 +1434,7 @@ pub mod generic_keystore_tests {
                             );
                             now = Instant::now();
 
-                            amount = suggested_amount;
+                            amount = suggested_amount.as_u64();
                             sender
                                 .transfer(
                                     Some(&sender_address),
@@ -3011,5 +3015,75 @@ pub mod generic_keystore_tests {
             .await_key_scan(&pub_key.address())
             .await
             .unwrap();
+    }
+
+    #[async_std::test]
+    pub async fn test_big_amount<'a, T: SystemUnderTest<'a>>() {
+        let max_record = 2u64.pow(63) - 1;
+        let max_record_times_2 = U256::from_dec_str("18446744073709551614").unwrap();
+        let max_record_times_3 = U256::from_dec_str("27670116110564327421").unwrap();
+
+        let mut t = T::default();
+        let mut now = Instant::now();
+        let (ledger, mut wallets) = t.create_test_network(&[(4, 4)], vec![8, 0], &mut now).await;
+        ledger.lock().await.set_block_size(1).unwrap();
+
+        // Define a mintable asset type.
+        let asset = wallets[0]
+            .0
+            .define_asset("my_asset".into(), &[], AssetPolicy::default())
+            .await
+            .unwrap();
+        // Mint the maximum single-record amount, thrice (which will cause a total amount which
+        // exceeds both the max single-record amount and the max of a u64).
+        let addr = wallets[0].1[0].clone();
+        wallets[0]
+            .0
+            .mint(&addr, 1, &asset.code, max_record, addr.clone())
+            .await
+            .unwrap();
+        t.sync(&ledger, &wallets).await;
+        wallets[0]
+            .0
+            .mint(&addr, 1, &asset.code, max_record, addr.clone())
+            .await
+            .unwrap();
+        t.sync(&ledger, &wallets).await;
+        wallets[0]
+            .0
+            .mint(&addr, 1, &asset.code, max_record, addr.clone())
+            .await
+            .unwrap();
+        t.sync(&ledger, &wallets).await;
+
+        // Check that the total balance is aggregated without overflowing.
+        assert_eq!(wallets[0].0.balance(&asset.code).await, max_record_times_3);
+        assert_eq!(
+            wallets[0].0.sending_account(&addr).await.unwrap().balances[&asset.code],
+            max_record_times_3
+        );
+
+        // Check that we can do a transfer whose total amount exceeds the maximum record amount, as
+        // long as the amount of each input and output record is acceptable. There is an additional
+        // constraint in Jellyfish that the total output amount of a transaction can be represented
+        // as a u64, so we can only transfer 2 max records this way.
+        let addr = wallets[1].1[0].clone();
+        wallets[0]
+            .0
+            .transfer(
+                None,
+                &asset.code,
+                &[(addr.clone(), max_record), (addr.clone(), max_record)],
+                1,
+            )
+            .await
+            .unwrap();
+        t.sync(&ledger, &wallets).await;
+        assert_eq!(wallets[0].0.balance(&asset.code).await, max_record.into());
+        assert_eq!(wallets[1].0.balance(&asset.code).await, max_record_times_2);
+        assert_eq!(
+            wallets[1].0.sending_account(&addr).await.unwrap().balances[&asset.code],
+            max_record_times_2
+        );
     }
 }
