@@ -3443,6 +3443,8 @@ dependencies = [
  "key-set",
  "lazy_static",
  "net",
+ "num-bigint 0.4.3",
+ "num-traits",
  "pipe",
  "primitive-types",
  "proptest",

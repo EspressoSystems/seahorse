@@ -1552,7 +1552,7 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
         fee_address: &UserAddress,
         fee: u64,
         asset: &AssetCode,
-        amount: u64,
+        amount: U256,
         owner: UserAddress,
         outputs_frozen: FreezeFlag,
     ) -> Result<(FreezeNote, TransactionInfo<L>), WalletError<L>> {
@@ -2515,7 +2515,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
         freezer: &UserAddress,
         fee: u64,
         asset: &AssetCode,
-        amount: u64,
+        amount: U256,
         owner: UserAddress,
     ) -> Result<(FreezeNote, TransactionInfo<L>), WalletError<L>> {
         let WalletSharedState { state, session, .. } = &mut *self.mutex.lock().await;
@@ -2540,7 +2540,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
         freezer: &UserAddress,
         fee: u64,
         asset: &AssetCode,
-        amount: u64,
+        amount: U256,
         owner: UserAddress,
     ) -> Result<TransactionReceipt<L>, WalletError<L>> {
         let (note, info) = self
@@ -2559,7 +2559,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
         freezer: &UserAddress,
         fee: u64,
         asset: &AssetCode,
-        amount: u64,
+        amount: U256,
         owner: UserAddress,
     ) -> Result<(FreezeNote, TransactionInfo<L>), WalletError<L>> {
         let WalletSharedState { state, session, .. } = &mut *self.mutex.lock().await;
@@ -2584,7 +2584,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
         freezer: &UserAddress,
         fee: u64,
         asset: &AssetCode,
-        amount: u64,
+        amount: U256,
         owner: UserAddress,
     ) -> Result<TransactionReceipt<L>, WalletError<L>> {
         let (note, info) = self
