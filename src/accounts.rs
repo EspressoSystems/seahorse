@@ -14,6 +14,7 @@ use jf_cap::{
     structs::AssetCode,
     MerkleCommitment,
 };
+use primitive_types::U256;
 use reef::{Ledger, TransactionHash};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::collections::HashMap;
@@ -130,7 +131,7 @@ pub struct AccountInfo<Key: KeyPair> {
     pub assets: Vec<AssetInfo>,
     pub records: Vec<RecordInfo>,
     /// The table of balances with corresponding asset code.
-    pub balances: HashMap<AssetCode, u64>,
+    pub balances: HashMap<AssetCode, U256>,
     /// The status of a ledger scan for this account's key.
     ///
     /// If a ledger scan using this account's key is in progress, `scan_status` contains the index
@@ -149,7 +150,9 @@ impl<Key: KeyPair> AccountInfo<Key> {
     ) -> Self {
         let mut balances = HashMap::new();
         for rec in &records {
-            *balances.entry(rec.ro.asset_def.code).or_insert(0) += rec.ro.amount;
+            *balances
+                .entry(rec.ro.asset_def.code)
+                .or_insert_with(U256::zero) += rec.ro.amount.into();
         }
         Self {
             address: account.key.pub_key(),

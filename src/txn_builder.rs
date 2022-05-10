@@ -33,6 +33,7 @@ use jf_cap::{
 use jf_primitives::merkle_tree::FilledMTBuilder;
 use jf_utils::tagged_blob;
 use key_set::KeySet;
+use primitive_types::U256;
 use rand_chacha::ChaChaRng;
 #[cfg(test)]
 use reef::cap;
@@ -925,11 +926,10 @@ where
 }
 
 impl<L: Ledger> TransactionState<L> {
-    pub fn balance(&self, asset: &AssetCode, pub_key: &UserPubKey, frozen: FreezeFlag) -> u64 {
+    pub fn balance(&self, asset: &AssetCode, pub_key: &UserPubKey, frozen: FreezeFlag) -> U256 {
         self.records
             .input_records(asset, &pub_key.address(), frozen, self.validator.now())
-            .map(|record| record.ro.amount)
-            .sum()
+            .fold(U256::zero(), |sum, record| sum + record.ro.amount)
     }
 
     pub fn clear_expired_transactions(&mut self) -> Vec<PendingTransaction<L>> {
