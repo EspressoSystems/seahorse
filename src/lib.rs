@@ -2523,7 +2523,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + KeystoreBackend<'a, L> + Send + Sync
         freezer: &UserAddress,
         fee: u64,
         asset: &AssetCode,
-        amount: U256,
+        amount: impl Into<U256>,
         owner: UserAddress,
     ) -> Result<(FreezeNote, TransactionInfo<L>), KeystoreError<L>> {
         let KeystoreSharedState { state, session, .. } = &mut *self.mutex.lock().await;
@@ -2533,7 +2533,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + KeystoreBackend<'a, L> + Send + Sync
                 freezer,
                 fee,
                 asset,
-                amount,
+                amount.into(),
                 owner,
                 FreezeFlag::Frozen,
             )
@@ -2548,11 +2548,11 @@ impl<'a, L: 'static + Ledger, Backend: 'a + KeystoreBackend<'a, L> + Send + Sync
         freezer: &UserAddress,
         fee: u64,
         asset: &AssetCode,
-        amount: U256,
+        amount: impl Into<U256>,
         owner: UserAddress,
     ) -> Result<TransactionReceipt<L>, KeystoreError<L>> {
         let (note, info) = self
-            .build_freeze(freezer, fee, asset, amount, owner)
+            .build_freeze(freezer, fee, asset, amount.into(), owner)
             .await?;
         self.submit_cap(TransactionNote::Freeze(Box::new(note)), info)
             .await
@@ -2567,7 +2567,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + KeystoreBackend<'a, L> + Send + Sync
         freezer: &UserAddress,
         fee: u64,
         asset: &AssetCode,
-        amount: U256,
+        amount: impl Into<U256>,
         owner: UserAddress,
     ) -> Result<(FreezeNote, TransactionInfo<L>), KeystoreError<L>> {
         let KeystoreSharedState { state, session, .. } = &mut *self.mutex.lock().await;
@@ -2577,7 +2577,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + KeystoreBackend<'a, L> + Send + Sync
                 freezer,
                 fee,
                 asset,
-                amount,
+                amount.into(),
                 owner,
                 FreezeFlag::Unfrozen,
             )
@@ -2592,11 +2592,11 @@ impl<'a, L: 'static + Ledger, Backend: 'a + KeystoreBackend<'a, L> + Send + Sync
         freezer: &UserAddress,
         fee: u64,
         asset: &AssetCode,
-        amount: U256,
+        amount: impl Into<U256>,
         owner: UserAddress,
     ) -> Result<TransactionReceipt<L>, KeystoreError<L>> {
         let (note, info) = self
-            .build_unfreeze(freezer, fee, asset, amount, owner)
+            .build_unfreeze(freezer, fee, asset, amount.into(), owner)
             .await?;
         self.submit_cap(TransactionNote::Freeze(Box::new(note)), info)
             .await

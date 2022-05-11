@@ -116,7 +116,7 @@ pub async fn test_keystore_freeze_unregistered() -> std::io::Result<()> {
     ledger.lock().await.hold_next_transaction();
     keystores[2]
         .0
-        .freeze(&src, 1, &asset.code, 1u64.into(), dst.clone())
+        .freeze(&src, 1, &asset.code, 1, dst.clone())
         .await
         .unwrap();
 
@@ -571,7 +571,7 @@ pub mod generic_keystore_tests {
         } else if freeze {
             keystores[0]
                 .0
-                .freeze(&sender, 1, &asset.code, 1u64.into(), receiver.clone())
+                .freeze(&sender, 1, &asset.code, 1, receiver.clone())
                 .await
                 .unwrap();
         } else {
@@ -717,7 +717,7 @@ pub mod generic_keystore_tests {
         } else if freeze {
             keystores[0]
                 .0
-                .freeze(&sender, 1, &asset.code, 1u64.into(), receiver)
+                .freeze(&sender, 1, &asset.code, 1, receiver)
                 .await
                 .unwrap();
         } else {
@@ -890,17 +890,13 @@ pub mod generic_keystore_tests {
         ledger.lock().await.hold_next_transaction();
         keystores[2]
             .0
-            .freeze(&src, 1, &asset.code, 1u64.into(), dst.clone())
+            .freeze(&src, 1, &asset.code, 1, dst.clone())
             .await
             .unwrap();
 
         // Check that, like transfer inputs, freeze inputs are placed on hold and unusable while a
         // freeze that uses them is pending.
-        match keystores[2]
-            .0
-            .freeze(&src, 1, &asset.code, 1u64.into(), dst)
-            .await
-        {
+        match keystores[2].0.freeze(&src, 1, &asset.code, 1, dst).await {
             Err(KeystoreError::TransactionError {
                 source: TransactionError::InsufficientBalance { .. },
             }) => {}
@@ -957,7 +953,7 @@ pub mod generic_keystore_tests {
         let dst = keystores[0].1[0].clone();
         keystores[2]
             .0
-            .unfreeze(&src, 1, &asset.code, 1u64.into(), dst)
+            .unfreeze(&src, 1, &asset.code, 1, dst)
             .await
             .unwrap();
         t.sync(&ledger, keystores.as_slice()).await;
