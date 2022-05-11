@@ -236,12 +236,12 @@ pub mod generic_keystore_tests {
             (alice_grant - alice_grant / 2).into()
         );
         assert_eq!(
-            wallets[1].0.balance(&AssetCode::native()).await,
+            keystores[1].0.balance(&AssetCode::native()).await,
             bob_grant.into()
         );
         assert_eq!(
             keystores[1].0.balance(&AssetCode::native()).await,
-            bob_grant
+            bob_grant.into()
         );
         assert_eq!(
             keystores[1]
@@ -1381,7 +1381,7 @@ pub mod generic_keystore_tests {
                         .await
                         .unwrap();
                     t.sync(&ledger, keystores.as_slice()).await;
-                    balances[sender_ix][asset_ix] += 2 * amount.into();
+                    balances[sender_ix][asset_ix] += (2 * amount).into();
                     push_history(
                         sender_ix,
                         &mut histories,
@@ -2049,12 +2049,12 @@ pub mod generic_keystore_tests {
             (alice_grant - alice_grant / 2).into()
         );
         assert_eq!(
-            wallets[1].0.balance(&AssetCode::native()).await,
+            keystores[1].0.balance(&AssetCode::native()).await,
             bob_grant.into()
         );
         assert_eq!(
             keystores[1].0.balance(&AssetCode::native()).await,
-            bob_grant
+            bob_grant.into()
         );
         assert_eq!(
             keystores[1]
@@ -2953,26 +2953,26 @@ pub mod generic_keystore_tests {
     pub async fn test_empty_block_after_record_to_forget<'a, T: SystemUnderTest<'a>>() {
         let mut t = T::default();
         let mut now = Instant::now();
-        let (ledger, mut wallets) = t.create_test_network(&[(2, 2)], vec![3, 0], &mut now).await;
+        let (ledger, mut keystores) = t.create_test_network(&[(2, 2)], vec![3, 0], &mut now).await;
         ledger.lock().await.set_block_size(1).unwrap();
 
-        let addr0 = wallets[0].1[0].clone();
-        let addr1 = wallets[1].1[0].clone();
+        let addr0 = keystores[0].1[0].clone();
+        let addr1 = keystores[1].1[0].clone();
 
-        // Transfer from wallet 0 to wallet 1, creating a last Merkle leaf that wallet 0 wants to
-        // forget.
-        wallets[0]
+        // Transfer from keystore 0 to keystore 1, creating a last Merkle leaf that keystore 0 wants
+        // to forget.
+        keystores[0]
             .0
             .transfer(None, &AssetCode::native(), &[(addr1, 2)], 1)
             .await
             .unwrap();
-        t.sync(&ledger, &wallets).await;
+        t.sync(&ledger, &keystores).await;
         assert_eq!(
-            wallets[0].0.balance(&AssetCode::native()).await,
+            keystores[0].0.balance(&AssetCode::native()).await,
             0u64.into()
         );
         assert_eq!(
-            wallets[1].0.balance(&AssetCode::native()).await,
+            keystores[1].0.balance(&AssetCode::native()).await,
             2u64.into()
         );
 
@@ -2983,34 +2983,34 @@ pub mod generic_keystore_tests {
             .network()
             .submit(Block::<T::Ledger>::new(vec![]))
             .unwrap();
-        t.sync(&ledger, &wallets).await;
+        t.sync(&ledger, &keystores).await;
 
         // Submit a non-empty block after the empty one. If we don't do this, the background scan
         // (see below) can "cheat" by terminating before it processes the empty block event, since
         // at that point its Merkle root would be equivalent to the overall Merkle root.
-        wallets[1]
+        keystores[1]
             .0
             .transfer(None, &AssetCode::native(), &[(addr0, 1)], 1)
             .await
             .unwrap();
-        t.sync(&ledger, &wallets).await;
+        t.sync(&ledger, &keystores).await;
         assert_eq!(
-            wallets[0].0.balance(&AssetCode::native()).await,
+            keystores[0].0.balance(&AssetCode::native()).await,
             1u64.into()
         );
         assert_eq!(
-            wallets[1].0.balance(&AssetCode::native()).await,
+            keystores[1].0.balance(&AssetCode::native()).await,
             0u64.into()
         );
 
-        // Add a new key to an existing wallet, causing it to process the events (including the
+        // Add a new key to an existing keystore, causing it to process the events (including the
         // empty block) on the background scan code path.
-        let pub_key = wallets[0]
+        let pub_key = keystores[0]
             .0
             .generate_user_key("key".into(), Some(EventIndex::default()))
             .await
             .unwrap();
-        wallets[0]
+        keystores[0]
             .0
             .await_key_scan(&pub_key.address())
             .await
@@ -3025,43 +3025,51 @@ pub mod generic_keystore_tests {
 
         let mut t = T::default();
         let mut now = Instant::now();
-        let (ledger, mut wallets) = t.create_test_network(&[(4, 4)], vec![8, 0], &mut now).await;
+        let (ledger, mut keystores) = t.create_test_network(&[(4, 4)], vec![8, 0], &mut now).await;
         ledger.lock().await.set_block_size(1).unwrap();
 
-        let addr0 = wallets[0].1[0].clone();
-        let addr1 = wallets[1].1[0].clone();
+        let addr0 = keystores[0].1[0].clone();
+        let addr1 = keystores[1].1[0].clone();
 
         // Define a mintable asset type.
-        let asset = wallets[0]
+        let asset = keystores[0]
             .0
             .define_asset("my_asset".into(), &[], AssetPolicy::default())
             .await
             .unwrap();
         // Mint the maximum single-record amount, thrice (which will cause a total amount which
         // exceeds both the max single-record amount and the max of a u64).
-        wallets[0]
+        keystores[0]
             .0
             .mint(&addr0, 1, &asset.code, max_record, addr0.clone())
             .await
             .unwrap();
-        t.sync(&ledger, &wallets).await;
-        wallets[0]
+        t.sync(&ledger, &keystores).await;
+        keystores[0]
             .0
             .mint(&addr0, 1, &asset.code, max_record, addr0.clone())
             .await
             .unwrap();
-        t.sync(&ledger, &wallets).await;
-        wallets[0]
+        t.sync(&ledger, &keystores).await;
+        keystores[0]
             .0
             .mint(&addr0, 1, &asset.code, max_record, addr0.clone())
             .await
             .unwrap();
-        t.sync(&ledger, &wallets).await;
+        t.sync(&ledger, &keystores).await;
 
         // Check that the total balance is aggregated without overflowing.
-        assert_eq!(wallets[0].0.balance(&asset.code).await, max_record_times_3);
         assert_eq!(
-            wallets[0].0.sending_account(&addr0).await.unwrap().balances[&asset.code],
+            keystores[0].0.balance(&asset.code).await,
+            max_record_times_3
+        );
+        assert_eq!(
+            keystores[0]
+                .0
+                .sending_account(&addr0)
+                .await
+                .unwrap()
+                .balances[&asset.code],
             max_record_times_3
         );
 
@@ -3073,7 +3081,7 @@ pub mod generic_keystore_tests {
         // for the fee, giving a total of 2^64 - 1. We just need to make sure we use the account
         // with a native record of amount 1 to pay the fee, not the secondary account which still
         // has its initial native record of amount 4.
-        wallets[0]
+        keystores[0]
             .0
             .transfer(
                 Some(&addr0),
@@ -3083,14 +3091,22 @@ pub mod generic_keystore_tests {
             )
             .await
             .unwrap();
-        t.sync(&ledger, &wallets).await;
+        t.sync(&ledger, &keystores).await;
         assert_eq!(
-            wallets[0].0.balance(&asset.code).await,
+            keystores[0].0.balance(&asset.code).await,
             U256::from(max_record)
         );
-        assert_eq!(wallets[1].0.balance(&asset.code).await, max_record_times_2);
         assert_eq!(
-            wallets[1].0.sending_account(&addr1).await.unwrap().balances[&asset.code],
+            keystores[1].0.balance(&asset.code).await,
+            max_record_times_2
+        );
+        assert_eq!(
+            keystores[1]
+                .0
+                .sending_account(&addr1)
+                .await
+                .unwrap()
+                .balances[&asset.code],
             max_record_times_2
         );
     }
