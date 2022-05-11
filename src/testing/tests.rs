@@ -2991,6 +2991,9 @@ pub mod generic_wallet_tests {
         let (ledger, mut wallets) = t.create_test_network(&[(4, 4)], vec![8, 0], &mut now).await;
         ledger.lock().await.set_block_size(1).unwrap();
 
+        let addr0 = wallets[0].1[0].clone();
+        let addr1 = wallets[1].1[0].clone();
+
         // Define a mintable asset type.
         let asset = wallets[0]
             .0
@@ -2999,22 +3002,21 @@ pub mod generic_wallet_tests {
             .unwrap();
         // Mint the maximum single-record amount, thrice (which will cause a total amount which
         // exceeds both the max single-record amount and the max of a u64).
-        let addr = wallets[0].1[0].clone();
         wallets[0]
             .0
-            .mint(&addr, 1, &asset.code, max_record, addr.clone())
+            .mint(&addr0, 1, &asset.code, max_record, addr0.clone())
             .await
             .unwrap();
         t.sync(&ledger, &wallets).await;
         wallets[0]
             .0
-            .mint(&addr, 1, &asset.code, max_record, addr.clone())
+            .mint(&addr0, 1, &asset.code, max_record, addr0.clone())
             .await
             .unwrap();
         t.sync(&ledger, &wallets).await;
         wallets[0]
             .0
-            .mint(&addr, 1, &asset.code, max_record, addr.clone())
+            .mint(&addr0, 1, &asset.code, max_record, addr0.clone())
             .await
             .unwrap();
         t.sync(&ledger, &wallets).await;
@@ -3022,30 +3024,36 @@ pub mod generic_wallet_tests {
         // Check that the total balance is aggregated without overflowing.
         assert_eq!(wallets[0].0.balance(&asset.code).await, max_record_times_3);
         assert_eq!(
-            wallets[0].0.sending_account(&addr).await.unwrap().balances[&asset.code],
+            wallets[0].0.sending_account(&addr0).await.unwrap().balances[&asset.code],
             max_record_times_3
         );
 
         // Check that we can do a transfer whose total amount exceeds the maximum record amount, as
         // long as the amount of each input and output record is acceptable. There is an additional
-        // constraint in Jellyfish that the total output amount of a transaction can be represented
-        // as a u64, so we can only transfer 2 max records this way.
-        let addr = wallets[1].1[0].clone();
+        // constraint in Jellyfish that the total input amount of a transaction (including the fee!)
+        // can be represented as a u64. In our case, we can use 2 of our max_record inputs (which
+        // sums to 2(2^63 - 1) = 2^64 - 2) and our last remaining native asset record of amount 1
+        // for the fee, giving a total of 2^64 - 1. We just need to make sure we use the account
+        // with a native record of amount 1 to pay the fee, not the secondary account which still
+        // has its initial native record of amount 4.
         wallets[0]
             .0
             .transfer(
-                None,
+                Some(&addr0),
                 &asset.code,
-                &[(addr.clone(), max_record), (addr.clone(), max_record)],
+                &[(addr1.clone(), max_record), (addr1.clone(), max_record)],
                 1,
             )
             .await
             .unwrap();
         t.sync(&ledger, &wallets).await;
-        assert_eq!(wallets[0].0.balance(&asset.code).await, max_record.into());
+        assert_eq!(
+            wallets[0].0.balance(&asset.code).await,
+            U256::from(max_record)
+        );
         assert_eq!(wallets[1].0.balance(&asset.code).await, max_record_times_2);
         assert_eq!(
-            wallets[1].0.sending_account(&addr).await.unwrap().balances[&asset.code],
+            wallets[1].0.sending_account(&addr1).await.unwrap().balances[&asset.code],
             max_record_times_2
         );
     }
