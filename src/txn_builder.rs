@@ -1898,8 +1898,6 @@ fn bigint_to_u256(i: BigInt) -> U256 {
     let (sign, mut digits) = i.to_u64_digits();
     assert_ne!(sign, Sign::Minus);
     assert!(digits.len() <= 4);
-    while digits.len() < 4 {
-        digits.push(0);
-    }
+    digits.resize(4, 0);
     U256(digits.try_into().unwrap())
 }
