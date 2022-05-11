@@ -33,7 +33,7 @@ use jf_cap::{
     proof::UniversalParam,
     structs::{AssetCode, AssetPolicy, FreezeFlag, ReceiverMemo, RecordCommitment},
 };
-use net::{MerklePath, UserAddress};
+use net::{MerklePath, UserAddress, UserPubKey};
 use reef::Ledger;
 use snafu::ResultExt;
 use std::any::type_name;
@@ -161,8 +161,8 @@ macro_rules! cli_input_from_str {
 }
 
 cli_input_from_str! {
-    bool, u64, String, AssetCode, AssetInfo, ViewerPubKey, FreezerPubKey, UserAddress,
-    PathBuf, ReceiverMemo, RecordCommitment, MerklePath, EventIndex
+    bool, u64, AssetCode, AssetInfo, EventIndex, FreezerPubKey, MerklePath, PathBuf, ReceiverMemo,
+    RecordCommitment, String, UserAddress, UserPubKey, ViewerPubKey
 }
 
 impl<'a, C: CLI<'a>, L: Ledger> CLIInput<'a, C> for TransactionReceipt<L> {
@@ -488,8 +488,8 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             transfer,
             "transfer some owned assets to another user",
             C,
-            |io, keystore, asset: ListItem<AssetCode>, to: UserAddress, amount: u64, fee: u64; wait: Option<bool>| {
-                let res = keystore.transfer(None, &asset.item, &[(to.0, amount)], fee).await;
+            |io, keystore, asset: ListItem<AssetCode>, to: UserPubKey, amount: u64, fee: u64; wait: Option<bool>| {
+                let res = keystore.transfer(None, &asset.item, &[(to, amount)], fee).await;
                 finish_transaction::<C>(io, keystore, res, wait, "transferred").await;
             }
         ),
@@ -497,8 +497,8 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             transfer_from,
             "transfer some assets from an owned address to another user",
             C,
-            |io, keystore, asset: ListItem<AssetCode>, from: UserAddress, to: UserAddress, amount: u64, fee: u64; wait: Option<bool>| {
-                let res = keystore.transfer(Some(&from.0), &asset.item, &[(to.0, amount)], fee).await;
+            |io, keystore, asset: ListItem<AssetCode>, from: UserAddress, to: UserPubKey, amount: u64, fee: u64; wait: Option<bool>| {
+                let res = keystore.transfer(Some(&from.0), &asset.item, &[(to, amount)], fee).await;
                 finish_transaction::<C>(io, keystore, res, wait, "transferred").await;
             }
         ),
@@ -561,8 +561,8 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             mint,
             "mint an asset",
             C,
-            |io, keystore, asset: ListItem<AssetCode>, from: UserAddress, to: UserAddress, amount: u64, fee: u64; wait: Option<bool>| {
-                let res = keystore.mint(&from.0, fee, &asset.item, amount, to.0).await;
+            |io, keystore, asset: ListItem<AssetCode>, from: UserAddress, to: UserPubKey, amount: u64, fee: u64; wait: Option<bool>| {
+                let res = keystore.mint(&from.0, fee, &asset.item, amount, to).await;
                 finish_transaction::<C>(io, keystore, res, wait, "minted").await;
             }
         ),
@@ -1188,8 +1188,8 @@ mod test {
 
         // Get the viewer's funded address.
         writeln!(viewer_input, "gen_key sending scan_from=start wait=true").unwrap();
-        let matches = match_output(&mut viewer_output, &["(?P<addr>ADDR~.*)"]);
-        let viewer_address = matches.get("addr");
+        let matches = match_output(&mut viewer_output, &["(?P<pub_key>USERPUBKEY~.*)"]);
+        let viewer_address = matches.get("pub_key").address();
         writeln!(viewer_input, "balance 0").unwrap();
         match_output(
             &mut viewer_output,
@@ -1198,8 +1198,9 @@ mod test {
 
         // Get the sender's funded address.
         writeln!(sender_input, "gen_key sending scan_from=start wait=true").unwrap();
-        let matches = match_output(&mut sender_output, &["(?P<addr>ADDR~.*)"]);
-        let sender_address = matches.get("addr");
+        let matches = match_output(&mut sender_output, &["(?P<pub_key>USERPUBKEY~.*)"]);
+        let sender_pub_key = matches.get("addr");
+        let sender_address = sender_pub_key.address();
         writeln!(sender_input, "balance 0").unwrap();
         match_output(
             &mut sender_output,
@@ -1208,8 +1209,9 @@ mod test {
 
         // Get the receiver's (unfunded) address.
         writeln!(receiver_input, "gen_key sending").unwrap();
-        let matches = match_output(&mut receiver_output, &["(?P<addr>ADDR~.*)"]);
-        let receiver_address = matches.get("addr");
+        let matches = match_output(&mut receiver_output, &["(?P<pub_key>USERPUBKEY~.*)"]);
+        let receiver_pub_key = matches.get("pub_key");
+        let receiver_address = receiver_pub_key.address();
 
         // Generate a viewing key.
         writeln!(viewer_input, "gen_key viewing").unwrap();
@@ -1232,7 +1234,7 @@ mod test {
         writeln!(
             viewer_input,
             "mint 1 {} {} 1000 1",
-            viewer_address, sender_address
+            viewer_address, sender_pub_key
         )
         .unwrap();
         let matches = match_output(&mut viewer_output, &["(?P<txn>TXN~.*)"]);
@@ -1250,7 +1252,7 @@ mod test {
         writeln!(
             sender_input,
             "transfer_from 1 {} {} 50 1",
-            sender_address, receiver_address
+            sender_address, receiver_pub_key
         )
         .unwrap();
         let matches = match_output(&mut sender_output, &["(?P<txn>TXN~.*)"]);
@@ -1319,7 +1321,7 @@ mod test {
         writeln!(
             sender_input,
             "transfer_from 1 {} {} 50 1",
-            sender_address, receiver_address
+            sender_address, receiver_pub_key
         )
         .unwrap();
         // Search for error message with a slightly permissive regex to allow the CLI some freedom

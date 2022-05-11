@@ -1524,7 +1524,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         fee: u64,
         asset_code: &AssetCode,
         amount: u64,
-        receiver: UserAddress,
+        receiver: UserPubKey,
     ) -> Result<(MintNote, TransactionInfo<L>), KeystoreError<L>> {
         let asset = self
             .assets
@@ -1544,7 +1544,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                 fee,
                 &(asset.definition.clone(), seed, description),
                 amount,
-                session.backend.get_public_key(&receiver).await?,
+                receiver,
                 &mut session.rng,
             )
             .context(TransactionSnafu)
@@ -2179,7 +2179,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + KeystoreBackend<'a, L> + Send + Sync
         &mut self,
         sender: Option<&UserAddress>,
         asset: &AssetCode,
-        receivers: &[(UserAddress, u64)],
+        receivers: &[(UserPubKey, u64)],
         fee: u64,
     ) -> Result<TransactionReceipt<L>, KeystoreError<L>> {
         let receivers = receivers
@@ -2200,22 +2200,15 @@ impl<'a, L: 'static + Ledger, Backend: 'a + KeystoreBackend<'a, L> + Send + Sync
         &mut self,
         sender: Option<&UserAddress>,
         asset: &AssetCode,
-        receivers: &[(UserAddress, u64, bool)],
+        receivers: &[(UserPubKey, u64, bool)],
         fee: u64,
         bound_data: Vec<u8>,
         xfr_size_requirement: Option<(usize, usize)>,
     ) -> Result<(TransferNote, TransactionInfo<L>), KeystoreError<L>> {
         let KeystoreSharedState { state, session, .. } = &mut *self.mutex.lock().await;
         let receivers = iter(receivers)
-            .then(|(addr, amt, burn)| {
-                let session = &session;
-                async move {
-                    Ok::<_, KeystoreError<L>>((
-                        session.backend.get_public_key(addr).await?,
-                        *amt,
-                        *burn,
-                    ))
-                }
+            .then(|(pub_key, amt, burn)| async move {
+                Ok::<_, KeystoreError<L>>((pub_key.clone(), *amt, *burn))
             })
             .try_collect::<Vec<_>>()
             .await?;
@@ -2472,7 +2465,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + KeystoreBackend<'a, L> + Send + Sync
         fee: u64,
         asset_code: &AssetCode,
         amount: u64,
-        receiver: UserAddress,
+        receiver: UserPubKey,
     ) -> Result<(MintNote, TransactionInfo<L>), KeystoreError<L>> {
         let KeystoreSharedState { state, session, .. } = &mut *self.mutex.lock().await;
         state
@@ -2489,7 +2482,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + KeystoreBackend<'a, L> + Send + Sync
         fee: u64,
         asset_code: &AssetCode,
         amount: u64,
-        receiver: UserAddress,
+        receiver: UserPubKey,
     ) -> Result<TransactionReceipt<L>, KeystoreError<L>> {
         let (note, info) = self
             .build_mint(minter, fee, asset_code, amount, receiver)

@@ -260,10 +260,10 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         Keystore::with_state(backend, state).await.unwrap()
     }
 
-    /// Creates two key pairs/addresses for each keystore.
+    /// Creates two key pairs for each keystore.
     ///
     /// `initial_grants` - List of total initial grants for each keystore. Each amount will be
-    /// divided by 2, and any remainder will be added to the second address.
+    /// divided by 2, and any remainder will be added to the second public key.
     async fn create_test_network(
         &mut self,
         xfr_sizes: &[(usize, usize)],
@@ -273,7 +273,7 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork, Self::MockStorage>>>,
         Vec<(
             Keystore<'a, Self::MockBackend, Self::Ledger>,
-            Vec<UserAddress>,
+            Vec<UserPubKey>,
         )>,
     ) {
         let mut rng = ChaChaRng::from_seed([42u8; 32]);
@@ -404,7 +404,7 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
                 // Wait for the keystore to find any records already belonging to this key from the
                 // initial grants.
                 keystore.await_key_scan(&key_pair.address()).await.unwrap();
-                addresses.push(key_pair.address());
+                addresses.push(key_pair);
             }
             keystores.push((keystore, addresses));
         }
@@ -423,7 +423,7 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         ledger: &Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork, Self::MockStorage>>>,
         keystores: &[(
             Keystore<'a, Self::MockBackend, Self::Ledger>,
-            Vec<UserAddress>,
+            Vec<UserPubKey>,
         )],
     ) {
         let memos_source = {
@@ -484,7 +484,7 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         &self,
         keystores: &[(
             Keystore<'a, Self::MockBackend, Self::Ledger>,
-            Vec<UserAddress>,
+            Vec<UserPubKey>,
         )],
         t: EventIndex,
     ) {
@@ -497,7 +497,7 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         ledger: &Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork, Self::MockStorage>>>,
         keystores: &[(
             Keystore<'a, Self::MockBackend, Self::Ledger>,
-            Vec<UserAddress>,
+            Vec<UserPubKey>,
         )],
     ) {
         let ledger = ledger.lock().await;
