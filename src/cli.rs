@@ -500,7 +500,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
         ),
         command!(
             transfer,
-            "transfer some owned assets to another user",
+            "transfer some owned assets to another user's public key",
             C,
             |io, keystore, asset: ListItem<AssetCode>, to: UserPubKey, amount: u64, fee: u64; wait: Option<bool>| {
                 let res = keystore.transfer(None, &asset.item, &[(to, amount)], fee).await;
@@ -509,7 +509,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
         ),
         command!(
             transfer_from,
-            "transfer some assets from an owned address to another user",
+            "transfer some assets from an owned address to another user's public key",
             C,
             |io, keystore, asset: ListItem<AssetCode>, from: UserAddress, to: UserPubKey, amount: u64, fee: u64; wait: Option<bool>| {
                 let res = keystore.transfer(Some(&from.0), &asset.item, &[(to, amount)], fee).await;
@@ -573,7 +573,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
         ),
         command!(
             mint,
-            "mint an asset",
+            "mint an asset from an owned address to a user's public key",
             C,
             |io, keystore, asset: ListItem<AssetCode>, from: UserAddress, to: UserPubKey, amount: u64, fee: u64; wait: Option<bool>| {
                 let res = keystore.mint(&from.0, fee, &asset.item, amount, to).await;
@@ -582,7 +582,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
         ),
         command!(
             freeze,
-            "freeze assets owned by another users",
+            "freeze assets owned by another user's address",
             C,
             |io, keystore, asset: ListItem<AssetCode>, fee_account: UserAddress, target: UserAddress,
              amount: U256, fee: u64; wait: Option<bool>|
@@ -593,7 +593,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
         ),
         command!(
             unfreeze,
-            "unfreeze previously frozen assets owned by another users",
+            "unfreeze previously frozen assets owned by another user's address",
             C,
             |io, keystore, asset: ListItem<AssetCode>, fee_account: UserAddress, target: UserAddress,
              amount: U256, fee: u64; wait: Option<bool>|
@@ -1047,6 +1047,14 @@ async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
             for command in commands.iter() {
                 cli_writeln!(io, "{}", command);
             }
+            cli_writeln!(
+                io,
+                "General rule: When determining whether to use UserAddress or UserPubKey as the
+                parameter, use UserAddress as an account identifier (to send an asset, get a
+                balance, etc.), and UserPubKey as a transaction destination. An exception is when
+                we can't reasonably know the UserPubKey of the destination (freezing or
+                unfreezing), in which case we use UserAddress instead."
+            );
             continue;
         }
         for Command { name, run, .. } in commands.iter() {

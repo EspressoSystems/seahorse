@@ -52,11 +52,7 @@ use async_std::task::block_on;
 use async_trait::async_trait;
 use core::fmt::Debug;
 use espresso_macros::ser_test;
-use futures::{
-    channel::oneshot,
-    prelude::*,
-    stream::{iter, Stream},
-};
+use futures::{channel::oneshot, prelude::*, stream::Stream};
 use jf_cap::{
     errors::TxnApiError,
     freeze::FreezeNote,
@@ -2207,12 +2203,6 @@ impl<'a, L: 'static + Ledger, Backend: 'a + KeystoreBackend<'a, L> + Send + Sync
         xfr_size_requirement: Option<(usize, usize)>,
     ) -> Result<(TransferNote, TransactionInfo<L>), KeystoreError<L>> {
         let KeystoreSharedState { state, session, .. } = &mut *self.mutex.lock().await;
-        let receivers = iter(receivers)
-            .then(|(pub_key, amt, burn)| async move {
-                Ok::<_, KeystoreError<L>>((pub_key.clone(), *amt, *burn))
-            })
-            .try_collect::<Vec<_>>()
-            .await?;
         let sender_key_pairs = match sender {
             Some(addr) => {
                 vec![state.account_key_pair(addr)?.clone()]
