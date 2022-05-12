@@ -34,6 +34,7 @@ use jf_cap::{
     structs::{AssetCode, AssetPolicy, FreezeFlag, ReceiverMemo, RecordCommitment},
 };
 use net::{MerklePath, UserAddress};
+use primitive_types::U256;
 use reef::Ledger;
 use snafu::ResultExt;
 use std::any::type_name;
@@ -168,6 +169,19 @@ cli_input_from_str! {
 impl<'a, C: CLI<'a>, L: Ledger> CLIInput<'a, C> for TransactionReceipt<L> {
     fn parse_for_keystore(_keystore: &mut Keystore<'a, C>, s: &str) -> Option<Self> {
         Self::from_str(s).ok()
+    }
+}
+
+// Annoyingly, FromStr for U256 always interprets the input as hex. This implementation checks for a
+// 0x prefix. If present, it interprets the remainder of the string as hex, otherwise it interprets
+// the entire string as decimal.
+impl<'a, C: CLI<'a>> CLIInput<'a, C> for U256 {
+    fn parse_for_keystore(_wallet: &mut Keystore<'a, C>, s: &str) -> Option<Self> {
+        if s.starts_with("0x") {
+            s.parse().ok()
+        } else {
+            U256::from_dec_str(s).ok()
+        }
     }
 }
 
@@ -571,7 +585,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             "freeze assets owned by another users",
             C,
             |io, keystore, asset: ListItem<AssetCode>, fee_account: UserAddress, target: UserAddress,
-             amount: u64, fee: u64; wait: Option<bool>|
+             amount: U256, fee: u64; wait: Option<bool>|
             {
                 let res = keystore.freeze(&fee_account.0, fee, &asset.item, amount, target.0).await;
                 finish_transaction::<C>(io, keystore, res, wait, "frozen").await;
@@ -582,7 +596,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             "unfreeze previously frozen assets owned by another users",
             C,
             |io, keystore, asset: ListItem<AssetCode>, fee_account: UserAddress, target: UserAddress,
-             amount: u64, fee: u64; wait: Option<bool>|
+             amount: U256, fee: u64; wait: Option<bool>|
             {
                 let res = keystore.unfreeze(&fee_account.0, fee, &asset.item, amount, target.0).await;
                 finish_transaction::<C>(io, keystore, res, wait, "unfrozen").await;
