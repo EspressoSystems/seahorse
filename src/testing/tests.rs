@@ -3045,8 +3045,10 @@ pub mod generic_keystore_tests {
         let (ledger, mut keystores) = t.create_test_network(&[(4, 4)], vec![8, 0], &mut now).await;
         ledger.lock().await.set_block_size(1).unwrap();
 
-        let addr0 = keystores[0].1[0].clone();
-        let addr1 = keystores[1].1[0].clone();
+        let pub_key0 = keystores[0].1[0].clone();
+        let addr0 = pub_key0.address();
+        let pub_key1 = keystores[1].1[0].clone();
+        let addr1 = pub_key1.address();
 
         // Define a mintable asset type.
         let asset = keystores[0]
@@ -3054,23 +3056,24 @@ pub mod generic_keystore_tests {
             .define_asset("my_asset".into(), &[], AssetPolicy::default())
             .await
             .unwrap();
+
         // Mint the maximum single-record amount, thrice (which will cause a total amount which
         // exceeds both the max single-record amount and the max of a u64).
         keystores[0]
             .0
-            .mint(&addr0, 1, &asset.code, max_record, addr0.clone())
+            .mint(&addr0, 1, &asset.code, max_record, pub_key0.clone())
             .await
             .unwrap();
         t.sync(&ledger, &keystores).await;
         keystores[0]
             .0
-            .mint(&addr0, 1, &asset.code, max_record, addr0.clone())
+            .mint(&addr0, 1, &asset.code, max_record, pub_key0.clone())
             .await
             .unwrap();
         t.sync(&ledger, &keystores).await;
         keystores[0]
             .0
-            .mint(&addr0, 1, &asset.code, max_record, addr0.clone())
+            .mint(&addr0, 1, &asset.code, max_record, pub_key0.clone())
             .await
             .unwrap();
         t.sync(&ledger, &keystores).await;
@@ -3103,7 +3106,10 @@ pub mod generic_keystore_tests {
             .transfer(
                 Some(&addr0),
                 &asset.code,
-                &[(addr1.clone(), max_record), (addr1.clone(), max_record)],
+                &[
+                    (pub_key1.clone(), max_record),
+                    (pub_key1.clone(), max_record),
+                ],
                 1,
             )
             .await
