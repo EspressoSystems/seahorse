@@ -1866,6 +1866,41 @@
 <span id="1866">1866</span>
 <span id="1867">1867</span>
 <span id="1868">1868</span>
+<span id="1869">1869</span>
+<span id="1870">1870</span>
+<span id="1871">1871</span>
+<span id="1872">1872</span>
+<span id="1873">1873</span>
+<span id="1874">1874</span>
+<span id="1875">1875</span>
+<span id="1876">1876</span>
+<span id="1877">1877</span>
+<span id="1878">1878</span>
+<span id="1879">1879</span>
+<span id="1880">1880</span>
+<span id="1881">1881</span>
+<span id="1882">1882</span>
+<span id="1883">1883</span>
+<span id="1884">1884</span>
+<span id="1885">1885</span>
+<span id="1886">1886</span>
+<span id="1887">1887</span>
+<span id="1888">1888</span>
+<span id="1889">1889</span>
+<span id="1890">1890</span>
+<span id="1891">1891</span>
+<span id="1892">1892</span>
+<span id="1893">1893</span>
+<span id="1894">1894</span>
+<span id="1895">1895</span>
+<span id="1896">1896</span>
+<span id="1897">1897</span>
+<span id="1898">1898</span>
+<span id="1899">1899</span>
+<span id="1900">1900</span>
+<span id="1901">1901</span>
+<span id="1902">1902</span>
+<span id="1903">1903</span>
 </pre><pre class="rust"><code><span class="comment">// Copyright (c) 2022 Espresso Systems (espressosys.com)</span>
 <span class="comment">// This file is part of the Seahorse library.</span>
 
@@ -1901,6 +1936,9 @@
 <span class="kw">use</span> <span class="ident">jf_primitives::merkle_tree::FilledMTBuilder</span>;
 <span class="kw">use</span> <span class="ident">jf_utils::tagged_blob</span>;
 <span class="kw">use</span> <span class="ident">key_set::KeySet</span>;
+<span class="kw">use</span> <span class="ident">num_bigint</span>::{<span class="ident">BigInt</span>, <span class="ident">Sign</span>};
+<span class="kw">use</span> <span class="ident">num_traits::identities::Zero</span>;
+<span class="kw">use</span> <span class="ident">primitive_types::U256</span>;
 <span class="kw">use</span> <span class="ident">rand_chacha::ChaChaRng</span>;
 <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">test</span>)]</span>
 <span class="kw">use</span> <span class="ident">reef::cap</span>;
@@ -1911,23 +1949,26 @@
 <span class="kw">use</span> <span class="ident">serde</span>::{<span class="ident">Deserialize</span>, <span class="ident">Serialize</span>};
 <span class="kw">use</span> <span class="ident">snafu</span>::{<span class="ident">ResultExt</span>, <span class="ident">Snafu</span>};
 <span class="kw">use</span> <span class="ident">std::collections</span>::{<span class="ident">BTreeMap</span>, <span class="ident">BTreeSet</span>, <span class="ident">HashMap</span>, <span class="ident">HashSet</span>};
+<span class="kw">use</span> <span class="ident">std::convert::TryInto</span>;
 <span class="kw">use</span> <span class="ident">std::fmt</span>::{<span class="ident">Debug</span>, <span class="ident">Formatter</span>};
 <span class="kw">use</span> <span class="ident">std::hash</span>::{<span class="ident">Hash</span>, <span class="ident">Hasher</span>};
 <span class="kw">use</span> <span class="ident">std::iter::FromIterator</span>;
 <span class="kw">use</span> <span class="ident">std::ops</span>::{<span class="ident">Index</span>, <span class="ident">IndexMut</span>};
+
+<span class="kw">const</span> <span class="ident">MAX_RECORD_AMOUNT</span>: <span class="ident">u64</span> <span class="op">=</span> <span class="number">2u64</span>.<span class="ident">pow</span>(<span class="number">63</span>) <span class="op">-</span> <span class="number">1</span>;
 
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Debug</span>, <span class="ident">Snafu</span>)]</span>
 <span class="attribute">#[<span class="ident">snafu</span>(<span class="ident">visibility</span>(<span class="kw">pub</span>))]</span>
 <span class="kw">pub</span> <span class="kw">enum</span> <span class="ident">TransactionError</span> {
     <span class="ident">InsufficientBalance</span> {
         <span class="ident">asset</span>: <span class="ident">AssetCode</span>,
-        <span class="ident">required</span>: <span class="ident">u64</span>,
-        <span class="ident">actual</span>: <span class="ident">u64</span>,
+        <span class="ident">required</span>: <span class="ident">U256</span>,
+        <span class="ident">actual</span>: <span class="ident">U256</span>,
     },
     <span class="ident">Fragmentation</span> {
         <span class="ident">asset</span>: <span class="ident">AssetCode</span>,
-        <span class="ident">amount</span>: <span class="ident">u64</span>,
-        <span class="ident">suggested_amount</span>: <span class="ident">u64</span>,
+        <span class="ident">amount</span>: <span class="ident">U256</span>,
+        <span class="ident">suggested_amount</span>: <span class="ident">U256</span>,
         <span class="ident">max_records</span>: <span class="ident">usize</span>,
     },
     <span class="ident">TooManyOutputs</span> {
@@ -2793,11 +2834,10 @@
 }
 
 <span class="kw">impl</span><span class="op">&lt;</span><span class="ident">L</span>: <span class="ident">Ledger</span><span class="op">&gt;</span> <span class="ident">TransactionState</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span> {
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">balance</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">asset</span>: <span class="kw-2">&amp;</span><span class="ident">AssetCode</span>, <span class="ident">pub_key</span>: <span class="kw-2">&amp;</span><span class="ident">UserPubKey</span>, <span class="ident">frozen</span>: <span class="ident">FreezeFlag</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">u64</span> {
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">balance</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">asset</span>: <span class="kw-2">&amp;</span><span class="ident">AssetCode</span>, <span class="ident">pub_key</span>: <span class="kw-2">&amp;</span><span class="ident">UserPubKey</span>, <span class="ident">frozen</span>: <span class="ident">FreezeFlag</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">U256</span> {
         <span class="self">self</span>.<span class="ident">records</span>
             .<span class="ident">input_records</span>(<span class="ident">asset</span>, <span class="kw-2">&amp;</span><span class="ident">pub_key</span>.<span class="ident">address</span>(), <span class="ident">frozen</span>, <span class="self">self</span>.<span class="ident">validator</span>.<span class="ident">now</span>())
-            .<span class="ident">map</span>(<span class="op">|</span><span class="ident">record</span><span class="op">|</span> <span class="ident">record</span>.<span class="ident">ro</span>.<span class="ident">amount</span>)
-            .<span class="ident">sum</span>()
+            .<span class="ident">fold</span>(<span class="ident">U256::zero</span>(), <span class="op">|</span><span class="ident">sum</span>, <span class="ident">record</span><span class="op">|</span> <span class="ident">sum</span> <span class="op">+</span> <span class="ident">record</span>.<span class="ident">ro</span>.<span class="ident">amount</span>)
     }
 
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">clear_expired_transactions</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">PendingTransaction</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
@@ -2905,10 +2945,10 @@
         <span class="ident">proving_keys</span>: <span class="kw-2">&amp;</span><span class="lifetime">&#39;k</span> <span class="ident">KeySet</span><span class="op">&lt;</span><span class="ident">TransferProvingKey</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span><span class="op">&gt;</span>, <span class="ident">key_set::OrderByOutputs</span><span class="op">&gt;</span>,
         <span class="ident">rng</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">ChaChaRng</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(<span class="ident">TransferNote</span>, <span class="ident">TransactionInfo</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span>), <span class="ident">TransactionError</span><span class="op">&gt;</span> {
-        <span class="kw">let</span> <span class="ident">total_output_amount</span>: <span class="ident">u64</span> <span class="op">=</span> <span class="ident">spec</span>
+        <span class="kw">let</span> <span class="ident">total_output_amount</span>: <span class="ident">U256</span> <span class="op">=</span> <span class="ident">spec</span>
             .<span class="ident">receivers</span>
             .<span class="ident">iter</span>()
-            .<span class="ident">fold</span>(<span class="number">0</span>, <span class="op">|</span><span class="ident">sum</span>, (<span class="kw">_</span>, <span class="ident">amount</span>, <span class="kw">_</span>)<span class="op">|</span> <span class="ident">sum</span> <span class="op">+</span> <span class="kw-2">*</span><span class="ident">amount</span>)
+            .<span class="ident">fold</span>(<span class="ident">U256::zero</span>(), <span class="op">|</span><span class="ident">sum</span>, (<span class="kw">_</span>, <span class="ident">amount</span>, <span class="kw">_</span>)<span class="op">|</span> <span class="ident">sum</span> <span class="op">+</span> <span class="kw-2">*</span><span class="ident">amount</span>)
             <span class="op">+</span> <span class="ident">spec</span>.<span class="ident">fee</span>;
 
         <span class="comment">// find input records which account for at least the total amount, and possibly some change.</span>
@@ -3040,10 +3080,10 @@
             <span class="ident">AssetCode::native</span>(),
             <span class="string">&quot;call `transfer_native()` instead&quot;</span>
         );
-        <span class="kw">let</span> <span class="ident">total_output_amount</span>: <span class="ident">u64</span> <span class="op">=</span> <span class="ident">spec</span>
+        <span class="kw">let</span> <span class="ident">total_output_amount</span>: <span class="ident">U256</span> <span class="op">=</span> <span class="ident">spec</span>
             .<span class="ident">receivers</span>
             .<span class="ident">iter</span>()
-            .<span class="ident">fold</span>(<span class="number">0</span>, <span class="op">|</span><span class="ident">sum</span>, (<span class="kw">_</span>, <span class="ident">amount</span>, <span class="kw">_</span>)<span class="op">|</span> <span class="ident">sum</span> <span class="op">+</span> <span class="kw-2">*</span><span class="ident">amount</span>);
+            .<span class="ident">fold</span>(<span class="ident">U256::zero</span>(), <span class="op">|</span><span class="ident">sum</span>, (<span class="kw">_</span>, <span class="ident">amount</span>, <span class="kw">_</span>)<span class="op">|</span> <span class="ident">sum</span> <span class="op">+</span> <span class="kw-2">*</span><span class="ident">amount</span>);
 
         <span class="comment">// find input records of the asset type to spend (this does not include the fee input)</span>
         <span class="kw">let</span> <span class="ident">records</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">find_records</span>(
@@ -3090,8 +3130,8 @@
             .<span class="ident">find_map</span>(<span class="op">|</span><span class="ident">key</span><span class="op">|</span> <span class="self">self</span>.<span class="ident">find_fee_input</span>(<span class="ident">key</span>, <span class="ident">spec</span>.<span class="ident">fee</span>).<span class="ident">ok</span>())
             .<span class="ident">ok_or</span>(<span class="ident">TransactionError::InsufficientBalance</span> {
                 <span class="ident">asset</span>: <span class="ident">AssetCode::native</span>(),
-                <span class="ident">required</span>: <span class="ident">spec</span>.<span class="ident">fee</span>,
-                <span class="ident">actual</span>: <span class="number">0</span>,
+                <span class="ident">required</span>: <span class="ident">spec</span>.<span class="ident">fee</span>.<span class="ident">into</span>(),
+                <span class="ident">actual</span>: <span class="ident">U256::zero</span>(),
             })<span class="question-mark">?</span>;
 
         <span class="comment">// prepare outputs, excluding fee change (which will be automatically generated)</span>
@@ -3297,7 +3337,7 @@
         <span class="ident">proving_keys</span>: <span class="kw-2">&amp;</span><span class="ident">KeySet</span><span class="op">&lt;</span><span class="ident">FreezeProvingKey</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span><span class="op">&gt;</span>, <span class="ident">key_set::OrderByOutputs</span><span class="op">&gt;</span>,
         <span class="ident">fee</span>: <span class="ident">u64</span>,
         <span class="ident">asset</span>: <span class="kw-2">&amp;</span><span class="ident">AssetDefinition</span>,
-        <span class="ident">amount</span>: <span class="ident">u64</span>,
+        <span class="ident">amount</span>: <span class="ident">U256</span>,
         <span class="ident">owner</span>: <span class="ident">UserAddress</span>,
         <span class="ident">outputs_frozen</span>: <span class="ident">FreezeFlag</span>,
         <span class="ident">rng</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">ChaChaRng</span>,
@@ -3352,7 +3392,11 @@
             },
             <span class="ident">hash</span>: <span class="prelude-val">None</span>,
             <span class="ident">senders</span>: <span class="macro">vec!</span>[<span class="ident">fee_key_pair</span>.<span class="ident">address</span>()],
-            <span class="ident">receivers</span>: <span class="macro">vec!</span>[(<span class="ident">owner</span>, <span class="ident">amount</span>)],
+            <span class="comment">// The target receives one frozen output record for each input record we are freezing.</span>
+            <span class="ident">receivers</span>: <span class="ident">input_records</span>
+                .<span class="ident">iter</span>()
+                .<span class="ident">map</span>(<span class="op">|</span>(<span class="ident">ro</span>, <span class="kw">_</span>)<span class="op">|</span> (<span class="ident">owner</span>.<span class="ident">clone</span>(), <span class="ident">ro</span>.<span class="ident">amount</span>))
+                .<span class="ident">collect</span>(),
             <span class="ident">receipt</span>: <span class="prelude-val">None</span>,
         };
         <span class="prelude-val">Ok</span>((
@@ -3443,19 +3487,21 @@
         <span class="ident">asset</span>: <span class="kw-2">&amp;</span><span class="ident">AssetCode</span>,
         <span class="ident">owner</span>: <span class="kw-2">&amp;</span><span class="ident">UserAddress</span>,
         <span class="ident">frozen</span>: <span class="ident">FreezeFlag</span>,
-        <span class="ident">amount</span>: <span class="ident">u64</span>,
+        <span class="ident">amount</span>: <span class="ident">U256</span>,
         <span class="ident">max_records</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">usize</span><span class="op">&gt;</span>,
         <span class="ident">allow_insufficient</span>: <span class="ident">bool</span>,
-    ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(<span class="ident">Vec</span><span class="op">&lt;</span>(<span class="ident">RecordOpening</span>, <span class="ident">u64</span>)<span class="op">&gt;</span>, <span class="ident">i64</span>), <span class="ident">TransactionError</span><span class="op">&gt;</span> {
+    ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(<span class="ident">Vec</span><span class="op">&lt;</span>(<span class="ident">RecordOpening</span>, <span class="ident">u64</span>)<span class="op">&gt;</span>, <span class="ident">BigInt</span>), <span class="ident">TransactionError</span><span class="op">&gt;</span> {
         <span class="kw">let</span> <span class="ident">now</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">validator</span>.<span class="ident">now</span>();
 
         <span class="comment">// If we have a record with the exact size required, use it to avoid fragmenting big records</span>
         <span class="comment">// into smaller change records.</span>
-        <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">record</span>) <span class="op">=</span> <span class="self">self</span>
-            .<span class="ident">records</span>
-            .<span class="ident">input_record_with_amount</span>(<span class="ident">asset</span>, <span class="ident">owner</span>, <span class="ident">frozen</span>, <span class="ident">amount</span>, <span class="ident">now</span>)
-        {
-            <span class="kw">return</span> <span class="prelude-val">Ok</span>((<span class="macro">vec!</span>[(<span class="ident">record</span>.<span class="ident">ro</span>.<span class="ident">clone</span>(), <span class="ident">record</span>.<span class="ident">uid</span>)], <span class="number">0</span>));
+        <span class="kw">if</span> <span class="ident">amount</span> <span class="op">&lt;</span><span class="op">=</span> <span class="ident">MAX_RECORD_AMOUNT</span>.<span class="ident">into</span>() {
+            <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">record</span>) <span class="op">=</span>
+                <span class="self">self</span>.<span class="ident">records</span>
+                    .<span class="ident">input_record_with_amount</span>(<span class="ident">asset</span>, <span class="ident">owner</span>, <span class="ident">frozen</span>, <span class="ident">amount</span>.<span class="ident">as_u64</span>(), <span class="ident">now</span>)
+            {
+                <span class="kw">return</span> <span class="prelude-val">Ok</span>((<span class="macro">vec!</span>[(<span class="ident">record</span>.<span class="ident">ro</span>.<span class="ident">clone</span>(), <span class="ident">record</span>.<span class="ident">uid</span>)], <span class="number">0u64</span>.<span class="ident">into</span>()));
+            }
         }
 
         <span class="comment">// Take the biggest records we have until they exceed the required amount, as a heuristic to</span>
@@ -3467,7 +3513,7 @@
         <span class="comment">// make exact change using combinations of larger and smaller blocks. We can replace this</span>
         <span class="comment">// with something more sophisticated later.</span>
         <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">result</span> <span class="op">=</span> <span class="macro">vec!</span>[];
-        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">current_amount</span> <span class="op">=</span> <span class="number">0</span>;
+        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">current_amount</span> <span class="op">=</span> <span class="ident">U256::zero</span>();
         <span class="kw">for</span> <span class="ident">record</span> <span class="kw">in</span> <span class="self">self</span>.<span class="ident">records</span>.<span class="ident">input_records</span>(<span class="ident">asset</span>, <span class="ident">owner</span>, <span class="ident">frozen</span>, <span class="ident">now</span>) {
             <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">max_records</span>) <span class="op">=</span> <span class="ident">max_records</span> {
                 <span class="kw">if</span> <span class="ident">result</span>.<span class="ident">len</span>() <span class="op">&gt;</span><span class="op">=</span> <span class="ident">max_records</span> {
@@ -3487,15 +3533,21 @@
                     });
                 }
             }
-            <span class="ident">current_amount</span> <span class="op">+</span><span class="op">=</span> <span class="ident">record</span>.<span class="ident">ro</span>.<span class="ident">amount</span>;
+            <span class="ident">current_amount</span> <span class="op">+</span><span class="op">=</span> <span class="ident">record</span>.<span class="ident">ro</span>.<span class="ident">amount</span>.<span class="ident">into</span>();
             <span class="ident">result</span>.<span class="ident">push</span>((<span class="ident">record</span>.<span class="ident">ro</span>.<span class="ident">clone</span>(), <span class="ident">record</span>.<span class="ident">uid</span>));
             <span class="kw">if</span> <span class="ident">current_amount</span> <span class="op">&gt;</span><span class="op">=</span> <span class="ident">amount</span> {
-                <span class="kw">return</span> <span class="prelude-val">Ok</span>((<span class="ident">result</span>, (<span class="ident">current_amount</span> <span class="op">-</span> <span class="ident">amount</span>) <span class="kw">as</span> <span class="ident">i64</span>));
+                <span class="kw">return</span> <span class="prelude-val">Ok</span>((
+                    <span class="ident">result</span>,
+                    <span class="ident">u256_to_signed</span>(<span class="ident">current_amount</span>) <span class="op">-</span> <span class="ident">u256_to_signed</span>(<span class="ident">amount</span>),
+                ));
             }
         }
 
         <span class="kw">if</span> <span class="ident">allow_insufficient</span> {
-            <span class="prelude-val">Ok</span>((<span class="ident">result</span>, (<span class="ident">current_amount</span> <span class="kw">as</span> <span class="ident">i64</span> <span class="op">-</span> <span class="ident">amount</span> <span class="kw">as</span> <span class="ident">i64</span>)))
+            <span class="prelude-val">Ok</span>((
+                <span class="ident">result</span>,
+                <span class="ident">u256_to_signed</span>(<span class="ident">current_amount</span>) <span class="op">-</span> <span class="ident">u256_to_signed</span>(<span class="ident">amount</span>),
+            ))
         } <span class="kw">else</span> {
             <span class="prelude-val">Err</span>(<span class="ident">TransactionError::InsufficientBalance</span> {
                 <span class="ident">asset</span>: <span class="kw-2">*</span><span class="ident">asset</span>,
@@ -3511,7 +3563,7 @@
         <span class="ident">asset</span>: <span class="kw-2">&amp;</span><span class="ident">AssetCode</span>,
         <span class="ident">owner_key_pairs</span>: <span class="kw-2">&amp;</span>[<span class="ident">UserKeyPair</span>],
         <span class="ident">frozen</span>: <span class="ident">FreezeFlag</span>,
-        <span class="ident">amount</span>: <span class="ident">u64</span>,
+        <span class="ident">amount</span>: <span class="ident">U256</span>,
         <span class="ident">max_records</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">usize</span><span class="op">&gt;</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span>(<span class="ident">UserKeyPair</span>, <span class="ident">Vec</span><span class="op">&lt;</span>(<span class="ident">RecordOpening</span>, <span class="ident">u64</span>)<span class="op">&gt;</span>, <span class="ident">u64</span>)<span class="op">&gt;</span>, <span class="ident">TransactionError</span><span class="op">&gt;</span> {
         <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">records</span> <span class="op">=</span> <span class="ident">Vec::new</span>();
@@ -3527,14 +3579,18 @@
                 <span class="bool-val">true</span>,
             )<span class="question-mark">?</span>;
             <span class="comment">// A nonnegative change indicates that we&#39;ve find sufficient records.</span>
-            <span class="kw">if</span> <span class="ident">change</span> <span class="op">&gt;</span><span class="op">=</span> <span class="number">0</span> {
-                <span class="ident">records</span>.<span class="ident">push</span>((<span class="ident">owner_key_pair</span>.<span class="ident">clone</span>(), <span class="ident">input_records</span>, <span class="ident">change</span> <span class="kw">as</span> <span class="ident">u64</span>));
+            <span class="kw">if</span> <span class="ident">change</span> <span class="op">&gt;</span><span class="op">=</span> <span class="ident">BigInt::zero</span>() {
+                <span class="ident">records</span>.<span class="ident">push</span>((
+                    <span class="ident">owner_key_pair</span>.<span class="ident">clone</span>(),
+                    <span class="ident">input_records</span>,
+                    <span class="ident">bigint_to_u256</span>(<span class="ident">change</span>).<span class="ident">as_u64</span>(),
+                ));
                 <span class="kw">return</span> <span class="prelude-val">Ok</span>(<span class="ident">records</span>);
             }
             <span class="kw">if</span> <span class="op">!</span><span class="ident">input_records</span>.<span class="ident">is_empty</span>() {
                 <span class="ident">records</span>.<span class="ident">push</span>((<span class="ident">owner_key_pair</span>.<span class="ident">clone</span>(), <span class="ident">input_records</span>, <span class="number">0</span>));
             }
-            <span class="ident">target_amount</span> <span class="op">=</span> (<span class="number">0</span> <span class="op">-</span> <span class="ident">change</span>) <span class="kw">as</span> <span class="ident">u64</span>;
+            <span class="ident">target_amount</span> <span class="op">=</span> <span class="ident">bigint_to_u256</span>(<span class="op">-</span><span class="ident">change</span>);
         }
 
         <span class="prelude-val">Err</span>(<span class="ident">TransactionError::InsufficientBalance</span> {
@@ -3555,7 +3611,7 @@
                 <span class="kw-2">&amp;</span><span class="ident">AssetCode::native</span>(),
                 <span class="kw-2">&amp;</span><span class="ident">owner_key_pair</span>.<span class="ident">pub_key</span>().<span class="ident">address</span>(),
                 <span class="ident">FreezeFlag::Unfrozen</span>,
-                <span class="ident">fee</span>,
+                <span class="ident">fee</span>.<span class="ident">into</span>(),
                 <span class="prelude-val">Some</span>(<span class="number">1</span>),
                 <span class="bool-val">false</span>,
             )<span class="question-mark">?</span>
@@ -3599,7 +3655,7 @@
         <span class="ident">xfr_size_requirement</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span>(<span class="ident">usize</span>, <span class="ident">usize</span>)<span class="op">&gt;</span>,
         <span class="ident">change_record</span>: <span class="ident">bool</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(<span class="kw-2">&amp;</span><span class="lifetime">&#39;k</span> <span class="ident">TransferProvingKey</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span><span class="op">&gt;</span>, <span class="ident">usize</span>), <span class="ident">TransactionError</span><span class="op">&gt;</span> {
-        <span class="kw">let</span> <span class="ident">total_output_amount</span> <span class="op">=</span> <span class="ident">outputs</span>.<span class="ident">iter</span>().<span class="ident">map</span>(<span class="op">|</span><span class="ident">ro</span><span class="op">|</span> <span class="ident">ro</span>.<span class="ident">amount</span>).<span class="ident">sum</span>();
+        <span class="kw">let</span> <span class="ident">total_output_amount</span> <span class="op">=</span> <span class="ident">outputs</span>.<span class="ident">iter</span>().<span class="ident">fold</span>(<span class="ident">U256::zero</span>(), <span class="op">|</span><span class="ident">sum</span>, <span class="ident">ro</span><span class="op">|</span> <span class="ident">sum</span> <span class="op">+</span> <span class="ident">ro</span>.<span class="ident">amount</span>);
         <span class="comment">// non-native transfers have an extra fee input, which is not included in `inputs`.</span>
         <span class="kw">let</span> <span class="ident">fee_inputs</span> <span class="op">=</span> <span class="kw">if</span> <span class="kw-2">*</span><span class="ident">asset</span> <span class="op">=</span><span class="op">=</span> <span class="ident">AssetDefinition::native</span>() {
             <span class="number">0</span>
@@ -3644,8 +3700,7 @@
                                 <span class="ident">suggested_amount</span>: <span class="ident">inputs</span>
                                     .<span class="ident">iter</span>()
                                     .<span class="ident">take</span>(<span class="ident">max_inputs</span> <span class="op">-</span> <span class="ident">fee_inputs</span>)
-                                    .<span class="ident">map</span>(<span class="op">|</span><span class="ident">input</span><span class="op">|</span> <span class="ident">input</span>.<span class="ident">ro</span>.<span class="ident">amount</span>)
-                                    .<span class="ident">sum</span>(),
+                                    .<span class="ident">fold</span>(<span class="ident">U256::zero</span>(), <span class="op">|</span><span class="ident">sum</span>, <span class="ident">input</span><span class="op">|</span> <span class="ident">sum</span> <span class="op">+</span> <span class="ident">input</span>.<span class="ident">ro</span>.<span class="ident">amount</span>),
                                 <span class="ident">max_records</span>: <span class="ident">max_inputs</span>,
                             }
                         } <span class="kw">else</span> {
@@ -3694,7 +3749,9 @@
         <span class="ident">inputs</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">FreezeNoteInput</span><span class="op">&lt;</span><span class="lifetime">&#39;k</span><span class="op">&gt;</span><span class="op">&gt;</span>,
         <span class="ident">key_pair</span>: <span class="kw-2">&amp;</span><span class="lifetime">&#39;k</span> <span class="ident">FreezerKeyPair</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="kw-2">&amp;</span><span class="lifetime">&#39;k</span> <span class="ident">FreezeProvingKey</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span><span class="op">&gt;</span>, <span class="ident">TransactionError</span><span class="op">&gt;</span> {
-        <span class="kw">let</span> <span class="ident">total_output_amount</span> <span class="op">=</span> <span class="ident">inputs</span>.<span class="ident">iter</span>().<span class="ident">map</span>(<span class="op">|</span><span class="ident">input</span><span class="op">|</span> <span class="ident">input</span>.<span class="ident">ro</span>.<span class="ident">amount</span>).<span class="ident">sum</span>();
+        <span class="kw">let</span> <span class="ident">total_output_amount</span> <span class="op">=</span> <span class="ident">inputs</span>
+            .<span class="ident">iter</span>()
+            .<span class="ident">fold</span>(<span class="ident">U256::zero</span>(), <span class="op">|</span><span class="ident">sum</span>, <span class="ident">input</span><span class="op">|</span> <span class="ident">sum</span> <span class="op">+</span> <span class="ident">input</span>.<span class="ident">ro</span>.<span class="ident">amount</span>);
 
         <span class="kw">let</span> <span class="ident">num_inputs</span> <span class="op">=</span> <span class="ident">inputs</span>.<span class="ident">len</span>() <span class="op">+</span> <span class="number">1</span>; <span class="comment">// make sure to include fee input</span>
         <span class="kw">let</span> <span class="ident">num_outputs</span> <span class="op">=</span> <span class="ident">num_inputs</span>; <span class="comment">// freeze transactions always have equal outputs and inputs</span>
@@ -3707,8 +3764,7 @@
                     <span class="ident">suggested_amount</span>: <span class="ident">inputs</span>
                         .<span class="ident">iter</span>()
                         .<span class="ident">take</span>(<span class="ident">max_inputs</span> <span class="op">-</span> <span class="number">1</span>) <span class="comment">// leave room for fee input</span>
-                        .<span class="ident">map</span>(<span class="op">|</span><span class="ident">input</span><span class="op">|</span> <span class="ident">input</span>.<span class="ident">ro</span>.<span class="ident">amount</span>)
-                        .<span class="ident">sum</span>(),
+                        .<span class="ident">fold</span>(<span class="ident">U256::zero</span>(), <span class="op">|</span><span class="ident">sum</span>, <span class="ident">input</span><span class="op">|</span> <span class="ident">sum</span> <span class="op">+</span> <span class="ident">input</span>.<span class="ident">ro</span>.<span class="ident">amount</span>),
                     <span class="ident">max_records</span>: <span class="ident">max_inputs</span>,
                 }
             })<span class="question-mark">?</span>;
@@ -3733,6 +3789,20 @@
 
         <span class="prelude-val">Ok</span>(<span class="ident">proving_key</span>)
     }
+}
+
+<span class="kw">fn</span> <span class="ident">u256_to_signed</span>(<span class="ident">u</span>: <span class="ident">U256</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">BigInt</span> {
+    <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">bytes</span> <span class="op">=</span> [<span class="number">0</span>; <span class="number">32</span>];
+    <span class="ident">u</span>.<span class="ident">to_little_endian</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">bytes</span>);
+    <span class="ident">BigInt::from_bytes_le</span>(<span class="ident">Sign::Plus</span>, <span class="kw-2">&amp;</span><span class="ident">bytes</span>)
+}
+
+<span class="kw">fn</span> <span class="ident">bigint_to_u256</span>(<span class="ident">i</span>: <span class="ident">BigInt</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">U256</span> {
+    <span class="kw">let</span> (<span class="ident">sign</span>, <span class="kw-2">mut</span> <span class="ident">digits</span>) <span class="op">=</span> <span class="ident">i</span>.<span class="ident">to_u64_digits</span>();
+    <span class="macro">assert_ne!</span>(<span class="ident">sign</span>, <span class="ident">Sign::Minus</span>);
+    <span class="macro">assert!</span>(<span class="ident">digits</span>.<span class="ident">len</span>() <span class="op">&lt;</span><span class="op">=</span> <span class="number">4</span>);
+    <span class="ident">digits</span>.<span class="ident">resize</span>(<span class="number">4</span>, <span class="number">0</span>);
+    <span class="ident">U256</span>(<span class="ident">digits</span>.<span class="ident">try_into</span>().<span class="ident">unwrap</span>())
 }
 </code></pre></div>
 </section><section id="search" class="content hidden"></section><div id="rustdoc-vars" data-root-path="../../" data-current-crate="seahorse" data-search-index-js="../../search-index.js" data-search-js="../../search.js"></div>
