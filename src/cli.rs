@@ -1199,7 +1199,7 @@ mod test {
             &[format!("{} {}", viewer_address, 1000)],
         );
 
-        // Get the sender's funded address.
+        // Get the sender's funded public key and address.
         writeln!(sender_input, "gen_key sending scan_from=start wait=true").unwrap();
         let matches = match_output(
             &mut sender_output,
@@ -1213,7 +1213,7 @@ mod test {
             &[format!("{} {}", sender_address, 1000)],
         );
 
-        // Get the receiver's (unfunded) address.
+        // Get the receiver's (unfunded) public key and address.
         writeln!(receiver_input, "gen_key sending").unwrap();
         let matches = match_output(
             &mut receiver_output,
