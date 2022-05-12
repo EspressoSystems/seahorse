@@ -299,7 +299,6 @@ pub struct MockBackendWithHeight<'a, const H: u8> {
                 'a,
                 cap::LedgerWithHeight<H>,
                 MockNetworkWithHeight<'a, H>,
-                MockStorage<'a, cap::LedgerWithHeight<H>>,
             >,
         >,
     >,
@@ -314,7 +313,6 @@ impl<'a, const H: u8> MockBackendWithHeight<'a, H> {
                     'a,
                     cap::LedgerWithHeight<H>,
                     MockNetworkWithHeight<'a, H>,
-                    MockStorage<'a, cap::LedgerWithHeight<H>>,
                 >,
             >,
         >,
@@ -466,7 +464,6 @@ impl<'a, const H: u8> super::SystemUnderTest<'a> for MockSystemWithHeight<H> {
     type Ledger = cap::LedgerWithHeight<H>;
     type MockBackend = MockBackendWithHeight<'a, H>;
     type MockNetwork = MockNetworkWithHeight<'a, H>;
-    // type MockStorage = MockStorage<'a, Self::Ledger>;
 
     async fn create_network(
         &mut self,
@@ -479,16 +476,11 @@ impl<'a, const H: u8> super::SystemUnderTest<'a> for MockSystemWithHeight<H> {
         MockNetworkWithHeight::new(&mut rng, proof_crs, records, initial_grants)
     }
 
-    // async fn create_storage(&mut self) -> Self::MockStorage {
-    //     Default::default()
-    // }
-
     async fn create_backend(
         &mut self,
-        ledger: Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork, Self::MockStorage>>>,
+        ledger: Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork>>>,
         _initial_grants: Vec<(RecordOpening, u64)>,
         key_stream: hd::KeyTree,
-        storage: Arc<Mutex<Self::MockStorage>>,
     ) -> Self::MockBackend {
         MockBackendWithHeight::new(ledger, key_stream)
     }

@@ -1086,7 +1086,7 @@ mod test {
     use std::time::Instant;
 
     type MockCapLedger<'a> =
-        Arc<Mutex<MockLedger<'a, cap::Ledger, MockNetwork<'a>, MockStorage<'a, cap::Ledger>>>>;
+        Arc<Mutex<MockLedger<'a, cap::Ledger, MockNetwork<'a>>>>;
 
     struct MockArgs<'a> {
         io: SharedIO,

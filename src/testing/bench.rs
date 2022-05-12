@@ -68,7 +68,6 @@ type MockLedger<'a, T> = super::MockLedger<
     'a,
     <T as SystemUnderTest<'a>>::Ledger,
     <T as SystemUnderTest<'a>>::MockNetwork,
-    <T as SystemUnderTest<'a>>::MockStorage,
 >;
 
 // A cache of benchmark setups with pre-generated event streams, indexed by number of blocks and

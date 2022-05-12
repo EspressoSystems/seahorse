@@ -318,7 +318,7 @@ pub mod generic_keystore_tests {
         // which is longer than we want to borrow `keystores` for).
         async fn check_balance<'b, L: 'static + Ledger>(
             keystore: &(
-                Keystore<'b, impl KeystoreBackend<'b, L> + Sync + 'b, L>,
+                Keystore<'b, impl KeystoreBackend<'b, L> + Sync + 'b, L, LoaderMetadata>,
                 Vec<UserAddress>,
             ),
             expected_coin_balance: u64,
@@ -1226,7 +1226,7 @@ pub mod generic_keystore_tests {
         // for).
         async fn check_balances<'b, L: Ledger + 'static>(
             keystores: &[(
-                Keystore<'b, impl KeystoreBackend<'b, L> + Sync + 'b, L>,
+                Keystore<'b, impl KeystoreBackend<'b, L> + Sync + 'b, L, LoaderMetadata>,
                 Vec<UserAddress>,
             )],
             balances: &[Vec<u64>],
@@ -1254,7 +1254,7 @@ pub mod generic_keystore_tests {
 
         async fn check_histories<'b, L: Ledger + 'static>(
             keystores: &[(
-                Keystore<'b, impl KeystoreBackend<'b, L> + Sync + 'b, L>,
+                Keystore<'b, impl KeystoreBackend<'b, L> + Sync + 'b, L, LoaderMetadata>,
                 Vec<UserAddress>,
             )],
             histories: &[Vec<Vec<TransactionHistoryEntry<L>>>],

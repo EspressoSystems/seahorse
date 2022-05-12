@@ -46,21 +46,20 @@ pub trait MockNetwork<'a, L: Ledger> {
     ) -> Result<LedgerEvent<L>, KeystoreError<L>>;
 }
 
-pub struct MockLedger<'a, L: Ledger, N: MockNetwork<'a, L>, S> {
+pub struct MockLedger<'a, L: Ledger, N: MockNetwork<'a, L>> {
     network: N,
     current_block: Block<L>,
     block_size: usize,
     hold_next_transaction: bool,
     held_transaction: Option<Transaction<L>>,
     mangled: bool,
-    storage: Vec<Arc<Mutex<S>>>,
     missing_memos: usize,
     sync_index: EventIndex,
     initial_records: MerkleTree,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
 
-impl<'a, L: Ledger, N: MockNetwork<'a, L>, S> MockLedger<'a, L, N, S> {
+impl<'a, L: Ledger, N: MockNetwork<'a, L>> MockLedger<'a, L, N> {
     pub fn new(network: N, records: MerkleTree) -> Self {
         Self {
             network,
@@ -69,7 +68,6 @@ impl<'a, L: Ledger, N: MockNetwork<'a, L>, S> MockLedger<'a, L, N, S> {
             hold_next_transaction: false,
             held_transaction: None,
             mangled: false,
-            storage: Default::default(),
             missing_memos: 0,
             sync_index: Default::default(),
             initial_records: records,
@@ -205,11 +203,10 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
     type Ledger: 'static + Ledger;
     type MockBackend: 'a + KeystoreBackend<'a, Self::Ledger> + Send + Sync;
     type MockNetwork: 'a + MockNetwork<'a, Self::Ledger> + Send;
-    // type MockStorage: 'a + KeystoreStorage<'a, Self::Ledger> + Send;
 
     async fn create_backend(
         &mut self,
-        ledger: Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork, Self::MockStorage>>>,
+        ledger: Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork>>>,
         initial_grants: Vec<(RecordOpening, u64)>,
         key_stream: hd::KeyTree,
     ) -> Self::MockBackend;
@@ -220,13 +217,12 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         records: MerkleTree,
         initial_grants: Vec<(RecordOpening, u64)>,
     ) -> Self::MockNetwork;
-    // async fn create_storage(&mut self) -> Self::MockStorage;
 
     async fn create_keystore(
         &mut self,
         rng: &mut ChaChaRng,
-        ledger: &Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork, Self::MockStorage>>>,
-    ) -> Keystore<'a, Self::MockBackend, Self::Ledger> {
+        ledger: &Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork>>>,
+    ) -> Keystore<'a, Self::MockBackend, Self::Ledger, AtomicKeystoreStorage<'a, Self::Ledger, LoaderMetadata>> {
         let storage = self.create_storage().await;
         let key_stream = hd::KeyTree::random(rng).0;
         let backend = self
@@ -234,29 +230,26 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
                 ledger.clone(),
                 vec![],
                 key_stream,
-                Arc::new(Mutex::new(storage)),
             )
             .await;
-        Keystore::new(backend).await.unwrap()
+        Keystore::new(backend, storage).await.unwrap()
     }
 
     async fn create_keystore_with_state(
         &mut self,
         rng: &mut ChaChaRng,
-        ledger: &Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork, Self::MockStorage>>>,
+        ledger: &Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork>>>,
         state: KeystoreState<'a, Self::Ledger>,
-    ) -> Keystore<'a, Self::MockBackend, Self::Ledger> {
-        let storage = self.create_storage().await;
+    ) -> Keystore<'a, Self::MockBackend, Self::Ledger,  AtomicKeystoreStorage<'a, Self::Ledger, LoaderMetadata>> {
         let key_stream = hd::KeyTree::random(rng).0;
         let backend = self
             .create_backend(
                 ledger.clone(),
                 vec![],
                 key_stream,
-                Arc::new(Mutex::new(storage)),
             )
             .await;
-        Keystore::with_state(backend, state).await.unwrap()
+        Keystore::with_state(backend, state, storage).await.unwrap()
     }
 
     /// Creates two key pairs/addresses for each keystore.
@@ -269,9 +262,9 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         initial_grants: Vec<u64>,
         now: &mut Instant,
     ) -> (
-        Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork, Self::MockStorage>>>,
+        Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork>>>,
         Vec<(
-            Keystore<'a, Self::MockBackend, Self::Ledger>,
+            Keystore<'a, Self::MockBackend, Self::Ledger, AtomicKeystoreStorage<'a, Self::Ledger, LoaderMetadata>>,
             Vec<UserAddress>,
         )>,
     ) {
@@ -419,9 +412,9 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
 
     async fn sync(
         &self,
-        ledger: &Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork, Self::MockStorage>>>,
+        ledger: &Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork>>>,
         keystores: &[(
-            Keystore<'a, Self::MockBackend, Self::Ledger>,
+            Keystore<'a, Self::MockBackend, Self::Ledger, AtomicKeystoreStorage<'a, Self::Ledger, LoaderMetadata>>,
             Vec<UserAddress>,
         )],
     ) {
@@ -482,7 +475,7 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
     async fn sync_with(
         &self,
         keystores: &[(
-            Keystore<'a, Self::MockBackend, Self::Ledger>,
+            Keystore<'a, Self::MockBackend, Self::Ledger, AtomicKeystoreStorage<'a, Self::Ledger, LoaderMetadata>>,
             Vec<UserAddress>,
         )],
         t: EventIndex,
@@ -493,9 +486,9 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
 
     async fn check_storage(
         &self,
-        ledger: &Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork, Self::MockStorage>>>,
+        ledger: &Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork>>>,
         keystores: &[(
-            Keystore<'a, Self::MockBackend, Self::Ledger>,
+            Keystore<'a, Self::MockBackend, Self::Ledger, AtomicKeystoreStorage<'a, Self::Ledger, LoaderMetadata>>,
             Vec<UserAddress>,
         )],
     ) {
@@ -678,10 +671,11 @@ pub async fn await_transaction<
     'a,
     L: Ledger + 'static,
     Backend: KeystoreBackend<'a, L> + Sync + 'a,
+    Meta: 'a + Serialize + DeserializeOwned + Send,
 >(
     receipt: &TransactionReceipt<L>,
-    sender: &Keystore<'a, Backend, L>,
-    receivers: &[&Keystore<'a, Backend, L>],
+    sender: &Keystore<'a, Backend, L, Meta>,
+    receivers: &[&Keystore<'a, Backend, L, Meta>],
 ) {
     assert_eq!(
         sender.await_transaction(receipt).await.unwrap(),
