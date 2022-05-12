@@ -74,6 +74,7 @@ use jf_cap::{
 };
 use jf_primitives::aead;
 use key_set::ProverKeySet;
+use primitive_types::U256;
 use rand_chacha::rand_core::SeedableRng;
 use rand_chacha::ChaChaRng;
 use reef::{
@@ -634,8 +635,8 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
             .collect()
     }
 
-    pub fn balance(&self, asset: &AssetCode, frozen: FreezeFlag) -> u64 {
-        let mut balance = 0;
+    pub fn balance(&self, asset: &AssetCode, frozen: FreezeFlag) -> U256 {
+        let mut balance = U256::zero();
         for pub_key in self.pub_keys() {
             balance += self.txn_state.balance(asset, &pub_key, frozen);
         }
@@ -647,12 +648,12 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         address: &UserAddress,
         asset: &AssetCode,
         frozen: FreezeFlag,
-    ) -> u64 {
+    ) -> U256 {
         match self.sending_accounts.get(address) {
             Some(account) => self
                 .txn_state
                 .balance(asset, &account.key.pub_key(), frozen),
-            None => 0,
+            None => U256::zero(),
         }
     }
 
@@ -1557,7 +1558,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         fee_address: &UserAddress,
         fee: u64,
         asset: &AssetCode,
-        amount: u64,
+        amount: U256,
         owner: UserAddress,
         outputs_frozen: FreezeFlag,
     ) -> Result<(FreezeNote, TransactionInfo<L>), KeystoreError<L>> {
@@ -2111,13 +2112,13 @@ impl<'a, L: 'static + Ledger, Backend: 'a + KeystoreBackend<'a, L> + Send + Sync
     }
 
     /// Compute the spendable balance of the given asset type owned by all addresses.
-    pub async fn balance(&self, asset: &AssetCode) -> u64 {
+    pub async fn balance(&self, asset: &AssetCode) -> U256 {
         let KeystoreSharedState { state, .. } = &*self.mutex.lock().await;
         state.balance(asset, FreezeFlag::Unfrozen)
     }
 
     /// Compute the spendable balance of the given asset type owned by the given address.
-    pub async fn balance_breakdown(&self, account: &UserAddress, asset: &AssetCode) -> u64 {
+    pub async fn balance_breakdown(&self, account: &UserAddress, asset: &AssetCode) -> U256 {
         let KeystoreSharedState { state, .. } = &*self.mutex.lock().await;
         state.balance_breakdown(account, asset, FreezeFlag::Unfrozen)
     }
@@ -2135,7 +2136,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + KeystoreBackend<'a, L> + Send + Sync
     }
 
     /// Compute the balance frozen records of the given asset type owned by the given address.
-    pub async fn frozen_balance_breakdown(&self, account: &UserAddress, asset: &AssetCode) -> u64 {
+    pub async fn frozen_balance_breakdown(&self, account: &UserAddress, asset: &AssetCode) -> U256 {
         let KeystoreSharedState { state, .. } = &*self.mutex.lock().await;
         state.balance_breakdown(account, asset, FreezeFlag::Frozen)
     }
@@ -2515,7 +2516,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + KeystoreBackend<'a, L> + Send + Sync
         freezer: &UserAddress,
         fee: u64,
         asset: &AssetCode,
-        amount: u64,
+        amount: impl Into<U256>,
         owner: UserAddress,
     ) -> Result<(FreezeNote, TransactionInfo<L>), KeystoreError<L>> {
         let KeystoreSharedState { state, session, .. } = &mut *self.mutex.lock().await;
@@ -2525,7 +2526,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + KeystoreBackend<'a, L> + Send + Sync
                 freezer,
                 fee,
                 asset,
-                amount,
+                amount.into(),
                 owner,
                 FreezeFlag::Frozen,
             )
@@ -2540,11 +2541,11 @@ impl<'a, L: 'static + Ledger, Backend: 'a + KeystoreBackend<'a, L> + Send + Sync
         freezer: &UserAddress,
         fee: u64,
         asset: &AssetCode,
-        amount: u64,
+        amount: impl Into<U256>,
         owner: UserAddress,
     ) -> Result<TransactionReceipt<L>, KeystoreError<L>> {
         let (note, info) = self
-            .build_freeze(freezer, fee, asset, amount, owner)
+            .build_freeze(freezer, fee, asset, amount.into(), owner)
             .await?;
         self.submit_cap(TransactionNote::Freeze(Box::new(note)), info)
             .await
@@ -2559,7 +2560,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + KeystoreBackend<'a, L> + Send + Sync
         freezer: &UserAddress,
         fee: u64,
         asset: &AssetCode,
-        amount: u64,
+        amount: impl Into<U256>,
         owner: UserAddress,
     ) -> Result<(FreezeNote, TransactionInfo<L>), KeystoreError<L>> {
         let KeystoreSharedState { state, session, .. } = &mut *self.mutex.lock().await;
@@ -2569,7 +2570,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + KeystoreBackend<'a, L> + Send + Sync
                 freezer,
                 fee,
                 asset,
-                amount,
+                amount.into(),
                 owner,
                 FreezeFlag::Unfrozen,
             )
@@ -2584,11 +2585,11 @@ impl<'a, L: 'static + Ledger, Backend: 'a + KeystoreBackend<'a, L> + Send + Sync
         freezer: &UserAddress,
         fee: u64,
         asset: &AssetCode,
-        amount: u64,
+        amount: impl Into<U256>,
         owner: UserAddress,
     ) -> Result<TransactionReceipt<L>, KeystoreError<L>> {
         let (note, info) = self
-            .build_unfreeze(freezer, fee, asset, amount, owner)
+            .build_unfreeze(freezer, fee, asset, amount.into(), owner)
             .await?;
         self.submit_cap(TransactionNote::Freeze(Box::new(note)), info)
             .await
