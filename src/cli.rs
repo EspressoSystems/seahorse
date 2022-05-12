@@ -97,7 +97,8 @@ pub trait CLIArgs {
     fn use_tmp_storage(&self) -> bool;
 }
 
-pub type Keystore<'a, C> = crate::Keystore<'a, <C as CLI<'a>>::Backend, <C as CLI<'a>>::Ledger>;
+pub type Keystore<'a, C> =
+    crate::Keystore<'a, <C as CLI<'a>>::Backend, <C as CLI<'a>>::Ledger, LoaderMetadata>;
 
 /// A REPL command.
 ///

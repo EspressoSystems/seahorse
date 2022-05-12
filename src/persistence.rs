@@ -323,8 +323,7 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicKeystoreSto
     }
 }
 
-impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicKeystoreStorage<'a, L, Meta>
-{
+impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicKeystoreStorage<'a, L, Meta> {
     pub fn exists(&self) -> bool {
         self.persisted_meta.load_latest().is_ok()
     }
@@ -379,7 +378,10 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicKeystoreSto
         })
     }
 
-    pub async fn store_snapshot(&mut self, w: &KeystoreState<'a, L>) -> Result<(), KeystoreError<L>> {
+    pub async fn store_snapshot(
+        &mut self,
+        w: &KeystoreState<'a, L>,
+    ) -> Result<(), KeystoreError<L>> {
         self.dynamic_state
             .store_resource(&KeystoreSnapshot::from(w))
             .context(crate::PersistenceSnafu)?;

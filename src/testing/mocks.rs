@@ -13,7 +13,7 @@ use crate::{
     hd,
     testing::{MockEventSource, MockNetwork as _},
     txn_builder::{PendingTransaction, TransactionHistoryEntry, TransactionInfo, TransactionState},
-    CryptoSnafu, KeystoreBackend, KeystoreError, KeystoreState, KeystoreStorage,
+    CryptoSnafu, KeystoreBackend, KeystoreError, KeystoreState,
 };
 use async_std::sync::{Arc, Mutex, MutexGuard};
 use async_trait::async_trait;
@@ -62,8 +62,7 @@ impl<'a, L: reef::Ledger> MockStorage<'a, L> {
     }
 }
 
-#[async_trait]
-impl<'a, L: reef::Ledger> KeystoreStorage<'a, L> for MockStorage<'a, L> {
+impl<'a, L: reef::Ledger> MockStorage<'a, L> {
     fn exists(&self) -> bool {
         self.committed.is_some()
     }
@@ -294,7 +293,6 @@ impl<'a, const H: u8> super::MockNetwork<'a, cap::LedgerWithHeight<H>>
 
 #[derive(Clone)]
 pub struct MockBackendWithHeight<'a, const H: u8> {
-    storage: Arc<Mutex<MockStorage<'a, cap::LedgerWithHeight<H>>>>,
     ledger: Arc<
         Mutex<
             MockLedger<
@@ -320,14 +318,9 @@ impl<'a, const H: u8> MockBackendWithHeight<'a, H> {
                 >,
             >,
         >,
-        storage: Arc<Mutex<MockStorage<'a, cap::LedgerWithHeight<H>>>>,
         key_stream: hd::KeyTree,
     ) -> Self {
-        Self {
-            ledger,
-            storage,
-            key_stream,
-        }
+        Self { ledger, key_stream }
     }
 }
 
@@ -337,11 +330,6 @@ impl<'a, const H: u8> KeystoreBackend<'a, cap::LedgerWithHeight<H>>
 {
     type EventStream =
         Pin<Box<dyn Stream<Item = (LedgerEvent<cap::LedgerWithHeight<H>>, EventSource)> + Send>>;
-    type Storage = MockStorage<'a, cap::LedgerWithHeight<H>>;
-
-    async fn storage<'l>(&'l mut self) -> MutexGuard<'l, Self::Storage> {
-        self.storage.lock().await
-    }
 
     async fn create(
         &mut self,
@@ -478,7 +466,7 @@ impl<'a, const H: u8> super::SystemUnderTest<'a> for MockSystemWithHeight<H> {
     type Ledger = cap::LedgerWithHeight<H>;
     type MockBackend = MockBackendWithHeight<'a, H>;
     type MockNetwork = MockNetworkWithHeight<'a, H>;
-    type MockStorage = MockStorage<'a, Self::Ledger>;
+    // type MockStorage = MockStorage<'a, Self::Ledger>;
 
     async fn create_network(
         &mut self,
@@ -491,9 +479,9 @@ impl<'a, const H: u8> super::SystemUnderTest<'a> for MockSystemWithHeight<H> {
         MockNetworkWithHeight::new(&mut rng, proof_crs, records, initial_grants)
     }
 
-    async fn create_storage(&mut self) -> Self::MockStorage {
-        Default::default()
-    }
+    // async fn create_storage(&mut self) -> Self::MockStorage {
+    //     Default::default()
+    // }
 
     async fn create_backend(
         &mut self,
@@ -502,7 +490,7 @@ impl<'a, const H: u8> super::SystemUnderTest<'a> for MockSystemWithHeight<H> {
         key_stream: hd::KeyTree,
         storage: Arc<Mutex<Self::MockStorage>>,
     ) -> Self::MockBackend {
-        MockBackendWithHeight::new(ledger, storage, key_stream)
+        MockBackendWithHeight::new(ledger, key_stream)
     }
 }
 

@@ -46,7 +46,7 @@ pub trait MockNetwork<'a, L: Ledger> {
     ) -> Result<LedgerEvent<L>, KeystoreError<L>>;
 }
 
-pub struct MockLedger<'a, L: Ledger, N: MockNetwork<'a, L>, S: KeystoreStorage<'a, L>> {
+pub struct MockLedger<'a, L: Ledger, N: MockNetwork<'a, L>, S> {
     network: N,
     current_block: Block<L>,
     block_size: usize,
@@ -60,7 +60,7 @@ pub struct MockLedger<'a, L: Ledger, N: MockNetwork<'a, L>, S: KeystoreStorage<'
     _phantom: std::marker::PhantomData<&'a ()>,
 }
 
-impl<'a, L: Ledger, N: MockNetwork<'a, L>, S: KeystoreStorage<'a, L>> MockLedger<'a, L, N, S> {
+impl<'a, L: Ledger, N: MockNetwork<'a, L>, S> MockLedger<'a, L, N, S> {
     pub fn new(network: N, records: MerkleTree) -> Self {
         Self {
             network,
@@ -205,14 +205,13 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
     type Ledger: 'static + Ledger;
     type MockBackend: 'a + KeystoreBackend<'a, Self::Ledger> + Send + Sync;
     type MockNetwork: 'a + MockNetwork<'a, Self::Ledger> + Send;
-    type MockStorage: 'a + KeystoreStorage<'a, Self::Ledger> + Send;
+    // type MockStorage: 'a + KeystoreStorage<'a, Self::Ledger> + Send;
 
     async fn create_backend(
         &mut self,
         ledger: Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork, Self::MockStorage>>>,
         initial_grants: Vec<(RecordOpening, u64)>,
         key_stream: hd::KeyTree,
-        storage: Arc<Mutex<Self::MockStorage>>,
     ) -> Self::MockBackend;
     async fn create_network(
         &mut self,
@@ -221,7 +220,7 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         records: MerkleTree,
         initial_grants: Vec<(RecordOpening, u64)>,
     ) -> Self::MockNetwork;
-    async fn create_storage(&mut self) -> Self::MockStorage;
+    // async fn create_storage(&mut self) -> Self::MockStorage;
 
     async fn create_keystore(
         &mut self,
