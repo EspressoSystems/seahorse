@@ -2212,7 +2212,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + KeystoreBackend<'a, L> + Send + Sync
         let spec = TransferSpec {
             sender_key_pairs: &sender_key_pairs,
             asset,
-            receivers: &receivers,
+            receivers,
             fee,
             bound_data,
             xfr_size_requirement,
