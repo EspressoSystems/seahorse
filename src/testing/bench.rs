@@ -128,7 +128,7 @@ async fn generate_independent_transactions<
                     .unwrap();
                 let (mint_note, mint_info) = keystore
                     .build_mint(
-                        &pub_keys[0].0,
+                        &pub_keys[0].address(),
                         1,
                         &asset.code,
                         1u64 << 32,

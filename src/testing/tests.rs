@@ -69,11 +69,11 @@ pub async fn test_keystore_freeze_unregistered() -> std::io::Result<()> {
             .unwrap();
 
         // The first address of keystores[0] gets 1 coin to transfer to keystores[1].
-        let src = keystores[2].1[0].clone();
-        let dst = keystores[0].1[0].clone();
+        let src = keystores[2].1[0].clone().address();
+        let dst_pub_key = keystores[0].1[0].clone();
         keystores[2]
             .0
-            .mint(&src, 1, &asset.code, 1, dst)
+            .mint(&src, 1, &asset.code, 1, dst_pub_key)
             .await
             .unwrap();
         t.sync(&ledger, keystores.as_slice()).await;
@@ -103,7 +103,7 @@ pub async fn test_keystore_freeze_unregistered() -> std::io::Result<()> {
         .await
         .network()
         .address_map
-        .remove(&keystores[0].1[0]);
+        .remove(&keystores[0].1[0].address());
 
     // Freeze keystores[0]'s record.
     println!(
@@ -111,8 +111,8 @@ pub async fn test_keystore_freeze_unregistered() -> std::io::Result<()> {
         now.elapsed().as_secs_f32()
     );
     now = Instant::now();
-    let src = keystores[2].1[0].clone();
-    let dst = keystores[0].1[0].clone();
+    let src = keystores[2].1[0].clone().address();
+    let dst = keystores[0].1[0].clone().address();
     ledger.lock().await.hold_next_transaction();
     keystores[2]
         .0
@@ -212,13 +212,11 @@ pub mod generic_keystore_tests {
                 &mut now,
             )
             .await;
-        let alice_pub_keys = keystores[0].1;
-        let alice_addresses = alice_pub_keys.clone().address();
-        let bob_pub_keys = keystores[1].1;
-        let bob_addresses = bob_pub_keys.clone().address();
+        let alice_pub_keys = keystores[0].1.clone();
+        let bob_pub_keys = keystores[1].1.clone();
 
         // Verify initial keystore state.
-        assert_ne!(alice_addresses, bob_addresses);
+        assert_ne!(alice_pub_keys, bob_pub_keys);
         assert_eq!(
             keystores[0].0.balance(&AssetCode::native()).await,
             alice_grant
@@ -226,14 +224,14 @@ pub mod generic_keystore_tests {
         assert_eq!(
             keystores[0]
                 .0
-                .balance_breakdown(&alice_addresses[0], &AssetCode::native())
+                .balance_breakdown(&alice_pub_keys[0].clone().address(), &AssetCode::native())
                 .await,
             alice_grant / 2
         );
         assert_eq!(
             keystores[0]
                 .0
-                .balance_breakdown(&alice_addresses[1], &AssetCode::native())
+                .balance_breakdown(&alice_pub_keys[1].clone().address(), &AssetCode::native())
                 .await,
             alice_grant - alice_grant / 2
         );
@@ -244,14 +242,14 @@ pub mod generic_keystore_tests {
         assert_eq!(
             keystores[1]
                 .0
-                .balance_breakdown(&bob_addresses[0], &AssetCode::native())
+                .balance_breakdown(&bob_pub_keys[0].clone().address(), &AssetCode::native())
                 .await,
             bob_grant / 2
         );
         assert_eq!(
             keystores[1]
                 .0
-                .balance_breakdown(&bob_addresses[1], &AssetCode::native())
+                .balance_breakdown(&bob_pub_keys[1].clone().address(), &AssetCode::native())
                 .await,
             bob_grant - bob_grant / 2
         );
@@ -272,11 +270,11 @@ pub mod generic_keystore_tests {
             keystores[0]
                 .0
                 .mint(
-                    &alice_addresses[0],
+                    &alice_pub_keys[0].address(),
                     1,
                     &coin.code,
                     5,
-                    alice_addresses[0].clone(),
+                    alice_pub_keys[0].clone(),
                 )
                 .await
                 .unwrap();
@@ -288,7 +286,7 @@ pub mod generic_keystore_tests {
             assert_eq!(
                 keystores[0]
                     .0
-                    .balance_breakdown(&alice_addresses[0], &coin.code)
+                    .balance_breakdown(&alice_pub_keys[0].address(), &coin.code)
                     .await,
                 5
             );
@@ -304,7 +302,7 @@ pub mod generic_keystore_tests {
         keystores[0]
             .0
             .transfer(
-                Some(&alice_addresses[0]),
+                Some(&alice_pub_keys[0].address()),
                 &coin.code,
                 &[(bob_pub_keys[0].clone(), 3)],
                 1,
@@ -321,7 +319,7 @@ pub mod generic_keystore_tests {
         async fn check_balance<'b, L: 'static + Ledger>(
             keystore: &(
                 Keystore<'b, impl KeystoreBackend<'b, L> + Sync + 'b, L>,
-                Vec<UserAddress>,
+                Vec<UserPubKey>,
             ),
             expected_coin_balance: u64,
             starting_native_balance: u64,
@@ -373,7 +371,7 @@ pub mod generic_keystore_tests {
         keystores[1]
             .0
             .transfer(
-                Some(&bob_addresses[0]),
+                Some(&bob_pub_keys[0].address()),
                 &coin.code,
                 &[(alice_pub_keys[0].clone(), 1)],
                 1,
@@ -511,15 +509,15 @@ pub mod generic_keystore_tests {
                 // keystores[1], so keystores[1] gets 1 coin to start with. Otherwise, the transaction
                 // is transferring balance from keystores[0] to keystores[1], so  keystores[0] gets 1
                 // coin. We only need this if the test itself is not minting the asset later on.
-                let dst = if freeze {
+                let src = keystores[0].1[0].clone().address();
+                let dst_pub_key = if freeze {
                     keystores[1].1[0].clone()
                 } else {
                     keystores[0].1[0].clone()
                 };
-                let src = keystores[0].1[0].clone();
                 keystores[0]
                     .0
-                    .mint(&src, 1, &asset.code, 1, dst)
+                    .mint(&src, 1, &asset.code, 1, dst_pub_key)
                     .await
                     .unwrap();
                 t.sync(&ledger, keystores.as_slice()).await;
@@ -529,8 +527,8 @@ pub mod generic_keystore_tests {
                 // If doing a timeout test, keystores[2] (the sender that will generate enough
                 // transactions to cause keystores[0]'s transaction to timeout) gets RECORD_HOLD_TIME
                 // coins.
-                let src = keystores[0].1[0].clone();
-                let dst = keystores[2].1[0].clone();
+                let src = keystores[0].1[0].clone().address();
+                let dst_pub_key = keystores[2].1[0].clone();
                 keystores[0]
                     .0
                     .mint(
@@ -538,7 +536,7 @@ pub mod generic_keystore_tests {
                         1,
                         &asset.code,
                         T::Ledger::record_root_history() as u64,
-                        dst,
+                        dst_pub_key,
                     )
                     .await
                     .unwrap();
@@ -561,7 +559,7 @@ pub mod generic_keystore_tests {
         if mint {
             keystores[0]
                 .0
-                .mint(&sender, 1, &asset.code, 1, receiver.clone())
+                .mint(&sender, 1, &asset.code, 1, receiver_pub_key.clone())
                 .await
                 .unwrap();
         } else if freeze {
@@ -625,7 +623,7 @@ pub mod generic_keystore_tests {
                     );
                 }
 
-                let sender = keystores[2].1[0].clone();
+                let sender = keystores[2].1[0].clone().address();
                 keystores[2]
                     .0
                     .transfer(
@@ -708,13 +706,13 @@ pub mod generic_keystore_tests {
         if mint {
             keystores[0]
                 .0
-                .mint(&sender, 1, &asset.code, 1, receiver)
+                .mint(&sender, 1, &asset.code, 1, receiver_pub_key)
                 .await
                 .unwrap();
         } else if freeze {
             keystores[0]
                 .0
-                .freeze(&sender, 1, &asset.code, 1, receiver)
+                .freeze(&sender, 1, &asset.code, 1, receiver.clone())
                 .await
                 .unwrap();
         } else {
@@ -847,11 +845,11 @@ pub mod generic_keystore_tests {
                 .unwrap();
 
             // keystores[0] gets 1 coin to transfer to keystores[1].
-            let src = keystores[2].1[0].clone();
-            let dst = keystores[0].1[0].clone();
+            let src = keystores[2].1[0].clone().address();
+            let dst_pub_key = keystores[0].1[0].clone();
             keystores[2]
                 .0
-                .mint(&src, 1, &asset.code, 1, dst)
+                .mint(&src, 1, &asset.code, 1, dst_pub_key)
                 .await
                 .unwrap();
             t.sync(&ledger, keystores.as_slice()).await;
@@ -879,8 +877,8 @@ pub mod generic_keystore_tests {
             now.elapsed().as_secs_f32()
         );
         now = Instant::now();
-        let src = keystores[2].1[0].clone();
-        let dst = keystores[0].1[0].clone();
+        let src = keystores[2].1[0].clone().address();
+        let dst = keystores[0].1[0].clone().address();
         ledger.lock().await.hold_next_transaction();
         keystores[2]
             .0
@@ -945,6 +943,7 @@ pub mod generic_keystore_tests {
         now = Instant::now();
         let src = keystores[2].1[0].clone().address();
         let dst_pub_key = keystores[0].1[0].clone();
+        let dst = dst_pub_key.address();
         keystores[2]
             .0
             .unfreeze(&src, 1, &asset.code, 1, dst)
@@ -979,21 +978,21 @@ pub mod generic_keystore_tests {
         assert_eq!(
             keystores[0]
                 .0
-                .balance_breakdown(&keystores[0].1[0].balance(), &asset.code)
+                .balance_breakdown(&keystores[0].1[0].address(), &asset.code)
                 .await,
             0
         );
         assert_eq!(
             keystores[0]
                 .0
-                .frozen_balance_breakdown(&keystores[0].1[0].balance(), &asset.code)
+                .frozen_balance_breakdown(&keystores[0].1[0].address(), &asset.code)
                 .await,
             0
         );
         assert_eq!(
             keystores[1]
                 .0
-                .balance_breakdown(&keystores[1].1[0].balance(), &asset.code)
+                .balance_breakdown(&keystores[1].1[0].address(), &asset.code)
                 .await,
             1
         );
@@ -1006,7 +1005,7 @@ pub mod generic_keystore_tests {
                 kind: TransactionKind::<T::Ledger>::mint(),
                 hash: None,
                 senders: Vec::new(),
-                receivers: vec![(keystores[0].1[0].clone(), 1)],
+                receivers: vec![(keystores[0].1[0].address(), 1)],
                 receipt: None,
             },
             TransactionHistoryEntry {
@@ -1015,7 +1014,7 @@ pub mod generic_keystore_tests {
                 kind: TransactionKind::<T::Ledger>::freeze(),
                 hash: None,
                 senders: Vec::new(),
-                receivers: vec![(keystores[0].1[0].clone(), 1)],
+                receivers: vec![(keystores[0].1[0].address(), 1)],
                 receipt: None,
             },
             TransactionHistoryEntry {
@@ -1024,7 +1023,7 @@ pub mod generic_keystore_tests {
                 kind: TransactionKind::<T::Ledger>::unfreeze(),
                 hash: None,
                 senders: Vec::new(),
-                receivers: vec![(keystores[0].1[0].clone(), 1)],
+                receivers: vec![(keystores[0].1[0].address(), 1)],
                 receipt: None,
             },
             TransactionHistoryEntry {
@@ -1032,8 +1031,13 @@ pub mod generic_keystore_tests {
                 asset: asset.code,
                 kind: TransactionKind::<T::Ledger>::send(),
                 hash: None,
-                senders: keystores[0].1.clone(),
-                receivers: vec![(keystores[1].1[0].clone(), 1)],
+                senders: keystores[0]
+                    .1
+                    .clone()
+                    .into_iter()
+                    .map(|pub_key| pub_key.address())
+                    .collect::<Vec<_>>(),
+                receivers: vec![(keystores[1].1[0].address(), 1)],
                 receipt: Some(xfr_receipt),
             },
         ]
@@ -1194,12 +1198,13 @@ pub mod generic_keystore_tests {
                 // can't mint native assets
                 continue;
             }
-            let minter = keystores[0].1[0].clone();
-            let address = keystores[(owner % nkeystores) as usize + 1].1[0].clone();
+            let minter = keystores[0].1[0].clone().address();
+            let pub_key = keystores[(owner % nkeystores) as usize + 1].1[0].clone();
+            let address = pub_key.address();
             balances[(owner % nkeystores) as usize][asset] += amount;
             keystores[0]
                 .0
-                .mint(&minter, 1, &assets[asset - 1].code, amount, address.clone())
+                .mint(&minter, 1, &assets[asset - 1].code, amount, pub_key.clone())
                 .await
                 .unwrap();
             push_history(
@@ -1228,7 +1233,7 @@ pub mod generic_keystore_tests {
         async fn check_balances<'b, L: Ledger + 'static>(
             keystores: &[(
                 Keystore<'b, impl KeystoreBackend<'b, L> + Sync + 'b, L>,
-                Vec<UserAddress>,
+                Vec<UserPubKey>,
             )],
             balances: &[Vec<u64>],
             assets: &[AssetDefinition],
@@ -1258,7 +1263,7 @@ pub mod generic_keystore_tests {
         async fn check_histories<'b, L: Ledger + 'static>(
             keystores: &[(
                 Keystore<'b, impl KeystoreBackend<'b, L> + Sync + 'b, L>,
-                Vec<UserAddress>,
+                Vec<UserPubKey>,
             )],
             histories: &[Vec<Vec<TransactionHistoryEntry<L>>>],
         ) {
@@ -1333,7 +1338,8 @@ pub mod generic_keystore_tests {
                 } else {
                     &assets[asset_ix - 1]
                 };
-                let sender_address = keystores[sender_ix + 1].1[0].clone().address();
+                let sender_pub_key = keystores[sender_ix + 1].1[0].clone();
+                let sender_address = sender_pub_key.address();
                 let sender_balance = balances[sender_ix][asset_ix];
                 let receiver_pub_key = keystores[receiver_ix + 1].1[0].clone();
                 let receiver_address = receiver_pub_key.address();
@@ -1362,14 +1368,14 @@ pub mod generic_keystore_tests {
                         now.elapsed().as_secs_f32()
                     );
                     now = Instant::now();
-                    let (minter, minter_addresses) = &mut keystores[0];
+                    let (minter, minter_pub_keys) = &mut keystores[0];
                     minter
                         .mint(
-                            &minter_addresses[0],
+                            &minter_pub_keys[0].address(),
                             1,
                             &asset.code,
                             2 * amount,
-                            sender_address.clone(),
+                            sender_pub_key,
                         )
                         .await
                         .unwrap();
@@ -1819,7 +1825,7 @@ pub mod generic_keystore_tests {
         assert_eq!(
             keystores[0]
                 .0
-                .balance_breakdown(&key.pub_key(), &AssetCode::native())
+                .balance_breakdown(&key.address(), &AssetCode::native())
                 .await,
             0
         );
@@ -1831,7 +1837,7 @@ pub mod generic_keystore_tests {
                 .transfer(
                     Some(&send_addr),
                     &AssetCode::native(),
-                    &[(send_pub_key, 1)],
+                    &[(send_pub_key.clone(), 1)],
                     1,
                 )
                 .await
@@ -1852,7 +1858,7 @@ pub mod generic_keystore_tests {
             .transfer(
                 Some(&send_addr),
                 &AssetCode::native(),
-                &[(send_addr.clone(), 1)],
+                &[(send_pub_key.clone(), 1)],
                 1,
             )
             .await
@@ -1882,7 +1888,7 @@ pub mod generic_keystore_tests {
         assert_eq!(
             keystores[0]
                 .0
-                .balance_breakdown(&key.pub_key(), &AssetCode::native())
+                .balance_breakdown(&key.address(), &AssetCode::native())
                 .await,
             1
         );
@@ -1903,7 +1909,7 @@ pub mod generic_keystore_tests {
         assert_eq!(
             keystores[0]
                 .0
-                .balance_breakdown(&key.pub_key(), &AssetCode::native())
+                .balance_breakdown(&key.address(), &AssetCode::native())
                 .await,
             2
         );
@@ -1925,7 +1931,7 @@ pub mod generic_keystore_tests {
         let (mut keystore1, pub_keys1) = keystores.remove(0);
         let receipt = keystore1
             .transfer(
-                Some(&keystore1[0].address()),
+                Some(&pub_keys1[0].address()),
                 &AssetCode::native(),
                 &[(pub_keys1[0].clone(), 1)],
                 1,
@@ -1944,7 +1950,7 @@ pub mod generic_keystore_tests {
         // A new keystore joins the system after there are already some transactions on the ledger.
         let mut keystore2 = t.create_keystore(&mut rng, &ledger).await;
         keystore2.sync(ledger.lock().await.now()).await.unwrap();
-        let pub_keys2 = keystore2
+        let pub_key2 = keystore2
             .generate_user_key("sending_key".into(), None)
             .await
             .unwrap();
@@ -1954,7 +1960,7 @@ pub mod generic_keystore_tests {
             .transfer(
                 Some(&pub_keys1[0].address()),
                 &AssetCode::native(),
-                &[(keystore2.clone(), 2)],
+                &[(pub_key2.clone(), 2)],
                 1,
             )
             .await
@@ -1969,7 +1975,7 @@ pub mod generic_keystore_tests {
         );
         assert_eq!(
             keystore2
-                .balance_breakdown(&pub_keys2[0].address(), &AssetCode::native())
+                .balance_breakdown(&pub_key2.address(), &AssetCode::native())
                 .await,
             2
         );
@@ -1977,9 +1983,9 @@ pub mod generic_keystore_tests {
         // Transfer back.
         let receipt = keystore2
             .transfer(
-                Some(&pub_keys2.address()),
+                Some(&pub_key2.address()),
                 &AssetCode::native(),
-                &[(addresses1[0].clone(), 1)],
+                &[(pub_keys1[0].clone(), 1)],
                 1,
             )
             .await
@@ -1994,7 +2000,7 @@ pub mod generic_keystore_tests {
         );
         assert_eq!(
             keystore2
-                .balance_breakdown(&pub_keys2[0].address(), &AssetCode::native())
+                .balance_breakdown(&pub_key2.address(), &AssetCode::native())
                 .await,
             0
         );
@@ -2019,9 +2025,18 @@ pub mod generic_keystore_tests {
                 &mut now,
             )
             .await;
-        let alice_addresses = keystores[0].1.clone().address();
+        let alice_pub_keys = keystores[0].1.clone();
+        let alice_addresses = alice_pub_keys
+            .clone()
+            .into_iter()
+            .map(|pub_key| pub_key.clone().address())
+            .collect::<Vec<_>>();
         let bob_pub_keys = keystores[1].1.clone();
-        let bob_addresses = bob_pub_keys.address();
+        let bob_addresses = bob_pub_keys
+            .clone()
+            .into_iter()
+            .map(|pub_key| pub_key.clone().address())
+            .collect::<Vec<_>>();
 
         // Verify initial keystore state.
         assert_eq!(
@@ -2079,7 +2094,7 @@ pub mod generic_keystore_tests {
                 1,
                 &coin.code,
                 amount,
-                alice_addresses[0].clone(),
+                alice_pub_keys[0].clone(),
             )
             .await
             .unwrap();
@@ -2227,7 +2242,7 @@ pub mod generic_keystore_tests {
             )
             .await
             .unwrap();
-        let minter_addr = keystores[1].1[0].clone();
+        let minter_addr = keystores[1].1[0].clone().address();
         let receiver_addr = keystores[0].1[0].clone();
         keystores[1]
             .0
@@ -2483,10 +2498,11 @@ pub mod generic_keystore_tests {
         println!("Checking accounts");
 
         // The default accounts have no name and a balance of the native assets.
-        for address in &keystores[0].1 {
-            let account = keystores[0].0.sending_account(address).await.unwrap();
+        for pub_key in &keystores[0].1 {
+            let address = pub_key.address();
+            let account = keystores[0].0.sending_account(&address).await.unwrap();
             assert!(account.used);
-            assert_eq!(account.address, *address);
+            assert_eq!(account.address, address);
             assert_eq!(account.description, "");
             assert_eq!(account.balances, HashMap::from([(AssetCode::native(), 5)]));
             assert_eq!(account.assets, vec![AssetInfo::native::<T::Ledger>()]);
@@ -2844,6 +2860,7 @@ pub mod generic_keystore_tests {
         // Submit a transaction.
         let src = keystores[0].1[0].clone().address();
         let dst_pub_key = keystores[1].1[0].clone();
+        let dst = dst_pub_key.address();
         let receipt = keystores[0]
             .0
             .transfer(Some(&src), &AssetCode::native(), &[(dst_pub_key, 1)], 1)
