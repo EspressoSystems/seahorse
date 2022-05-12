@@ -685,7 +685,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
         }),
         command!(
             gen_key,
-            "generate new keys",
+            "generate a new key",
             C,
             |io, keystore, key_type: KeyType;
              description: Option<String>, scan_from: Option<EventIndex>, wait: Option<bool>| {
@@ -706,6 +706,9 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                                     cli_writeln!(io, "Error waiting for key scan: {}", err);
                                 }
                             }
+                            // Output both the public key and the address when generating a
+                            // sending key.
+                            cli_writeln!(io, "{}", pub_key);
                             cli_writeln!(io, "{}", UserAddress(pub_key.address()));
                         }
                         Err(err) => cli_writeln!(io, "Error generating sending key: {}", err),
@@ -1188,8 +1191,8 @@ mod test {
 
         // Get the viewer's funded address.
         writeln!(viewer_input, "gen_key sending scan_from=start wait=true").unwrap();
-        let matches = match_output(&mut viewer_output, &["(?P<pub_key>USERPUBKEY~.*)"]);
-        let viewer_address = matches.get("pub_key").address();
+        let matches = match_output(&mut viewer_output, &["(?P<addr>ADDR~.*)"]);
+        let viewer_address = matches.get("addr");
         writeln!(viewer_input, "balance 0").unwrap();
         match_output(
             &mut viewer_output,
@@ -1198,9 +1201,12 @@ mod test {
 
         // Get the sender's funded address.
         writeln!(sender_input, "gen_key sending scan_from=start wait=true").unwrap();
-        let matches = match_output(&mut sender_output, &["(?P<pub_key>USERPUBKEY~.*)"]);
-        let sender_pub_key = matches.get("addr");
-        let sender_address = sender_pub_key.address();
+        let matches = match_output(
+            &mut sender_output,
+            &["(?P<pub_key>USERPUBKEY~.*)", "(?P<addr>ADDR~.*)"],
+        );
+        let sender_pub_key = matches.get("pub_key");
+        let sender_address = matches.get("addr");
         writeln!(sender_input, "balance 0").unwrap();
         match_output(
             &mut sender_output,
@@ -1209,9 +1215,12 @@ mod test {
 
         // Get the receiver's (unfunded) address.
         writeln!(receiver_input, "gen_key sending").unwrap();
-        let matches = match_output(&mut receiver_output, &["(?P<pub_key>USERPUBKEY~.*)"]);
+        let matches = match_output(
+            &mut receiver_output,
+            &["(?P<pub_key>USERPUBKEY~.*)", "(?P<addr>ADDR~.*)"],
+        );
         let receiver_pub_key = matches.get("pub_key");
-        let receiver_address = receiver_pub_key.address();
+        let receiver_address = matches.get("addr");
 
         // Generate a viewing key.
         writeln!(viewer_input, "gen_key viewing").unwrap();

@@ -391,7 +391,7 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
             )
             .await
             .unwrap();
-            let mut addresses = vec![];
+            let mut pub_keys = vec![];
             for key_pair in key_pairs.clone() {
                 assert_eq!(
                     keystore
@@ -404,9 +404,9 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
                 // Wait for the keystore to find any records already belonging to this key from the
                 // initial grants.
                 keystore.await_key_scan(&key_pair.address()).await.unwrap();
-                addresses.push(key_pair);
+                pub_keys.push(key_pair.pub_key());
             }
-            keystores.push((keystore, addresses));
+            keystores.push((keystore, pub_keys));
         }
 
         println!("Keystores set up: {}s", now.elapsed().as_secs_f32());
