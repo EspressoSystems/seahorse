@@ -18,7 +18,7 @@
 use super::*;
 use async_std::sync::{Arc, Mutex};
 use chrono::Local;
-use futures::channel::mpsc;
+use futures::{channel::mpsc, stream::iter};
 use jf_cap::{MerkleTree, Signature, TransactionVerifyingKey};
 use key_set::{KeySet, OrderByOutputs, ProverKeySet, VerifierKeySet};
 use rand_chacha::rand_core::RngCore;
@@ -260,10 +260,10 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         Keystore::with_state(backend, state).await.unwrap()
     }
 
-    /// Creates two key pairs/addresses for each keystore.
+    /// Creates two key pairs for each keystore.
     ///
     /// `initial_grants` - List of total initial grants for each keystore. Each amount will be
-    /// divided by 2, and any remainder will be added to the second address.
+    /// divided by 2, and any remainder will be added to the second public key.
     async fn create_test_network(
         &mut self,
         xfr_sizes: &[(usize, usize)],
@@ -273,7 +273,7 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork, Self::MockStorage>>>,
         Vec<(
             Keystore<'a, Self::MockBackend, Self::Ledger>,
-            Vec<UserAddress>,
+            Vec<UserPubKey>,
         )>,
     ) {
         let mut rng = ChaChaRng::from_seed([42u8; 32]);
@@ -391,7 +391,7 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
             )
             .await
             .unwrap();
-            let mut addresses = vec![];
+            let mut pub_keys = vec![];
             for key_pair in key_pairs.clone() {
                 assert_eq!(
                     keystore
@@ -404,9 +404,9 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
                 // Wait for the keystore to find any records already belonging to this key from the
                 // initial grants.
                 keystore.await_key_scan(&key_pair.address()).await.unwrap();
-                addresses.push(key_pair.address());
+                pub_keys.push(key_pair.pub_key());
             }
-            keystores.push((keystore, addresses));
+            keystores.push((keystore, pub_keys));
         }
 
         println!("Keystores set up: {}s", now.elapsed().as_secs_f32());
@@ -423,7 +423,7 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         ledger: &Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork, Self::MockStorage>>>,
         keystores: &[(
             Keystore<'a, Self::MockBackend, Self::Ledger>,
-            Vec<UserAddress>,
+            Vec<UserPubKey>,
         )],
     ) {
         let memos_source = {
@@ -484,7 +484,7 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         &self,
         keystores: &[(
             Keystore<'a, Self::MockBackend, Self::Ledger>,
-            Vec<UserAddress>,
+            Vec<UserPubKey>,
         )],
         t: EventIndex,
     ) {
@@ -497,7 +497,7 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         ledger: &Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork, Self::MockStorage>>>,
         keystores: &[(
             Keystore<'a, Self::MockBackend, Self::Ledger>,
-            Vec<UserAddress>,
+            Vec<UserPubKey>,
         )],
     ) {
         let ledger = ledger.lock().await;

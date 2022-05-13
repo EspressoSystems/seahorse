@@ -110,7 +110,7 @@ async fn generate_independent_transactions<
     let viewing_key = ViewerKeyPair::generate(&mut rng);
     let freezing_key = FreezerKeyPair::generate(&mut rng);
     let (assets, mints): (Vec<_>, Vec<_>) = join_all(keystores.iter_mut().enumerate().map(
-        |(i, (keystore, addrs))| {
+        |(i, (keystore, pub_keys))| {
             let viewing_key = viewing_key.pub_key();
             let freezing_key = freezing_key.pub_key();
             async move {
@@ -127,7 +127,13 @@ async fn generate_independent_transactions<
                     .await
                     .unwrap();
                 let (mint_note, mint_info) = keystore
-                    .build_mint(&addrs[0], 1, &asset.code, 1u64 << 32, addrs[0].clone())
+                    .build_mint(
+                        &pub_keys[0].address(),
+                        1,
+                        &asset.code,
+                        1u64 << 32,
+                        pub_keys[0].clone(),
+                    )
                     .await
                     .unwrap();
                 let receipt = keystore
@@ -151,7 +157,7 @@ async fn generate_independent_transactions<
             .iter_mut()
             .zip(&assets)
             .map(|((keystore, _), asset)| {
-                let receiver = receiver.address();
+                let receiver = receiver.pub_key();
                 async move {
                     keystore
                         .build_transfer(
