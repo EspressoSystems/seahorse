@@ -1411,6 +1411,25 @@
 <span id="1411">1411</span>
 <span id="1412">1412</span>
 <span id="1413">1413</span>
+<span id="1414">1414</span>
+<span id="1415">1415</span>
+<span id="1416">1416</span>
+<span id="1417">1417</span>
+<span id="1418">1418</span>
+<span id="1419">1419</span>
+<span id="1420">1420</span>
+<span id="1421">1421</span>
+<span id="1422">1422</span>
+<span id="1423">1423</span>
+<span id="1424">1424</span>
+<span id="1425">1425</span>
+<span id="1426">1426</span>
+<span id="1427">1427</span>
+<span id="1428">1428</span>
+<span id="1429">1429</span>
+<span id="1430">1430</span>
+<span id="1431">1431</span>
+<span id="1432">1432</span>
 </pre><pre class="rust"><code><span class="comment">// Copyright (c) 2022 Espresso Systems (espressosys.com)</span>
 <span class="comment">// This file is part of the Seahorse library.</span>
 
@@ -1446,7 +1465,7 @@
     <span class="ident">proof::UniversalParam</span>,
     <span class="ident">structs</span>::{<span class="ident">AssetCode</span>, <span class="ident">AssetPolicy</span>, <span class="ident">FreezeFlag</span>, <span class="ident">ReceiverMemo</span>, <span class="ident">RecordCommitment</span>},
 };
-<span class="kw">use</span> <span class="ident">net</span>::{<span class="ident">MerklePath</span>, <span class="ident">UserAddress</span>};
+<span class="kw">use</span> <span class="ident">net</span>::{<span class="ident">MerklePath</span>, <span class="ident">UserAddress</span>, <span class="ident">UserPubKey</span>};
 <span class="kw">use</span> <span class="ident">primitive_types::U256</span>;
 <span class="kw">use</span> <span class="ident">reef::Ledger</span>;
 <span class="kw">use</span> <span class="ident">snafu::ResultExt</span>;
@@ -1575,8 +1594,8 @@
 }
 
 <span class="macro">cli_input_from_str!</span> {
-    <span class="ident">bool</span>, <span class="ident">u64</span>, <span class="ident">String</span>, <span class="ident">AssetCode</span>, <span class="ident">AssetInfo</span>, <span class="ident">ViewerPubKey</span>, <span class="ident">FreezerPubKey</span>, <span class="ident">UserAddress</span>,
-    <span class="ident">PathBuf</span>, <span class="ident">ReceiverMemo</span>, <span class="ident">RecordCommitment</span>, <span class="ident">MerklePath</span>, <span class="ident">EventIndex</span>
+    <span class="ident">bool</span>, <span class="ident">u64</span>, <span class="ident">AssetCode</span>, <span class="ident">AssetInfo</span>, <span class="ident">EventIndex</span>, <span class="ident">FreezerPubKey</span>, <span class="ident">MerklePath</span>, <span class="ident">PathBuf</span>, <span class="ident">ReceiverMemo</span>,
+    <span class="ident">RecordCommitment</span>, <span class="ident">String</span>, <span class="ident">UserAddress</span>, <span class="ident">UserPubKey</span>, <span class="ident">ViewerPubKey</span>
 }
 
 <span class="kw">impl</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">C</span>: <span class="ident">CLI</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span><span class="op">&gt;</span>, <span class="ident">L</span>: <span class="ident">Ledger</span><span class="op">&gt;</span> <span class="ident">CLIInput</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">C</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">TransactionReceipt</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span> {
@@ -1913,19 +1932,19 @@
         ),
         <span class="macro">command!</span>(
             <span class="ident">transfer</span>,
-            <span class="string">&quot;transfer some owned assets to another user&quot;</span>,
+            <span class="string">&quot;transfer some owned assets to another user&#39;s public key&quot;</span>,
             <span class="ident">C</span>,
-            <span class="op">|</span><span class="ident">io</span>, <span class="ident">keystore</span>, <span class="ident">asset</span>: <span class="ident">ListItem</span><span class="op">&lt;</span><span class="ident">AssetCode</span><span class="op">&gt;</span>, <span class="ident">to</span>: <span class="ident">UserAddress</span>, <span class="ident">amount</span>: <span class="ident">u64</span>, <span class="ident">fee</span>: <span class="ident">u64</span>; <span class="ident">wait</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">bool</span><span class="op">&gt;</span><span class="op">|</span> {
-                <span class="kw">let</span> <span class="ident">res</span> <span class="op">=</span> <span class="ident">keystore</span>.<span class="ident">transfer</span>(<span class="prelude-val">None</span>, <span class="kw-2">&amp;</span><span class="ident">asset</span>.<span class="ident">item</span>, <span class="kw-2">&amp;</span>[(<span class="ident">to</span>.<span class="number">0</span>, <span class="ident">amount</span>)], <span class="ident">fee</span>).<span class="kw">await</span>;
+            <span class="op">|</span><span class="ident">io</span>, <span class="ident">keystore</span>, <span class="ident">asset</span>: <span class="ident">ListItem</span><span class="op">&lt;</span><span class="ident">AssetCode</span><span class="op">&gt;</span>, <span class="ident">to</span>: <span class="ident">UserPubKey</span>, <span class="ident">amount</span>: <span class="ident">u64</span>, <span class="ident">fee</span>: <span class="ident">u64</span>; <span class="ident">wait</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">bool</span><span class="op">&gt;</span><span class="op">|</span> {
+                <span class="kw">let</span> <span class="ident">res</span> <span class="op">=</span> <span class="ident">keystore</span>.<span class="ident">transfer</span>(<span class="prelude-val">None</span>, <span class="kw-2">&amp;</span><span class="ident">asset</span>.<span class="ident">item</span>, <span class="kw-2">&amp;</span>[(<span class="ident">to</span>, <span class="ident">amount</span>)], <span class="ident">fee</span>).<span class="kw">await</span>;
                 <span class="ident">finish_transaction</span>::<span class="op">&lt;</span><span class="ident">C</span><span class="op">&gt;</span>(<span class="ident">io</span>, <span class="ident">keystore</span>, <span class="ident">res</span>, <span class="ident">wait</span>, <span class="string">&quot;transferred&quot;</span>).<span class="kw">await</span>;
             }
         ),
         <span class="macro">command!</span>(
             <span class="ident">transfer_from</span>,
-            <span class="string">&quot;transfer some assets from an owned address to another user&quot;</span>,
+            <span class="string">&quot;transfer some assets from an owned address to another user&#39;s public key&quot;</span>,
             <span class="ident">C</span>,
-            <span class="op">|</span><span class="ident">io</span>, <span class="ident">keystore</span>, <span class="ident">asset</span>: <span class="ident">ListItem</span><span class="op">&lt;</span><span class="ident">AssetCode</span><span class="op">&gt;</span>, <span class="ident">from</span>: <span class="ident">UserAddress</span>, <span class="ident">to</span>: <span class="ident">UserAddress</span>, <span class="ident">amount</span>: <span class="ident">u64</span>, <span class="ident">fee</span>: <span class="ident">u64</span>; <span class="ident">wait</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">bool</span><span class="op">&gt;</span><span class="op">|</span> {
-                <span class="kw">let</span> <span class="ident">res</span> <span class="op">=</span> <span class="ident">keystore</span>.<span class="ident">transfer</span>(<span class="prelude-val">Some</span>(<span class="kw-2">&amp;</span><span class="ident">from</span>.<span class="number">0</span>), <span class="kw-2">&amp;</span><span class="ident">asset</span>.<span class="ident">item</span>, <span class="kw-2">&amp;</span>[(<span class="ident">to</span>.<span class="number">0</span>, <span class="ident">amount</span>)], <span class="ident">fee</span>).<span class="kw">await</span>;
+            <span class="op">|</span><span class="ident">io</span>, <span class="ident">keystore</span>, <span class="ident">asset</span>: <span class="ident">ListItem</span><span class="op">&lt;</span><span class="ident">AssetCode</span><span class="op">&gt;</span>, <span class="ident">from</span>: <span class="ident">UserAddress</span>, <span class="ident">to</span>: <span class="ident">UserPubKey</span>, <span class="ident">amount</span>: <span class="ident">u64</span>, <span class="ident">fee</span>: <span class="ident">u64</span>; <span class="ident">wait</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">bool</span><span class="op">&gt;</span><span class="op">|</span> {
+                <span class="kw">let</span> <span class="ident">res</span> <span class="op">=</span> <span class="ident">keystore</span>.<span class="ident">transfer</span>(<span class="prelude-val">Some</span>(<span class="kw-2">&amp;</span><span class="ident">from</span>.<span class="number">0</span>), <span class="kw-2">&amp;</span><span class="ident">asset</span>.<span class="ident">item</span>, <span class="kw-2">&amp;</span>[(<span class="ident">to</span>, <span class="ident">amount</span>)], <span class="ident">fee</span>).<span class="kw">await</span>;
                 <span class="ident">finish_transaction</span>::<span class="op">&lt;</span><span class="ident">C</span><span class="op">&gt;</span>(<span class="ident">io</span>, <span class="ident">keystore</span>, <span class="ident">res</span>, <span class="ident">wait</span>, <span class="string">&quot;transferred&quot;</span>).<span class="kw">await</span>;
             }
         ),
@@ -1986,16 +2005,16 @@
         ),
         <span class="macro">command!</span>(
             <span class="ident">mint</span>,
-            <span class="string">&quot;mint an asset&quot;</span>,
+            <span class="string">&quot;mint an asset from an owned address to a user&#39;s public key&quot;</span>,
             <span class="ident">C</span>,
-            <span class="op">|</span><span class="ident">io</span>, <span class="ident">keystore</span>, <span class="ident">asset</span>: <span class="ident">ListItem</span><span class="op">&lt;</span><span class="ident">AssetCode</span><span class="op">&gt;</span>, <span class="ident">from</span>: <span class="ident">UserAddress</span>, <span class="ident">to</span>: <span class="ident">UserAddress</span>, <span class="ident">amount</span>: <span class="ident">u64</span>, <span class="ident">fee</span>: <span class="ident">u64</span>; <span class="ident">wait</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">bool</span><span class="op">&gt;</span><span class="op">|</span> {
-                <span class="kw">let</span> <span class="ident">res</span> <span class="op">=</span> <span class="ident">keystore</span>.<span class="ident">mint</span>(<span class="kw-2">&amp;</span><span class="ident">from</span>.<span class="number">0</span>, <span class="ident">fee</span>, <span class="kw-2">&amp;</span><span class="ident">asset</span>.<span class="ident">item</span>, <span class="ident">amount</span>, <span class="ident">to</span>.<span class="number">0</span>).<span class="kw">await</span>;
+            <span class="op">|</span><span class="ident">io</span>, <span class="ident">keystore</span>, <span class="ident">asset</span>: <span class="ident">ListItem</span><span class="op">&lt;</span><span class="ident">AssetCode</span><span class="op">&gt;</span>, <span class="ident">from</span>: <span class="ident">UserAddress</span>, <span class="ident">to</span>: <span class="ident">UserPubKey</span>, <span class="ident">amount</span>: <span class="ident">u64</span>, <span class="ident">fee</span>: <span class="ident">u64</span>; <span class="ident">wait</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">bool</span><span class="op">&gt;</span><span class="op">|</span> {
+                <span class="kw">let</span> <span class="ident">res</span> <span class="op">=</span> <span class="ident">keystore</span>.<span class="ident">mint</span>(<span class="kw-2">&amp;</span><span class="ident">from</span>.<span class="number">0</span>, <span class="ident">fee</span>, <span class="kw-2">&amp;</span><span class="ident">asset</span>.<span class="ident">item</span>, <span class="ident">amount</span>, <span class="ident">to</span>).<span class="kw">await</span>;
                 <span class="ident">finish_transaction</span>::<span class="op">&lt;</span><span class="ident">C</span><span class="op">&gt;</span>(<span class="ident">io</span>, <span class="ident">keystore</span>, <span class="ident">res</span>, <span class="ident">wait</span>, <span class="string">&quot;minted&quot;</span>).<span class="kw">await</span>;
             }
         ),
         <span class="macro">command!</span>(
             <span class="ident">freeze</span>,
-            <span class="string">&quot;freeze assets owned by another users&quot;</span>,
+            <span class="string">&quot;freeze assets owned by another user&#39;s address&quot;</span>,
             <span class="ident">C</span>,
             <span class="op">|</span><span class="ident">io</span>, <span class="ident">keystore</span>, <span class="ident">asset</span>: <span class="ident">ListItem</span><span class="op">&lt;</span><span class="ident">AssetCode</span><span class="op">&gt;</span>, <span class="ident">fee_account</span>: <span class="ident">UserAddress</span>, <span class="ident">target</span>: <span class="ident">UserAddress</span>,
              <span class="ident">amount</span>: <span class="ident">U256</span>, <span class="ident">fee</span>: <span class="ident">u64</span>; <span class="ident">wait</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">bool</span><span class="op">&gt;</span><span class="op">|</span>
@@ -2006,7 +2025,7 @@
         ),
         <span class="macro">command!</span>(
             <span class="ident">unfreeze</span>,
-            <span class="string">&quot;unfreeze previously frozen assets owned by another users&quot;</span>,
+            <span class="string">&quot;unfreeze previously frozen assets owned by another user&#39;s address&quot;</span>,
             <span class="ident">C</span>,
             <span class="op">|</span><span class="ident">io</span>, <span class="ident">keystore</span>, <span class="ident">asset</span>: <span class="ident">ListItem</span><span class="op">&lt;</span><span class="ident">AssetCode</span><span class="op">&gt;</span>, <span class="ident">fee_account</span>: <span class="ident">UserAddress</span>, <span class="ident">target</span>: <span class="ident">UserAddress</span>,
              <span class="ident">amount</span>: <span class="ident">U256</span>, <span class="ident">fee</span>: <span class="ident">u64</span>; <span class="ident">wait</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">bool</span><span class="op">&gt;</span><span class="op">|</span>
@@ -2112,7 +2131,7 @@
         }),
         <span class="macro">command!</span>(
             <span class="ident">gen_key</span>,
-            <span class="string">&quot;generate new keys&quot;</span>,
+            <span class="string">&quot;generate a new key&quot;</span>,
             <span class="ident">C</span>,
             <span class="op">|</span><span class="ident">io</span>, <span class="ident">keystore</span>, <span class="ident">key_type</span>: <span class="ident">KeyType</span>;
              <span class="ident">description</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">String</span><span class="op">&gt;</span>, <span class="ident">scan_from</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">EventIndex</span><span class="op">&gt;</span>, <span class="ident">wait</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">bool</span><span class="op">&gt;</span><span class="op">|</span> {
@@ -2133,6 +2152,9 @@
                                     <span class="macro">cli_writeln!</span>(<span class="ident">io</span>, <span class="string">&quot;Error waiting for key scan: {}&quot;</span>, <span class="ident">err</span>);
                                 }
                             }
+                            <span class="comment">// Output both the public key and the address when generating a</span>
+                            <span class="comment">// sending key.</span>
+                            <span class="macro">cli_writeln!</span>(<span class="ident">io</span>, <span class="string">&quot;{}&quot;</span>, <span class="ident">pub_key</span>);
                             <span class="macro">cli_writeln!</span>(<span class="ident">io</span>, <span class="string">&quot;{}&quot;</span>, <span class="ident">UserAddress</span>(<span class="ident">pub_key</span>.<span class="ident">address</span>()));
                         }
                         <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="macro">cli_writeln!</span>(<span class="ident">io</span>, <span class="string">&quot;Error generating sending key: {}&quot;</span>, <span class="ident">err</span>),
@@ -2457,6 +2479,14 @@
             <span class="kw">for</span> <span class="ident">command</span> <span class="kw">in</span> <span class="ident">commands</span>.<span class="ident">iter</span>() {
                 <span class="macro">cli_writeln!</span>(<span class="ident">io</span>, <span class="string">&quot;{}&quot;</span>, <span class="ident">command</span>);
             }
+            <span class="macro">cli_writeln!</span>(
+                <span class="ident">io</span>,
+                <span class="string">&quot;General rule: When determining whether to use UserAddress or UserPubKey as the
+                parameter, use UserAddress as an account identifier (to send an asset, get a
+                balance, etc.), and UserPubKey as a transaction destination. An exception is when
+                we can&#39;t reasonably know the UserPubKey of the destination (freezing or
+                unfreezing), in which case we use UserAddress instead.&quot;</span>
+            );
             <span class="kw">continue</span>;
         }
         <span class="kw">for</span> <span class="ident">Command</span> { <span class="ident">name</span>, <span class="ident">run</span>, .. } <span class="kw">in</span> <span class="ident">commands</span>.<span class="ident">iter</span>() {
@@ -2623,9 +2653,13 @@
             <span class="kw-2">&amp;</span>[<span class="macro">format!</span>(<span class="string">&quot;{} {}&quot;</span>, <span class="ident">viewer_address</span>, <span class="number">1000</span>)],
         );
 
-        <span class="comment">// Get the sender&#39;s funded address.</span>
+        <span class="comment">// Get the sender&#39;s funded public key and address.</span>
         <span class="macro">writeln!</span>(<span class="ident">sender_input</span>, <span class="string">&quot;gen_key sending scan_from=start wait=true&quot;</span>).<span class="ident">unwrap</span>();
-        <span class="kw">let</span> <span class="ident">matches</span> <span class="op">=</span> <span class="ident">match_output</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">sender_output</span>, <span class="kw-2">&amp;</span>[<span class="string">&quot;(?P&lt;addr&gt;ADDR~.*)&quot;</span>]);
+        <span class="kw">let</span> <span class="ident">matches</span> <span class="op">=</span> <span class="ident">match_output</span>(
+            <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">sender_output</span>,
+            <span class="kw-2">&amp;</span>[<span class="string">&quot;(?P&lt;pub_key&gt;USERPUBKEY~.*)&quot;</span>, <span class="string">&quot;(?P&lt;addr&gt;ADDR~.*)&quot;</span>],
+        );
+        <span class="kw">let</span> <span class="ident">sender_pub_key</span> <span class="op">=</span> <span class="ident">matches</span>.<span class="ident">get</span>(<span class="string">&quot;pub_key&quot;</span>);
         <span class="kw">let</span> <span class="ident">sender_address</span> <span class="op">=</span> <span class="ident">matches</span>.<span class="ident">get</span>(<span class="string">&quot;addr&quot;</span>);
         <span class="macro">writeln!</span>(<span class="ident">sender_input</span>, <span class="string">&quot;balance 0&quot;</span>).<span class="ident">unwrap</span>();
         <span class="ident">match_output</span>(
@@ -2633,9 +2667,13 @@
             <span class="kw-2">&amp;</span>[<span class="macro">format!</span>(<span class="string">&quot;{} {}&quot;</span>, <span class="ident">sender_address</span>, <span class="number">1000</span>)],
         );
 
-        <span class="comment">// Get the receiver&#39;s (unfunded) address.</span>
+        <span class="comment">// Get the receiver&#39;s (unfunded) public key and address.</span>
         <span class="macro">writeln!</span>(<span class="ident">receiver_input</span>, <span class="string">&quot;gen_key sending&quot;</span>).<span class="ident">unwrap</span>();
-        <span class="kw">let</span> <span class="ident">matches</span> <span class="op">=</span> <span class="ident">match_output</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">receiver_output</span>, <span class="kw-2">&amp;</span>[<span class="string">&quot;(?P&lt;addr&gt;ADDR~.*)&quot;</span>]);
+        <span class="kw">let</span> <span class="ident">matches</span> <span class="op">=</span> <span class="ident">match_output</span>(
+            <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">receiver_output</span>,
+            <span class="kw-2">&amp;</span>[<span class="string">&quot;(?P&lt;pub_key&gt;USERPUBKEY~.*)&quot;</span>, <span class="string">&quot;(?P&lt;addr&gt;ADDR~.*)&quot;</span>],
+        );
+        <span class="kw">let</span> <span class="ident">receiver_pub_key</span> <span class="op">=</span> <span class="ident">matches</span>.<span class="ident">get</span>(<span class="string">&quot;pub_key&quot;</span>);
         <span class="kw">let</span> <span class="ident">receiver_address</span> <span class="op">=</span> <span class="ident">matches</span>.<span class="ident">get</span>(<span class="string">&quot;addr&quot;</span>);
 
         <span class="comment">// Generate a viewing key.</span>
@@ -2659,7 +2697,7 @@
         <span class="macro">writeln!</span>(
             <span class="ident">viewer_input</span>,
             <span class="string">&quot;mint 1 {} {} 1000 1&quot;</span>,
-            <span class="ident">viewer_address</span>, <span class="ident">sender_address</span>
+            <span class="ident">viewer_address</span>, <span class="ident">sender_pub_key</span>
         )
         .<span class="ident">unwrap</span>();
         <span class="kw">let</span> <span class="ident">matches</span> <span class="op">=</span> <span class="ident">match_output</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">viewer_output</span>, <span class="kw-2">&amp;</span>[<span class="string">&quot;(?P&lt;txn&gt;TXN~.*)&quot;</span>]);
@@ -2677,7 +2715,7 @@
         <span class="macro">writeln!</span>(
             <span class="ident">sender_input</span>,
             <span class="string">&quot;transfer_from 1 {} {} 50 1&quot;</span>,
-            <span class="ident">sender_address</span>, <span class="ident">receiver_address</span>
+            <span class="ident">sender_address</span>, <span class="ident">receiver_pub_key</span>
         )
         .<span class="ident">unwrap</span>();
         <span class="kw">let</span> <span class="ident">matches</span> <span class="op">=</span> <span class="ident">match_output</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">sender_output</span>, <span class="kw-2">&amp;</span>[<span class="string">&quot;(?P&lt;txn&gt;TXN~.*)&quot;</span>]);
@@ -2746,7 +2784,7 @@
         <span class="macro">writeln!</span>(
             <span class="ident">sender_input</span>,
             <span class="string">&quot;transfer_from 1 {} {} 50 1&quot;</span>,
-            <span class="ident">sender_address</span>, <span class="ident">receiver_address</span>
+            <span class="ident">sender_address</span>, <span class="ident">receiver_pub_key</span>
         )
         .<span class="ident">unwrap</span>();
         <span class="comment">// Search for error message with a slightly permissive regex to allow the CLI some freedom</span>
