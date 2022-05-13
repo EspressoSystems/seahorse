@@ -369,10 +369,10 @@ impl<'a, const H: u8> KeystoreBackend<'a, cap::LedgerWithHeight<H>>
             }
         };
 
-        // Persist the initial state.
-        let mut storage = self.storage().await;
-        storage.committed = Some(state.clone());
-        storage.working = Some(state.clone());
+        // // Persist the initial state.
+        // let mut storage = self.storage().await;
+        // storage.committed = Some(state.clone());
+        // storage.working = Some(state.clone());
 
         Ok(state)
     }

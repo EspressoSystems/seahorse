@@ -1020,7 +1020,7 @@ async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
     cli_writeln!(io, "connecting...");
     let mut keystore = Keystore::<C>::new(
         backend,
-        AtomicKeystoreStorage::new(&mut loader, 10).unwrap(),
+        AtomicKeystoreStorage::new(&mut loader, 1024).unwrap(),
     )
     .await?;
     cli_writeln!(io, "Type 'help' for a list of commands.");
@@ -1126,7 +1126,6 @@ mod test {
         ) -> Result<Self::Backend, KeystoreError<Self::Ledger>> {
             Ok(MockBackend::new(
                 args.ledger.clone(),
-                Default::default(),
                 args.key_stream,
             ))
         }

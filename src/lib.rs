@@ -43,7 +43,6 @@ use crate::{
     asset_library::{AssetLibrary, VerifiedAssetLibrary},
     events::{EventIndex, EventSource, LedgerEvent},
     key_scan::{receive_history_entry, BackgroundKeyScan, ScanOutputs},
-    loader::LoaderMetadata,
     persistence::AtomicKeystoreStorage,
     txn_builder::*,
 };
@@ -1835,7 +1834,7 @@ impl<
     #[cfg(any(test, bench, feature = "testing"))]
     pub fn with_state(
         backend: Backend,
-        mut storage: AtomicKeystoreStorage<'a, L, Meta>,
+        storage: AtomicKeystoreStorage<'a, L, Meta>,
         state: KeystoreState<'a, L>,
     ) -> BoxFuture<'a, Result<Keystore<'a, Backend, L, Meta>, KeystoreError<L>>> {
         Box::pin(async move { Self::new_impl(backend, storage, state).await })
