@@ -31,22 +31,24 @@ use tempdir::TempDir;
 use std::path::PathBuf;
 
 struct TrivialKeystoreLoader {
-    dir: TempDir,
+    dir: PathBuf
 }
 
 impl <L: Ledger> KeystoreLoader<L> for TrivialKeystoreLoader {
     type Meta = ();
 
     fn location(&self) -> PathBuf {
-        self.dir.path().clone().to_path_buf()
+        self.dir.clone()
     }
 
     fn create(&mut self) -> Result<(Self::Meta, KeyTree), KeystoreError<L>> {
+        println!("loader create");
         let key = KeyTree::from_password_and_salt(&[], &[0; 32]).context(KeySnafu)?;
         Ok(((), key))
     }
 
     fn load(&mut self, _meta: &mut Self::Meta) -> Result<KeyTree, KeystoreError<L>> {
+        println!("loader load");
         KeyTree::from_password_and_salt(&[], &[0; 32]).context(KeySnafu)
     }
 }
@@ -250,7 +252,7 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         rng: &mut ChaChaRng,
         ledger: &Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork>>>,
     ) -> Keystore<'a, Self::MockBackend, Self::Ledger, ()> {
-        let mut loader = TrivialKeystoreLoader { dir: TempDir::new("test_keystore").unwrap() };
+        let mut loader = TrivialKeystoreLoader { dir: TempDir::new("test_keystore").unwrap().into_path() };
         println!("creating test keystore\n");
         let storage = AtomicKeystoreStorage::new(&mut loader, 1024).unwrap();
         let key_stream = hd::KeyTree::random(rng).0;
@@ -270,7 +272,7 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         ledger: &Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork>>>,
         state: KeystoreState<'a, Self::Ledger>,
     ) -> Keystore<'a, Self::MockBackend, Self::Ledger, ()> {
-        let mut loader = TrivialKeystoreLoader { dir: TempDir::new("test_keystore").unwrap() };
+        let mut loader = TrivialKeystoreLoader { dir: TempDir::new("test_keystore").unwrap().into_path() };
         let storage = AtomicKeystoreStorage::new(&mut loader, 1024).unwrap();
         let key_stream = hd::KeyTree::random(rng).0;
         let backend = self
@@ -406,11 +408,12 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
             let mut rng = ChaChaRng::from_rng(&mut rng).unwrap();
             let ledger = ledger.clone();
 
-            let mut loader = TrivialKeystoreLoader { dir: TempDir::new("test_keystore").unwrap() };
+            let mut loader = TrivialKeystoreLoader { dir: TempDir::new("test_keystore").unwrap().into_path() };
             let storage = AtomicKeystoreStorage::new(&mut loader, 1024).unwrap();
             let mut seed = [0u8; 32];
             rng.fill_bytes(&mut seed);
             let backend = self.create_backend(ledger, initial_grants, key_stream).await;
+            // storage.create(backend.state);
             println!("created backend");
             let mut keystore = Keystore::new(
                 backend,

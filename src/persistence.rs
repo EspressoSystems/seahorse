@@ -32,7 +32,7 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use snafu::ResultExt;
 
 // Serialization intermediate for the static part of a KeystoreState.
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Debug)]
 struct KeystoreStaticState<'a> {
     #[serde(with = "serde_ark_unchecked")]
     proving_keys: Arc<ProverKeySet<'a, OrderByOutputs>>,
@@ -146,6 +146,7 @@ impl<T: Serialize + DeserializeOwned> LoadStore for EncryptingResourceAdapter<T>
     type ParamType = T;
 
     fn load(&self, stream: &[u8]) -> Result<Self::ParamType, PersistenceError> {
+        println!("encrypt adapter load");
         let ciphertext = bincode::deserialize(stream)
             .map_err(|source| PersistenceError::BincodeDe { source })?;
         let plaintext =
@@ -158,6 +159,7 @@ impl<T: Serialize + DeserializeOwned> LoadStore for EncryptingResourceAdapter<T>
     }
 
     fn store(&mut self, param: &Self::ParamType) -> Result<Vec<u8>, PersistenceError> {
+        println!("encrypt adapter store");
         let plaintext =
             bincode::serialize(param).map_err(|source| PersistenceError::BincodeSer { source })?;
         let ciphertext =
@@ -214,6 +216,8 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned + Clone + PartialE
         .context(crate::PersistenceSnafu)?;
         let (meta, key, meta_dirty) = match persisted_meta.load_latest() {
             Ok(mut meta) => {
+                println!("found metadata load");
+
                 let old_meta = meta.clone();
                 let key = loader.load(&mut meta)?;
 
@@ -229,6 +233,7 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned + Clone + PartialE
             }
             Err(_) => {
                 // If there is no persisted metadata, ask the loader to generate a new keystore.
+                println!("no metadata create.");
                 let (meta, key) = loader.create()?;
                 (meta, key, false)
             }
@@ -242,6 +247,7 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned + Clone + PartialE
             file_fill_size,
         )
         .context(crate::PersistenceSnafu)?;
+
         let dynamic_state = RollingLog::load(
             &mut atomic_loader,
             adaptor.cast(),
@@ -264,6 +270,12 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned + Clone + PartialE
         )
         .context(crate::PersistenceSnafu)?;
         let store = AtomicStore::open(atomic_loader).context(crate::PersistenceSnafu)?;
+
+        let static_state = 
+            static_data
+            .load_latest()
+            .context(crate::PersistenceSnafu)?;
+        println!("created rolling log for keystore_static: {:?}", static_state);
 
         Ok(Self {
             meta,
