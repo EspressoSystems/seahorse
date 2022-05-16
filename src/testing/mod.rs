@@ -250,8 +250,8 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         rng: &mut ChaChaRng,
         ledger: &Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork>>>,
     ) -> Keystore<'a, Self::MockBackend, Self::Ledger, ()> {
-        // let storage = self.create_storage().await;
         let mut loader = TrivialKeystoreLoader { dir: TempDir::new("test_keystore").unwrap() };
+        println!("creating test keystore\n");
         let storage = AtomicKeystoreStorage::new(&mut loader, 1024).unwrap();
         let key_stream = hd::KeyTree::random(rng).0;
         let backend = self
@@ -299,6 +299,8 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
             Vec<UserAddress>,
         )>,
     ) {
+        println!("creating test network");
+
         let mut rng = ChaChaRng::from_seed([42u8; 32]);
         let universal_param = Self::Ledger::srs();
 
@@ -408,9 +410,10 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
             let storage = AtomicKeystoreStorage::new(&mut loader, 1024).unwrap();
             let mut seed = [0u8; 32];
             rng.fill_bytes(&mut seed);
+            let backend = self.create_backend(ledger, initial_grants, key_stream).await;
+            println!("created backend");
             let mut keystore = Keystore::new(
-                self.create_backend(ledger, initial_grants, key_stream)
-                    .await,
+                backend,
                 storage,
             )
             .await

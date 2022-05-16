@@ -808,6 +808,7 @@ pub mod generic_keystore_tests {
     pub async fn test_keystore_freeze<'a, T: SystemUnderTest<'a>>() -> std::io::Result<()> {
         let mut t = T::default();
         let mut now = Instant::now();
+        println!("created t");
 
         // Each of the two addresses of the sender keystore (keystores[0]) gets an initial grant of 1
         // for a transfer fee. keystores[1] will act as the receiver, and keystores[2] will be a third
@@ -819,6 +820,7 @@ pub mod generic_keystore_tests {
         let (ledger, mut keystores) = t
             .create_test_network(&[(3, 4)], vec![2, 0, 6], &mut now)
             .await;
+        println!("created test network\n");
 
         let asset = {
             let mut rng = ChaChaRng::from_seed([42u8; 32]);
