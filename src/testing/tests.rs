@@ -73,7 +73,7 @@ pub async fn test_keystore_freeze_unregistered() -> std::io::Result<()> {
         let dst_pub_key = keystores[0].1[0].clone();
         keystores[2]
             .0
-            .mint(&src, 1, &asset.code, 1, dst_pub_key)
+            .mint(Some(&src), 1, &asset.code, 1, dst_pub_key)
             .await
             .unwrap();
         t.sync(&ledger, keystores.as_slice()).await;
@@ -116,7 +116,7 @@ pub async fn test_keystore_freeze_unregistered() -> std::io::Result<()> {
     ledger.lock().await.hold_next_transaction();
     keystores[2]
         .0
-        .freeze(&src, 1, &asset.code, 1, dst.clone())
+        .freeze(Some(&src), 1, &asset.code, 1, dst.clone())
         .await
         .unwrap();
 
@@ -274,7 +274,7 @@ pub mod generic_keystore_tests {
             keystores[0]
                 .0
                 .mint(
-                    &alice_pub_keys[0].address(),
+                    Some(&alice_pub_keys[0].address()),
                     1,
                     &coin.code,
                     5,
@@ -524,7 +524,7 @@ pub mod generic_keystore_tests {
                 };
                 keystores[0]
                     .0
-                    .mint(&src, 1, &asset.code, 1, dst_pub_key)
+                    .mint(Some(&src), 1, &asset.code, 1, dst_pub_key)
                     .await
                     .unwrap();
                 t.sync(&ledger, keystores.as_slice()).await;
@@ -539,7 +539,7 @@ pub mod generic_keystore_tests {
                 keystores[0]
                     .0
                     .mint(
-                        &src,
+                        Some(&src),
                         1,
                         &asset.code,
                         T::Ledger::record_root_history() as u64,
@@ -566,13 +566,13 @@ pub mod generic_keystore_tests {
         if mint {
             keystores[0]
                 .0
-                .mint(&sender, 1, &asset.code, 1, receiver_pub_key.clone())
+                .mint(Some(&sender), 1, &asset.code, 1, receiver_pub_key.clone())
                 .await
                 .unwrap();
         } else if freeze {
             keystores[0]
                 .0
-                .freeze(&sender, 1, &asset.code, 1, receiver.clone())
+                .freeze(Some(&sender), 1, &asset.code, 1, receiver.clone())
                 .await
                 .unwrap();
         } else {
@@ -713,13 +713,13 @@ pub mod generic_keystore_tests {
         if mint {
             keystores[0]
                 .0
-                .mint(&sender, 1, &asset.code, 1, receiver_pub_key)
+                .mint(Some(&sender), 1, &asset.code, 1, receiver_pub_key)
                 .await
                 .unwrap();
         } else if freeze {
             keystores[0]
                 .0
-                .freeze(&sender, 1, &asset.code, 1, receiver.clone())
+                .freeze(Some(&sender), 1, &asset.code, 1, receiver.clone())
                 .await
                 .unwrap();
         } else {
@@ -856,7 +856,7 @@ pub mod generic_keystore_tests {
             let dst_pub_key = keystores[0].1[0].clone();
             keystores[2]
                 .0
-                .mint(&src, 1, &asset.code, 1, dst_pub_key)
+                .mint(Some(&src), 1, &asset.code, 1, dst_pub_key)
                 .await
                 .unwrap();
             t.sync(&ledger, keystores.as_slice()).await;
@@ -889,13 +889,17 @@ pub mod generic_keystore_tests {
         ledger.lock().await.hold_next_transaction();
         keystores[2]
             .0
-            .freeze(&src, 1, &asset.code, 1, dst.clone())
+            .freeze(Some(&src), 1, &asset.code, 1, dst.clone())
             .await
             .unwrap();
 
         // Check that, like transfer inputs, freeze inputs are placed on hold and unusable while a
         // freeze that uses them is pending.
-        match keystores[2].0.freeze(&src, 1, &asset.code, 1, dst).await {
+        match keystores[2]
+            .0
+            .freeze(Some(&src), 1, &asset.code, 1, dst)
+            .await
+        {
             Err(KeystoreError::TransactionError {
                 source: TransactionError::InsufficientBalance { .. },
             }) => {}
@@ -953,7 +957,7 @@ pub mod generic_keystore_tests {
         let dst = dst_pub_key.address();
         keystores[2]
             .0
-            .unfreeze(&src, 1, &asset.code, 1, dst)
+            .unfreeze(Some(&src), 1, &asset.code, 1, dst)
             .await
             .unwrap();
         t.sync(&ledger, keystores.as_slice()).await;
@@ -1210,7 +1214,13 @@ pub mod generic_keystore_tests {
             balances[(owner % nkeystores) as usize][asset] += amount.into();
             keystores[0]
                 .0
-                .mint(&minter, 1, &assets[asset - 1].code, amount, pub_key.clone())
+                .mint(
+                    Some(&minter),
+                    1,
+                    &assets[asset - 1].code,
+                    amount,
+                    pub_key.clone(),
+                )
                 .await
                 .unwrap();
             push_history(
@@ -1377,7 +1387,7 @@ pub mod generic_keystore_tests {
                     let (minter, minter_pub_keys) = &mut keystores[0];
                     minter
                         .mint(
-                            &minter_pub_keys[0].address(),
+                            Some(&minter_pub_keys[0].address()),
                             1,
                             &asset.code,
                             2 * amount,
@@ -2100,7 +2110,7 @@ pub mod generic_keystore_tests {
         keystores[0]
             .0
             .mint(
-                &alice_addresses[0],
+                Some(&alice_addresses[0]),
                 1,
                 &coin.code,
                 amount,
@@ -2256,7 +2266,7 @@ pub mod generic_keystore_tests {
         let receiver_addr = keystores[0].1[0].clone();
         keystores[1]
             .0
-            .mint(&minter_addr, 1, &minted_asset.code, 1, receiver_addr)
+            .mint(Some(&minter_addr), 1, &minted_asset.code, 1, receiver_addr)
             .await
             .unwrap();
         t.sync(&ledger, &keystores).await;
@@ -2671,7 +2681,13 @@ pub mod generic_keystore_tests {
         let receiver = keystores[1].1[0].clone();
         let receipt = keystores[0]
             .0
-            .mint(&address, 1, &viewable_asset.code, 100, receiver.clone())
+            .mint(
+                Some(&address),
+                1,
+                &viewable_asset.code,
+                100,
+                receiver.clone(),
+            )
             .await
             .unwrap();
         await_transaction(&receipt, &keystores[0].0, &[&keystores[1].0]).await;
@@ -2696,7 +2712,7 @@ pub mod generic_keystore_tests {
         // Mint the freezable asset.
         let receipt = keystores[0]
             .0
-            .mint(&address, 1, &freezable_asset.code, 200, receiver)
+            .mint(Some(&address), 1, &freezable_asset.code, 200, receiver)
             .await
             .unwrap();
         await_transaction(&receipt, &keystores[0].0, &[&keystores[1].0]).await;
@@ -3061,19 +3077,19 @@ pub mod generic_keystore_tests {
         // exceeds both the max single-record amount and the max of a u64).
         keystores[0]
             .0
-            .mint(&addr0, 1, &asset.code, max_record, pub_key0.clone())
+            .mint(Some(&addr0), 1, &asset.code, max_record, pub_key0.clone())
             .await
             .unwrap();
         t.sync(&ledger, &keystores).await;
         keystores[0]
             .0
-            .mint(&addr0, 1, &asset.code, max_record, pub_key0.clone())
+            .mint(Some(&addr0), 1, &asset.code, max_record, pub_key0.clone())
             .await
             .unwrap();
         t.sync(&ledger, &keystores).await;
         keystores[0]
             .0
-            .mint(&addr0, 1, &asset.code, max_record, pub_key0.clone())
+            .mint(Some(&addr0), 1, &asset.code, max_record, pub_key0.clone())
             .await
             .unwrap();
         t.sync(&ledger, &keystores).await;
