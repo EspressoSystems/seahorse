@@ -127,7 +127,13 @@ async fn generate_independent_transactions<
                     .await
                     .unwrap();
                 let (mint_note, mint_info) = wallet
-                    .build_mint(&addrs[0], 1, &asset.code, 1u64 << 32, addrs[0].clone())
+                    .build_mint(
+                        Some(&addrs[0]),
+                        1,
+                        &asset.code,
+                        1u64 << 32,
+                        addrs[0].clone(),
+                    )
                     .await
                     .unwrap();
                 let receipt = wallet

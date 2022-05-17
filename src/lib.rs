@@ -1515,7 +1515,7 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
     async fn build_mint(
         &mut self,
         session: &mut WalletSession<'a, L, impl WalletBackend<'a, L>>,
-        minter: &UserAddress,
+        minter: Option<&UserAddress>,
         fee: u64,
         asset_code: &AssetCode,
         amount: u64,
@@ -1532,9 +1532,13 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
                 .ok_or(WalletError::<L>::AssetNotMintable {
                     asset: asset.definition.clone(),
                 })?;
+        let sending_keys = match minter {
+            Some(addr) => vec![self.account_key_pair(addr)?.clone()],
+            None => self.key_pairs(),
+        };
         self.txn_state
             .mint(
-                &self.account_key_pair(minter)?.clone(),
+                &sending_keys,
                 &self.proving_keys.mint,
                 fee,
                 &(asset.definition.clone(), seed, description),
@@ -1549,7 +1553,7 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
     async fn build_freeze(
         &mut self,
         session: &mut WalletSession<'a, L, impl WalletBackend<'a, L>>,
-        fee_address: &UserAddress,
+        fee_address: Option<&UserAddress>,
         fee: u64,
         asset: &AssetCode,
         amount: U256,
@@ -1567,10 +1571,14 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
             Some(account) => &account.key,
             None => return Err(WalletError::<L>::AssetNotFreezable { asset }),
         };
+        let sending_keys = match fee_address {
+            Some(addr) => vec![self.account_key_pair(addr)?.clone()],
+            None => self.key_pairs(),
+        };
 
         self.txn_state
             .freeze_or_unfreeze(
-                &self.account_key_pair(fee_address)?.clone(),
+                &sending_keys,
                 freeze_key,
                 &self.proving_keys.freeze,
                 fee,
@@ -2461,7 +2469,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
     /// Create a mint note that assigns an asset to an owner.
     pub async fn build_mint(
         &mut self,
-        minter: &UserAddress,
+        minter: Option<&UserAddress>,
         fee: u64,
         asset_code: &AssetCode,
         amount: u64,
@@ -2478,7 +2486,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
     /// See [Wallet::build_mint].
     pub async fn mint(
         &mut self,
-        minter: &UserAddress,
+        minter: Option<&UserAddress>,
         fee: u64,
         asset_code: &AssetCode,
         amount: u64,
@@ -2512,7 +2520,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
     ///   make exact change with the freezable records we have.
     pub async fn build_freeze(
         &mut self,
-        freezer: &UserAddress,
+        freezer: Option<&UserAddress>,
         fee: u64,
         asset: &AssetCode,
         amount: U256,
@@ -2537,7 +2545,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
     /// See [Wallet::build_freeze].    
     pub async fn freeze(
         &mut self,
-        freezer: &UserAddress,
+        freezer: Option<&UserAddress>,
         fee: u64,
         asset: &AssetCode,
         amount: U256,
@@ -2556,7 +2564,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
     /// of the target's assets.
     pub async fn build_unfreeze(
         &mut self,
-        freezer: &UserAddress,
+        freezer: Option<&UserAddress>,
         fee: u64,
         asset: &AssetCode,
         amount: U256,
@@ -2581,7 +2589,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + WalletBackend<'a, L> + Send + Sync>
     /// See [Wallet::build_unfreeze].
     pub async fn unfreeze(
         &mut self,
-        freezer: &UserAddress,
+        freezer: Option<&UserAddress>,
         fee: u64,
         asset: &AssetCode,
         amount: U256,

@@ -1221,15 +1221,7 @@ impl<L: Ledger> TransactionState<L> {
                 ));
             }
         }
-        let fee_input = spec
-            .sender_key_pairs
-            .iter()
-            .find_map(|key| self.find_fee_input(key, spec.fee).ok())
-            .ok_or(TransactionError::InsufficientBalance {
-                asset: AssetCode::native(),
-                required: spec.fee.into(),
-                actual: U256::zero(),
-            })?;
+        let fee_input = self.find_fee_input(spec.sender_key_pairs, spec.fee)?;
 
         // prepare outputs, excluding fee change (which will be automatically generated)
         let mut outputs = Vec::new();
@@ -1368,7 +1360,7 @@ impl<L: Ledger> TransactionState<L> {
     #[allow(clippy::too_many_arguments)]
     pub fn mint<'a>(
         &mut self,
-        minter_key_pair: &UserKeyPair,
+        sending_keys: &[UserKeyPair],
         proving_key: &MintProvingKey<'a>,
         fee: u64,
         asset: &(AssetDefinition, AssetCodeSeed, Vec<u8>),
@@ -1385,7 +1377,7 @@ impl<L: Ledger> TransactionState<L> {
             blind: BlindFactor::rand(rng),
         };
 
-        let fee_input = self.find_fee_input(minter_key_pair, fee)?;
+        let fee_input = self.find_fee_input(sending_keys, fee)?;
         let fee_rec = fee_input.ro.clone();
         let (fee_info, fee_out_rec) = TxnFeeInfo::new(rng, fee_input, fee).unwrap();
         let rng = rng;
@@ -1407,14 +1399,14 @@ impl<L: Ledger> TransactionState<L> {
             asset: asset_def.code,
             kind: TransactionKind::<L>::mint(),
             hash: None,
-            senders: vec![minter_key_pair.address()],
+            senders: vec![fee_rec.pub_key.address()],
             receivers: vec![(receiver.address(), amount)],
             receipt: None,
         };
         Ok((
             note,
             TransactionInfo {
-                accounts: vec![minter_key_pair.address()],
+                accounts: vec![fee_rec.pub_key.address()],
                 memos,
                 sig,
                 freeze_outputs: vec![],
@@ -1429,7 +1421,7 @@ impl<L: Ledger> TransactionState<L> {
     #[allow(clippy::too_many_arguments)]
     pub fn freeze_or_unfreeze<'a>(
         &mut self,
-        fee_key_pair: &UserKeyPair,
+        sending_keys: &[UserKeyPair],
         freezer_key_pair: &FreezerKeyPair,
         proving_keys: &KeySet<FreezeProvingKey<'a>, key_set::OrderByOutputs>,
         fee: u64,
@@ -1463,7 +1455,8 @@ impl<L: Ledger> TransactionState<L> {
                 keypair: freezer_key_pair,
             })
         }
-        let fee_input = self.find_fee_input(fee_key_pair, fee)?;
+        let fee_input = self.find_fee_input(sending_keys, fee)?;
+        let fee_address = fee_input.owner_keypair.address();
 
         // find a proving key which can handle this transaction size
         let proving_key =
@@ -1488,7 +1481,7 @@ impl<L: Ledger> TransactionState<L> {
                 FreezeFlag::Unfrozen => TransactionKind::<L>::unfreeze(),
             },
             hash: None,
-            senders: vec![fee_key_pair.address()],
+            senders: vec![fee_address.clone()],
             // The target receives one frozen output record for each input record we are freezing.
             receivers: input_records
                 .iter()
@@ -1499,7 +1492,7 @@ impl<L: Ledger> TransactionState<L> {
         Ok((
             note,
             TransactionInfo {
-                accounts: vec![fee_key_pair.address()],
+                accounts: vec![fee_address],
                 memos,
                 sig,
                 // `freeze_outputs` should only contain the frozen/unfrozen records, not the fee
@@ -1655,14 +1648,14 @@ impl<L: Ledger> TransactionState<L> {
     }
 
     #[allow(clippy::type_complexity)]
-    fn find_records(
+    fn find_records<'l>(
         &self,
         asset: &AssetCode,
-        owner_key_pairs: &[UserKeyPair],
+        owner_key_pairs: &'l [UserKeyPair],
         frozen: FreezeFlag,
         amount: U256,
         max_records: Option<usize>,
-    ) -> Result<Vec<(UserKeyPair, Vec<(RecordOpening, u64)>, u64)>, TransactionError> {
+    ) -> Result<Vec<(&'l UserKeyPair, Vec<(RecordOpening, u64)>, u64)>, TransactionError> {
         let mut records = Vec::new();
         let mut target_amount = amount;
 
@@ -1678,14 +1671,14 @@ impl<L: Ledger> TransactionState<L> {
             // A nonnegative change indicates that we've find sufficient records.
             if change >= BigInt::zero() {
                 records.push((
-                    owner_key_pair.clone(),
+                    owner_key_pair,
                     input_records,
                     bigint_to_u256(change).as_u64(),
                 ));
                 return Ok(records);
             }
             if !input_records.is_empty() {
-                records.push((owner_key_pair.clone(), input_records, 0));
+                records.push((owner_key_pair, input_records, 0));
             }
             target_amount = bigint_to_u256(-change);
         }
@@ -1698,27 +1691,29 @@ impl<L: Ledger> TransactionState<L> {
     }
 
     /// find a record of the native asset type with enough funds to pay a transaction fee
+    ///
+    /// The record will be owned by one of the given key pairs.
     fn find_fee_input<'l>(
         &self,
-        owner_key_pair: &'l UserKeyPair,
+        key_pairs: &'l [UserKeyPair],
         fee: u64,
     ) -> Result<FeeInput<'l>, TransactionError> {
-        let (ro, uid) = self
-            .find_records_with_pub_key(
-                &AssetCode::native(),
-                &owner_key_pair.pub_key().address(),
-                FreezeFlag::Unfrozen,
-                fee.into(),
-                Some(1),
-                false,
-            )?
-            .0
-            .remove(0);
+        let mut records = self.find_records(
+            &AssetCode::native(),
+            key_pairs,
+            FreezeFlag::Unfrozen,
+            fee.into(),
+            Some(1),
+        )?;
+        assert_eq!(records.len(), 1);
+        let (owner_keypair, mut records, _) = records.remove(0);
+        assert_eq!(records.len(), 1);
+        let (ro, uid) = records.remove(0);
 
         Ok(FeeInput {
             ro,
             acc_member_witness: self.get_merkle_proof(uid),
-            owner_keypair: owner_key_pair,
+            owner_keypair,
         })
     }
 

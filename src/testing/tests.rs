@@ -73,7 +73,7 @@ pub async fn test_wallet_freeze_unregistered() -> std::io::Result<()> {
         let dst = wallets[0].1[0].clone();
         wallets[2]
             .0
-            .mint(&src, 1, &asset.code, 1, dst)
+            .mint(Some(&src), 1, &asset.code, 1, dst)
             .await
             .unwrap();
         t.sync(&ledger, wallets.as_slice()).await;
@@ -116,7 +116,7 @@ pub async fn test_wallet_freeze_unregistered() -> std::io::Result<()> {
     ledger.lock().await.hold_next_transaction();
     wallets[2]
         .0
-        .freeze(&src, 1, &asset.code, 1u64.into(), dst.clone())
+        .freeze(Some(&src), 1, &asset.code, 1u64.into(), dst.clone())
         .await
         .unwrap();
 
@@ -270,7 +270,7 @@ pub mod generic_wallet_tests {
             wallets[0]
                 .0
                 .mint(
-                    &alice_addresses[0],
+                    Some(&alice_addresses[0]),
                     1,
                     &coin.code,
                     5,
@@ -500,7 +500,7 @@ pub mod generic_wallet_tests {
                 let src = wallets[0].1[0].clone();
                 wallets[0]
                     .0
-                    .mint(&src, 1, &asset.code, 1, dst)
+                    .mint(Some(&src), 1, &asset.code, 1, dst)
                     .await
                     .unwrap();
                 t.sync(&ledger, wallets.as_slice()).await;
@@ -515,7 +515,7 @@ pub mod generic_wallet_tests {
                 wallets[0]
                     .0
                     .mint(
-                        &src,
+                        Some(&src),
                         1,
                         &asset.code,
                         T::Ledger::record_root_history() as u64,
@@ -541,13 +541,13 @@ pub mod generic_wallet_tests {
         if mint {
             wallets[0]
                 .0
-                .mint(&sender, 1, &asset.code, 1, receiver.clone())
+                .mint(Some(&sender), 1, &asset.code, 1, receiver.clone())
                 .await
                 .unwrap();
         } else if freeze {
             wallets[0]
                 .0
-                .freeze(&sender, 1, &asset.code, 1u64.into(), receiver.clone())
+                .freeze(Some(&sender), 1, &asset.code, 1u64.into(), receiver.clone())
                 .await
                 .unwrap();
         } else {
@@ -687,13 +687,13 @@ pub mod generic_wallet_tests {
         if mint {
             wallets[0]
                 .0
-                .mint(&sender, 1, &asset.code, 1, receiver)
+                .mint(Some(&sender), 1, &asset.code, 1, receiver)
                 .await
                 .unwrap();
         } else if freeze {
             wallets[0]
                 .0
-                .freeze(&sender, 1, &asset.code, 1u64.into(), receiver)
+                .freeze(Some(&sender), 1, &asset.code, 1u64.into(), receiver)
                 .await
                 .unwrap();
         } else {
@@ -833,7 +833,7 @@ pub mod generic_wallet_tests {
             let dst = wallets[0].1[0].clone();
             wallets[2]
                 .0
-                .mint(&src, 1, &asset.code, 1, dst)
+                .mint(Some(&src), 1, &asset.code, 1, dst)
                 .await
                 .unwrap();
             t.sync(&ledger, wallets.as_slice()).await;
@@ -866,7 +866,7 @@ pub mod generic_wallet_tests {
         ledger.lock().await.hold_next_transaction();
         wallets[2]
             .0
-            .freeze(&src, 1, &asset.code, 1u64.into(), dst.clone())
+            .freeze(Some(&src), 1, &asset.code, 1u64.into(), dst.clone())
             .await
             .unwrap();
 
@@ -874,7 +874,7 @@ pub mod generic_wallet_tests {
         // freeze that uses them is pending.
         match wallets[2]
             .0
-            .freeze(&src, 1, &asset.code, 1u64.into(), dst)
+            .freeze(Some(&src), 1, &asset.code, 1u64.into(), dst)
             .await
         {
             Err(WalletError::TransactionError {
@@ -933,7 +933,7 @@ pub mod generic_wallet_tests {
         let dst = wallets[0].1[0].clone();
         wallets[2]
             .0
-            .unfreeze(&src, 1, &asset.code, 1u64.into(), dst)
+            .unfreeze(Some(&src), 1, &asset.code, 1u64.into(), dst)
             .await
             .unwrap();
         t.sync(&ledger, wallets.as_slice()).await;
@@ -1185,7 +1185,13 @@ pub mod generic_wallet_tests {
             balances[(owner % nwallets) as usize][asset] += amount.into();
             wallets[0]
                 .0
-                .mint(&minter, 1, &assets[asset - 1].code, amount, address.clone())
+                .mint(
+                    Some(&minter),
+                    1,
+                    &assets[asset - 1].code,
+                    amount,
+                    address.clone(),
+                )
                 .await
                 .unwrap();
             push_history(
@@ -1348,7 +1354,7 @@ pub mod generic_wallet_tests {
                     let (minter, minter_addresses) = &mut wallets[0];
                     minter
                         .mint(
-                            &minter_addresses[0],
+                            Some(&minter_addresses[0]),
                             1,
                             &asset.code,
                             2 * amount,
@@ -2056,7 +2062,7 @@ pub mod generic_wallet_tests {
         wallets[0]
             .0
             .mint(
-                &alice_addresses[0],
+                Some(&alice_addresses[0]),
                 1,
                 &coin.code,
                 amount,
@@ -2212,7 +2218,7 @@ pub mod generic_wallet_tests {
         let receiver_addr = wallets[0].1[0].clone();
         wallets[1]
             .0
-            .mint(&minter_addr, 1, &minted_asset.code, 1, receiver_addr)
+            .mint(Some(&minter_addr), 1, &minted_asset.code, 1, receiver_addr)
             .await
             .unwrap();
         t.sync(&ledger, &wallets).await;
@@ -2622,7 +2628,13 @@ pub mod generic_wallet_tests {
         let receiver = wallets[1].1[0].clone();
         let receipt = wallets[0]
             .0
-            .mint(&address, 1, &viewable_asset.code, 100, receiver.clone())
+            .mint(
+                Some(&address),
+                1,
+                &viewable_asset.code,
+                100,
+                receiver.clone(),
+            )
             .await
             .unwrap();
         await_transaction(&receipt, &wallets[0].0, &[&wallets[1].0]).await;
@@ -2647,7 +2659,7 @@ pub mod generic_wallet_tests {
         // Mint the freezable asset.
         let receipt = wallets[0]
             .0
-            .mint(&address, 1, &freezable_asset.code, 200, receiver)
+            .mint(Some(&address), 1, &freezable_asset.code, 200, receiver)
             .await
             .unwrap();
         await_transaction(&receipt, &wallets[0].0, &[&wallets[1].0]).await;
@@ -3004,19 +3016,19 @@ pub mod generic_wallet_tests {
         // exceeds both the max single-record amount and the max of a u64).
         wallets[0]
             .0
-            .mint(&addr0, 1, &asset.code, max_record, addr0.clone())
+            .mint(Some(&addr0), 1, &asset.code, max_record, addr0.clone())
             .await
             .unwrap();
         t.sync(&ledger, &wallets).await;
         wallets[0]
             .0
-            .mint(&addr0, 1, &asset.code, max_record, addr0.clone())
+            .mint(Some(&addr0), 1, &asset.code, max_record, addr0.clone())
             .await
             .unwrap();
         t.sync(&ledger, &wallets).await;
         wallets[0]
             .0
-            .mint(&addr0, 1, &asset.code, max_record, addr0.clone())
+            .mint(Some(&addr0), 1, &asset.code, max_record, addr0.clone())
             .await
             .unwrap();
         t.sync(&ledger, &wallets).await;
