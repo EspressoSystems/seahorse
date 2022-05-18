@@ -379,6 +379,12 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         let (freeze_prove_key, freeze_verif_key, _) =
             jf_cap::proof::freeze::preprocess(universal_param, 2, Self::Ledger::merkle_height())
                 .unwrap();
+        let prover_key_set = ProverKeySet {
+            xfr: KeySet::new(xfr_prove_keys.into_iter()).unwrap(),
+            mint: mint_prove_key,
+            freeze: KeySet::new(vec![freeze_prove_key].into_iter()).unwrap(),
+        };
+
         let ledger = Arc::new(Mutex::new(MockLedger::new(
             self.create_network(
                 VerifierKeySet {
@@ -389,11 +395,7 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
                     )
                     .unwrap(),
                 },
-                ProverKeySet {
-                    xfr: KeySet::new(xfr_prove_keys.into_iter()).unwrap(),
-                    mint: mint_prove_key,
-                    freeze: KeySet::new(vec![freeze_prove_key].into_iter()).unwrap(),
-                },
+                prover_key_set.clone(),
                 record_merkle_tree.clone(),
                 initial_records,
             )
@@ -406,15 +408,12 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         let mut keystores = Vec::new();
         for (key_stream, key_pairs, initial_grants) in users {
             let mut rng = ChaChaRng::from_rng(&mut rng).unwrap();
-            let ledger = ledger.clone();
-
             let mut loader = TrivialKeystoreLoader { dir: TempDir::new("test_keystore").unwrap().into_path() };
             let storage = AtomicKeystoreStorage::new(&mut loader, 1024).unwrap();
+            let ledger = ledger.clone();
             let mut seed = [0u8; 32];
             rng.fill_bytes(&mut seed);
-            let backend = self.create_backend(ledger, initial_grants, key_stream).await;
-            // storage.create(backend.state);
-            println!("created backend");
+            let backend = self.create_backend(ledger, initial_grants, key_stream).await;            
             let mut keystore = Keystore::new(
                 backend,
                 storage,
@@ -530,6 +529,7 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
             Vec<UserAddress>,
         )],
     ) {
+        println!("checking storage");
         let ledger = ledger.lock().await;
         for ((keystore, _), storage) in keystores.iter().zip(&ledger.storage) {
             let KeystoreSharedState { state, .. } = &*keystore.mutex.lock().await;

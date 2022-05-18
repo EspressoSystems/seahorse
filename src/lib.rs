@@ -591,8 +591,9 @@ impl<'a, L: Ledger, Backend: KeystoreBackend<'a, L>, Meta: Serialize + Deseriali
             storage.load().await
         } else {
             // Otherwise, ask the network layer to create and register a brand new keystore.
-            drop(storage);
-            self.backend.create().await
+            let state = self.backend.create().await?;
+            storage.create(&state).await?;
+            Ok(state)
         }
     }
 
@@ -1826,7 +1827,13 @@ impl<
         mut storage: AtomicKeystoreStorage<'a, L, Meta>,
     ) -> BoxFuture<'a, Result<Keystore<'a, Backend, L, Meta>, KeystoreError<L>>> {
         Box::pin(async move {
-            let state = storage.load().await?;
+            let state = if storage.exists() {
+                storage.load().await?
+            } else {
+                let s = backend.create().await?;
+                storage.create(&s);
+                s
+            };
             println!("after load");
             Self::new_impl(backend, storage, state).await
         })

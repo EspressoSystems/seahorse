@@ -159,7 +159,6 @@ impl<T: Serialize + DeserializeOwned> LoadStore for EncryptingResourceAdapter<T>
     }
 
     fn store(&mut self, param: &Self::ParamType) -> Result<Vec<u8>, PersistenceError> {
-        println!("encrypt adapter store");
         let plaintext =
             bincode::serialize(param).map_err(|source| PersistenceError::BincodeSer { source })?;
         let ciphertext =
@@ -270,12 +269,6 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned + Clone + PartialE
         )
         .context(crate::PersistenceSnafu)?;
         let store = AtomicStore::open(atomic_loader).context(crate::PersistenceSnafu)?;
-
-        let static_state = 
-            static_data
-            .load_latest()
-            .context(crate::PersistenceSnafu)?;
-        println!("created rolling log for keystore_static: {:?}", static_state);
 
         Ok(Self {
             meta,
