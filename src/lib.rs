@@ -1827,11 +1827,12 @@ impl<
         mut storage: AtomicKeystoreStorage<'a, L, Meta>,
     ) -> BoxFuture<'a, Result<Keystore<'a, Backend, L, Meta>, KeystoreError<L>>> {
         Box::pin(async move {
+            println!("creating new keystore Keystore::new()");
             let state = if storage.exists() {
                 storage.load().await?
             } else {
                 let s = backend.create().await?;
-                storage.create(&s);
+                storage.create(&s).await?;
                 s
             };
             println!("after load");

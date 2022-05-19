@@ -16,8 +16,8 @@
 /// properties not exposed or guaranteed by the generic interface. The file tests.rs contains the
 /// test suite for the generic keystore interface, which is instantiated for each ledger/backend.
 use super::*;
-use crate::loader::{KeystoreLoader};
 use crate::hd::KeyTree;
+use crate::loader::KeystoreLoader;
 use async_std::sync::{Arc, Mutex};
 use chrono::Local;
 use futures::channel::mpsc;
@@ -25,16 +25,16 @@ use jf_cap::{MerkleTree, Signature, TransactionVerifyingKey};
 use key_set::{KeySet, OrderByOutputs, ProverKeySet, VerifierKeySet};
 use rand_chacha::rand_core::RngCore;
 use std::collections::{BTreeMap, HashSet};
+use std::path::PathBuf;
 use std::pin::Pin;
 use std::time::Instant;
 use tempdir::TempDir;
-use std::path::PathBuf;
 
 struct TrivialKeystoreLoader {
-    dir: PathBuf
+    dir: PathBuf,
 }
 
-impl <L: Ledger> KeystoreLoader<L> for TrivialKeystoreLoader {
+impl<L: Ledger> KeystoreLoader<L> for TrivialKeystoreLoader {
     type Meta = ();
 
     fn location(&self) -> PathBuf {
@@ -84,7 +84,7 @@ pub struct MockLedger<'a, L: Ledger, N: MockNetwork<'a, L>> {
     sync_index: EventIndex,
     initial_records: MerkleTree,
     _phantom: std::marker::PhantomData<&'a ()>,
-    storage: Vec<Arc<Mutex<AtomicKeystoreStorage<'a, L, ()>>>>,
+    // storage: Vec<Arc<Mutex<AtomicKeystoreStorage<'a, L, ()>>>>,
 }
 
 impl<'a, L: Ledger, N: MockNetwork<'a, L>> MockLedger<'a, L, N> {
@@ -100,7 +100,7 @@ impl<'a, L: Ledger, N: MockNetwork<'a, L>> MockLedger<'a, L, N> {
             sync_index: Default::default(),
             initial_records: records,
             _phantom: Default::default(),
-            storage: Default::default(),
+            // storage: Default::default(),
         }
     }
 
@@ -252,16 +252,14 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         rng: &mut ChaChaRng,
         ledger: &Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork>>>,
     ) -> Keystore<'a, Self::MockBackend, Self::Ledger, ()> {
-        let mut loader = TrivialKeystoreLoader { dir: TempDir::new("test_keystore").unwrap().into_path() };
+        let mut loader = TrivialKeystoreLoader {
+            dir: TempDir::new("test_keystore").unwrap().into_path(),
+        };
         println!("creating test keystore\n");
         let storage = AtomicKeystoreStorage::new(&mut loader, 1024).unwrap();
         let key_stream = hd::KeyTree::random(rng).0;
         let backend = self
-            .create_backend(
-                ledger.clone(),
-                vec![],
-                key_stream,
-            )
+            .create_backend(ledger.clone(), vec![], key_stream)
             .await;
         Keystore::new(backend, storage).await.unwrap()
     }
@@ -272,15 +270,13 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         ledger: &Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork>>>,
         state: KeystoreState<'a, Self::Ledger>,
     ) -> Keystore<'a, Self::MockBackend, Self::Ledger, ()> {
-        let mut loader = TrivialKeystoreLoader { dir: TempDir::new("test_keystore").unwrap().into_path() };
+        let mut loader = TrivialKeystoreLoader {
+            dir: TempDir::new("test_keystore").unwrap().into_path(),
+        };
         let storage = AtomicKeystoreStorage::new(&mut loader, 1024).unwrap();
         let key_stream = hd::KeyTree::random(rng).0;
         let backend = self
-            .create_backend(
-                ledger.clone(),
-                vec![],
-                key_stream,
-            )
+            .create_backend(ledger.clone(), vec![], key_stream)
             .await;
         Keystore::with_state(backend, storage, state).await.unwrap()
     }
@@ -408,18 +404,19 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         let mut keystores = Vec::new();
         for (key_stream, key_pairs, initial_grants) in users {
             let mut rng = ChaChaRng::from_rng(&mut rng).unwrap();
-            let mut loader = TrivialKeystoreLoader { dir: TempDir::new("test_keystore").unwrap().into_path() };
+            let mut loader = TrivialKeystoreLoader {
+                dir: TempDir::new("test_keystore").unwrap().into_path(),
+            };
             let storage = AtomicKeystoreStorage::new(&mut loader, 1024).unwrap();
-            let ledger = ledger.clone();
+            let mut loader = TrivialKeystoreLoader {
+                dir: TempDir::new("test_keystore_ledger").unwrap().into_path(),
+            };
+            // ledger.lock().await.storage.push(Arc::new(Mutex::new(ledger_storage)));
+            let l = ledger.clone();
             let mut seed = [0u8; 32];
             rng.fill_bytes(&mut seed);
-            let backend = self.create_backend(ledger, initial_grants, key_stream).await;            
-            let mut keystore = Keystore::new(
-                backend,
-                storage,
-            )
-            .await
-            .unwrap();
+            let backend = self.create_backend(l, initial_grants, key_stream).await;
+            let mut keystore = Keystore::new(backend, storage).await.unwrap();
             let mut addresses = vec![];
             for key_pair in key_pairs.clone() {
                 assert_eq!(
@@ -432,9 +429,16 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
 
                 // Wait for the keystore to find any records already belonging to this key from the
                 // initial grants.
+
                 keystore.await_key_scan(&key_pair.address()).await.unwrap();
                 addresses.push(key_pair.address());
             }
+            // let mut l = ledger.lock().await;
+            // // let mut ledger_store = l.storage.last_mut().unwrap().lock().await;
+            // ledger_store.create(&(keystore.lock().await.state)).await.unwrap();
+            // for asset in &keystore.lock().await.state.assets.assets {
+            //     ledger_store.store_asset(&asset).await.unwrap();
+            // }
             keystores.push((keystore, addresses));
         }
 
@@ -443,7 +447,6 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
 
         // Sync with any events that were emitted during ledger setup.
         self.sync(&ledger, &keystores).await;
-
         (ledger, keystores)
     }
 
@@ -506,7 +509,7 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         // Since we're syncing with the time stamp from the most recent event, the keystores should
         // be in a stable state once they have processed up to that event. Check that each keystore
         // has persisted all of its in-memory state at this point.
-        self.check_storage(ledger, keystores).await;
+        self.check_storage(keystores).await;
     }
 
     async fn sync_with(
@@ -523,19 +526,23 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
 
     async fn check_storage(
         &self,
-        ledger: &Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork>>>,
         keystores: &[(
             Keystore<'a, Self::MockBackend, Self::Ledger, ()>,
             Vec<UserAddress>,
         )],
     ) {
         println!("checking storage");
-        let ledger = ledger.lock().await;
-        for ((keystore, _), storage) in keystores.iter().zip(&ledger.storage) {
-            let KeystoreSharedState { state, .. } = &*keystore.mutex.lock().await;
-
+        // let ledger = ledger.lock().await;
+        for (keystore, _) in keystores {
+            let KeystoreSharedState { state, session, .. } = &*keystore.mutex.lock().await;
+            let storage = &session.storage;
             let mut state = state.clone();
             let mut loaded = storage.lock().await.load().await.unwrap();
+            println!(
+                "load assets size {} - state asset size {}",
+                loaded.assets.assets.len(),
+                state.assets.assets.len()
+            );
 
             // The persisted state should not include any temporary assets.
             state.assets = AssetLibrary::new(
@@ -576,7 +583,11 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
                     .collect(),
                 loaded.viewing_accounts.keys().cloned().collect(),
             );
-
+            println!(
+                "load assets size {} - state asset size {}",
+                loaded.assets.assets.len(),
+                state.assets.assets.len()
+            );
             assert_keystore_states_eq(&state, &loaded);
         }
     }

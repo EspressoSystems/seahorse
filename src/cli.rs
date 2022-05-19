@@ -1085,8 +1085,7 @@ mod test {
     use reef::cap;
     use std::time::Instant;
 
-    type MockCapLedger<'a> =
-        Arc<Mutex<MockLedger<'a, cap::Ledger, MockNetwork<'a>>>>;
+    type MockCapLedger<'a> = Arc<Mutex<MockLedger<'a, cap::Ledger, MockNetwork<'a>>>>;
 
     struct MockArgs<'a> {
         io: SharedIO,
@@ -1124,10 +1123,7 @@ mod test {
             args: Self::Args,
             _loader: &mut impl KeystoreLoader<Self::Ledger, Meta = LoaderMetadata>,
         ) -> Result<Self::Backend, KeystoreError<Self::Ledger>> {
-            Ok(MockBackend::new(
-                args.ledger.clone(),
-                args.key_stream,
-            ))
+            Ok(MockBackend::new(args.ledger.clone(), args.key_stream))
         }
     }
 

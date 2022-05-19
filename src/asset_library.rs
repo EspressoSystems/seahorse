@@ -453,7 +453,7 @@ impl MintInfo {
 /// Indexable collection of asset types.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct AssetLibrary {
-    assets: Vec<AssetInfo>,
+    pub assets: Vec<AssetInfo>,
     // Map from AssetCode to index in `assets`.
     index: HashMap<AssetCode, usize>,
     // Map from viewable AssetCode to its definition.

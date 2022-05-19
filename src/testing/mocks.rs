@@ -293,29 +293,13 @@ impl<'a, const H: u8> super::MockNetwork<'a, cap::LedgerWithHeight<H>>
 
 #[derive(Clone)]
 pub struct MockBackendWithHeight<'a, const H: u8> {
-    ledger: Arc<
-        Mutex<
-            MockLedger<
-                'a,
-                cap::LedgerWithHeight<H>,
-                MockNetworkWithHeight<'a, H>,
-            >,
-        >,
-    >,
+    ledger: Arc<Mutex<MockLedger<'a, cap::LedgerWithHeight<H>, MockNetworkWithHeight<'a, H>>>>,
     key_stream: hd::KeyTree,
 }
 
 impl<'a, const H: u8> MockBackendWithHeight<'a, H> {
     pub fn new(
-        ledger: Arc<
-            Mutex<
-                MockLedger<
-                    'a,
-                    cap::LedgerWithHeight<H>,
-                    MockNetworkWithHeight<'a, H>,
-                >,
-            >,
-        >,
+        ledger: Arc<Mutex<MockLedger<'a, cap::LedgerWithHeight<H>, MockNetworkWithHeight<'a, H>>>>,
         key_stream: hd::KeyTree,
     ) -> Self {
         Self { ledger, key_stream }

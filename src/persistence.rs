@@ -334,18 +334,14 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicKeystoreSto
     }
 
     pub async fn load(&mut self) -> Result<KeystoreState<'a, L>, KeystoreError<L>> {
-        println!("storage.load()");
         // This function is called once, when the keystore is loaded. It is a good place to persist
         // changes to the metadata that happened during loading.
         self.commit().await;
-
-        println!("after commit");
 
         let static_state = self
             .static_data
             .load_latest()
             .context(crate::PersistenceSnafu)?;
-        println!("after static state");
 
         let dynamic_state = self
             .dynamic_state
