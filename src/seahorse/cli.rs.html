@@ -1421,6 +1421,9 @@
 <span id="1421">1421</span>
 <span id="1422">1422</span>
 <span id="1423">1423</span>
+<span id="1424">1424</span>
+<span id="1425">1425</span>
+<span id="1426">1426</span>
 </pre><pre class="rust"><code><span class="comment">// Copyright (c) 2022 Espresso Systems (espressosys.com)</span>
 <span class="comment">// This file is part of the Seahorse library.</span>
 
@@ -2200,6 +2203,9 @@
                                         after a scan of the ledger. This may take a long time. If
                                         you have the owner memo for a record you want to use
                                         immediately, use import_memo.&quot;</span>);
+                                    <span class="comment">// Output both the public key and the address when loading a</span>
+                                    <span class="comment">// sending key.</span>
+                                    <span class="macro">cli_writeln!</span>(<span class="ident">io</span>, <span class="string">&quot;{}&quot;</span>, <span class="ident">key</span>.<span class="ident">pub_key</span>());
                                     <span class="macro">cli_writeln!</span>(<span class="ident">io</span>, <span class="string">&quot;{}&quot;</span>, <span class="ident">UserAddress</span>(<span class="ident">key</span>.<span class="ident">address</span>()));
                                 }
                             }
