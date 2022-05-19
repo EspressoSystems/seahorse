@@ -56,7 +56,7 @@ jf-utils = { features=["std"], git = "https://github.com/EspressoSystems/jellyfi
 arbitrary-wrappers = { git = "https://github.com/EspressoSystems/arbitrary-wrappers.git"}
 net = { git = "https://github.com/EspressoSystems/net.git" }
 reef = {  git = "https://github.com/EspressoSystems/reef.git" }
-tagged-base64 = { git = "https://github.com/EspressoSystems/tagged-base64.git", tag = "0.1.0" }
+tagged-base64 = { git = "https://github.com/EspressoSystems/tagged-base64.git", tag = "0.2.0" }
 
 [dev-dependencies]
 criterion = {version = "0.3.3", features = ["async_std", "html_reports", "cargo_bench_support", "csv_output"] }
