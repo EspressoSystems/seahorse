@@ -777,6 +777,9 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                                         after a scan of the ledger. This may take a long time. If
                                         you have the owner memo for a record you want to use
                                         immediately, use import_memo.");
+                                    // Output both the public key and the address when loading a
+                                    // sending key.
+                                    cli_writeln!(io, "{}", key.pub_key());
                                     cli_writeln!(io, "{}", UserAddress(key.address()));
                                 }
                             }
