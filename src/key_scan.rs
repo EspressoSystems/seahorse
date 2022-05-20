@@ -428,7 +428,7 @@ pub fn receive_history_entry<L: Ledger>(
             .iter()
             .filter_map(|ro| {
                 if ro.asset_def.code == txn_asset {
-                    Some((ro.pub_key.address(), ro.amount))
+                    Some((ro.pub_key.address(), ro.amount.into()))
                 } else {
                     // Ignore records of the wrong asset type (e.g. the fee change output for a non-
                     // native asset transfer).

@@ -521,7 +521,7 @@ mod tests {
         let amount = rng.next_u64();
         RecordOpening::new(
             rng,
-            amount,
+            amount.into(),
             AssetDefinition::native(),
             key_pair.pub_key(),
             FreezeFlag::Unfrozen,

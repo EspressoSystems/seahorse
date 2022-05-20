@@ -21,8 +21,8 @@ use crate::{
     io::SharedIO,
     loader::{KeystoreLoader, Loader, LoaderMetadata},
     reader::Reader,
-    AssetInfo, BincodeSnafu, IoSnafu, KeystoreBackend, KeystoreError, TransactionReceipt,
-    TransactionStatus,
+    AssetInfo, BincodeSnafu, IoSnafu, KeystoreBackend, KeystoreError, RecordAmount,
+    TransactionReceipt, TransactionStatus,
 };
 use async_std::task::block_on;
 use async_trait::async_trait;
@@ -164,7 +164,7 @@ macro_rules! cli_input_from_str {
 
 cli_input_from_str! {
     bool, u64, AssetCode, AssetInfo, EventIndex, FreezerPubKey, MerklePath, PathBuf, ReceiverMemo,
-    RecordCommitment, String, UserAddress, UserPubKey, ViewerPubKey
+    RecordAmount, RecordCommitment, String, UserAddress, UserPubKey, ViewerPubKey
 }
 
 impl<'a, C: CLI<'a>, L: Ledger> CLIInput<'a, C> for TransactionReceipt<L> {
@@ -503,7 +503,8 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             transfer,
             "transfer some owned assets to another user's public key",
             C,
-            |io, keystore, asset: ListItem<AssetCode>, to: UserPubKey, amount: u64, fee: u64; from: Option<UserAddress>, wait: Option<bool>| {
+            |io, keystore, asset: ListItem<AssetCode>, to: UserPubKey, amount: RecordAmount, fee: RecordAmount;
+             from: Option<UserAddress>, wait: Option<bool>| {
                 let res = keystore.transfer(from.as_ref().map(|addr| &addr.0), &asset.item, &[(to, amount)], fee).await;
                 finish_transaction::<C>(io, keystore, res, wait, "transferred").await;
             }
@@ -514,7 +515,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             C,
             |io, keystore, desc: String; name: Option<String>, viewing_key: Option<ViewerPubKey>,
              freezing_key: Option<FreezerPubKey>, view_amount: Option<bool>,
-             view_address: Option<bool>, view_blind: Option<bool>, viewing_threshold: Option<u64>|
+             view_address: Option<bool>, view_blind: Option<bool>, viewing_threshold: Option<RecordAmount>|
             {
                 let mut policy = AssetPolicy::default();
                 if let Some(viewing_key) = viewing_key {
@@ -551,7 +552,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                     }
                 }
                 if let Some(viewing_threshold) = viewing_threshold {
-                    policy = policy.set_reveal_threshold(viewing_threshold);
+                    policy = policy.set_reveal_threshold(viewing_threshold.into());
                 }
                 match keystore.define_asset(name.unwrap_or_default(), desc.as_bytes(), policy).await {
                     Ok(def) => {
@@ -567,7 +568,8 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             mint,
             "mint an asset from an owned address to a user's public key",
             C,
-            |io, keystore, asset: ListItem<AssetCode>, to: UserPubKey, amount: u64, fee: u64; fee_account: Option<UserAddress>, wait: Option<bool>| {
+            |io, keystore, asset: ListItem<AssetCode>, to: UserPubKey, amount: RecordAmount, fee: RecordAmount;
+             fee_account: Option<UserAddress>, wait: Option<bool>| {
                 let res = keystore.mint(fee_account.as_ref().map(|addr| &addr.0), fee, &asset.item, amount, to).await;
                 finish_transaction::<C>(io, keystore, res, wait, "minted").await;
             }
@@ -576,8 +578,8 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             freeze,
             "freeze assets owned by another user's address",
             C,
-            |io, keystore, asset: ListItem<AssetCode>, target: UserAddress,
-             amount: U256, fee: u64; fee_account: Option<UserAddress>, wait: Option<bool>|
+            |io, keystore, asset: ListItem<AssetCode>, target: UserAddress, amount: U256, fee: RecordAmount;
+             fee_account: Option<UserAddress>, wait: Option<bool>|
             {
                 let res = keystore.freeze(fee_account.as_ref().map(|addr| &addr.0), fee, &asset.item, amount, target.0).await;
                 finish_transaction::<C>(io, keystore, res, wait, "frozen").await;
@@ -587,8 +589,8 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             unfreeze,
             "unfreeze previously frozen assets owned by another user's address",
             C,
-            |io, keystore, asset: ListItem<AssetCode>, target: UserAddress,
-             amount: U256, fee: u64; fee_account: Option<UserAddress>, wait: Option<bool>|
+            |io, keystore, asset: ListItem<AssetCode>, target: UserAddress, amount: U256, fee: RecordAmount;
+             fee_account: Option<UserAddress>, wait: Option<bool>|
             {
                 let res = keystore.unfreeze(fee_account.as_ref().map(|addr| &addr.0), fee, &asset.item, amount, target.0).await;
                 finish_transaction::<C>(io, keystore, res, wait, "unfrozen").await;
