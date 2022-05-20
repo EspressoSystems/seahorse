@@ -154,7 +154,7 @@ impl<Key: KeyPair> AccountInfo<Key> {
         for rec in &records {
             *balances
                 .entry(rec.ro.asset_def.code)
-                .or_insert_with(U256::zero) += rec.ro.amount.into();
+                .or_insert_with(U256::zero) += rec.amount().into();
         }
         Self {
             address: account.key.pub_key(),
