@@ -179,7 +179,7 @@ impl<Rng: RngCore + CryptoRng> Cipher<Rng> {
 }
 
 /// Encrypted and authenticated data.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Default)]
 #[serde(from = "CanonicalBytes", into = "CanonicalBytes")]
 pub struct CipherText {
     hmac: [u8; 32],

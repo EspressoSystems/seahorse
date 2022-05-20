@@ -35,7 +35,7 @@ pub trait KeystoreLoader<L: Ledger> {
 // information about the keystore without decrypting. This also aids in the key derivation process.
 //
 // DO NOT put secrets in here.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Default)]
 pub struct LoaderMetadata {
     version: (u8, u8, u8),
     salt: Salt,

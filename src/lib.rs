@@ -45,6 +45,7 @@ use crate::{
     key_scan::{receive_history_entry, BackgroundKeyScan, ScanOutputs},
     persistence::AtomicKeystoreStorage,
     txn_builder::*,
+    loader::KeystoreLoader,
 };
 use arbitrary::Arbitrary;
 use async_scoped::AsyncScope;
@@ -261,78 +262,6 @@ pub struct KeystoreState<'a, L: Ledger> {
     /// assets, including the asset description and the private asset code seed.
     pub assets: AssetLibrary,
 }
-
-/// The interface required by the keystore from the persistence layer.
-///
-/// See [persistence::AtomicKeystoreStorage] for an implementation of this interface which works for
-/// any CAP ledger.
-///
-/// Most code should not use this interface directly. Instead, use [KeystoreBackend::store] with
-/// [StorageTransaction] for a safer, RAII-based transactional interface.
-///
-/// The persistent storage needed by the keystore is divided into 3 categories, based on usage
-/// patterns and how often they change.
-///
-/// 1. Static data. This is data which is initialized when the keystore is created and never changes.
-///
-///    There is no interface in the [
-/// ] trait for storing static data. When a new keystore
-///    is created, the [Keystore] will call [KeystoreBackend::create], which is responsible for working
-///    with the storage layer to persist the keystore's static data.
-///
-/// 2. Dynamic state. This is data which changes frequently, but grows boundedly or very slowly.
-///
-///    This includes the state of the ledger and the set of records owned by this keystore.
-///
-/// 3. Monotonic data. This is data which grows monotonically and never shrinks.
-///
-///    The monotonic data of a keystore is the set of assets types in the asset library and the
-///    transaction history.
-///
-/// The storage layer must provide a transactional interface. Updates to the individual storage
-/// categories have no observable affects (that is, their results will not affect the next call to
-/// [KeystoreStorage::load]) until [KeystoreStorage::commit] succeeds. If there are outstanding changes
-/// that have not been committed, [KeystoreStorage::revert] can be used to roll back the entire state
-/// of the persistent store to its state at the most recent commit.
-///
-/// This interface is specified separately from the [KeystoreBackend] interface to allow the
-/// implementation to separate the persistence layer from the network layer that implements the rest
-/// of the backend with minimal boilerplate. This allows a ledger-agnostic implementation of the
-/// storage layer to work with multiple ledger-specific implementations of the networking layer. It
-/// is also useful for mocking the storage layer during testing.
-// pub struct KeystoreStorage<'a, L: Ledger> {
-/// Check if there is already a stored keystore with this key.
-//     fn exists(&self) -> bool;
-
-//     /// Load the stored keystore identified by the given key.
-//     ///
-//     /// This function may assume `self.exists()`.
-//     async fn load(&mut self) -> Result<KeystoreState<'a, L>, KeystoreError<L>>;
-
-//     /// Store a snapshot of the keystore's dynamic state.
-//     async fn store_snapshot(
-//         &mut self,
-//         state: &KeystoreState<'a, L>,
-//     ) -> Result<(), KeystoreError<L>>;
-
-//     /// Append a new asset to the growing asset library.
-//     async fn store_asset(&mut self, asset: &AssetInfo) -> Result<(), KeystoreError<L>>;
-
-//     /// Add a transaction to the transaction history.
-//     async fn store_transaction(
-//         &mut self,
-//         txn: TransactionHistoryEntry<L>,
-//     ) -> Result<(), KeystoreError<L>>;
-//     async fn transaction_history(
-//         &mut self,
-//     ) -> Result<Vec<TransactionHistoryEntry<L>>, KeystoreError<L>>;
-
-//     /// Commit to outstanding changes.
-//     async fn commit(&mut self);
-
-//     /// Roll back the persisted state to the previous commit.
-//     async fn revert(&mut self);
-// }
 
 /// Interface for atomic storage transactions.
 ///
@@ -698,7 +627,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         }
     }
 
-    pub async fn transaction_status<Meta: Serialize + DeserializeOwned + Send>(
+    pub async fn transaction_status<Meta: Serialize + DeserializeOwned + Send + Clone + PartialEq>(
         &mut self,
         session: &mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>, Meta>,
         receipt: &TransactionReceipt<L>,
@@ -1808,7 +1737,7 @@ impl<
         'a,
         L: 'static + Ledger,
         Backend: 'a + KeystoreBackend<'a, L> + Send + Sync,
-        Meta: 'a + Serialize + DeserializeOwned + Send,
+        Meta: 'a + Serialize + DeserializeOwned + Send + Clone + PartialEq,
     > Keystore<'a, Backend, L, Meta>
 {
     // This function suffers from github.com/rust-lang/rust/issues/89657, in which, if we define it
@@ -1824,15 +1753,16 @@ impl<
     // erasure. I don't know why this doesn't crash the compiler, but it doesn't.
     pub fn new(
         mut backend: Backend,
-        mut storage: AtomicKeystoreStorage<'a, L, Meta>,
+        loader: &mut impl KeystoreLoader<L, Meta = Meta>
     ) -> BoxFuture<'a, Result<Keystore<'a, Backend, L, Meta>, KeystoreError<L>>> {
+        let mut storage = AtomicKeystoreStorage::new(loader, 1024).unwrap();
         Box::pin(async move {
             let state = if storage.exists() {
                 storage.load().await?
             } else {
-                let s = backend.create().await?;
-                storage.create(&s).await?;
-                s
+                let state = backend.create().await?;
+                storage.create(&state).await?;
+                state
             };
             Self::new_impl(backend, storage, state).await
         })

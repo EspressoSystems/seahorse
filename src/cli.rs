@@ -54,18 +54,18 @@ struct TrivialKeystoreLoader {
 }
 
 impl<L: Ledger> KeystoreLoader<L> for TrivialKeystoreLoader {
-    type Meta = ();
+    type Meta = LoaderMetadata;
 
     fn location(&self) -> PathBuf {
         self.dir.clone()
     }
 
-    fn create(&mut self) -> Result<(Self::Meta, KeyTree), KeystoreError<L>> {
+    fn create(&mut self) -> Result<(LoaderMetadata, KeyTree), KeystoreError<L>> {
         let key = KeyTree::from_password_and_salt(&[], &[0; 32]).context(KeySnafu)?;
-        Ok(((), key))
+        Ok((Default::default(), key))
     }
 
-    fn load(&mut self, _meta: &mut Self::Meta) -> Result<KeyTree, KeystoreError<L>> {
+    fn load(&mut self, _meta: &mut LoaderMetadata) -> Result<KeyTree, KeystoreError<L>> {
         KeyTree::from_password_and_salt(&[], &[0; 32]).context(KeySnafu)
     }
 }
@@ -119,7 +119,7 @@ pub trait CLIArgs {
     fn use_tmp_storage(&self) -> bool;
 }
 
-pub type Keystore<'a, C> = crate::Keystore<'a, <C as CLI<'a>>::Backend, <C as CLI<'a>>::Ledger, ()>;
+pub type Keystore<'a, C> = crate::Keystore<'a, <C as CLI<'a>>::Backend, <C as CLI<'a>>::Ledger, LoaderMetadata>;
 
 /// A REPL command.
 ///
@@ -991,12 +991,28 @@ pub fn key_gen<'a, C: CLI<'a>>(mut path: PathBuf) -> Result<(), KeystoreError<C:
     Ok(())
 }
 
-async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
+async fn keystore_for_test<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
+    path: PathBuf,
     args: C::Args,
-) -> Result<(), KeystoreError<L>> {
-    let (storage, _tmp_dir) = match args.storage_path() {
-        Some(storage) => (storage, None),
-        None if !args.use_tmp_storage() => {
+) -> Result<Keystore<'a, C>, KeystoreError<L>> {
+    let mut loader = TrivialKeystoreLoader {
+        dir: path
+    };
+    let universal_param = Box::leak(Box::new(L::srs()));
+    let backend = C::init_backend(universal_param, args)?;
+    Keystore::<C>::new(backend, &mut loader).await
+}
+
+async fn keystore<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
+    args: C::Args,
+) -> Result<(Keystore<'a, C>, Reader, SharedIO), KeystoreError<L>> {
+    let (mut io, reader) = match args.io() {
+        Some(io) => (io.clone(), Reader::automated(io)),
+        None => (SharedIO::std(), Reader::interactive()),
+    };
+    let storage = match args.storage_path() {
+        Some(storage) if !args.use_tmp_storage() => storage,
+        None => {
             let home = std::env::var("HOME").map_err(|_| KeystoreError::Failed {
                 msg: String::from(
                     "HOME directory is not set. Please set your HOME directory, or specify \
@@ -1011,18 +1027,14 @@ async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
                     .replace('/', "_")
                     .replace('\\', "_")
             ));
-            (dir, None)
+            dir
         }
-        None => {
-            let tmp_dir = TempDir::new("keystore").context(IoSnafu)?;
-            (PathBuf::from(tmp_dir.path()), Some(tmp_dir))
+        Some(storage) => {
+            return Ok((keystore_for_test::<L, C>(storage, args).await?, reader, io))
         }
     };
 
-    let (mut io, reader) = match args.io() {
-        Some(io) => (io.clone(), Reader::automated(io)),
-        None => (SharedIO::std(), Reader::interactive()),
-    };
+
     cli_writeln!(
         io,
         "Welcome to the {} keystore, version {}",
@@ -1031,9 +1043,7 @@ async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
     );
     cli_writeln!(io, "(c) 2021 Espresso Systems, Inc.");
 
-    let mut loader = TrivialKeystoreLoader {
-        dir: storage.clone(),
-    };
+    let mut loader = Loader::new(storage, reader);
 
     let universal_param = Box::leak(Box::new(L::srs()));
     let backend = C::init_backend(universal_param, args)?;
@@ -1041,15 +1051,24 @@ async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
     // Loading the keystore takes a while. Let the user know that's expected.
     //todo !jeb.bearer Make it faster
     cli_writeln!(io, "connecting...");
-    let mut keystore = Keystore::<C>::new(
+    let mut keystore = Keystore::<'a, C>::new(
         backend,
-        AtomicKeystoreStorage::new(&mut loader, 1024).unwrap(),
+        &mut loader,
     )
     .await?;
     cli_writeln!(io, "Type 'help' for a list of commands.");
+    Ok((keystore, loader.into_reader().unwrap(), io))
+}
+
+async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
+    args: C::Args,
+) -> Result<(), KeystoreError<L>> {
+
     let commands = init_commands::<C>();
 
-    let mut input = reader;
+    let (mut keystore, mut input, mut io) = keystore::<L, C>(args).await?;
+
+
     'repl: while let Some(line) = input.read_line() {
         let tokens = line.split_whitespace().collect::<Vec<_>>();
         if tokens.is_empty() {

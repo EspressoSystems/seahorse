@@ -253,12 +253,12 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         let mut loader = TrivialKeystoreLoader {
             dir: TempDir::new("test_keystore").unwrap().into_path(),
         };
-        let storage = AtomicKeystoreStorage::new(&mut loader, 1024).unwrap();
+        // let storage = AtomicKeystoreStorage::new(&mut loader, 1024).unwrap();
         let key_stream = hd::KeyTree::random(rng).0;
         let backend = self
             .create_backend(ledger.clone(), vec![], key_stream)
             .await;
-        Keystore::new(backend, storage).await.unwrap()
+        Keystore::new(backend, &mut loader).await.unwrap()
     }
 
     async fn create_keystore_with_state(
@@ -402,16 +402,13 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
             let mut loader = TrivialKeystoreLoader {
                 dir: TempDir::new("test_keystore").unwrap().into_path(),
             };
-            let storage = AtomicKeystoreStorage::new(&mut loader, 1024).unwrap();
-            let mut loader = TrivialKeystoreLoader {
-                dir: TempDir::new("test_keystore_ledger").unwrap().into_path(),
-            };
+            // let storage = AtomicKeystoreStorage::new(&mut loader, 1024).unwrap();
             // ledger.lock().await.storage.push(Arc::new(Mutex::new(ledger_storage)));
             let l = ledger.clone();
             let mut seed = [0u8; 32];
             rng.fill_bytes(&mut seed);
             let backend = self.create_backend(l, initial_grants, key_stream).await;
-            let mut keystore = Keystore::new(backend, storage).await.unwrap();
+            let mut keystore = Keystore::new(backend, &mut loader).await.unwrap();
             let mut addresses = vec![];
             for key_pair in key_pairs.clone() {
                 assert_eq!(
@@ -713,7 +710,7 @@ pub async fn await_transaction<
     'a,
     L: Ledger + 'static,
     Backend: KeystoreBackend<'a, L> + Sync + 'a,
-    Meta: 'a + Serialize + DeserializeOwned + Send,
+    Meta: 'a + Serialize + DeserializeOwned + Send + Clone + PartialEq,
 >(
     receipt: &TransactionReceipt<L>,
     sender: &Keystore<'a, Backend, L, Meta>,
