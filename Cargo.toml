@@ -25,7 +25,10 @@ hmac = "0.11.0"
 image = "0.24"
 itertools = "0.10.1"
 lazy_static = "1.4.0"
+num-bigint = "0.4"
+num-traits = "0.2"
 pipe = { version = "0.4" }
+primitive-types = "0.11"
 proptest = { version = "0.8.7", optional = true }
 rand_chacha = { version = "0.3.1", features = ["serde1"] }
 regex = "1.5.4"
@@ -48,12 +51,12 @@ commit = { git = "https://github.com/EspressoSystems/commit.git", tag = "0.1.0" 
 key-set = { git = "https://github.com/EspressoSystems/key-set.git" }
 espresso-macros = { git = "https://github.com/EspressoSystems/espresso-macros.git", tag = "0.1.0" }
 jf-cap = { features=["std"], git = "https://github.com/EspressoSystems/cap.git", branch = "testnet-v1" }
-jf-primitives = { features=["std"], git = "https://github.com/EspressoSystems/jellyfish.git", tag = "0.1.0" }
-jf-utils = { features=["std"], git = "https://github.com/EspressoSystems/jellyfish.git", tag = "0.1.0" }
+jf-primitives = { features=["std"], git = "https://github.com/EspressoSystems/jellyfish.git", tag = "0.1.1" }
+jf-utils = { features=["std"], git = "https://github.com/EspressoSystems/jellyfish.git", tag = "0.1.1" }
 arbitrary-wrappers = { git = "https://github.com/EspressoSystems/arbitrary-wrappers.git"}
 net = { git = "https://github.com/EspressoSystems/net.git" }
 reef = {  git = "https://github.com/EspressoSystems/reef.git" }
-tagged-base64 = { git = "https://github.com/EspressoSystems/tagged-base64.git", tag = "0.1.0" }
+tagged-base64 = { git = "https://github.com/EspressoSystems/tagged-base64.git", tag = "0.2.0" }
 
 [dev-dependencies]
 criterion = {version = "0.3.3", features = ["async_std", "html_reports", "cargo_bench_support", "csv_output"] }

@@ -36,7 +36,8 @@ use jf_cap::{
     proof::UniversalParam,
     structs::{AssetCode, AssetPolicy, FreezeFlag, ReceiverMemo, RecordCommitment},
 };
-use net::{MerklePath, UserAddress};
+use net::{MerklePath, UserAddress, UserPubKey};
+use primitive_types::U256;
 use reef::Ledger;
 use snafu::ResultExt;
 use std::any::type_name;
@@ -184,13 +185,26 @@ macro_rules! cli_input_from_str {
 }
 
 cli_input_from_str! {
-    bool, u64, String, AssetCode, AssetInfo, ViewerPubKey, FreezerPubKey, UserAddress,
-    PathBuf, ReceiverMemo, RecordCommitment, MerklePath, EventIndex
+    bool, u64, AssetCode, AssetInfo, EventIndex, FreezerPubKey, MerklePath, PathBuf, ReceiverMemo,
+    RecordCommitment, String, UserAddress, UserPubKey, ViewerPubKey
 }
 
 impl<'a, C: CLI<'a>, L: Ledger> CLIInput<'a, C> for TransactionReceipt<L> {
     fn parse_for_keystore(_keystore: &mut Keystore<'a, C>, s: &str) -> Option<Self> {
         Self::from_str(s).ok()
+    }
+}
+
+// Annoyingly, FromStr for U256 always interprets the input as hex. This implementation checks for a
+// 0x prefix. If present, it interprets the remainder of the string as hex, otherwise it interprets
+// the entire string as decimal.
+impl<'a, C: CLI<'a>> CLIInput<'a, C> for U256 {
+    fn parse_for_keystore(_wallet: &mut Keystore<'a, C>, s: &str) -> Option<Self> {
+        if s.starts_with("0x") {
+            s.parse().ok()
+        } else {
+            U256::from_dec_str(s).ok()
+        }
     }
 }
 
@@ -509,19 +523,10 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
         ),
         command!(
             transfer,
-            "transfer some owned assets to another user",
+            "transfer some owned assets to another user's public key",
             C,
-            |io, keystore, asset: ListItem<AssetCode>, to: UserAddress, amount: u64, fee: u64; wait: Option<bool>| {
-                let res = keystore.transfer(None, &asset.item, &[(to.0, amount)], fee).await;
-                finish_transaction::<C>(io, keystore, res, wait, "transferred").await;
-            }
-        ),
-        command!(
-            transfer_from,
-            "transfer some assets from an owned address to another user",
-            C,
-            |io, keystore, asset: ListItem<AssetCode>, from: UserAddress, to: UserAddress, amount: u64, fee: u64; wait: Option<bool>| {
-                let res = keystore.transfer(Some(&from.0), &asset.item, &[(to.0, amount)], fee).await;
+            |io, keystore, asset: ListItem<AssetCode>, to: UserPubKey, amount: u64, fee: u64; from: Option<UserAddress>, wait: Option<bool>| {
+                let res = keystore.transfer(from.as_ref().map(|addr| &addr.0), &asset.item, &[(to, amount)], fee).await;
                 finish_transaction::<C>(io, keystore, res, wait, "transferred").await;
             }
         ),
@@ -582,32 +587,32 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
         ),
         command!(
             mint,
-            "mint an asset",
+            "mint an asset from an owned address to a user's public key",
             C,
-            |io, keystore, asset: ListItem<AssetCode>, from: UserAddress, to: UserAddress, amount: u64, fee: u64; wait: Option<bool>| {
-                let res = keystore.mint(&from.0, fee, &asset.item, amount, to.0).await;
+            |io, keystore, asset: ListItem<AssetCode>, to: UserPubKey, amount: u64, fee: u64; fee_account: Option<UserAddress>, wait: Option<bool>| {
+                let res = keystore.mint(fee_account.as_ref().map(|addr| &addr.0), fee, &asset.item, amount, to).await;
                 finish_transaction::<C>(io, keystore, res, wait, "minted").await;
             }
         ),
         command!(
             freeze,
-            "freeze assets owned by another users",
+            "freeze assets owned by another user's address",
             C,
-            |io, keystore, asset: ListItem<AssetCode>, fee_account: UserAddress, target: UserAddress,
-             amount: u64, fee: u64; wait: Option<bool>|
+            |io, keystore, asset: ListItem<AssetCode>, target: UserAddress,
+             amount: U256, fee: u64; fee_account: Option<UserAddress>, wait: Option<bool>|
             {
-                let res = keystore.freeze(&fee_account.0, fee, &asset.item, amount, target.0).await;
+                let res = keystore.freeze(fee_account.as_ref().map(|addr| &addr.0), fee, &asset.item, amount, target.0).await;
                 finish_transaction::<C>(io, keystore, res, wait, "frozen").await;
             }
         ),
         command!(
             unfreeze,
-            "unfreeze previously frozen assets owned by another users",
+            "unfreeze previously frozen assets owned by another user's address",
             C,
-            |io, keystore, asset: ListItem<AssetCode>, fee_account: UserAddress, target: UserAddress,
-             amount: u64, fee: u64; wait: Option<bool>|
+            |io, keystore, asset: ListItem<AssetCode>, target: UserAddress,
+             amount: U256, fee: u64; fee_account: Option<UserAddress>, wait: Option<bool>|
             {
-                let res = keystore.unfreeze(&fee_account.0, fee, &asset.item, amount, target.0).await;
+                let res = keystore.unfreeze(fee_account.as_ref().map(|addr| &addr.0), fee, &asset.item, amount, target.0).await;
                 finish_transaction::<C>(io, keystore, res, wait, "unfrozen").await;
             }
         ),
@@ -708,7 +713,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
         }),
         command!(
             gen_key,
-            "generate new keys",
+            "generate a new key",
             C,
             |io, keystore, key_type: KeyType;
              description: Option<String>, scan_from: Option<EventIndex>, wait: Option<bool>| {
@@ -729,6 +734,9 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                                     cli_writeln!(io, "Error waiting for key scan: {}", err);
                                 }
                             }
+                            // Output both the public key and the address when generating a
+                            // sending key.
+                            cli_writeln!(io, "{}", pub_key);
                             cli_writeln!(io, "{}", UserAddress(pub_key.address()));
                         }
                         Err(err) => cli_writeln!(io, "Error generating sending key: {}", err),
@@ -792,6 +800,9 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                                         after a scan of the ledger. This may take a long time. If
                                         you have the owner memo for a record you want to use
                                         immediately, use import_memo.");
+                                    // Output both the public key and the address when loading a
+                                    // sending key.
+                                    cli_writeln!(io, "{}", key.pub_key());
                                     cli_writeln!(io, "{}", UserAddress(key.address()));
                                 }
                             }
@@ -1078,6 +1089,14 @@ async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
             for command in commands.iter() {
                 cli_writeln!(io, "{}", command);
             }
+            cli_writeln!(
+                io,
+                "General rule: When determining whether to use UserAddress or UserPubKey as the
+                parameter, use UserAddress as an account identifier (to send an asset, get a
+                balance, etc.), and UserPubKey as a transaction destination. An exception is when
+                we can't reasonably know the UserPubKey of the destination (freezing or
+                unfreezing), in which case we use UserAddress instead."
+            );
             continue;
         }
         for Command { name, run, .. } in commands.iter() {
@@ -1253,9 +1272,13 @@ mod test {
             &[format!("{} {}", viewer_address, 1000)],
         );
 
-        // Get the sender's funded address.
+        // Get the sender's funded public key and address.
         writeln!(sender_input, "gen_key sending scan_from=start wait=true").unwrap();
-        let matches = match_output(&mut sender_output, &["(?P<addr>ADDR~.*)"]);
+        let matches = match_output(
+            &mut sender_output,
+            &["(?P<pub_key>USERPUBKEY~.*)", "(?P<addr>ADDR~.*)"],
+        );
+        let sender_pub_key = matches.get("pub_key");
         let sender_address = matches.get("addr");
         writeln!(sender_input, "balance 0").unwrap();
         match_output(
@@ -1263,9 +1286,13 @@ mod test {
             &[format!("{} {}", sender_address, 1000)],
         );
 
-        // Get the receiver's (unfunded) address.
+        // Get the receiver's (unfunded) public key and address.
         writeln!(receiver_input, "gen_key sending").unwrap();
-        let matches = match_output(&mut receiver_output, &["(?P<addr>ADDR~.*)"]);
+        let matches = match_output(
+            &mut receiver_output,
+            &["(?P<pub_key>USERPUBKEY~.*)", "(?P<addr>ADDR~.*)"],
+        );
+        let receiver_pub_key = matches.get("pub_key");
         let receiver_address = matches.get("addr");
 
         // Generate a viewing key.
@@ -1288,8 +1315,8 @@ mod test {
         // native asset is always 0).
         writeln!(
             viewer_input,
-            "mint 1 {} {} 1000 1",
-            viewer_address, sender_address
+            "mint 1 {} 1000 1 fee_account={}",
+            sender_pub_key, viewer_address,
         )
         .unwrap();
         let matches = match_output(&mut viewer_output, &["(?P<txn>TXN~.*)"]);
@@ -1306,8 +1333,8 @@ mod test {
         // viewer nonetheless discovers the details of the transaction).
         writeln!(
             sender_input,
-            "transfer_from 1 {} {} 50 1",
-            sender_address, receiver_address
+            "transfer 1 {} 50 1 from={}",
+            receiver_pub_key, sender_address,
         )
         .unwrap();
         let matches = match_output(&mut sender_output, &["(?P<txn>TXN~.*)"]);
@@ -1349,8 +1376,8 @@ mod test {
         // freeze them.
         writeln!(
             viewer_input,
-            "freeze 1 {} {} 950 1",
-            viewer_address, sender_address
+            "freeze 1 {} 950 1 fee_account={}",
+            sender_address, viewer_address,
         )
         .unwrap();
         let matches = match_output(&mut viewer_output, &["(?P<txn>TXN~.*)"]);
@@ -1375,8 +1402,8 @@ mod test {
         // Transfers that need the frozen record as an input should now fail.
         writeln!(
             sender_input,
-            "transfer_from 1 {} {} 50 1",
-            sender_address, receiver_address
+            "transfer 1 {} 50 1 from={}",
+            receiver_pub_key, sender_address
         )
         .unwrap();
         // Search for error message with a slightly permissive regex to allow the CLI some freedom
@@ -1386,8 +1413,8 @@ mod test {
         // Unfreezing the record makes it available again.
         writeln!(
             viewer_input,
-            "unfreeze 1 {} {} 950 1",
-            viewer_address, sender_address
+            "unfreeze 1 {} 950 1 fee_account={}",
+            sender_address, viewer_address,
         )
         .unwrap();
         let matches = match_output(&mut viewer_output, &["(?P<txn>TXN~.*)"]);

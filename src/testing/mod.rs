@@ -20,7 +20,7 @@ use crate::hd::KeyTree;
 use crate::loader::KeystoreLoader;
 use async_std::sync::{Arc, Mutex};
 use chrono::Local;
-use futures::channel::mpsc;
+use futures::{channel::mpsc, stream::iter};
 use jf_cap::{MerkleTree, Signature, TransactionVerifyingKey};
 use key_set::{KeySet, OrderByOutputs, ProverKeySet, VerifierKeySet};
 use rand_chacha::rand_core::RngCore;
@@ -278,10 +278,10 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         Keystore::with_state(backend, storage, state).await.unwrap()
     }
 
-    /// Creates two key pairs/addresses for each keystore.
+    /// Creates two key pairs for each keystore.
     ///
     /// `initial_grants` - List of total initial grants for each keystore. Each amount will be
-    /// divided by 2, and any remainder will be added to the second address.
+    /// divided by 2, and any remainder will be added to the second public key.
     async fn create_test_network(
         &mut self,
         xfr_sizes: &[(usize, usize)],
@@ -291,7 +291,7 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork>>>,
         Vec<(
             Keystore<'a, Self::MockBackend, Self::Ledger, ()>,
-            Vec<UserAddress>,
+            Vec<UserPubKey>,
         )>,
     ) {
         let mut rng = ChaChaRng::from_seed([42u8; 32]);
@@ -402,14 +402,16 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
             let mut loader = TrivialKeystoreLoader {
                 dir: TempDir::new("test_keystore").unwrap().into_path(),
             };
-            // let storage = AtomicKeystoreStorage::new(&mut loader, 1024).unwrap();
-            // ledger.lock().await.storage.push(Arc::new(Mutex::new(ledger_storage)));
-            let l = ledger.clone();
             let mut seed = [0u8; 32];
             rng.fill_bytes(&mut seed);
-            let backend = self.create_backend(l, initial_grants, key_stream).await;
-            let mut keystore = Keystore::new(backend, &mut loader).await.unwrap();
-            let mut addresses = vec![];
+            let mut keystore = Keystore::new(
+                self.create_backend(ledger.clone(), initial_grants, key_stream)
+                    .await,
+                &mut loader,
+            )
+            .await
+            .unwrap();
+            let mut pub_keys = vec![];
             for key_pair in key_pairs.clone() {
                 assert_eq!(
                     keystore
@@ -423,15 +425,9 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
                 // initial grants.
 
                 keystore.await_key_scan(&key_pair.address()).await.unwrap();
-                addresses.push(key_pair.address());
+                pub_keys.push(key_pair.pub_key());
             }
-            // let mut l = ledger.lock().await;
-            // // let mut ledger_store = l.storage.last_mut().unwrap().lock().await;
-            // ledger_store.create(&(keystore.lock().await.state)).await.unwrap();
-            // for asset in &keystore.lock().await.state.assets.assets {
-            //     ledger_store.store_asset(&asset).await.unwrap();
-            // }
-            keystores.push((keystore, addresses));
+            keystores.push((keystore, pub_keys));
         }
 
         println!("Keystores set up: {}s", now.elapsed().as_secs_f32());
@@ -447,7 +443,7 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         ledger: &Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork>>>,
         keystores: &[(
             Keystore<'a, Self::MockBackend, Self::Ledger, ()>,
-            Vec<UserAddress>,
+            Vec<UserPubKey>,
         )],
     ) {
         let memos_source = {
@@ -508,7 +504,7 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         &self,
         keystores: &[(
             Keystore<'a, Self::MockBackend, Self::Ledger, ()>,
-            Vec<UserAddress>,
+            Vec<UserPubKey>,
         )],
         t: EventIndex,
     ) {
@@ -520,7 +516,7 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         &self,
         keystores: &[(
             Keystore<'a, Self::MockBackend, Self::Ledger, ()>,
-            Vec<UserAddress>,
+            Vec<UserPubKey>,
         )],
     ) {
         for (keystore, _) in keystores {

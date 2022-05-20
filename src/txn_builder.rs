@@ -33,6 +33,9 @@ use jf_cap::{
 use jf_primitives::merkle_tree::FilledMTBuilder;
 use jf_utils::tagged_blob;
 use key_set::KeySet;
+use num_bigint::{BigInt, Sign};
+use num_traits::identities::Zero;
+use primitive_types::U256;
 use rand_chacha::ChaChaRng;
 #[cfg(test)]
 use reef::cap;
@@ -43,23 +46,26 @@ use reef::{
 use serde::{Deserialize, Serialize};
 use snafu::{ResultExt, Snafu};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::convert::TryInto;
 use std::fmt::{Debug, Formatter};
 use std::hash::{Hash, Hasher};
 use std::iter::FromIterator;
 use std::ops::{Index, IndexMut};
+
+const MAX_RECORD_AMOUNT: u64 = 2u64.pow(63) - 1;
 
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
 pub enum TransactionError {
     InsufficientBalance {
         asset: AssetCode,
-        required: u64,
-        actual: u64,
+        required: U256,
+        actual: U256,
     },
     Fragmentation {
         asset: AssetCode,
-        amount: u64,
-        suggested_amount: u64,
+        amount: U256,
+        suggested_amount: U256,
         max_records: usize,
     },
     TooManyOutputs {
@@ -925,11 +931,10 @@ where
 }
 
 impl<L: Ledger> TransactionState<L> {
-    pub fn balance(&self, asset: &AssetCode, pub_key: &UserPubKey, frozen: FreezeFlag) -> u64 {
+    pub fn balance(&self, asset: &AssetCode, pub_key: &UserPubKey, frozen: FreezeFlag) -> U256 {
         self.records
             .input_records(asset, &pub_key.address(), frozen, self.validator.now())
-            .map(|record| record.ro.amount)
-            .sum()
+            .fold(U256::zero(), |sum, record| sum + record.ro.amount)
     }
 
     pub fn clear_expired_transactions(&mut self) -> Vec<PendingTransaction<L>> {
@@ -1037,10 +1042,10 @@ impl<L: Ledger> TransactionState<L> {
         proving_keys: &'k KeySet<TransferProvingKey<'a>, key_set::OrderByOutputs>,
         rng: &mut ChaChaRng,
     ) -> Result<(TransferNote, TransactionInfo<L>), TransactionError> {
-        let total_output_amount: u64 = spec
+        let total_output_amount: U256 = spec
             .receivers
             .iter()
-            .fold(0, |sum, (_, amount, _)| sum + *amount)
+            .fold(U256::zero(), |sum, (_, amount, _)| sum + *amount)
             + spec.fee;
 
         // find input records which account for at least the total amount, and possibly some change.
@@ -1172,10 +1177,10 @@ impl<L: Ledger> TransactionState<L> {
             AssetCode::native(),
             "call `transfer_native()` instead"
         );
-        let total_output_amount: u64 = spec
+        let total_output_amount: U256 = spec
             .receivers
             .iter()
-            .fold(0, |sum, (_, amount, _)| sum + *amount);
+            .fold(U256::zero(), |sum, (_, amount, _)| sum + *amount);
 
         // find input records of the asset type to spend (this does not include the fee input)
         let records = self.find_records(
@@ -1216,15 +1221,7 @@ impl<L: Ledger> TransactionState<L> {
                 ));
             }
         }
-        let fee_input = spec
-            .sender_key_pairs
-            .iter()
-            .find_map(|key| self.find_fee_input(key, spec.fee).ok())
-            .ok_or(TransactionError::InsufficientBalance {
-                asset: AssetCode::native(),
-                required: spec.fee,
-                actual: 0,
-            })?;
+        let fee_input = self.find_fee_input(spec.sender_key_pairs, spec.fee)?;
 
         // prepare outputs, excluding fee change (which will be automatically generated)
         let mut outputs = Vec::new();
@@ -1363,7 +1360,7 @@ impl<L: Ledger> TransactionState<L> {
     #[allow(clippy::too_many_arguments)]
     pub fn mint<'a>(
         &mut self,
-        minter_key_pair: &UserKeyPair,
+        sending_keys: &[UserKeyPair],
         proving_key: &MintProvingKey<'a>,
         fee: u64,
         asset: &(AssetDefinition, AssetCodeSeed, Vec<u8>),
@@ -1380,7 +1377,7 @@ impl<L: Ledger> TransactionState<L> {
             blind: BlindFactor::rand(rng),
         };
 
-        let fee_input = self.find_fee_input(minter_key_pair, fee)?;
+        let fee_input = self.find_fee_input(sending_keys, fee)?;
         let fee_rec = fee_input.ro.clone();
         let (fee_info, fee_out_rec) = TxnFeeInfo::new(rng, fee_input, fee).unwrap();
         let rng = rng;
@@ -1402,14 +1399,14 @@ impl<L: Ledger> TransactionState<L> {
             asset: asset_def.code,
             kind: TransactionKind::<L>::mint(),
             hash: None,
-            senders: vec![minter_key_pair.address()],
+            senders: vec![fee_rec.pub_key.address()],
             receivers: vec![(receiver.address(), amount)],
             receipt: None,
         };
         Ok((
             note,
             TransactionInfo {
-                accounts: vec![minter_key_pair.address()],
+                accounts: vec![fee_rec.pub_key.address()],
                 memos,
                 sig,
                 freeze_outputs: vec![],
@@ -1424,12 +1421,12 @@ impl<L: Ledger> TransactionState<L> {
     #[allow(clippy::too_many_arguments)]
     pub fn freeze_or_unfreeze<'a>(
         &mut self,
-        fee_key_pair: &UserKeyPair,
+        sending_keys: &[UserKeyPair],
         freezer_key_pair: &FreezerKeyPair,
         proving_keys: &KeySet<FreezeProvingKey<'a>, key_set::OrderByOutputs>,
         fee: u64,
         asset: &AssetDefinition,
-        amount: u64,
+        amount: U256,
         owner: UserAddress,
         outputs_frozen: FreezeFlag,
         rng: &mut ChaChaRng,
@@ -1458,7 +1455,8 @@ impl<L: Ledger> TransactionState<L> {
                 keypair: freezer_key_pair,
             })
         }
-        let fee_input = self.find_fee_input(fee_key_pair, fee)?;
+        let fee_input = self.find_fee_input(sending_keys, fee)?;
+        let fee_address = fee_input.owner_keypair.address();
 
         // find a proving key which can handle this transaction size
         let proving_key =
@@ -1483,14 +1481,18 @@ impl<L: Ledger> TransactionState<L> {
                 FreezeFlag::Unfrozen => TransactionKind::<L>::unfreeze(),
             },
             hash: None,
-            senders: vec![fee_key_pair.address()],
-            receivers: vec![(owner, amount)],
+            senders: vec![fee_address.clone()],
+            // The target receives one frozen output record for each input record we are freezing.
+            receivers: input_records
+                .iter()
+                .map(|(ro, _)| (owner.clone(), ro.amount))
+                .collect(),
             receipt: None,
         };
         Ok((
             note,
             TransactionInfo {
-                accounts: vec![fee_key_pair.address()],
+                accounts: vec![fee_address],
                 memos,
                 sig,
                 // `freeze_outputs` should only contain the frozen/unfrozen records, not the fee
@@ -1534,6 +1536,14 @@ impl<L: Ledger> TransactionState<L> {
     }
 
     pub fn append_merkle_leaves(&mut self, comms: impl IntoIterator<Item = RecordCommitment>) {
+        let mut comms = comms.into_iter().peekable();
+        if comms.peek().is_none() {
+            // If there are no records to insert, just return. This is both an optimization and a
+            // precondition of the following code -- in particular the logic involving
+            // `merkle_leaf_to_forget` -- which assumes the iterator is non-empty.
+            return;
+        }
+
         // FilledMTBuilder takes ownership of the MerkleTree, so we need to temporarily replace
         // `self.record_mt` with a dummy value (since we can't move out of a mutable reference). We
         // use a MerkleTree of height 0 as the dummy value, since its construction always succeeds
@@ -1541,7 +1551,7 @@ impl<L: Ledger> TransactionState<L> {
         let record_mt = std::mem::replace(&mut self.record_mt, MerkleTree::new(0).unwrap());
         let mut builder = FilledMTBuilder::from_existing(record_mt)
             .expect("failed to convert MerkleTree to FilledMTBuilder");
-        for comm in comms.into_iter() {
+        for comm in comms {
             builder.push(comm.to_field_element());
         }
         self.record_mt = builder.build();
@@ -1567,19 +1577,21 @@ impl<L: Ledger> TransactionState<L> {
         asset: &AssetCode,
         owner: &UserAddress,
         frozen: FreezeFlag,
-        amount: u64,
+        amount: U256,
         max_records: Option<usize>,
         allow_insufficient: bool,
-    ) -> Result<(Vec<(RecordOpening, u64)>, i64), TransactionError> {
+    ) -> Result<(Vec<(RecordOpening, u64)>, BigInt), TransactionError> {
         let now = self.validator.now();
 
         // If we have a record with the exact size required, use it to avoid fragmenting big records
         // into smaller change records.
-        if let Some(record) = self
-            .records
-            .input_record_with_amount(asset, owner, frozen, amount, now)
-        {
-            return Ok((vec![(record.ro.clone(), record.uid)], 0));
+        if amount <= MAX_RECORD_AMOUNT.into() {
+            if let Some(record) =
+                self.records
+                    .input_record_with_amount(asset, owner, frozen, amount.as_u64(), now)
+            {
+                return Ok((vec![(record.ro.clone(), record.uid)], 0u64.into()));
+            }
         }
 
         // Take the biggest records we have until they exceed the required amount, as a heuristic to
@@ -1591,7 +1603,7 @@ impl<L: Ledger> TransactionState<L> {
         // make exact change using combinations of larger and smaller blocks. We can replace this
         // with something more sophisticated later.
         let mut result = vec![];
-        let mut current_amount = 0;
+        let mut current_amount = U256::zero();
         for record in self.records.input_records(asset, owner, frozen, now) {
             if let Some(max_records) = max_records {
                 if result.len() >= max_records {
@@ -1611,15 +1623,21 @@ impl<L: Ledger> TransactionState<L> {
                     });
                 }
             }
-            current_amount += record.ro.amount;
+            current_amount += record.ro.amount.into();
             result.push((record.ro.clone(), record.uid));
             if current_amount >= amount {
-                return Ok((result, (current_amount - amount) as i64));
+                return Ok((
+                    result,
+                    u256_to_signed(current_amount) - u256_to_signed(amount),
+                ));
             }
         }
 
         if allow_insufficient {
-            Ok((result, (current_amount as i64 - amount as i64)))
+            Ok((
+                result,
+                u256_to_signed(current_amount) - u256_to_signed(amount),
+            ))
         } else {
             Err(TransactionError::InsufficientBalance {
                 asset: *asset,
@@ -1630,14 +1648,14 @@ impl<L: Ledger> TransactionState<L> {
     }
 
     #[allow(clippy::type_complexity)]
-    fn find_records(
+    fn find_records<'l>(
         &self,
         asset: &AssetCode,
-        owner_key_pairs: &[UserKeyPair],
+        owner_key_pairs: &'l [UserKeyPair],
         frozen: FreezeFlag,
-        amount: u64,
+        amount: U256,
         max_records: Option<usize>,
-    ) -> Result<Vec<(UserKeyPair, Vec<(RecordOpening, u64)>, u64)>, TransactionError> {
+    ) -> Result<Vec<(&'l UserKeyPair, Vec<(RecordOpening, u64)>, u64)>, TransactionError> {
         let mut records = Vec::new();
         let mut target_amount = amount;
 
@@ -1651,14 +1669,18 @@ impl<L: Ledger> TransactionState<L> {
                 true,
             )?;
             // A nonnegative change indicates that we've find sufficient records.
-            if change >= 0 {
-                records.push((owner_key_pair.clone(), input_records, change as u64));
+            if change >= BigInt::zero() {
+                records.push((
+                    owner_key_pair,
+                    input_records,
+                    bigint_to_u256(change).as_u64(),
+                ));
                 return Ok(records);
             }
             if !input_records.is_empty() {
-                records.push((owner_key_pair.clone(), input_records, 0));
+                records.push((owner_key_pair, input_records, 0));
             }
-            target_amount = (0 - change) as u64;
+            target_amount = bigint_to_u256(-change);
         }
 
         Err(TransactionError::InsufficientBalance {
@@ -1669,27 +1691,29 @@ impl<L: Ledger> TransactionState<L> {
     }
 
     /// find a record of the native asset type with enough funds to pay a transaction fee
+    ///
+    /// The record will be owned by one of the given key pairs.
     fn find_fee_input<'l>(
         &self,
-        owner_key_pair: &'l UserKeyPair,
+        key_pairs: &'l [UserKeyPair],
         fee: u64,
     ) -> Result<FeeInput<'l>, TransactionError> {
-        let (ro, uid) = self
-            .find_records_with_pub_key(
-                &AssetCode::native(),
-                &owner_key_pair.pub_key().address(),
-                FreezeFlag::Unfrozen,
-                fee,
-                Some(1),
-                false,
-            )?
-            .0
-            .remove(0);
+        let mut records = self.find_records(
+            &AssetCode::native(),
+            key_pairs,
+            FreezeFlag::Unfrozen,
+            fee.into(),
+            Some(1),
+        )?;
+        assert_eq!(records.len(), 1);
+        let (owner_keypair, mut records, _) = records.remove(0);
+        assert_eq!(records.len(), 1);
+        let (ro, uid) = records.remove(0);
 
         Ok(FeeInput {
             ro,
             acc_member_witness: self.get_merkle_proof(uid),
-            owner_keypair: owner_key_pair,
+            owner_keypair,
         })
     }
 
@@ -1723,7 +1747,7 @@ impl<L: Ledger> TransactionState<L> {
         xfr_size_requirement: Option<(usize, usize)>,
         change_record: bool,
     ) -> Result<(&'k TransferProvingKey<'a>, usize), TransactionError> {
-        let total_output_amount = outputs.iter().map(|ro| ro.amount).sum();
+        let total_output_amount = outputs.iter().fold(U256::zero(), |sum, ro| sum + ro.amount);
         // non-native transfers have an extra fee input, which is not included in `inputs`.
         let fee_inputs = if *asset == AssetDefinition::native() {
             0
@@ -1768,8 +1792,7 @@ impl<L: Ledger> TransactionState<L> {
                                 suggested_amount: inputs
                                     .iter()
                                     .take(max_inputs - fee_inputs)
-                                    .map(|input| input.ro.amount)
-                                    .sum(),
+                                    .fold(U256::zero(), |sum, input| sum + input.ro.amount),
                                 max_records: max_inputs,
                             }
                         } else {
@@ -1818,7 +1841,9 @@ impl<L: Ledger> TransactionState<L> {
         inputs: &mut Vec<FreezeNoteInput<'k>>,
         key_pair: &'k FreezerKeyPair,
     ) -> Result<&'k FreezeProvingKey<'a>, TransactionError> {
-        let total_output_amount = inputs.iter().map(|input| input.ro.amount).sum();
+        let total_output_amount = inputs
+            .iter()
+            .fold(U256::zero(), |sum, input| sum + input.ro.amount);
 
         let num_inputs = inputs.len() + 1; // make sure to include fee input
         let num_outputs = num_inputs; // freeze transactions always have equal outputs and inputs
@@ -1831,8 +1856,7 @@ impl<L: Ledger> TransactionState<L> {
                     suggested_amount: inputs
                         .iter()
                         .take(max_inputs - 1) // leave room for fee input
-                        .map(|input| input.ro.amount)
-                        .sum(),
+                        .fold(U256::zero(), |sum, input| sum + input.ro.amount),
                     max_records: max_inputs,
                 }
             })?;
@@ -1857,4 +1881,18 @@ impl<L: Ledger> TransactionState<L> {
 
         Ok(proving_key)
     }
+}
+
+fn u256_to_signed(u: U256) -> BigInt {
+    let mut bytes = [0; 32];
+    u.to_little_endian(&mut bytes);
+    BigInt::from_bytes_le(Sign::Plus, &bytes)
+}
+
+fn bigint_to_u256(i: BigInt) -> U256 {
+    let (sign, mut digits) = i.to_u64_digits();
+    assert_ne!(sign, Sign::Minus);
+    assert!(digits.len() <= 4);
+    digits.resize(4, 0);
+    U256(digits.try_into().unwrap())
 }
