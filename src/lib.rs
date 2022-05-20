@@ -1827,7 +1827,6 @@ impl<
         mut storage: AtomicKeystoreStorage<'a, L, Meta>,
     ) -> BoxFuture<'a, Result<Keystore<'a, Backend, L, Meta>, KeystoreError<L>>> {
         Box::pin(async move {
-            println!("creating new keystore Keystore::new()");
             let state = if storage.exists() {
                 storage.load().await?
             } else {
@@ -1835,7 +1834,6 @@ impl<
                 storage.create(&s).await?;
                 s
             };
-            println!("after load");
             Self::new_impl(backend, storage, state).await
         })
     }
@@ -1854,7 +1852,6 @@ impl<
         storage: AtomicKeystoreStorage<'a, L, Meta>,
         mut state: KeystoreState<'a, L>,
     ) -> Result<Keystore<'a, Backend, L, Meta>, KeystoreError<L>> {
-        println!("new impl");
         let mut events = backend.subscribe(state.txn_state.now, None).await;
         let mut key_scans = vec![];
         for account in state.viewing_accounts.values() {

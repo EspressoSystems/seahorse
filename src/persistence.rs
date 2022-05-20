@@ -200,10 +200,8 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned + Clone + PartialE
         file_fill_size: u64,
     ) -> Result<Self, KeystoreError<L>> {
         let directory = loader.location();
-        println!("loader location {:?}", directory);
         let mut atomic_loader =
             AtomicStoreLoader::load(&directory, "keystore").context(crate::PersistenceSnafu)?;
-        println!("loader load");
 
         // Load the metadata first so the loader can use it to generate the encryption key needed to
         // read the rest of the data.
@@ -214,10 +212,8 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned + Clone + PartialE
             1024,
         )
         .context(crate::PersistenceSnafu)?;
-        println!("loaded meta");
         let (meta, key, meta_dirty) = match persisted_meta.load_latest() {
             Ok(mut meta) => {
-                println!("got meta");
                 let old_meta = meta.clone();
                 let key = loader.load(&mut meta)?;
 
@@ -232,13 +228,11 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned + Clone + PartialE
                 }
             }
             Err(_) => {
-                println!("no meta");
                 // If there is no persisted metadata, ask the loader to generate a new keystore.
                 let (meta, key) = loader.create()?;
                 (meta, key, false)
             }
         };
-        println!("persisted meta");
 
         let adaptor = EncryptingResourceAdapter::<()>::new(key.derive_sub_tree("enc".as_bytes()));
         let static_data = RollingLog::load(
@@ -248,7 +242,6 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned + Clone + PartialE
             file_fill_size,
         )
         .context(crate::PersistenceSnafu)?;
-        println!("keystore static");
 
         let dynamic_state = RollingLog::load(
             &mut atomic_loader,
@@ -257,7 +250,6 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned + Clone + PartialE
             file_fill_size,
         )
         .context(crate::PersistenceSnafu)?;
-        println!("keystore dyn");
         let assets = AppendLog::load(
             &mut atomic_loader,
             adaptor.cast(),
@@ -265,7 +257,6 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned + Clone + PartialE
             file_fill_size,
         )
         .context(crate::PersistenceSnafu)?;
-        println!("keystore assets");
         let txn_history = AppendLog::load(
             &mut atomic_loader,
             adaptor.cast(),
@@ -273,9 +264,7 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned + Clone + PartialE
             file_fill_size,
         )
         .context(crate::PersistenceSnafu)?;
-        println!("keystore txns");
         let store = AtomicStore::open(atomic_loader).context(crate::PersistenceSnafu)?;
-        println!("Atomic store load");
 
         Ok(Self {
             meta,

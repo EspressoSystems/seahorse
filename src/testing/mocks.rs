@@ -317,7 +317,6 @@ impl<'a, const H: u8> KeystoreBackend<'a, cap::LedgerWithHeight<H>>
         &mut self,
     ) -> Result<KeystoreState<'a, cap::LedgerWithHeight<H>>, KeystoreError<cap::LedgerWithHeight<H>>>
     {
-        println!("creating mock backend");
         let state = {
             let mut ledger = self.ledger.lock().await;
             let network = ledger.network();

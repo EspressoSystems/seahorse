@@ -16,6 +16,8 @@
 //! implementation. In addition, the [CLIArgs] trait must be implemented to map your command line
 //! arguments to the options and flags required by the general CLI implementation. After that,
 //! [cli_main] can be used to run the CLI interactively.
+use crate::hd::KeyTree;
+use crate::KeySnafu;
 use crate::{
     events::EventIndex,
     io::SharedIO,
@@ -25,8 +27,6 @@ use crate::{
     AssetInfo, BincodeSnafu, IoSnafu, KeystoreBackend, KeystoreError, TransactionReceipt,
     TransactionStatus,
 };
-use crate::KeySnafu;
-use crate::hd::KeyTree;
 use async_std::task::block_on;
 use async_trait::async_trait;
 use fmt::{Display, Formatter};
@@ -119,8 +119,7 @@ pub trait CLIArgs {
     fn use_tmp_storage(&self) -> bool;
 }
 
-pub type Keystore<'a, C> =
-    crate::Keystore<'a, <C as CLI<'a>>::Backend, <C as CLI<'a>>::Ledger, ()>;
+pub type Keystore<'a, C> = crate::Keystore<'a, <C as CLI<'a>>::Backend, <C as CLI<'a>>::Ledger, ()>;
 
 /// A REPL command.
 ///
@@ -995,7 +994,6 @@ pub fn key_gen<'a, C: CLI<'a>>(mut path: PathBuf) -> Result<(), KeystoreError<C:
 async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
     args: C::Args,
 ) -> Result<(), KeystoreError<L>> {
-    println!("REPL");
     let (storage, _tmp_dir) = match args.storage_path() {
         Some(storage) => (storage, None),
         None if !args.use_tmp_storage() => {
@@ -1025,7 +1023,6 @@ async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
         Some(io) => (io.clone(), Reader::automated(io)),
         None => (SharedIO::std(), Reader::interactive()),
     };
-    println!("after reader setup");
     cli_writeln!(
         io,
         "Welcome to the {} keystore, version {}",
@@ -1034,7 +1031,9 @@ async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
     );
     cli_writeln!(io, "(c) 2021 Espresso Systems, Inc.");
 
-    let mut loader = TrivialKeystoreLoader{dir: storage.clone()};
+    let mut loader = TrivialKeystoreLoader {
+        dir: storage.clone(),
+    };
 
     let universal_param = Box::leak(Box::new(L::srs()));
     let backend = C::init_backend(universal_param, args)?;
@@ -1042,19 +1041,16 @@ async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
     // Loading the keystore takes a while. Let the user know that's expected.
     //todo !jeb.bearer Make it faster
     cli_writeln!(io, "connecting...");
-    println!("RIGHT BEFORE Keystore::new");
     let mut keystore = Keystore::<C>::new(
         backend,
         AtomicKeystoreStorage::new(&mut loader, 1024).unwrap(),
     )
     .await?;
-    println!("CREATED KEYSTORE");
     cli_writeln!(io, "Type 'help' for a list of commands.");
     let commands = init_commands::<C>();
 
     let mut input = reader;
     'repl: while let Some(line) = input.read_line() {
-        println!("read line {}", line);
         let tokens = line.split_whitespace().collect::<Vec<_>>();
         if tokens.is_empty() {
             continue;
@@ -1195,7 +1191,6 @@ mod test {
         });
 
         // Wait for the CLI to start up and then return the input and output pipes.
-        println!("Crated wallet in other thread");
         let input = Tee::new(input);
         let mut output = Tee::new(output);
         wait_for_prompt(&mut output);
@@ -1210,16 +1205,24 @@ mod test {
         let tmp_dir2 = TempDir::new("keystore").unwrap();
         let tmp_dir3 = TempDir::new("keystore").unwrap();
 
-
         // Create three keystore clients: one to mint and view an asset, one to make an anonymous
         // transfer, and one to receive an anonymous transfer. We will see if the viewer can
         // discover the output record of the anonymous transfer, in which it is not a participant.
-        let (mut viewer_input, mut viewer_output) =
-            create_keystore(ledger.clone(), key_streams[0].clone(), PathBuf::from(tmp_dir1.path()));
-        let (mut sender_input, mut sender_output) =
-            create_keystore(ledger.clone(), key_streams[1].clone(), PathBuf::from(tmp_dir2.path()));
-        let (mut receiver_input, mut receiver_output) =
-            create_keystore(ledger, key_streams[2].clone(), PathBuf::from(tmp_dir3.path()));
+        let (mut viewer_input, mut viewer_output) = create_keystore(
+            ledger.clone(),
+            key_streams[0].clone(),
+            PathBuf::from(tmp_dir1.path()),
+        );
+        let (mut sender_input, mut sender_output) = create_keystore(
+            ledger.clone(),
+            key_streams[1].clone(),
+            PathBuf::from(tmp_dir2.path()),
+        );
+        let (mut receiver_input, mut receiver_output) = create_keystore(
+            ledger,
+            key_streams[2].clone(),
+            PathBuf::from(tmp_dir3.path()),
+        );
 
         // Get the viewer's funded address.
         writeln!(viewer_input, "gen_key sending scan_from=start wait=true").unwrap();
@@ -1396,15 +1399,16 @@ mod test {
 
         let mut t = MockSystem::default();
         let (ledger, key_streams) = create_network(&mut t, &[0]).await;
-        let (mut input, mut output) = create_keystore(ledger.clone(), key_streams[0].clone(), PathBuf::from(tmp_dir.path()));
+        let (mut input, mut output) = create_keystore(
+            ledger.clone(),
+            key_streams[0].clone(),
+            PathBuf::from(tmp_dir.path()),
+        );
 
         // Load without mint info.
-        println!("1");
         writeln!(input, "import_asset definition:{}", definition).unwrap();
         wait_for_prompt(&mut output);
-        println!("2");
         writeln!(input, "asset {}", definition.code).unwrap();
-        println!("3");
         match_output(
             &mut output,
             &[
@@ -1414,7 +1418,6 @@ mod test {
                 "Minter: unknown",
             ],
         );
-        println!("4");
 
         // Update later with mint info.
         writeln!(
@@ -1423,7 +1426,6 @@ mod test {
             definition, seed
         )
         .unwrap();
-        println!("5");
         wait_for_prompt(&mut output);
         // Asset 0 is the native asset, ours is asset 1.
         writeln!(input, "asset 1").unwrap();

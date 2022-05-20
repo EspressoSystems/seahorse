@@ -808,7 +808,6 @@ pub mod generic_keystore_tests {
     pub async fn test_keystore_freeze<'a, T: SystemUnderTest<'a>>() -> std::io::Result<()> {
         let mut t = T::default();
         let mut now = Instant::now();
-        println!("created t");
 
         // Each of the two addresses of the sender keystore (keystores[0]) gets an initial grant of 1
         // for a transfer fee. keystores[1] will act as the receiver, and keystores[2] will be a third
@@ -820,7 +819,6 @@ pub mod generic_keystore_tests {
         let (ledger, mut keystores) = t
             .create_test_network(&[(3, 4)], vec![2, 0, 6], &mut now)
             .await;
-        println!("created test network\n");
 
         let asset = {
             let mut rng = ChaChaRng::from_seed([42u8; 32]);
@@ -2298,12 +2296,10 @@ pub mod generic_keystore_tests {
         let mut rng = ChaChaRng::from_seed([37; 32]);
         let mut now = Instant::now();
         let initial_grant = 10;
-        println!("1");
         let (_ledger, mut keystores) = t
             .create_test_network(&[(2, 2)], vec![initial_grant], &mut now)
             .await;
 
-        println!("2");
         // Discover a non-verified asset so we can later test verifying a non-verified asset.
         let asset1 = keystores[0]
             .0
@@ -2316,7 +2312,6 @@ pub mod generic_keystore_tests {
             assert!(!asset1_info.temporary);
         }
 
-        println!("3");
         // Now created a verified asset library with 2 assets:
         // * one that will update `asset1` to be marked verified
         // * one that does not yet exist in the keystore (later we will import it to check updating
@@ -2339,7 +2334,6 @@ pub mod generic_keystore_tests {
         );
         let imposter_assets =
             VerifiedAssetLibrary::new(vec![asset2.clone().into()], &KeyPair::generate(&mut rng));
-        println!("4");
 
         // Import the verified asset library and check that the two expected assets are returned.
         let imported = keystores[0]
@@ -2360,7 +2354,6 @@ pub mod generic_keystore_tests {
                 temporary: true,
             }
         );
-        println!("5");
 
         assert_eq!(
             imported[1],
@@ -2374,7 +2367,6 @@ pub mod generic_keystore_tests {
                 temporary: true,
             }
         );
-        println!("6");
 
         // Check that importing an asset library signed by an imposter fails.
         assert!(matches!(
@@ -2384,7 +2376,6 @@ pub mod generic_keystore_tests {
                 .await,
             Err(KeystoreError::AssetVerificationError)
         ));
-        println!("7");
 
         // Check that `asset1` got updated, retaining it's mint info and persistence but attaining
         // verified status.
@@ -2395,7 +2386,6 @@ pub mod generic_keystore_tests {
             assert_eq!(asset1_info.definition, asset1);
             assert!(asset1_info.mint_info.is_some());
         }
-        println!("8");
         // Check that `asset2`, which was not present before, got imported as-is.
         assert_eq!(
             keystores[0].0.asset(asset2.code).await.unwrap(),
@@ -2409,7 +2399,6 @@ pub mod generic_keystore_tests {
                 temporary: true,
             }
         );
-        println!("right before storage checks");
 
         // Check that temporary assets are not persisted, and that persisted assets are never
         // verified.
@@ -2487,7 +2476,6 @@ pub mod generic_keystore_tests {
             .await;
         ledger.lock().await.set_block_size(1).unwrap();
         t.check_storage(&keystores).await;
-        println!("Checking accounts");
 
         // The default accounts have no name and a balance of the native assets.
         for address in &keystores[0].1 {
