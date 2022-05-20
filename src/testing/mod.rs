@@ -42,13 +42,11 @@ impl<L: Ledger> KeystoreLoader<L> for TrivialKeystoreLoader {
     }
 
     fn create(&mut self) -> Result<(Self::Meta, KeyTree), KeystoreError<L>> {
-        println!("loader create");
         let key = KeyTree::from_password_and_salt(&[], &[0; 32]).context(KeySnafu)?;
         Ok(((), key))
     }
 
     fn load(&mut self, _meta: &mut Self::Meta) -> Result<KeyTree, KeystoreError<L>> {
-        println!("loader load");
         KeyTree::from_password_and_salt(&[], &[0; 32]).context(KeySnafu)
     }
 }
@@ -255,7 +253,6 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         let mut loader = TrivialKeystoreLoader {
             dir: TempDir::new("test_keystore").unwrap().into_path(),
         };
-        println!("creating test keystore\n");
         let storage = AtomicKeystoreStorage::new(&mut loader, 1024).unwrap();
         let key_stream = hd::KeyTree::random(rng).0;
         let backend = self
@@ -297,8 +294,6 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
             Vec<UserAddress>,
         )>,
     ) {
-        println!("creating test network");
-
         let mut rng = ChaChaRng::from_seed([42u8; 32]);
         let universal_param = Self::Ledger::srs();
 
@@ -531,8 +526,6 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
             Vec<UserAddress>,
         )],
     ) {
-        println!("checking storage");
-        // let ledger = ledger.lock().await;
         for (keystore, _) in keystores {
             let KeystoreSharedState { state, session, .. } = &*keystore.mutex.lock().await;
             let storage = &session.storage;

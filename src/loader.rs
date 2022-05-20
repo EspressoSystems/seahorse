@@ -263,6 +263,7 @@ impl<L: Ledger> KeystoreLoader<L> for Loader {
     }
 
     fn create(&mut self) -> Result<(LoaderMetadata, KeyTree), KeystoreError<L>> {
+        println!("creating meta from loader");
         let (mnemonic, key) = self.create_from_mnemonic()?;
 
         // Generate and encrypt some random bytes using the mnemonic, so in the future we can check
@@ -287,7 +288,7 @@ impl<L: Ledger> KeystoreLoader<L> for Loader {
             encrypted_mnemonic,
             encrypted_bytes,
         };
-
+        println!("created meta form loader");
         Ok((meta, key))
     }
 

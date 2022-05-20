@@ -25,6 +25,8 @@ use crate::{
     AssetInfo, BincodeSnafu, IoSnafu, KeystoreBackend, KeystoreError, TransactionReceipt,
     TransactionStatus,
 };
+use crate::KeySnafu;
+use crate::hd::KeyTree;
 use async_std::task::block_on;
 use async_trait::async_trait;
 use fmt::{Display, Formatter};
@@ -47,6 +49,27 @@ use std::str::FromStr;
 use tagged_base64::TaggedBase64;
 use tempdir::TempDir;
 
+struct TrivialKeystoreLoader {
+    dir: PathBuf,
+}
+
+impl<L: Ledger> KeystoreLoader<L> for TrivialKeystoreLoader {
+    type Meta = ();
+
+    fn location(&self) -> PathBuf {
+        self.dir.clone()
+    }
+
+    fn create(&mut self) -> Result<(Self::Meta, KeyTree), KeystoreError<L>> {
+        let key = KeyTree::from_password_and_salt(&[], &[0; 32]).context(KeySnafu)?;
+        Ok(((), key))
+    }
+
+    fn load(&mut self, _meta: &mut Self::Meta) -> Result<KeyTree, KeystoreError<L>> {
+        KeyTree::from_password_and_salt(&[], &[0; 32]).context(KeySnafu)
+    }
+}
+
 /// The interface required of a particular ledger-specific instantiation.
 pub trait CLI<'a> {
     /// The ledger for which we want to instantiate this CLI.
@@ -60,7 +83,6 @@ pub trait CLI<'a> {
     fn init_backend(
         universal_param: &'a UniversalParam,
         args: Self::Args,
-        loader: &mut impl KeystoreLoader<Self::Ledger, Meta = LoaderMetadata>,
     ) -> Result<Self::Backend, KeystoreError<Self::Ledger>>;
 
     /// Add extra, ledger-specific commands to the generic CLI interface.
@@ -98,7 +120,7 @@ pub trait CLIArgs {
 }
 
 pub type Keystore<'a, C> =
-    crate::Keystore<'a, <C as CLI<'a>>::Backend, <C as CLI<'a>>::Ledger, LoaderMetadata>;
+    crate::Keystore<'a, <C as CLI<'a>>::Backend, <C as CLI<'a>>::Ledger, ()>;
 
 /// A REPL command.
 ///
@@ -973,6 +995,7 @@ pub fn key_gen<'a, C: CLI<'a>>(mut path: PathBuf) -> Result<(), KeystoreError<C:
 async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
     args: C::Args,
 ) -> Result<(), KeystoreError<L>> {
+    println!("REPL");
     let (storage, _tmp_dir) = match args.storage_path() {
         Some(storage) => (storage, None),
         None if !args.use_tmp_storage() => {
@@ -1002,6 +1025,7 @@ async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
         Some(io) => (io.clone(), Reader::automated(io)),
         None => (SharedIO::std(), Reader::interactive()),
     };
+    println!("after reader setup");
     cli_writeln!(
         io,
         "Welcome to the {} keystore, version {}",
@@ -1010,24 +1034,27 @@ async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
     );
     cli_writeln!(io, "(c) 2021 Espresso Systems, Inc.");
 
-    let mut loader = Loader::new(storage, reader);
+    let mut loader = TrivialKeystoreLoader{dir: storage.clone()};
 
     let universal_param = Box::leak(Box::new(L::srs()));
-    let backend = C::init_backend(universal_param, args, &mut loader)?;
+    let backend = C::init_backend(universal_param, args)?;
 
     // Loading the keystore takes a while. Let the user know that's expected.
     //todo !jeb.bearer Make it faster
     cli_writeln!(io, "connecting...");
+    println!("RIGHT BEFORE Keystore::new");
     let mut keystore = Keystore::<C>::new(
         backend,
         AtomicKeystoreStorage::new(&mut loader, 1024).unwrap(),
     )
     .await?;
+    println!("CREATED KEYSTORE");
     cli_writeln!(io, "Type 'help' for a list of commands.");
     let commands = init_commands::<C>();
 
-    let mut input = loader.into_reader().unwrap();
+    let mut input = reader;
     'repl: while let Some(line) = input.read_line() {
+        println!("read line {}", line);
         let tokens = line.split_whitespace().collect::<Vec<_>>();
         if tokens.is_empty() {
             continue;
@@ -1070,7 +1097,7 @@ mod test {
         io::Tee,
         testing::{
             cli_match::*,
-            mocks::{MockBackend, MockLedger, MockNetwork, MockStorage, MockSystem},
+            mocks::{MockBackend, MockLedger, MockNetwork, MockSystem},
             SystemUnderTest,
         },
     };
@@ -1091,6 +1118,7 @@ mod test {
         io: SharedIO,
         key_stream: hd::KeyTree,
         ledger: MockCapLedger<'a>,
+        path: Option<PathBuf>,
     }
 
     impl<'a> CLIArgs for MockArgs<'a> {
@@ -1099,7 +1127,7 @@ mod test {
         }
 
         fn storage_path(&self) -> Option<PathBuf> {
-            None
+            self.path.clone()
         }
 
         fn io(&self) -> Option<SharedIO> {
@@ -1121,7 +1149,6 @@ mod test {
         fn init_backend(
             _universal_param: &'a UniversalParam,
             args: Self::Args,
-            _loader: &mut impl KeystoreLoader<Self::Ledger, Meta = LoaderMetadata>,
         ) -> Result<Self::Backend, KeystoreError<Self::Ledger>> {
             Ok(MockBackend::new(args.ledger.clone(), args.key_stream))
         }
@@ -1152,6 +1179,7 @@ mod test {
     fn create_keystore(
         ledger: MockCapLedger<'static>,
         key_stream: hd::KeyTree,
+        path: PathBuf,
     ) -> (Tee<PipeWriter>, Tee<PipeReader>) {
         let (io, input, output) = SharedIO::pipe();
 
@@ -1161,11 +1189,13 @@ mod test {
                 io,
                 key_stream,
                 ledger,
+                path: Some(path),
             };
             cli_main::<cap::Ledger, MockCLI>(args).await.unwrap();
         });
 
         // Wait for the CLI to start up and then return the input and output pipes.
+        println!("Crated wallet in other thread");
         let input = Tee::new(input);
         let mut output = Tee::new(output);
         wait_for_prompt(&mut output);
@@ -1176,16 +1206,20 @@ mod test {
     async fn test_view_freeze() {
         let mut t = MockSystem::default();
         let (ledger, key_streams) = create_network(&mut t, &[2000, 2000, 0]).await;
+        let tmp_dir1 = TempDir::new("keystore").unwrap();
+        let tmp_dir2 = TempDir::new("keystore").unwrap();
+        let tmp_dir3 = TempDir::new("keystore").unwrap();
+
 
         // Create three keystore clients: one to mint and view an asset, one to make an anonymous
         // transfer, and one to receive an anonymous transfer. We will see if the viewer can
         // discover the output record of the anonymous transfer, in which it is not a participant.
         let (mut viewer_input, mut viewer_output) =
-            create_keystore(ledger.clone(), key_streams[0].clone());
+            create_keystore(ledger.clone(), key_streams[0].clone(), PathBuf::from(tmp_dir1.path()));
         let (mut sender_input, mut sender_output) =
-            create_keystore(ledger.clone(), key_streams[1].clone());
+            create_keystore(ledger.clone(), key_streams[1].clone(), PathBuf::from(tmp_dir2.path()));
         let (mut receiver_input, mut receiver_output) =
-            create_keystore(ledger, key_streams[2].clone());
+            create_keystore(ledger, key_streams[2].clone(), PathBuf::from(tmp_dir3.path()));
 
         // Get the viewer's funded address.
         writeln!(viewer_input, "gen_key sending scan_from=start wait=true").unwrap();
@@ -1358,15 +1392,19 @@ mod test {
         let seed = AssetCodeSeed::generate(&mut rng);
         let code = AssetCode::new_domestic(seed, "my_asset".as_bytes());
         let definition = AssetDefinition::new(code, AssetPolicy::default()).unwrap();
+        let tmp_dir = TempDir::new("keystore").unwrap();
 
         let mut t = MockSystem::default();
         let (ledger, key_streams) = create_network(&mut t, &[0]).await;
-        let (mut input, mut output) = create_keystore(ledger.clone(), key_streams[0].clone());
+        let (mut input, mut output) = create_keystore(ledger.clone(), key_streams[0].clone(), PathBuf::from(tmp_dir.path()));
 
         // Load without mint info.
+        println!("1");
         writeln!(input, "import_asset definition:{}", definition).unwrap();
         wait_for_prompt(&mut output);
+        println!("2");
         writeln!(input, "asset {}", definition.code).unwrap();
+        println!("3");
         match_output(
             &mut output,
             &[
@@ -1376,6 +1414,7 @@ mod test {
                 "Minter: unknown",
             ],
         );
+        println!("4");
 
         // Update later with mint info.
         writeln!(
@@ -1384,6 +1423,7 @@ mod test {
             definition, seed
         )
         .unwrap();
+        println!("5");
         wait_for_prompt(&mut output);
         // Asset 0 is the native asset, ours is asset 1.
         writeln!(input, "asset 1").unwrap();
