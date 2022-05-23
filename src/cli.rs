@@ -22,7 +22,6 @@ use crate::{
     events::EventIndex,
     io::SharedIO,
     loader::{KeystoreLoader, Loader, LoaderMetadata},
-    persistence::AtomicKeystoreStorage,
     reader::Reader,
     AssetInfo, BincodeSnafu, IoSnafu, KeystoreBackend, KeystoreError, TransactionReceipt,
     TransactionStatus,
@@ -48,7 +47,6 @@ use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::str::FromStr;
 use tagged_base64::TaggedBase64;
-use tempdir::TempDir;
 
 struct TrivialKeystoreLoader {
     dir: PathBuf,
@@ -120,7 +118,8 @@ pub trait CLIArgs {
     fn use_tmp_storage(&self) -> bool;
 }
 
-pub type Keystore<'a, C> = crate::Keystore<'a, <C as CLI<'a>>::Backend, <C as CLI<'a>>::Ledger, LoaderMetadata>;
+pub type Keystore<'a, C> =
+    crate::Keystore<'a, <C as CLI<'a>>::Backend, <C as CLI<'a>>::Ledger, LoaderMetadata>;
 
 /// A REPL command.
 ///
@@ -1006,9 +1005,7 @@ async fn keystore_for_test<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
     path: PathBuf,
     args: C::Args,
 ) -> Result<Keystore<'a, C>, KeystoreError<L>> {
-    let mut loader = TrivialKeystoreLoader {
-        dir: path
-    };
+    let mut loader = TrivialKeystoreLoader { dir: path };
     let universal_param = Box::leak(Box::new(L::srs()));
     let backend = C::init_backend(universal_param, args)?;
     Keystore::<C>::new(backend, &mut loader).await
@@ -1040,11 +1037,8 @@ async fn keystore<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
             ));
             dir
         }
-        Some(storage) => {
-            return Ok((keystore_for_test::<L, C>(storage, args).await?, reader, io))
-        }
+        Some(storage) => return Ok((keystore_for_test::<L, C>(storage, args).await?, reader, io)),
     };
-
 
     cli_writeln!(
         io,
@@ -1062,11 +1056,7 @@ async fn keystore<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
     // Loading the keystore takes a while. Let the user know that's expected.
     //todo !jeb.bearer Make it faster
     cli_writeln!(io, "connecting...");
-    let mut keystore = Keystore::<'a, C>::new(
-        backend,
-        &mut loader,
-    )
-    .await?;
+    let keystore = Keystore::<'a, C>::new(backend, &mut loader).await?;
     cli_writeln!(io, "Type 'help' for a list of commands.");
     Ok((keystore, loader.into_reader().unwrap(), io))
 }
@@ -1074,11 +1064,9 @@ async fn keystore<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
 async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
     args: C::Args,
 ) -> Result<(), KeystoreError<L>> {
-
     let commands = init_commands::<C>();
 
     let (mut keystore, mut input, mut io) = keystore::<L, C>(args).await?;
-
 
     'repl: while let Some(line) = input.read_line() {
         let tokens = line.split_whitespace().collect::<Vec<_>>();
@@ -1145,6 +1133,7 @@ mod test {
     use rand_chacha::{rand_core::SeedableRng, ChaChaRng};
     use reef::cap;
     use std::time::Instant;
+    use tempdir::TempDir;
 
     type MockCapLedger<'a> = Arc<Mutex<MockLedger<'a, cap::Ledger, MockNetwork<'a>>>>;
 

@@ -17,7 +17,6 @@ use crate::{
 };
 use arbitrary::{Arbitrary, Unstructured};
 use async_std::sync::Arc;
-use async_trait::async_trait;
 use atomic_store::{
     error::PersistenceError,
     load_store::{BincodeLoadStore, LoadStore},

@@ -270,12 +270,13 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         let mut loader = TrivialKeystoreLoader {
             dir: TempDir::new("test_keystore").unwrap().into_path(),
         };
-        let storage = AtomicKeystoreStorage::new(&mut loader, 1024).unwrap();
         let key_stream = hd::KeyTree::random(rng).0;
         let backend = self
             .create_backend(ledger.clone(), vec![], key_stream)
             .await;
-        Keystore::with_state(backend, storage, state).await.unwrap()
+        Keystore::with_state(backend, &mut loader, state)
+            .await
+            .unwrap()
     }
 
     /// Creates two key pairs for each keystore.
@@ -524,11 +525,6 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
             let storage = &session.storage;
             let mut state = state.clone();
             let mut loaded = storage.lock().await.load().await.unwrap();
-            println!(
-                "load assets size {} - state asset size {}",
-                loaded.assets.assets.len(),
-                state.assets.assets.len()
-            );
 
             // The persisted state should not include any temporary assets.
             state.assets = AssetLibrary::new(
@@ -568,11 +564,6 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
                     .filter(|asset| !verified.contains(&asset.definition.code))
                     .collect(),
                 loaded.viewing_accounts.keys().cloned().collect(),
-            );
-            println!(
-                "load assets size {} - state asset size {}",
-                loaded.assets.assets.len(),
-                state.assets.assets.len()
             );
             assert_keystore_states_eq(&state, &loaded);
         }

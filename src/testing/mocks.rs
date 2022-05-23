@@ -15,7 +15,7 @@ use crate::{
     txn_builder::{PendingTransaction, TransactionHistoryEntry, TransactionInfo, TransactionState},
     CryptoSnafu, KeystoreBackend, KeystoreError, KeystoreState,
 };
-use async_std::sync::{Arc, Mutex, MutexGuard};
+use async_std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 use derivative::Derivative;
 use futures::stream::Stream;

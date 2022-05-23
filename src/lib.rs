@@ -43,9 +43,9 @@ use crate::{
     asset_library::{AssetLibrary, VerifiedAssetLibrary},
     events::{EventIndex, EventSource, LedgerEvent},
     key_scan::{receive_history_entry, BackgroundKeyScan, ScanOutputs},
+    loader::KeystoreLoader,
     persistence::AtomicKeystoreStorage,
     txn_builder::*,
-    loader::KeystoreLoader,
 };
 use arbitrary::Arbitrary;
 use async_scoped::AsyncScope;
@@ -490,38 +490,23 @@ impl<'a, L: Ledger, Backend: KeystoreBackend<'a, L>, Meta: Serialize + Deseriali
     /// The storage layer used by this implementation.
     // type Storage: KeystoreStorage<'a, L> + Send;
 
-    /// Access the persistent storage layer.
-    ///
-    /// The interface is specified this way, with the main storage interface in a separate trait and
-    /// an accessor function here, to allow implementations of [KeystoreBackend] to split the storage
-    /// layer from the networking layer, since the two concerns are generally separate.
-    ///
-    /// Note that the return type of this function requires the implementation to guard the storage
-    /// layer with a mutex, even if it is not internally shared between threads. This is meant to
-    /// allow shared access to the storage layer internally, but not to require it. A better
-    /// interface would be to have an associated type
-    ///         `type<'l> StorageRef: 'l +  Deref<Target = Self::Storage> + DerefMut`
-    /// This could be [MutexGuard], [async_std::sync::RwLockWriteGuard], or just
-    /// `&mut Self::Storage`, depending on the needs of the implementation. This should be cleaned
-    /// up if and when GATs stabilize.
-    // async fn storage<'l>(&'l mut self) -> MutexGuard<'l, Self::Storage>;
 
     /// Load a keystore or create a new one.
     ///
     /// If a keystore exists in storage, it is loaded. Otherwise, [KeystoreBackend::create] is called to
     /// create a new keystore.
-    async fn load(&mut self) -> Result<KeystoreState<'a, L>, KeystoreError<L>> {
-        let mut storage = self.storage.lock().await;
-        if storage.exists() {
-            // If there is a stored keystore with this key pair, load it.
-            storage.load().await
-        } else {
-            // Otherwise, ask the network layer to create and register a brand new keystore.
-            let state = self.backend.create().await?;
-            storage.create(&state).await?;
-            Ok(state)
-        }
-    }
+    // async fn load(&mut self) -> Result<KeystoreState<'a, L>, KeystoreError<L>> {
+    //     let mut storage = self.storage.lock().await;
+    //     if storage.exists() {
+    //         // If there is a stored keystore with this key pair, load it.
+    //         storage.load().await
+    //     } else {
+    //         // Otherwise, ask the network layer to create and register a brand new keystore.
+    //         let state = self.backend.create().await?;
+    //         storage.create(&state).await?;
+    //         Ok(state)
+    //     }
+    // }
 
     /// Make a change to the persisted state using a function describing a transaction.
     ///
@@ -555,6 +540,16 @@ impl<'a, L: Ledger, Backend: KeystoreBackend<'a, L>, Meta: Serialize + Deseriali
         fut.await
     }
 
+    /// Access the persistent storage layer.
+    ///
+    /// Note that the return type of this function requires the implementation to guard the storage
+    /// layer with a mutex, even if it is not internally shared between threads. This is meant to
+    /// allow shared access to the storage layer internally, but not to require it. A better
+    /// interface would be to have an associated type
+    ///         `type<'l> StorageRef: 'l +  Deref<Target = Self::Storage> + DerefMut`
+    /// This could be [MutexGuard], [async_std::sync::RwLockWriteGuard], or just
+    /// `&mut Self::Storage`, depending on the needs of the implementation. This should be cleaned
+    /// up if and when GATs stabilize.
     pub async fn storage(&mut self) -> MutexGuard<'_, AtomicKeystoreStorage<'a, L, Meta>> {
         self.storage.lock().await
     }
@@ -624,7 +619,9 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         }
     }
 
-    pub async fn transaction_status<Meta: Serialize + DeserializeOwned + Send + Clone + PartialEq>(
+    pub async fn transaction_status<
+        Meta: Serialize + DeserializeOwned + Send + Clone + PartialEq,
+    >(
         &mut self,
         session: &mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>, Meta>,
         receipt: &TransactionReceipt<L>,
@@ -1758,7 +1755,7 @@ impl<
     // erasure. I don't know why this doesn't crash the compiler, but it doesn't.
     pub fn new(
         mut backend: Backend,
-        loader: &mut impl KeystoreLoader<L, Meta = Meta>
+        loader: &mut impl KeystoreLoader<L, Meta = Meta>,
     ) -> BoxFuture<'a, Result<Keystore<'a, Backend, L, Meta>, KeystoreError<L>>> {
         let mut storage = AtomicKeystoreStorage::new(loader, 1024).unwrap();
         Box::pin(async move {
@@ -1776,9 +1773,10 @@ impl<
     #[cfg(any(test, bench, feature = "testing"))]
     pub fn with_state(
         backend: Backend,
-        storage: AtomicKeystoreStorage<'a, L, Meta>,
+        loader: &mut impl KeystoreLoader<L, Meta = Meta>,
         state: KeystoreState<'a, L>,
     ) -> BoxFuture<'a, Result<Keystore<'a, Backend, L, Meta>, KeystoreError<L>>> {
+        let storage = AtomicKeystoreStorage::new(loader, 1024).unwrap();
         Box::pin(async move { Self::new_impl(backend, storage, state).await })
     }
 
