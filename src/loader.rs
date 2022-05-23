@@ -48,6 +48,30 @@ pub struct LoaderMetadata {
     encrypted_bytes: CipherText,
 }
 
+// Loader for using in tests.  Just creates defualt metadata and Keytree.
+// This shouldn't be used for production, only tests.
+// type Meta = () would be more appropriate for this but it changes the
+// keystore typing making it hard to use this in Cli tests.
+pub struct TrivialKeystoreLoader {
+    pub dir: PathBuf,
+}
+
+impl<L: Ledger> KeystoreLoader<L> for TrivialKeystoreLoader {
+    type Meta = LoaderMetadata;
+
+    fn location(&self) -> PathBuf {
+        self.dir.clone()
+    }
+
+    fn create(&mut self) -> Result<(LoaderMetadata, KeyTree), KeystoreError<L>> {
+        let key = KeyTree::from_password_and_salt(&[], &[0; 32]).context(KeySnafu)?;
+        Ok((Default::default(), key))
+    }
+
+    fn load(&mut self, _meta: &mut LoaderMetadata) -> Result<KeyTree, KeystoreError<L>> {
+        KeyTree::from_password_and_salt(&[], &[0; 32]).context(KeySnafu)
+    }
+}
 enum LoaderInput {
     User(Reader),
     PasswordLiteral(String),

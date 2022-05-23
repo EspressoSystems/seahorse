@@ -21,7 +21,7 @@ use crate::KeySnafu;
 use crate::{
     events::EventIndex,
     io::SharedIO,
-    loader::{KeystoreLoader, Loader, LoaderMetadata},
+    loader::{KeystoreLoader, Loader, LoaderMetadata, TrivialKeystoreLoader},
     reader::Reader,
     AssetInfo, BincodeSnafu, IoSnafu, KeystoreBackend, KeystoreError, TransactionReceipt,
     TransactionStatus,
@@ -47,27 +47,6 @@ use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::str::FromStr;
 use tagged_base64::TaggedBase64;
-
-struct TrivialKeystoreLoader {
-    dir: PathBuf,
-}
-
-impl<L: Ledger> KeystoreLoader<L> for TrivialKeystoreLoader {
-    type Meta = LoaderMetadata;
-
-    fn location(&self) -> PathBuf {
-        self.dir.clone()
-    }
-
-    fn create(&mut self) -> Result<(LoaderMetadata, KeyTree), KeystoreError<L>> {
-        let key = KeyTree::from_password_and_salt(&[], &[0; 32]).context(KeySnafu)?;
-        Ok((Default::default(), key))
-    }
-
-    fn load(&mut self, _meta: &mut LoaderMetadata) -> Result<KeyTree, KeystoreError<L>> {
-        KeyTree::from_password_and_salt(&[], &[0; 32]).context(KeySnafu)
-    }
-}
 
 /// The interface required of a particular ledger-specific instantiation.
 pub trait CLI<'a> {

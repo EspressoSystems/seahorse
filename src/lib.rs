@@ -490,7 +490,6 @@ impl<'a, L: Ledger, Backend: KeystoreBackend<'a, L>, Meta: Serialize + Deseriali
     /// The storage layer used by this implementation.
     // type Storage: KeystoreStorage<'a, L> + Send;
 
-
     /// Load a keystore or create a new one.
     ///
     /// If a keystore exists in storage, it is loaded. Otherwise, [KeystoreBackend::create] is called to
