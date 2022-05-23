@@ -16,7 +16,6 @@
 /// properties not exposed or guaranteed by the generic interface. The file tests.rs contains the
 /// test suite for the generic keystore interface, which is instantiated for each ledger/backend.
 use super::*;
-use crate::hd::KeyTree;
 use crate::loader::LoaderMetadata;
 use crate::loader::TrivialKeystoreLoader;
 use async_std::sync::{Arc, Mutex};
@@ -26,7 +25,6 @@ use jf_cap::{MerkleTree, Signature, TransactionVerifyingKey};
 use key_set::{KeySet, OrderByOutputs, ProverKeySet, VerifierKeySet};
 use rand_chacha::rand_core::RngCore;
 use std::collections::{BTreeMap, HashSet};
-use std::path::PathBuf;
 use std::pin::Pin;
 use std::time::Instant;
 use tempdir::TempDir;

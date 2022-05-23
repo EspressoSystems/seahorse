@@ -16,12 +16,10 @@
 //! implementation. In addition, the [CLIArgs] trait must be implemented to map your command line
 //! arguments to the options and flags required by the general CLI implementation. After that,
 //! [cli_main] can be used to run the CLI interactively.
-use crate::hd::KeyTree;
-use crate::KeySnafu;
 use crate::{
     events::EventIndex,
     io::SharedIO,
-    loader::{KeystoreLoader, Loader, LoaderMetadata, TrivialKeystoreLoader},
+    loader::{Loader, LoaderMetadata, TrivialKeystoreLoader},
     reader::Reader,
     AssetInfo, BincodeSnafu, IoSnafu, KeystoreBackend, KeystoreError, TransactionReceipt,
     TransactionStatus,
