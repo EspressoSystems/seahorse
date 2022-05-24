@@ -265,7 +265,7 @@ impl<L: Ledger> BackgroundKeyScan<L> {
                         if !received_records.is_empty() {
                             self.history.push(receive_history_entry(
                                 txn.kind(),
-                                Some(txn.hash()),
+                                txn.hash(),
                                 &received_records,
                             ));
                         }
@@ -314,10 +314,10 @@ impl<L: Ledger> BackgroundKeyScan<L> {
 
                 if !records.is_empty() {
                     // Add a history entry for the received transaction.
-                    if let Some((_, _, txn_kind)) = transaction {
+                    if let Some((_, _, hash, txn_kind)) = transaction {
                         self.history.push(receive_history_entry(
                             txn_kind,
-                            None,
+                            hash,
                             &records.into_iter().map(|(ro, _, _)| ro).collect::<Vec<_>>(),
                         ));
                     }
@@ -400,7 +400,7 @@ impl<L: Ledger> BackgroundKeyScan<L> {
 
 pub fn receive_history_entry<L: Ledger>(
     kind: TransactionKind<L>,
-    hash: Option<TransactionHash<L>>,
+    hash: TransactionHash<L>,
     records: &[RecordOpening],
 ) -> TransactionHistoryEntry<L> {
     // The last record is guaranteed not to be the fee change record. It contains useful
@@ -421,7 +421,7 @@ pub fn receive_history_entry<L: Ledger>(
         time: Local::now(),
         asset: txn_asset,
         kind,
-        hash,
+        hash: Some(hash),
         // When we receive transactions, we can't tell from the protocol who sent it to us.
         senders: Vec::new(),
         receivers: records
