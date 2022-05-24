@@ -19,7 +19,7 @@
 use crate::{
     events::EventIndex,
     io::SharedIO,
-    loader::{KeystoreLoader, Loader, LoaderMetadata},
+    loader::{InteractiveLoader, KeystoreLoader, MnemonicPasswordLogin},
     reader::Reader,
     AssetInfo, BincodeSnafu, IoSnafu, KeystoreBackend, KeystoreError, TransactionReceipt,
     TransactionStatus,
@@ -61,7 +61,7 @@ pub trait CLI<'a> {
     async fn init_backend(
         universal_param: &'a UniversalParam,
         args: Self::Args,
-        loader: &mut (impl KeystoreLoader<Self::Ledger, Meta = LoaderMetadata> + Send),
+        loader: &mut (impl KeystoreLoader<Self::Ledger, Meta = MnemonicPasswordLogin> + Send),
     ) -> Result<Self::Backend, KeystoreError<Self::Ledger>>;
 
     /// Add extra, ledger-specific commands to the generic CLI interface.
@@ -1020,7 +1020,7 @@ async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
     );
     cli_writeln!(io, "(c) 2021 Espresso Systems, Inc.");
 
-    let mut loader = Loader::new(storage, reader);
+    let mut loader = InteractiveLoader::new(storage, reader);
 
     let universal_param = Box::leak(Box::new(L::srs()));
     let backend = C::init_backend(universal_param, args, &mut loader).await?;
@@ -1032,7 +1032,7 @@ async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
     cli_writeln!(io, "Type 'help' for a list of commands.");
     let commands = init_commands::<C>();
 
-    let mut input = loader.into_reader().unwrap();
+    let mut input = loader.into_reader();
     'repl: while let Some(line) = input.read_line() {
         let tokens = line.split_whitespace().collect::<Vec<_>>();
         if tokens.is_empty() {
@@ -1137,7 +1137,7 @@ mod test {
         async fn init_backend(
             _universal_param: &'a UniversalParam,
             args: Self::Args,
-            _loader: &mut (impl KeystoreLoader<Self::Ledger, Meta = LoaderMetadata> + Send),
+            _loader: &mut (impl KeystoreLoader<Self::Ledger, Meta = MnemonicPasswordLogin> + Send),
         ) -> Result<Self::Backend, KeystoreError<Self::Ledger>> {
             Ok(MockBackend::new(
                 args.ledger.clone(),

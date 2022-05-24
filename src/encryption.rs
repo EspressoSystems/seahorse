@@ -88,6 +88,8 @@ pub enum Error {
         #[snafu(source(false))]
         source: MacError,
     },
+    /// Randomness was not provided, so encryption failed.
+    NoRandomness,
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -105,11 +107,17 @@ pub type Nonce = [u8; 32];
 pub struct Cipher<Rng: CryptoRng = ChaChaRng> {
     hmac_key: hd::Key,
     cipher_keyspace: hd::KeyTree,
-    rng: Rng,
+    rng: Option<Rng>,
+}
+
+impl Cipher<ChaChaRng> {
+    pub fn decrypter(keys: hd::KeyTree) -> Self {
+        Self::new(keys, None)
+    }
 }
 
 impl<Rng: RngCore + CryptoRng> Cipher<Rng> {
-    pub fn new(keys: hd::KeyTree, rng: Rng) -> Self {
+    pub fn new(keys: hd::KeyTree, rng: Option<Rng>) -> Self {
         Self {
             hmac_key: keys.derive_key("hmac".as_bytes()),
             cipher_keyspace: keys.derive_sub_tree("cipher".as_bytes()),
@@ -118,9 +126,11 @@ impl<Rng: RngCore + CryptoRng> Cipher<Rng> {
     }
 
     pub fn encrypt(&mut self, plaintext: &[u8]) -> Result<CipherText> {
+        let rng = self.rng.as_mut().ok_or(Error::NoRandomness)?;
+
         // Generate a random nonce unique to this message and use it to derive the encryption key.
         let mut nonce = Nonce::default();
-        self.rng.fill_bytes(&mut nonce);
+        rng.fill_bytes(&mut nonce);
         let cipher_key = self.cipher_key(&nonce);
 
         // Encrypt the plaintext by applying the keystream.
@@ -238,7 +248,10 @@ mod tests {
     };
 
     fn random_cipher(rng: &mut ChaChaRng) -> Cipher {
-        Cipher::new(KeyTree::random(rng).0, ChaChaRng::from_rng(rng).unwrap())
+        Cipher::new(
+            KeyTree::random(rng).0,
+            Some(ChaChaRng::from_rng(rng).unwrap()),
+        )
     }
 
     fn corrupt(rng: &mut ChaChaRng, data: &mut [u8]) {

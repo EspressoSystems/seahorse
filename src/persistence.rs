@@ -129,7 +129,7 @@ struct EncryptingResourceAdapter<T> {
 impl<T> EncryptingResourceAdapter<T> {
     fn new(key: KeyTree) -> Self {
         Self {
-            cipher: Cipher::new(key, ChaChaRng::from_entropy()),
+            cipher: Cipher::new(key, Some(ChaChaRng::from_entropy())),
             _phantom: Default::default(),
         }
     }

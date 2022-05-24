@@ -49,7 +49,7 @@ const SEED_LENGTH: usize = 16;
 pub type Salt = [u8; 32];
 
 /// A virtual tree of keys.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct KeyTree {
     // Sub-trees are 64 bytes, twice as large as the actual keys, to make it much harder to break
     // security upwards through the tree. This is probably not strictly necessary (32 bytes is

@@ -2152,7 +2152,7 @@ dependencies = [
  "jf-plonk",
  "jf-primitives",
  "jf-rescue",
- "jf-utils 0.1.1",
+ "jf-utils",
  "num_cpus",
  "percentage",
  "rand 0.8.5",
@@ -2186,7 +2186,7 @@ dependencies = [
  "downcast-rs",
  "itertools",
  "jf-rescue",
- "jf-utils 0.1.1",
+ "jf-utils",
  "merlin",
  "num-bigint 0.4.3",
  "rand_chacha 0.3.1",
@@ -2216,7 +2216,7 @@ dependencies = [
  "itertools",
  "jf-plonk",
  "jf-rescue",
- "jf-utils 0.1.1",
+ "jf-utils",
  "rand_chacha 0.3.1",
  "rayon",
  "serde",
@@ -2243,28 +2243,10 @@ dependencies = [
  "derivative",
  "displaydoc",
  "generic-array",
- "jf-utils 0.1.1",
+ "jf-utils",
  "rayon",
  "serde",
  "zeroize",
-]
-
-[[package]]
-name = "jf-utils"
-version = "0.1.0"
-source = "git+https://github.com/EspressoSystems/jellyfish.git?tag=0.1.0#1fc9a4861e39175a776dc8da109a0bdc1ebb1c5c"
-dependencies = [
- "anyhow",
- "ark-ec",
- "ark-ff",
- "ark-serialize",
- "ark-std",
- "digest 0.10.3",
- "jf-utils-derive 0.1.0",
- "serde",
- "sha2 0.10.2",
- "snafu",
- "tagged-base64 0.2.0 (git+https://github.com/EspressoSystems/tagged-base64.git?branch=main)",
 ]
 
 [[package]]
@@ -2278,21 +2260,11 @@ dependencies = [
  "ark-serialize",
  "ark-std",
  "digest 0.10.3",
- "jf-utils-derive 0.1.1",
+ "jf-utils-derive",
  "serde",
  "sha2 0.10.2",
  "snafu",
- "tagged-base64 0.2.0 (git+https://github.com/EspressoSystems/tagged-base64.git?tag=0.2.0)",
-]
-
-[[package]]
-name = "jf-utils-derive"
-version = "0.1.0"
-source = "git+https://github.com/EspressoSystems/jellyfish.git?tag=0.1.0#1fc9a4861e39175a776dc8da109a0bdc1ebb1c5c"
-dependencies = [
- "ark-std",
- "quote",
- "syn",
+ "tagged-base64",
 ]
 
 [[package]]
@@ -2503,8 +2475,8 @@ dependencies = [
 
 [[package]]
 name = "net"
-version = "0.3.0"
-source = "git+https://github.com/EspressoSystems/net.git#1bbfad0236758b3202eec30893c01cf501eaf0eb"
+version = "0.3.1"
+source = "git+https://github.com/EspressoSystems/net.git#0e204c8e5fb9416c2e779d8a33280fb47bcd0a75"
 dependencies = [
  "ark-serialize",
  "ark-std",
@@ -2514,12 +2486,12 @@ dependencies = [
  "generic-array",
  "itertools",
  "jf-cap",
- "jf-utils 0.1.0",
+ "jf-utils",
  "serde",
  "serde_json",
  "snafu",
  "surf",
- "tagged-base64 0.1.0",
+ "tagged-base64",
  "tide",
  "tracing",
 ]
@@ -3474,7 +3446,7 @@ dependencies = [
  "itertools",
  "jf-cap",
  "jf-primitives",
- "jf-utils 0.1.1",
+ "jf-utils",
  "key-set",
  "lazy_static",
  "net",
@@ -3483,6 +3455,7 @@ dependencies = [
  "pipe",
  "primitive-types",
  "proptest",
+ "rand 0.8.5",
  "rand_chacha 0.3.1",
  "reef",
  "regex",
@@ -3496,7 +3469,7 @@ dependencies = [
  "strum",
  "strum_macros",
  "surf",
- "tagged-base64 0.2.0 (git+https://github.com/EspressoSystems/tagged-base64.git?tag=0.2.0)",
+ "tagged-base64",
  "tempdir",
  "zeroize",
 ]
@@ -3975,40 +3948,8 @@ dependencies = [
 
 [[package]]
 name = "tagged-base64"
-version = "0.1.0"
-source = "git+https://github.com/EspressoSystems/tagged-base64.git?tag=0.1.0#204224e93ed31345e2e535c5da32072b38018b0c"
-dependencies = [
- "base64 0.13.0",
- "console_error_panic_hook",
- "crc-any",
- "futures-channel",
- "js-sys",
- "structopt",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "web-sys",
-]
-
-[[package]]
-name = "tagged-base64"
 version = "0.2.0"
 source = "git+https://github.com/EspressoSystems/tagged-base64.git?tag=0.2.0#c393e135a14a585707012fe2d7f9790f6c5f61d9"
-dependencies = [
- "base64 0.13.0",
- "console_error_panic_hook",
- "crc-any",
- "futures-channel",
- "js-sys",
- "structopt",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "web-sys",
-]
-
-[[package]]
-name = "tagged-base64"
-version = "0.2.0"
-source = "git+https://github.com/EspressoSystems/tagged-base64.git?branch=main#c393e135a14a585707012fe2d7f9790f6c5f61d9"
 dependencies = [
  "base64 0.13.0",
  "console_error_panic_hook",
