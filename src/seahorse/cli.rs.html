@@ -1424,6 +1424,8 @@
 <span id="1424">1424</span>
 <span id="1425">1425</span>
 <span id="1426">1426</span>
+<span id="1427">1427</span>
+<span id="1428">1428</span>
 </pre><pre class="rust"><code><span class="comment">// Copyright (c) 2022 Espresso Systems (espressosys.com)</span>
 <span class="comment">// This file is part of the Seahorse library.</span>
 
@@ -1474,6 +1476,7 @@
 <span class="kw">use</span> <span class="ident">tempdir::TempDir</span>;
 
 <span class="doccomment">/// The interface required of a particular ledger-specific instantiation.</span>
+<span class="attribute">#[<span class="ident">async_trait</span>]</span>
 <span class="kw">pub</span> <span class="kw">trait</span> <span class="ident">CLI</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span><span class="op">&gt;</span> {
     <span class="doccomment">/// The ledger for which we want to instantiate this CLI.</span>
     <span class="kw">type</span> <span class="ident">Ledger</span>: <span class="lifetime">&#39;static</span> <span class="op">+</span> <span class="ident">Ledger</span>;
@@ -1483,10 +1486,10 @@
     <span class="kw">type</span> <span class="ident">Args</span>: <span class="ident">CLIArgs</span>;
 
     <span class="doccomment">/// Create a backend for the keystore which is being controlled by the CLI.</span>
-    <span class="kw">fn</span> <span class="ident">init_backend</span>(
+    <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">init_backend</span>(
         <span class="ident">universal_param</span>: <span class="kw-2">&amp;</span><span class="lifetime">&#39;a</span> <span class="ident">UniversalParam</span>,
         <span class="ident">args</span>: <span class="ident"><span class="self">Self</span>::Args</span>,
-        <span class="ident">loader</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="kw">impl</span> <span class="ident">KeystoreLoader</span><span class="op">&lt;</span><span class="ident"><span class="self">Self</span>::Ledger</span>, <span class="ident">Meta</span> <span class="op">=</span> <span class="ident">LoaderMetadata</span><span class="op">&gt;</span>,
+        <span class="ident">loader</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> (<span class="kw">impl</span> <span class="ident">KeystoreLoader</span><span class="op">&lt;</span><span class="ident"><span class="self">Self</span>::Ledger</span>, <span class="ident">Meta</span> <span class="op">=</span> <span class="ident">LoaderMetadata</span><span class="op">&gt;</span> <span class="op">+</span> <span class="ident">Send</span>),
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident"><span class="self">Self</span>::Backend</span>, <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident"><span class="self">Self</span>::Ledger</span><span class="op">&gt;</span><span class="op">&gt;</span>;
 
     <span class="doccomment">/// Add extra, ledger-specific commands to the generic CLI interface.</span>
@@ -2448,7 +2451,7 @@
     <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">loader</span> <span class="op">=</span> <span class="ident">Loader::new</span>(<span class="ident">storage</span>, <span class="ident">reader</span>);
 
     <span class="kw">let</span> <span class="ident">universal_param</span> <span class="op">=</span> <span class="ident">Box::leak</span>(<span class="ident">Box::new</span>(<span class="ident">L::srs</span>()));
-    <span class="kw">let</span> <span class="ident">backend</span> <span class="op">=</span> <span class="ident">C::init_backend</span>(<span class="ident">universal_param</span>, <span class="ident">args</span>, <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">loader</span>)<span class="question-mark">?</span>;
+    <span class="kw">let</span> <span class="ident">backend</span> <span class="op">=</span> <span class="ident">C::init_backend</span>(<span class="ident">universal_param</span>, <span class="ident">args</span>, <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">loader</span>).<span class="kw">await</span><span class="question-mark">?</span>;
 
     <span class="comment">// Loading the keystore takes a while. Let the user know that&#39;s expected.</span>
     <span class="comment">//todo !jeb.bearer Make it faster</span>
@@ -2553,15 +2556,16 @@
 
     <span class="kw">struct</span> <span class="ident">MockCLI</span>;
 
+    <span class="attribute">#[<span class="ident">async_trait</span>]</span>
     <span class="kw">impl</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span><span class="op">&gt;</span> <span class="ident">CLI</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">MockCLI</span> {
         <span class="kw">type</span> <span class="ident">Ledger</span> <span class="op">=</span> <span class="ident">cap::Ledger</span>;
         <span class="kw">type</span> <span class="ident">Backend</span> <span class="op">=</span> <span class="ident">MockBackend</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span><span class="op">&gt;</span>;
         <span class="kw">type</span> <span class="ident">Args</span> <span class="op">=</span> <span class="ident">MockArgs</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span><span class="op">&gt;</span>;
 
-        <span class="kw">fn</span> <span class="ident">init_backend</span>(
+        <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">init_backend</span>(
             <span class="ident">_universal_param</span>: <span class="kw-2">&amp;</span><span class="lifetime">&#39;a</span> <span class="ident">UniversalParam</span>,
             <span class="ident">args</span>: <span class="ident"><span class="self">Self</span>::Args</span>,
-            <span class="ident">_loader</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="kw">impl</span> <span class="ident">KeystoreLoader</span><span class="op">&lt;</span><span class="ident"><span class="self">Self</span>::Ledger</span>, <span class="ident">Meta</span> <span class="op">=</span> <span class="ident">LoaderMetadata</span><span class="op">&gt;</span>,
+            <span class="ident">_loader</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> (<span class="kw">impl</span> <span class="ident">KeystoreLoader</span><span class="op">&lt;</span><span class="ident"><span class="self">Self</span>::Ledger</span>, <span class="ident">Meta</span> <span class="op">=</span> <span class="ident">LoaderMetadata</span><span class="op">&gt;</span> <span class="op">+</span> <span class="ident">Send</span>),
         ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident"><span class="self">Self</span>::Backend</span>, <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident"><span class="self">Self</span>::Ledger</span><span class="op">&gt;</span><span class="op">&gt;</span> {
             <span class="prelude-val">Ok</span>(<span class="ident">MockBackend::new</span>(
                 <span class="ident">args</span>.<span class="ident">ledger</span>.<span class="ident">clone</span>(),
