@@ -972,7 +972,7 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
         session: &mut WalletSession<'a, L, impl WalletBackend<'a, L>>,
         key_pair: &UserKeyPair,
         memos: &[(ReceiverMemo, RecordCommitment, u64, MerklePath)],
-        transaction: Option<(u64, u64, TransactionKind<L>)>,
+        transaction: Option<(u64, u64, TransactionHash<L>, TransactionKind<L>)>,
         add_to_history: bool,
     ) -> Vec<(RecordOpening, u64, MerklePath)> {
         let mut records = Vec::new();
@@ -987,13 +987,13 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
         }
 
         if add_to_history && !records.is_empty() {
-            if let Some((block_id, txn_id, kind)) = transaction {
+            if let Some((block_id, txn_id, hash, kind)) = transaction {
                 self.add_receive_history(
                     session,
                     block_id,
                     txn_id,
                     kind,
-                    None,
+                    hash,
                     &records
                         .iter()
                         .map(|(ro, _, _)| ro.clone())
@@ -1066,7 +1066,7 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
                 block_id,
                 txn_id,
                 txn.kind(),
-                Some(txn.hash()),
+                txn.hash(),
                 &my_records,
             )
             .await;
@@ -1081,7 +1081,7 @@ impl<'a, L: 'static + Ledger> WalletState<'a, L> {
         block_id: u64,
         txn_id: u64,
         kind: TransactionKind<L>,
-        txn_hash: Option<TransactionHash<L>>,
+        txn_hash: TransactionHash<L>,
         records: &[RecordOpening],
     ) {
         let history = receive_history_entry(kind, txn_hash, records);

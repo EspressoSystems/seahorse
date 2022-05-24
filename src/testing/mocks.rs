@@ -230,6 +230,7 @@ impl<'a, const H: u8> super::MockNetwork<'a, cap::LedgerWithHeight<H>>
     ) -> Result<(), WalletError<cap::LedgerWithHeight<H>>> {
         let (block, block_uids) = &self.committed_blocks[block_id as usize];
         let txn = &block[txn_id as usize];
+        let hash = txn.hash();
         let kind = txn.kind();
         let comms = txn.output_commitments();
         let uids = block_uids[txn_id as usize].clone();
@@ -250,7 +251,7 @@ impl<'a, const H: u8> super::MockNetwork<'a, cap::LedgerWithHeight<H>>
             .collect::<Vec<_>>();
         self.generate_event(LedgerEvent::<cap::LedgerWithHeight<H>>::Memos {
             outputs: izip!(memos, comms, uids, merkle_paths).collect(),
-            transaction: Some((block_id, txn_id, kind)),
+            transaction: Some((block_id, txn_id, hash, kind)),
         });
 
         Ok(())
