@@ -51,7 +51,7 @@ pub enum LedgerEvent<L: Ledger> {
     /// included in `transaction`.
     Memos {
         outputs: Vec<(ReceiverMemo, RecordCommitment, u64, MerklePath)>,
-        transaction: Option<(u64, u64, TransactionKind<L>)>,
+        transaction: Option<(u64, u64, TransactionHash<L>, TransactionKind<L>)>,
     },
 }
 
