@@ -3,7 +3,6 @@ name: Code Coverage Workflow
 on:
   schedule:
     - cron: '0 1 * * 0'
-  pull_request: # Will disable this once I see the workflow working correctly
   workflow_dispatch:
 
 jobs:
