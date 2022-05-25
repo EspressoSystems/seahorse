@@ -9,13 +9,20 @@
 use super::*;
 use chrono::Duration;
 use espresso_macros::generic_tests;
+use std::env;
 
 #[derive(Clone, Debug)]
 pub struct TxnHistoryWithTimeTolerantEq<L: Ledger>(pub TransactionHistoryEntry<L>);
 
 impl<L: Ledger> PartialEq<Self> for TxnHistoryWithTimeTolerantEq<L> {
     fn eq(&self, other: &Self) -> bool {
-        let time_tolerance = Duration::minutes(5);
+        let time_tolerance_minutes = match env::var("SEAHORSE_TEST_TXN_HISTORY_TIME_TOLERANCE") {
+            Ok(t) => t.parse().expect(
+                "SEAHORSE_TEST_TXN_HISTORY_TIME_TOLERANCE should be an integer number of minutes",
+            ),
+            Err(_) => 5,
+        };
+        let time_tolerance = Duration::minutes(time_tolerance_minutes);
         let times_eq = if self.0.time < other.0.time {
             other.0.time - self.0.time < time_tolerance
         } else {
