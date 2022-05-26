@@ -167,7 +167,6 @@ pub mod generic_wallet_tests {
     use crate::asset_library::Icon;
     use async_std::task::block_on;
     use jf_cap::KeyPair;
-    use num_traits::identities::One;
     use proptest::{collection::vec, strategy::Strategy, test_runner, test_runner::TestRunner};
     use reef::traits::TransactionKind as _;
     use std::fs::File;
@@ -801,7 +800,7 @@ pub mod generic_wallet_tests {
         // Note that the transfer proving key size (3, 4) used here is chosen to be 1 larger than
         // necessary in both inputs and outputs, to test dummy records.
         let (ledger, mut wallets) = t
-            .create_test_network(&[(3, 4)], vec![2, 0, 6], &mut now)
+            .create_test_network(&[(3, 4)], vec![2, 2, 2], &mut now)
             .await;
 
         let asset = {
@@ -834,7 +833,7 @@ pub mod generic_wallet_tests {
             let dst = wallets[0].1[0].clone();
             wallets[2]
                 .0
-                .mint(Some(&src), 1, &asset.code, 1, dst)
+                .mint(Some(&src), 0, &asset.code, 3, dst)
                 .await
                 .unwrap();
             t.sync(&ledger, wallets.as_slice()).await;
@@ -846,7 +845,7 @@ pub mod generic_wallet_tests {
                 .0
                 .balance_breakdown(&wallets[0].1[0], &asset.code)
                 .await,
-            1u64.into()
+            3u64.into()
         );
         assert_eq!(
             wallets[0]
@@ -867,7 +866,7 @@ pub mod generic_wallet_tests {
         ledger.lock().await.hold_next_transaction();
         wallets[2]
             .0
-            .freeze(Some(&src), 1, &asset.code, 1, dst.clone())
+            .freeze(Some(&src), 0, &asset.code, 3, dst.clone())
             .await
             .unwrap();
 
@@ -875,7 +874,7 @@ pub mod generic_wallet_tests {
         // freeze that uses them is pending.
         match wallets[2]
             .0
-            .freeze(Some(&src), 1, &asset.code, 1, dst)
+            .freeze(Some(&src), 0, &asset.code, 3, dst)
             .await
         {
             Err(WalletError::TransactionError {
@@ -899,7 +898,7 @@ pub mod generic_wallet_tests {
                 .0
                 .frozen_balance_breakdown(&wallets[0].1[0], &asset.code)
                 .await,
-            1u64.into()
+            3u64.into()
         );
 
         // Check that trying to transfer fails due to frozen balance.
@@ -909,7 +908,7 @@ pub mod generic_wallet_tests {
         let dst = wallets[1].1[0].clone();
         match wallets[0]
             .0
-            .transfer(Some(&src), &asset.code, &[(dst, 1)], 1)
+            .transfer(Some(&src), &asset.code, &[(dst, 1)], 0)
             .await
         {
             Err(WalletError::TransactionError {
@@ -934,7 +933,7 @@ pub mod generic_wallet_tests {
         let dst = wallets[0].1[0].clone();
         wallets[2]
             .0
-            .unfreeze(Some(&src), 1, &asset.code, 1, dst)
+            .unfreeze(Some(&src), 0, &asset.code, 3, dst)
             .await
             .unwrap();
         t.sync(&ledger, wallets.as_slice()).await;
@@ -943,7 +942,7 @@ pub mod generic_wallet_tests {
                 .0
                 .balance_breakdown(&wallets[0].1[0], &asset.code)
                 .await,
-            1u64.into()
+            3u64.into()
         );
         assert_eq!(
             wallets[0]
@@ -958,7 +957,7 @@ pub mod generic_wallet_tests {
         let dst = wallets[1].1[0].clone();
         let xfr_receipt = wallets[0]
             .0
-            .transfer(Some(&src), &asset.code, &[(dst, 1)], 1)
+            .transfer(Some(&src), &asset.code, &[(dst, 1)], 0)
             .await
             .unwrap()
             .clone();
@@ -968,7 +967,7 @@ pub mod generic_wallet_tests {
                 .0
                 .balance_breakdown(&wallets[0].1[0], &asset.code)
                 .await,
-            0u64.into()
+            2u64.into()
         );
         assert_eq!(
             wallets[0]
@@ -993,7 +992,9 @@ pub mod generic_wallet_tests {
                 kind: TransactionKind::<T::Ledger>::mint(),
                 hash: None,
                 senders: Vec::new(),
-                receivers: vec![(wallets[0].1[0].clone(), RecordAmount::one())],
+                receivers: vec![(wallets[0].1[0].clone(), 3u128.into())],
+                fee_change: None,
+                asset_change: None,
                 receipt: None,
             },
             TransactionHistoryEntry {
@@ -1002,7 +1003,9 @@ pub mod generic_wallet_tests {
                 kind: TransactionKind::<T::Ledger>::freeze(),
                 hash: None,
                 senders: Vec::new(),
-                receivers: vec![(wallets[0].1[0].clone(), RecordAmount::one())],
+                receivers: vec![(wallets[0].1[0].clone(), 3u128.into())],
+                fee_change: None,
+                asset_change: None,
                 receipt: None,
             },
             TransactionHistoryEntry {
@@ -1011,7 +1014,9 @@ pub mod generic_wallet_tests {
                 kind: TransactionKind::<T::Ledger>::unfreeze(),
                 hash: None,
                 senders: Vec::new(),
-                receivers: vec![(wallets[0].1[0].clone(), RecordAmount::one())],
+                receivers: vec![(wallets[0].1[0].clone(), 3u128.into())],
+                fee_change: None,
+                asset_change: None,
                 receipt: None,
             },
             TransactionHistoryEntry {
@@ -1020,7 +1025,9 @@ pub mod generic_wallet_tests {
                 kind: TransactionKind::<T::Ledger>::send(),
                 hash: None,
                 senders: wallets[0].1.clone(),
-                receivers: vec![(wallets[1].1[0].clone(), RecordAmount::one())],
+                receivers: vec![(wallets[1].1[0].clone(), 1u128.into())],
+                fee_change: Some(1.into()),
+                asset_change: Some(2.into()),
                 receipt: Some(xfr_receipt),
             },
         ]
@@ -1205,6 +1212,8 @@ pub mod generic_wallet_tests {
                     hash: None,
                     senders: Vec::new(),
                     receivers: vec![(address, amount.into())],
+                    fee_change: None,
+                    asset_change: None,
                     receipt: None,
                 },
             );
@@ -1273,7 +1282,14 @@ pub mod generic_wallet_tests {
                     assert_eq!(wallet_block.len(), block.len());
                     let wallet_block = wallet_block
                         .into_iter()
-                        .map(TxnHistoryWithTimeTolerantEq)
+                        .map(|mut entry| {
+                            // Ignore the change information when comparing. It's difficult to
+                            // predict what the change should be without knowing exactly which
+                            // input records the wallet chooses for the transaction.
+                            entry.fee_change = None;
+                            entry.asset_change = None;
+                            TxnHistoryWithTimeTolerantEq(entry)
+                        })
                         .collect::<Vec<_>>();
                     let block = block
                         .iter()
@@ -1375,6 +1391,8 @@ pub mod generic_wallet_tests {
                             hash: None,
                             senders: Vec::new(),
                             receivers: vec![(sender_address.clone(), (2 * amount).into())],
+                            fee_change: None,
+                            asset_change: None,
                             receipt: None,
                         },
                     );
@@ -1491,6 +1509,8 @@ pub mod generic_wallet_tests {
                         hash: None,
                         senders: vec![sender_address],
                         receivers: vec![(receiver.clone(), amount.into())],
+                        fee_change: None,
+                        asset_change: None,
                         receipt: Some(receipt),
                     },
                 );
@@ -1505,6 +1525,8 @@ pub mod generic_wallet_tests {
                             hash: None,
                             senders: Vec::new(),
                             receivers: vec![(receiver, amount.into())],
+                            fee_change: None,
+                            asset_change: None,
                             receipt: None,
                         },
                     );
@@ -2850,6 +2872,8 @@ pub mod generic_wallet_tests {
             hash: None,
             senders: vec![src.clone()],
             receivers: vec![(dst.clone(), 1.into())],
+            fee_change: Some(1.into()),
+            asset_change: Some(0.into()),
             receipt: Some(receipt.clone()),
         });
         let entry = wallets[0]
@@ -2884,6 +2908,8 @@ pub mod generic_wallet_tests {
             hash: None,
             senders: vec![],
             receivers: vec![(dst.clone(), 1.into())],
+            fee_change: None,
+            asset_change: None,
             receipt: None,
         });
         assert_eq!(
