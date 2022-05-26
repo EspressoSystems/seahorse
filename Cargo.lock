@@ -3290,7 +3290,7 @@ dependencies = [
  "rand_chacha 0.3.1",
  "serde",
  "snafu",
- "strum_macros",
+ "strum_macros 0.20.1",
 ]
 
 [[package]]
@@ -3553,7 +3553,7 @@ dependencies = [
  "snafu",
  "structopt",
  "strum",
- "strum_macros",
+ "strum_macros 0.24.0",
  "surf",
  "tagged-base64",
  "tempdir",
@@ -3980,6 +3980,19 @@ dependencies = [
  "heck 0.3.3",
  "proc-macro2",
  "quote",
+ "syn",
+]
+
+[[package]]
+name = "strum_macros"
+version = "0.24.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6878079b17446e4d3eba6192bb0a2950d5b14f0ed8424b852310e5a94345d0ef"
+dependencies = [
+ "heck 0.4.0",
+ "proc-macro2",
+ "quote",
+ "rustversion",
  "syn",
 ]
 
