@@ -21,8 +21,8 @@ use crate::{
     io::SharedIO,
     loader::{Loader, LoaderMetadata, WalletLoader},
     reader::Reader,
-    AssetInfo, BincodeSnafu, IoSnafu, TransactionReceipt, TransactionStatus, WalletBackend,
-    WalletError,
+    AssetInfo, BincodeSnafu, IoSnafu, RecordAmount, TransactionReceipt, TransactionStatus,
+    WalletBackend, WalletError,
 };
 use async_std::task::block_on;
 use async_trait::async_trait;
@@ -163,7 +163,7 @@ macro_rules! cli_input_from_str {
 
 cli_input_from_str! {
     bool, u64, String, AssetCode, AssetInfo, AuditorPubKey, FreezerPubKey, UserAddress,
-    PathBuf, ReceiverMemo, RecordCommitment, MerklePath, EventIndex
+    PathBuf, ReceiverMemo, RecordAmount, RecordCommitment, MerklePath, EventIndex
 }
 
 impl<'a, C: CLI<'a>, L: Ledger> CLIInput<'a, C> for TransactionReceipt<L> {
@@ -502,7 +502,8 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             transfer,
             "transfer some owned assets to another user",
             C,
-            |io, wallet, asset: ListItem<AssetCode>, to: UserAddress, amount: u64, fee: u64; from: Option<UserAddress>, wait: Option<bool>| {
+            |io, wallet, asset: ListItem<AssetCode>, to: UserAddress, amount: RecordAmount, fee: RecordAmount;
+             from: Option<UserAddress>, wait: Option<bool>| {
                 let from = from.as_ref().map(|addr| &addr.0);
                 let res = wallet.transfer(from, &asset.item, &[(to.0, amount)], fee).await;
                 finish_transaction::<C>(io, wallet, res, wait, "transferred").await;
@@ -514,7 +515,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             C,
             |io, wallet, desc: String; name: Option<String>, viewing_key: Option<AuditorPubKey>,
              freezing_key: Option<FreezerPubKey>, view_amount: Option<bool>,
-             view_address: Option<bool>, view_blind: Option<bool>, viewing_threshold: Option<u64>|
+             view_address: Option<bool>, view_blind: Option<bool>, viewing_threshold: Option<RecordAmount>|
             {
                 let mut policy = AssetPolicy::default();
                 if let Some(viewing_key) = viewing_key {
@@ -551,7 +552,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                     }
                 }
                 if let Some(viewing_threshold) = viewing_threshold {
-                    policy = policy.set_reveal_threshold(viewing_threshold);
+                    policy = policy.set_reveal_threshold(viewing_threshold.into());
                 }
                 match wallet.define_asset(name.unwrap_or_default(), desc.as_bytes(), policy).await {
                     Ok(def) => {
@@ -567,7 +568,8 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             mint,
             "mint an asset",
             C,
-            |io, wallet, asset: ListItem<AssetCode>, to: UserAddress, amount: u64, fee: u64; fee_account: Option<UserAddress>, wait: Option<bool>| {
+            |io, wallet, asset: ListItem<AssetCode>, to: UserAddress, amount: RecordAmount, fee: RecordAmount;
+             fee_account: Option<UserAddress>, wait: Option<bool>| {
                 let res = wallet.mint(fee_account.as_ref().map(|addr| &addr.0), fee, &asset.item, amount, to.0).await;
                 finish_transaction::<C>(io, wallet, res, wait, "minted").await;
             }
@@ -577,7 +579,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             "freeze assets owned by another users",
             C,
             |io, wallet, asset: ListItem<AssetCode>, target: UserAddress,
-             amount: U256, fee: u64; fee_account: Option<UserAddress>, wait: Option<bool>|
+             amount: U256, fee: RecordAmount; fee_account: Option<UserAddress>, wait: Option<bool>|
             {
                 let res = wallet.freeze(fee_account.as_ref().map(|addr| &addr.0), fee, &asset.item, amount, target.0).await;
                 finish_transaction::<C>(io, wallet, res, wait, "frozen").await;
@@ -588,7 +590,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             "unfreeze previously frozen assets owned by another users",
             C,
             |io, wallet, asset: ListItem<AssetCode>, target: UserAddress,
-             amount: U256, fee: u64; fee_account: Option<UserAddress>, wait: Option<bool>|
+             amount: U256, fee: RecordAmount; fee_account: Option<UserAddress>, wait: Option<bool>|
             {
                 let res = wallet.unfreeze(fee_account.as_ref().map(|addr| &addr.0), fee, &asset.item, amount, target.0).await;
                 finish_transaction::<C>(io, wallet, res, wait, "unfrozen").await;

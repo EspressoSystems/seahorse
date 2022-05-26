@@ -15,6 +15,7 @@ use arbitrary_wrappers::*;
 use ark_serialize::*;
 use chrono::{DateTime, Local};
 use derivative::Derivative;
+use derive_more::*;
 use espresso_macros::ser_test;
 use jf_cap::{
     errors::TxnApiError,
@@ -25,7 +26,7 @@ use jf_cap::{
     proof::{mint::MintProvingKey, transfer::TransferProvingKey},
     sign_receiver_memos,
     structs::{
-        AssetCode, AssetCodeSeed, AssetDefinition, AssetPolicy, BlindFactor, FeeInput, FreezeFlag,
+        Amount, AssetCode, AssetCodeSeed, AssetDefinition, AssetPolicy, FeeInput, FreezeFlag,
         Nullifier, ReceiverMemo, RecordCommitment, RecordOpening, TxnFeeInfo,
     },
     transfer::{TransferNote, TransferNoteInput},
@@ -35,7 +36,7 @@ use jf_primitives::merkle_tree::FilledMTBuilder;
 use jf_utils::tagged_blob;
 use key_set::KeySet;
 use num_bigint::{BigInt, Sign};
-use num_traits::identities::Zero;
+use num_traits::identities::{One, Zero};
 use primitive_types::U256;
 use rand_chacha::ChaChaRng;
 #[cfg(test)]
@@ -47,13 +48,126 @@ use reef::{
 use serde::{Deserialize, Serialize};
 use snafu::{ResultExt, Snafu};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::convert::TryFrom;
 use std::convert::TryInto;
 use std::fmt::{Debug, Formatter};
 use std::hash::{Hash, Hasher};
 use std::iter::FromIterator;
-use std::ops::{Index, IndexMut};
+use std::ops::{Index, IndexMut, Mul};
 
-const MAX_RECORD_AMOUNT: u64 = 2u64.pow(63) - 1;
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Default,
+    Hash,
+    Eq,
+    From,
+    Into,
+    Add,
+    AddAssign,
+    Sub,
+    SubAssign,
+    MulAssign,
+    Div,
+    DivAssign,
+    Rem,
+    RemAssign,
+    PartialOrd,
+    Ord,
+    Sum,
+    Deserialize,
+    Serialize,
+    Display,
+    FromStr,
+    LowerHex,
+)]
+#[serde(from = "u128", into = "u128")]
+#[from(types(u128, u64, u32, u8))]
+#[into(types(u128))]
+pub struct RecordAmount(pub Amount);
+
+impl RecordAmount {
+    pub fn max() -> Self {
+        (2u128.pow(127) - 1).into()
+    }
+
+    pub fn is_positive(&self) -> bool {
+        !self.is_zero()
+    }
+}
+
+impl Zero for RecordAmount {
+    fn zero() -> Self {
+        0u128.into()
+    }
+
+    fn is_zero(&self) -> bool {
+        *self == Self::zero()
+    }
+}
+
+impl One for RecordAmount {
+    fn one() -> Self {
+        1u128.into()
+    }
+}
+
+impl<T: Into<RecordAmount>> Mul<T> for RecordAmount {
+    type Output = Self;
+
+    fn mul(self, other: T) -> Self {
+        (u128::from(self) * u128::from(other.into())).into()
+    }
+}
+
+impl From<RecordAmount> for U256 {
+    fn from(amt: RecordAmount) -> U256 {
+        u128::from(amt).into()
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum ConvertRecordAmountError {
+    OutOfRange,
+}
+
+impl TryFrom<U256> for RecordAmount {
+    type Error = ConvertRecordAmountError;
+
+    fn try_from(u: U256) -> Result<Self, Self::Error> {
+        if u <= Self::max().into() {
+            Ok(u.as_u128().into())
+        } else {
+            Err(ConvertRecordAmountError::OutOfRange)
+        }
+    }
+}
+
+impl TryFrom<BigInt> for RecordAmount {
+    type Error = ConvertRecordAmountError;
+
+    fn try_from(i: BigInt) -> Result<Self, Self::Error> {
+        if i >= 0u64.into() {
+            bigint_to_u256(i).try_into()
+        } else {
+            Err(ConvertRecordAmountError::OutOfRange)
+        }
+    }
+}
+
+// This is to make numeric literal inference work.
+//
+// When an integer literal without a suffix is provided, it defaults to `i32`. Where an
+// Into<RecordAmount> is required, such as in the wallet's public transaction building interface,
+// this trait impl can be used to do the conversion.
+impl From<i32> for RecordAmount {
+    fn from(i: i32) -> Self {
+        assert!(i >= 0);
+        (i as u128).into()
+    }
+}
 
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
@@ -122,6 +236,10 @@ impl RecordInfo {
     pub fn unhold(&mut self) {
         self.hold_until = None;
     }
+
+    pub fn amount(&self) -> RecordAmount {
+        self.ro.amount.into()
+    }
 }
 
 impl<'a> Arbitrary<'a> for RecordInfo {
@@ -145,7 +263,7 @@ pub struct RecordDatabase {
     // record (size, uid) indexed by asset type, owner, and freeze status, for easy allocation as
     // transfer or freeze inputs. The records for each asset are ordered by increasing size, which
     // makes it easy to implement a worst-fit allocator that minimizes fragmentation.
-    asset_records: HashMap<(AssetCode, UserAddress, FreezeFlag), BTreeSet<(u64, u64)>>,
+    asset_records: HashMap<(AssetCode, UserAddress, FreezeFlag), BTreeSet<(RecordAmount, u64)>>,
     // record uids indexed by nullifier, for easy removal when confirmed as transfer inputs
     nullifier_records: HashMap<Nullifier, u64>,
 }
@@ -161,7 +279,7 @@ impl RecordDatabase {
                 record.ro.pub_key.address(),
                 record.ro.freeze_flag
             )]
-                .contains(&(record.ro.amount, *uid)));
+                .contains(&(record.amount(), *uid)));
             assert_eq!(*uid, self.nullifier_records[&record.nullifier]);
         }
         assert_eq!(
@@ -193,7 +311,7 @@ impl RecordDatabase {
             .rev()
             .filter_map(move |(_, uid)| {
                 let record = &self.record_info[uid];
-                if record.ro.amount == 0 || record.on_hold(now) {
+                if record.amount().is_zero() || record.on_hold(now) {
                     // Skip useless dummy records and records that are on hold
                     None
                 } else {
@@ -208,15 +326,15 @@ impl RecordDatabase {
         asset: &AssetCode,
         owner: &UserAddress,
         frozen: FreezeFlag,
-        amount: u64,
+        amount: RecordAmount,
         now: u64,
     ) -> Option<&RecordInfo> {
         let unspent_records = self.asset_records.get(&(*asset, owner.clone(), frozen))?;
-        let exact_matches = unspent_records.range((amount, 0)..(amount + 1, 0));
+        let exact_matches = unspent_records.range((amount, 0)..(amount + 1u64.into(), 0));
         for (match_amount, uid) in exact_matches {
             assert_eq!(*match_amount, amount);
             let record = &self.record_info[uid];
-            assert_eq!(record.ro.amount, amount);
+            assert_eq!(record.amount(), amount);
             if record.on_hold(now) {
                 continue;
             }
@@ -272,7 +390,7 @@ impl RecordDatabase {
                 rec.ro.freeze_flag,
             ))
             .or_insert_with(BTreeSet::new)
-            .insert((rec.ro.amount, rec.uid));
+            .insert((rec.ro.amount.into(), rec.uid));
         self.nullifier_records.insert(rec.nullifier, rec.uid);
 
         #[cfg(any(test, debug_assertions))]
@@ -291,7 +409,7 @@ impl RecordDatabase {
                 record.ro.freeze_flag,
             );
             let asset_records = self.asset_records.get_mut(asset_key).unwrap();
-            assert!(asset_records.remove(&(record.ro.amount, uid)));
+            assert!(asset_records.remove(&(record.amount(), uid)));
             if asset_records.is_empty() {
                 self.asset_records.remove(asset_key);
             }
@@ -739,7 +857,7 @@ pub struct TransactionHistoryEntry<L: Ledger> {
     /// senders are and this field may be empty.
     pub senders: Vec<UserAddress>,
     /// Receivers and corresponding amounts.
-    pub receivers: Vec<(UserAddress, u64)>,
+    pub receivers: Vec<(UserAddress, RecordAmount)>,
     /// Amount of change included in the transaction from the fee.
     ///
     /// Every transaction includes a fee, but the record used to pay the fee may be larger than the
@@ -750,7 +868,7 @@ pub struct TransactionHistoryEntry<L: Ledger> {
     /// change, which would be indicated by `Some(0)`. The amount of change may be unknown if, for
     /// example, this is a transaction we received from someone else, in which case we may not know
     /// how much of a fee they paid and how much change they expect to get.
-    pub fee_change: Option<u64>,
+    pub fee_change: Option<RecordAmount>,
     /// Amount of change included in the transaction in the asset being transferred.
     ///
     /// For non-native transfers, the amount of the asset being transferred which is consumed by the
@@ -768,7 +886,7 @@ pub struct TransactionHistoryEntry<L: Ledger> {
     /// change, which would be indicated by `Some(0)`. The amount of change may be unknown if, for
     /// example, this is a transaction we received from someone else, and we do not hold the
     /// necessary viewing keys to inspect the change outputs of the transaction.
-    pub asset_change: Option<u64>,
+    pub asset_change: Option<RecordAmount>,
     /// If we sent this transaction, a receipt to track its progress.
     pub receipt: Option<TransactionReceipt<L>>,
 }
@@ -791,11 +909,11 @@ where
                 .arbitrary_iter::<(ArbitraryUserAddress, u64)>()?
                 .map(|r| {
                     let (addr, amt) = r?;
-                    Ok((addr.into(), amt))
+                    Ok((addr.into(), amt.into()))
                 })
                 .collect::<Result<_, _>>()?,
-            fee_change: u.arbitrary()?,
-            asset_change: u.arbitrary()?,
+            fee_change: u.arbitrary::<Option<u128>>()?.map(RecordAmount::from),
+            asset_change: u.arbitrary::<Option<u128>>()?.map(RecordAmount::from),
             receipt: u.arbitrary()?,
         })
     }
@@ -889,8 +1007,8 @@ pub struct TransferSpec<'a> {
     /// associated records can be transferred.
     pub sender_key_pairs: &'a Vec<UserKeyPair>,
     pub asset: &'a AssetCode,
-    pub receivers: &'a [(UserPubKey, u64, bool)],
-    pub fee: u64,
+    pub receivers: &'a [(UserPubKey, RecordAmount, bool)],
+    pub fee: RecordAmount,
     pub bound_data: Vec<u8>,
     pub xfr_size_requirement: Option<(usize, usize)>,
 }
@@ -957,7 +1075,7 @@ impl<L: Ledger> TransactionState<L> {
     pub fn balance(&self, asset: &AssetCode, pub_key: &UserPubKey, frozen: FreezeFlag) -> U256 {
         self.records
             .input_records(asset, &pub_key.address(), frozen, self.validator.now())
-            .fold(U256::zero(), |sum, record| sum + record.ro.amount)
+            .fold(U256::zero(), |sum, record| sum + record.amount())
     }
 
     pub fn clear_expired_transactions(&mut self) -> Vec<PendingTransaction<L>> {
@@ -1100,7 +1218,7 @@ impl<L: Ledger> TransactionState<L> {
         for (pub_key, amount, _) in spec.receivers.iter() {
             outputs.push(RecordOpening::new(
                 rng,
-                *amount,
+                (*amount).into(),
                 AssetDefinition::native(),
                 pub_key.clone(),
                 FreezeFlag::Unfrozen,
@@ -1138,7 +1256,7 @@ impl<L: Ledger> TransactionState<L> {
             rng,
             inputs,
             &outputs,
-            spec.fee,
+            spec.fee.into(),
             UNEXPIRED_VALID_UNTIL,
             proving_key,
         )
@@ -1173,8 +1291,8 @@ impl<L: Ledger> TransactionState<L> {
                 .iter()
                 .map(|(pub_key, amount, _)| (pub_key.address(), *amount))
                 .collect(),
-            fee_change: Some(fee_change),
-            asset_change: Some(0),
+            fee_change: Some(fee_change.into()),
+            asset_change: Some(RecordAmount::zero()),
             receipt: None,
         };
         Ok((
@@ -1236,11 +1354,11 @@ impl<L: Ledger> TransactionState<L> {
             }
 
             // change in the asset type being transfered (not fee change)
-            if *change > 0 {
+            if change.is_positive() {
                 let me = owner_key_pair.pub_key();
                 change_ro = Some(RecordOpening::new(
                     rng,
-                    *change,
+                    (*change).into(),
                     asset.clone(),
                     me,
                     FreezeFlag::Unfrozen,
@@ -1254,7 +1372,7 @@ impl<L: Ledger> TransactionState<L> {
         for (pub_key, amount, _) in spec.receivers.iter() {
             outputs.push(RecordOpening::new(
                 rng,
-                *amount,
+                (*amount).into(),
                 asset.clone(),
                 pub_key.clone(),
                 FreezeFlag::Unfrozen,
@@ -1292,7 +1410,7 @@ impl<L: Ledger> TransactionState<L> {
         }
 
         // generate transfer note and receiver memos
-        let (fee_info, fee_out_rec) = TxnFeeInfo::new(rng, fee_input, spec.fee).unwrap();
+        let (fee_info, fee_out_rec) = TxnFeeInfo::new(rng, fee_input, spec.fee.into()).unwrap();
         let (note, sig_key_pair) = TransferNote::generate_non_native(
             rng,
             inputs,
@@ -1306,8 +1424,8 @@ impl<L: Ledger> TransactionState<L> {
 
         let fee_change = fee_out_rec.amount;
         let asset_change = match &change_ro {
-            Some(ro) => ro.amount,
-            None => 0,
+            Some(ro) => ro.amount.into(),
+            None => RecordAmount::zero(),
         };
         let outputs: Vec<_> = vec![fee_out_rec]
             .into_iter()
@@ -1339,7 +1457,7 @@ impl<L: Ledger> TransactionState<L> {
                 .iter()
                 .map(|(pub_key, amount, _)| (pub_key.address(), *amount))
                 .collect(),
-            fee_change: Some(fee_change),
+            fee_change: Some(fee_change.into()),
             asset_change: Some(asset_change),
             receipt: None,
         };
@@ -1395,24 +1513,24 @@ impl<L: Ledger> TransactionState<L> {
         &mut self,
         sending_keys: &[UserKeyPair],
         proving_key: &MintProvingKey<'a>,
-        fee: u64,
+        fee: RecordAmount,
         asset: &(AssetDefinition, AssetCodeSeed, Vec<u8>),
-        amount: u64,
+        amount: RecordAmount,
         receiver: UserPubKey,
         rng: &mut ChaChaRng,
     ) -> Result<(MintNote, TransactionInfo<L>), TransactionError> {
         let (asset_def, seed, asset_description) = asset;
-        let mint_record = RecordOpening {
-            amount,
-            asset_def: asset_def.clone(),
-            pub_key: receiver.clone(),
-            freeze_flag: FreezeFlag::Unfrozen,
-            blind: BlindFactor::rand(rng),
-        };
+        let mint_record = RecordOpening::new(
+            rng,
+            amount.into(),
+            asset_def.clone(),
+            receiver.clone(),
+            FreezeFlag::Unfrozen,
+        );
 
         let fee_input = self.find_fee_input(sending_keys, fee)?;
         let fee_rec = fee_input.ro.clone();
-        let (fee_info, fee_out_rec) = TxnFeeInfo::new(rng, fee_input, fee).unwrap();
+        let (fee_info, fee_out_rec) = TxnFeeInfo::new(rng, fee_input, fee.into()).unwrap();
         let rng = rng;
         let (note, sig_key_pair) = jf_cap::mint::MintNote::generate(
             rng,
@@ -1434,8 +1552,8 @@ impl<L: Ledger> TransactionState<L> {
             hash: None,
             senders: vec![fee_rec.pub_key.address()],
             receivers: vec![(receiver.address(), amount)],
-            fee_change: Some(fee_rec.amount),
-            asset_change: Some(0),
+            fee_change: Some(fee_rec.amount.into()),
+            asset_change: Some(RecordAmount::zero()),
             receipt: None,
         };
         Ok((
@@ -1459,7 +1577,7 @@ impl<L: Ledger> TransactionState<L> {
         sending_keys: &[UserKeyPair],
         freezer_key_pair: &FreezerKeyPair,
         proving_keys: &KeySet<FreezeProvingKey<'a>, key_set::OrderByOutputs>,
-        fee: u64,
+        fee: RecordAmount,
         asset: &AssetDefinition,
         amount: U256,
         owner: UserAddress,
@@ -1498,7 +1616,7 @@ impl<L: Ledger> TransactionState<L> {
             Self::freeze_proving_key(rng, proving_keys, asset, &mut inputs, freezer_key_pair)?;
 
         // generate transfer note and receiver memos
-        let (fee_info, fee_out_rec) = TxnFeeInfo::new(rng, fee_input, fee).unwrap();
+        let (fee_info, fee_out_rec) = TxnFeeInfo::new(rng, fee_input, fee.into()).unwrap();
         let (note, sig_key_pair, outputs) =
             FreezeNote::generate(rng, inputs, fee_info, proving_key).context(CryptoSnafu)?;
         let fee_change = fee_out_rec.amount;
@@ -1521,10 +1639,10 @@ impl<L: Ledger> TransactionState<L> {
             // The target receives one frozen output record for each input record we are freezing.
             receivers: input_records
                 .iter()
-                .map(|(ro, _)| (owner.clone(), ro.amount))
+                .map(|(ro, _)| (owner.clone(), ro.amount.into()))
                 .collect(),
-            fee_change: Some(fee_change),
-            asset_change: Some(0),
+            fee_change: Some(fee_change.into()),
+            asset_change: Some(RecordAmount::zero()),
             receipt: None,
         };
         Ok((
@@ -1621,14 +1739,17 @@ impl<L: Ledger> TransactionState<L> {
     ) -> Result<(Vec<(RecordOpening, u64)>, BigInt), TransactionError> {
         let now = self.validator.now();
 
-        // If we have a record with the exact size required, use it to avoid fragmenting big records
-        // into smaller change records.
-        if amount <= MAX_RECORD_AMOUNT.into() {
-            if let Some(record) =
-                self.records
-                    .input_record_with_amount(asset, owner, frozen, amount.as_u64(), now)
+        // If we have a record with the exact size required, use it to avoid
+        // fragmenting big records into smaller change records. First make
+        // sure the amount can be converted to a RecordAmount, since if it is
+        // too big for a single record, then of course we don not have a
+        // record of exactly the right size.
+        if let Ok(amount) = amount.try_into() {
+            if let Some(record) = self
+                .records
+                .input_record_with_amount(asset, owner, frozen, amount, now)
             {
-                return Ok((vec![(record.ro.clone(), record.uid)], 0u64.into()));
+                return Ok((vec![(record.ro.clone(), record.uid)], BigInt::zero()));
             }
         }
 
@@ -1661,7 +1782,7 @@ impl<L: Ledger> TransactionState<L> {
                     });
                 }
             }
-            current_amount += record.ro.amount.into();
+            current_amount += record.amount().into();
             result.push((record.ro.clone(), record.uid));
             if current_amount >= amount {
                 return Ok((
@@ -1693,7 +1814,8 @@ impl<L: Ledger> TransactionState<L> {
         frozen: FreezeFlag,
         amount: U256,
         max_records: Option<usize>,
-    ) -> Result<Vec<(&'l UserKeyPair, Vec<(RecordOpening, u64)>, u64)>, TransactionError> {
+    ) -> Result<Vec<(&'l UserKeyPair, Vec<(RecordOpening, u64)>, RecordAmount)>, TransactionError>
+    {
         let mut records = Vec::new();
         let mut target_amount = amount;
 
@@ -1711,12 +1833,14 @@ impl<L: Ledger> TransactionState<L> {
                 records.push((
                     owner_key_pair,
                     input_records,
-                    bigint_to_u256(change).as_u64(),
+                    change
+                        .try_into()
+                        .expect("got change from more than one record"),
                 ));
                 return Ok(records);
             }
             if !input_records.is_empty() {
-                records.push((owner_key_pair, input_records, 0));
+                records.push((owner_key_pair, input_records, RecordAmount::zero()));
             }
             target_amount = bigint_to_u256(-change);
         }
@@ -1734,7 +1858,7 @@ impl<L: Ledger> TransactionState<L> {
     fn find_fee_input<'l>(
         &self,
         key_pairs: &'l [UserKeyPair],
-        fee: u64,
+        fee: RecordAmount,
     ) -> Result<FeeInput<'l>, TransactionError> {
         let mut records = self.find_records(
             &AssetCode::native(),
@@ -1785,7 +1909,9 @@ impl<L: Ledger> TransactionState<L> {
         xfr_size_requirement: Option<(usize, usize)>,
         change_record: bool,
     ) -> Result<(&'k TransferProvingKey<'a>, usize), TransactionError> {
-        let total_output_amount = outputs.iter().fold(U256::zero(), |sum, ro| sum + ro.amount);
+        let total_output_amount = outputs
+            .iter()
+            .fold(U256::zero(), |sum, ro| sum + RecordAmount::from(ro.amount));
         // non-native transfers have an extra fee input, which is not included in `inputs`.
         let fee_inputs = if *asset == AssetDefinition::native() {
             0
@@ -1830,7 +1956,9 @@ impl<L: Ledger> TransactionState<L> {
                                 suggested_amount: inputs
                                     .iter()
                                     .take(max_inputs - fee_inputs)
-                                    .fold(U256::zero(), |sum, input| sum + input.ro.amount),
+                                    .fold(U256::zero(), |sum, input| {
+                                        sum + RecordAmount::from(input.ro.amount)
+                                    }),
                                 max_records: max_inputs,
                             }
                         } else {
@@ -1852,7 +1980,7 @@ impl<L: Ledger> TransactionState<L> {
                     loop {
                         outputs.push(RecordOpening::new(
                             rng,
-                            0,
+                            0u64.into(),
                             asset.clone(),
                             any_key.clone(),
                             FreezeFlag::Unfrozen,
@@ -1879,9 +2007,9 @@ impl<L: Ledger> TransactionState<L> {
         inputs: &mut Vec<FreezeNoteInput<'k>>,
         key_pair: &'k FreezerKeyPair,
     ) -> Result<&'k FreezeProvingKey<'a>, TransactionError> {
-        let total_output_amount = inputs
-            .iter()
-            .fold(U256::zero(), |sum, input| sum + input.ro.amount);
+        let total_output_amount = inputs.iter().fold(U256::zero(), |sum, input| {
+            sum + RecordAmount::from(input.ro.amount)
+        });
 
         let num_inputs = inputs.len() + 1; // make sure to include fee input
         let num_outputs = num_inputs; // freeze transactions always have equal outputs and inputs
@@ -1894,7 +2022,9 @@ impl<L: Ledger> TransactionState<L> {
                     suggested_amount: inputs
                         .iter()
                         .take(max_inputs - 1) // leave room for fee input
-                        .fold(U256::zero(), |sum, input| sum + input.ro.amount),
+                        .fold(U256::zero(), |sum, input| {
+                            sum + RecordAmount::from(input.ro.amount)
+                        }),
                     max_records: max_inputs,
                 }
             })?;

@@ -116,7 +116,7 @@ pub async fn test_wallet_freeze_unregistered() -> std::io::Result<()> {
     ledger.lock().await.hold_next_transaction();
     wallets[2]
         .0
-        .freeze(Some(&src), 1, &asset.code, 1u64.into(), dst.clone())
+        .freeze(Some(&src), 1, &asset.code, 1, dst.clone())
         .await
         .unwrap();
 
@@ -547,7 +547,7 @@ pub mod generic_wallet_tests {
         } else if freeze {
             wallets[0]
                 .0
-                .freeze(Some(&sender), 1, &asset.code, 1u64.into(), receiver.clone())
+                .freeze(Some(&sender), 1, &asset.code, 1, receiver.clone())
                 .await
                 .unwrap();
         } else {
@@ -693,7 +693,7 @@ pub mod generic_wallet_tests {
         } else if freeze {
             wallets[0]
                 .0
-                .freeze(Some(&sender), 1, &asset.code, 1u64.into(), receiver)
+                .freeze(Some(&sender), 1, &asset.code, 1, receiver)
                 .await
                 .unwrap();
         } else {
@@ -866,7 +866,7 @@ pub mod generic_wallet_tests {
         ledger.lock().await.hold_next_transaction();
         wallets[2]
             .0
-            .freeze(Some(&src), 0, &asset.code, 3u64.into(), dst.clone())
+            .freeze(Some(&src), 0, &asset.code, 3, dst.clone())
             .await
             .unwrap();
 
@@ -874,7 +874,7 @@ pub mod generic_wallet_tests {
         // freeze that uses them is pending.
         match wallets[2]
             .0
-            .freeze(Some(&src), 0, &asset.code, 3u64.into(), dst)
+            .freeze(Some(&src), 0, &asset.code, 3, dst)
             .await
         {
             Err(WalletError::TransactionError {
@@ -933,7 +933,7 @@ pub mod generic_wallet_tests {
         let dst = wallets[0].1[0].clone();
         wallets[2]
             .0
-            .unfreeze(Some(&src), 0, &asset.code, 3u64.into(), dst)
+            .unfreeze(Some(&src), 0, &asset.code, 3, dst)
             .await
             .unwrap();
         t.sync(&ledger, wallets.as_slice()).await;
@@ -992,7 +992,7 @@ pub mod generic_wallet_tests {
                 kind: TransactionKind::<T::Ledger>::mint(),
                 hash: None,
                 senders: Vec::new(),
-                receivers: vec![(wallets[0].1[0].clone(), 3)],
+                receivers: vec![(wallets[0].1[0].clone(), 3u128.into())],
                 fee_change: None,
                 asset_change: None,
                 receipt: None,
@@ -1003,7 +1003,7 @@ pub mod generic_wallet_tests {
                 kind: TransactionKind::<T::Ledger>::freeze(),
                 hash: None,
                 senders: Vec::new(),
-                receivers: vec![(wallets[0].1[0].clone(), 3)],
+                receivers: vec![(wallets[0].1[0].clone(), 3u128.into())],
                 fee_change: None,
                 asset_change: None,
                 receipt: None,
@@ -1014,7 +1014,7 @@ pub mod generic_wallet_tests {
                 kind: TransactionKind::<T::Ledger>::unfreeze(),
                 hash: None,
                 senders: Vec::new(),
-                receivers: vec![(wallets[0].1[0].clone(), 3)],
+                receivers: vec![(wallets[0].1[0].clone(), 3u128.into())],
                 fee_change: None,
                 asset_change: None,
                 receipt: None,
@@ -1025,9 +1025,9 @@ pub mod generic_wallet_tests {
                 kind: TransactionKind::<T::Ledger>::send(),
                 hash: None,
                 senders: wallets[0].1.clone(),
-                receivers: vec![(wallets[1].1[0].clone(), 1)],
-                fee_change: Some(1),
-                asset_change: Some(2),
+                receivers: vec![(wallets[1].1[0].clone(), 1u128.into())],
+                fee_change: Some(1.into()),
+                asset_change: Some(2.into()),
                 receipt: Some(xfr_receipt),
             },
         ]
@@ -1211,7 +1211,7 @@ pub mod generic_wallet_tests {
                     kind: TransactionKind::<T::Ledger>::mint(),
                     hash: None,
                     senders: Vec::new(),
-                    receivers: vec![(address, amount)],
+                    receivers: vec![(address, amount.into())],
                     fee_change: None,
                     asset_change: None,
                     receipt: None,
@@ -1390,7 +1390,7 @@ pub mod generic_wallet_tests {
                             kind: TransactionKind::<T::Ledger>::mint(),
                             hash: None,
                             senders: Vec::new(),
-                            receivers: vec![(sender_address.clone(), 2 * amount)],
+                            receivers: vec![(sender_address.clone(), (2 * amount).into())],
                             fee_change: None,
                             asset_change: None,
                             receipt: None,
@@ -1508,7 +1508,7 @@ pub mod generic_wallet_tests {
                         kind: TransactionKind::<T::Ledger>::send(),
                         hash: None,
                         senders: vec![sender_address],
-                        receivers: vec![(receiver.clone(), amount)],
+                        receivers: vec![(receiver.clone(), amount.into())],
                         fee_change: None,
                         asset_change: None,
                         receipt: Some(receipt),
@@ -1524,7 +1524,7 @@ pub mod generic_wallet_tests {
                             kind: TransactionKind::<T::Ledger>::receive(),
                             hash: None,
                             senders: Vec::new(),
-                            receivers: vec![(receiver, amount)],
+                            receivers: vec![(receiver, amount.into())],
                             fee_change: None,
                             asset_change: None,
                             receipt: None,
@@ -2504,7 +2504,7 @@ pub mod generic_wallet_tests {
             );
             assert_eq!(account.assets, vec![AssetInfo::native::<T::Ledger>()]);
             assert_eq!(account.records.len(), 1);
-            assert_eq!(account.records[0].ro.amount, 5);
+            assert_eq!(account.records[0].amount(), 5.into());
             assert_eq!(account.records[0].ro.asset_def, AssetDefinition::native());
         }
 
@@ -2546,7 +2546,7 @@ pub mod generic_wallet_tests {
             );
             assert_eq!(account.assets, vec![AssetInfo::native::<T::Ledger>()]);
             assert_eq!(account.records.len(), 1);
-            assert_eq!(account.records[0].ro.amount, 2);
+            assert_eq!(account.records[0].amount(), 2.into());
             assert_eq!(account.records[0].ro.asset_def, AssetDefinition::native());
         }
         t.check_storage(&ledger, &wallets).await;
@@ -2871,9 +2871,9 @@ pub mod generic_wallet_tests {
             kind: TransactionKind::<T::Ledger>::send(),
             hash: None,
             senders: vec![src.clone()],
-            receivers: vec![(dst.clone(), 1)],
-            fee_change: Some(1),
-            asset_change: Some(0),
+            receivers: vec![(dst.clone(), 1.into())],
+            fee_change: Some(1.into()),
+            asset_change: Some(0.into()),
             receipt: Some(receipt.clone()),
         });
         let entry = wallets[0]
@@ -2907,7 +2907,7 @@ pub mod generic_wallet_tests {
             kind: TransactionKind::<T::Ledger>::receive(),
             hash: None,
             senders: vec![],
-            receivers: vec![(dst.clone(), 1)],
+            receivers: vec![(dst.clone(), 1.into())],
             fee_change: None,
             asset_change: None,
             receipt: None,
@@ -3021,9 +3021,11 @@ pub mod generic_wallet_tests {
 
     #[async_std::test]
     pub async fn test_big_amount<'a, T: SystemUnderTest<'a>>() {
-        let max_record = 2u64.pow(63) - 1;
-        let max_record_times_2 = U256::from_dec_str("18446744073709551614").unwrap();
-        let max_record_times_3 = U256::from_dec_str("27670116110564327421").unwrap();
+        let max_record = 2u128.pow(127) - 1;
+        let max_record_times_2 =
+            U256::from_dec_str("340282366920938463463374607431768211454").unwrap();
+        let max_record_times_3 =
+            U256::from_dec_str("510423550381407695195061911147652317181").unwrap();
 
         let mut t = T::default();
         let mut now = Instant::now();
@@ -3040,7 +3042,7 @@ pub mod generic_wallet_tests {
             .await
             .unwrap();
         // Mint the maximum single-record amount, thrice (which will cause a total amount which
-        // exceeds both the max single-record amount and the max of a u64).
+        // exceeds both the max single-record amount and the max of a u128).
         wallets[0]
             .0
             .mint(Some(&addr0), 1, &asset.code, max_record, addr0.clone())
@@ -3070,9 +3072,9 @@ pub mod generic_wallet_tests {
         // Check that we can do a transfer whose total amount exceeds the maximum record amount, as
         // long as the amount of each input and output record is acceptable. There is an additional
         // constraint in Jellyfish that the total input amount of a transaction (including the fee!)
-        // can be represented as a u64. In our case, we can use 2 of our max_record inputs (which
-        // sums to 2(2^63 - 1) = 2^64 - 2) and our last remaining native asset record of amount 1
-        // for the fee, giving a total of 2^64 - 1. We just need to make sure we use the account
+        // can be represented as a u128. In our case, we can use 2 of our max_record inputs (which
+        // sums to 2(2^127 - 1) = 2^128 - 2) and our last remaining native asset record of amount 1
+        // for the fee, giving a total of 2^128 - 1. We just need to make sure we use the account
         // with a native record of amount 1 to pay the fee, not the secondary account which still
         // has its initial native record of amount 4.
         wallets[0]

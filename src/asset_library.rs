@@ -26,8 +26,9 @@ use image::{imageops, ImageBuffer, ImageFormat, ImageResult, Pixel, Rgba};
 use jf_cap::{
     keys::AuditorPubKey,
     structs::{AssetCode, AssetCodeSeed, AssetDefinition},
-    BaseField, KeyPair, Signature, VerKey,
+    BaseField, CurveParam, KeyPair, Signature, VerKey,
 };
+use jf_primitives::signatures::{schnorr::SchnorrSignatureScheme, SignatureScheme};
 use jf_utils::tagged_blob;
 use reef::Ledger;
 use serde::{Deserialize, Serialize};
@@ -613,7 +614,10 @@ impl VerifiedAssetLibrary {
             .collect::<Vec<_>>();
         Self {
             signer: signer.ver_key(),
-            signature: signer.sign(&[Self::digest(&assets)]),
+            signature: signer.sign(
+                &[Self::digest(&assets)],
+                SchnorrSignatureScheme::<CurveParam>::CS_ID,
+            ),
             assets,
         }
     }
@@ -631,7 +635,11 @@ impl VerifiedAssetLibrary {
     pub fn check(&self) -> Option<VerKey> {
         if self
             .signer
-            .verify(&[Self::digest(&self.assets)], &self.signature)
+            .verify(
+                &[Self::digest(&self.assets)],
+                &self.signature,
+                SchnorrSignatureScheme::<CurveParam>::CS_ID,
+            )
             .is_ok()
         {
             Some(self.signer.clone())
