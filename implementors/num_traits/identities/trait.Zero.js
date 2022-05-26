@@ -1,0 +1,3 @@
+(function() {var implementors = {};
+implementors["seahorse"] = [{"text":"impl <a class=\"trait\" href=\"https://docs.rs/num-traits/0.2/num_traits/identities/trait.Zero.html\" title=\"trait num_traits::identities::Zero\">Zero</a> for <a class=\"struct\" href=\"seahorse/txn_builder/struct.RecordAmount.html\" title=\"struct seahorse::txn_builder::RecordAmount\">RecordAmount</a>","synthetic":false,"types":["seahorse::txn_builder::RecordAmount"]}];
+if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

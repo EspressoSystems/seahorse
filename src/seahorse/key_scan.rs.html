@@ -869,7 +869,7 @@
             .<span class="ident">iter</span>()
             .<span class="ident">filter_map</span>(<span class="op">|</span><span class="ident">ro</span><span class="op">|</span> {
                 <span class="kw">if</span> <span class="ident">ro</span>.<span class="ident">asset_def</span>.<span class="ident">code</span> <span class="op">=</span><span class="op">=</span> <span class="ident">txn_asset</span> {
-                    <span class="prelude-val">Some</span>((<span class="ident">ro</span>.<span class="ident">pub_key</span>.<span class="ident">address</span>(), <span class="ident">ro</span>.<span class="ident">amount</span>))
+                    <span class="prelude-val">Some</span>((<span class="ident">ro</span>.<span class="ident">pub_key</span>.<span class="ident">address</span>(), <span class="ident">ro</span>.<span class="ident">amount</span>.<span class="ident">into</span>()))
                 } <span class="kw">else</span> {
                     <span class="comment">// Ignore records of the wrong asset type (e.g. the fee change output for a non-</span>
                     <span class="comment">// native asset transfer).</span>
