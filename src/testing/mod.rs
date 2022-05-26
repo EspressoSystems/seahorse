@@ -309,7 +309,7 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
                     if amount > 0 {
                         let ro = RecordOpening::new(
                             &mut rng,
-                            amount,
+                            amount.into(),
                             AssetDefinition::native(),
                             key.pub_key(),
                             FreezeFlag::Unfrozen,

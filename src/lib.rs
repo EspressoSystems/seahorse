@@ -34,7 +34,10 @@ mod secret;
 pub mod testing;
 pub mod txn_builder;
 
-pub use crate::asset_library::{AssetInfo, MintInfo};
+pub use crate::{
+    asset_library::{AssetInfo, MintInfo},
+    txn_builder::RecordAmount,
+};
 pub use jf_cap;
 pub use reef;
 
@@ -1518,9 +1521,9 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         &mut self,
         session: &mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>>,
         minter: Option<&UserAddress>,
-        fee: u64,
+        fee: RecordAmount,
         asset_code: &AssetCode,
-        amount: u64,
+        amount: RecordAmount,
         receiver: UserPubKey,
     ) -> Result<(MintNote, TransactionInfo<L>), KeystoreError<L>> {
         let asset = self
@@ -1556,7 +1559,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         &mut self,
         session: &mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>>,
         fee_address: Option<&UserAddress>,
-        fee: u64,
+        fee: RecordAmount,
         asset: &AssetCode,
         amount: U256,
         owner: UserAddress,
@@ -2023,7 +2026,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + KeystoreBackend<'a, L> + Send + Sync
             .txn_state
             .records
             .iter()
-            .filter(|rec| rec.ro.pub_key.address() == *address && rec.ro.amount > 0)
+            .filter(|rec| rec.ro.pub_key.address() == *address && rec.ro.amount > 0u64.into())
             .cloned()
             .collect::<Vec<_>>();
         let assets = records
@@ -2049,7 +2052,8 @@ impl<'a, L: 'static + Ledger, Backend: 'a + KeystoreBackend<'a, L> + Send + Sync
             .records
             .iter()
             .filter(|rec| {
-                rec.ro.asset_def.policy_ref().viewer_pub_key() == address && rec.ro.amount > 0
+                rec.ro.asset_def.policy_ref().viewer_pub_key() == address
+                    && rec.ro.amount > 0u64.into()
             })
             .cloned()
             .collect::<Vec<_>>();
@@ -2090,7 +2094,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + KeystoreBackend<'a, L> + Send + Sync
             .iter()
             .filter(|rec| {
                 rec.ro.asset_def.policy_ref().freezer_pub_key() == address
-                    && rec.ro.amount > 0
+                    && rec.ro.amount > 0u64.into()
                     && rec.ro.freeze_flag == FreezeFlag::Unfrozen
             })
             .cloned()
@@ -2184,15 +2188,15 @@ impl<'a, L: 'static + Ledger, Backend: 'a + KeystoreBackend<'a, L> + Send + Sync
         &mut self,
         sender: Option<&UserAddress>,
         asset: &AssetCode,
-        receivers: &[(UserPubKey, u64)],
-        fee: u64,
+        receivers: &[(UserPubKey, impl Clone + Into<RecordAmount>)],
+        fee: impl Into<RecordAmount>,
     ) -> Result<TransactionReceipt<L>, KeystoreError<L>> {
         let receivers = receivers
             .iter()
-            .map(|(addr, amount)| (addr.clone(), *amount, false))
+            .map(|(addr, amount)| (addr.clone(), amount.clone().into(), false))
             .collect::<Vec<_>>();
         let (note, info) = self
-            .build_transfer(sender, asset, &receivers, fee, vec![], None)
+            .build_transfer(sender, asset, &receivers, fee.into(), vec![], None)
             .await?;
         self.submit_cap(TransactionNote::Transfer(Box::new(note)), info)
             .await
@@ -2205,8 +2209,8 @@ impl<'a, L: 'static + Ledger, Backend: 'a + KeystoreBackend<'a, L> + Send + Sync
         &mut self,
         sender: Option<&UserAddress>,
         asset: &AssetCode,
-        receivers: &[(UserPubKey, u64, bool)],
-        fee: u64,
+        receivers: &[(UserPubKey, impl Clone + Into<RecordAmount>, bool)],
+        fee: impl Into<RecordAmount>,
         bound_data: Vec<u8>,
         xfr_size_requirement: Option<(usize, usize)>,
     ) -> Result<(TransferNote, TransactionInfo<L>), KeystoreError<L>> {
@@ -2217,11 +2221,16 @@ impl<'a, L: 'static + Ledger, Backend: 'a + KeystoreBackend<'a, L> + Send + Sync
             }
             None => state.key_pairs(),
         };
+        // Convert receiver amounts to `RecordAmount`.
+        let receivers = receivers
+            .iter()
+            .map(|(key, amt, burn)| (key.clone(), amt.clone().into(), *burn))
+            .collect::<Vec<_>>();
         let spec = TransferSpec {
             sender_key_pairs: &sender_key_pairs,
             asset,
-            receivers,
-            fee,
+            receivers: &receivers,
+            fee: fee.into(),
             bound_data,
             xfr_size_requirement,
         };
@@ -2461,14 +2470,21 @@ impl<'a, L: 'static + Ledger, Backend: 'a + KeystoreBackend<'a, L> + Send + Sync
     pub async fn build_mint(
         &mut self,
         minter: Option<&UserAddress>,
-        fee: u64,
+        fee: impl Into<RecordAmount>,
         asset_code: &AssetCode,
-        amount: u64,
+        amount: impl Into<RecordAmount>,
         receiver: UserPubKey,
     ) -> Result<(MintNote, TransactionInfo<L>), KeystoreError<L>> {
         let KeystoreSharedState { state, session, .. } = &mut *self.mutex.lock().await;
         state
-            .build_mint(session, minter, fee, asset_code, amount, receiver)
+            .build_mint(
+                session,
+                minter,
+                fee.into(),
+                asset_code,
+                amount.into(),
+                receiver,
+            )
             .await
     }
 
@@ -2478,13 +2494,13 @@ impl<'a, L: 'static + Ledger, Backend: 'a + KeystoreBackend<'a, L> + Send + Sync
     pub async fn mint(
         &mut self,
         minter: Option<&UserAddress>,
-        fee: u64,
+        fee: impl Into<RecordAmount>,
         asset_code: &AssetCode,
-        amount: u64,
+        amount: impl Into<RecordAmount>,
         receiver: UserPubKey,
     ) -> Result<TransactionReceipt<L>, KeystoreError<L>> {
         let (note, info) = self
-            .build_mint(minter, fee, asset_code, amount, receiver)
+            .build_mint(minter, fee.into(), asset_code, amount.into(), receiver)
             .await?;
         self.submit_cap(TransactionNote::Mint(Box::new(note)), info)
             .await
@@ -2512,7 +2528,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + KeystoreBackend<'a, L> + Send + Sync
     pub async fn build_freeze(
         &mut self,
         freezer: Option<&UserAddress>,
-        fee: u64,
+        fee: impl Into<RecordAmount>,
         asset: &AssetCode,
         amount: impl Into<U256>,
         owner: UserAddress,
@@ -2522,7 +2538,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + KeystoreBackend<'a, L> + Send + Sync
             .build_freeze(
                 session,
                 freezer,
-                fee,
+                fee.into(),
                 asset,
                 amount.into(),
                 owner,
@@ -2537,13 +2553,13 @@ impl<'a, L: 'static + Ledger, Backend: 'a + KeystoreBackend<'a, L> + Send + Sync
     pub async fn freeze(
         &mut self,
         freezer: Option<&UserAddress>,
-        fee: u64,
+        fee: impl Into<RecordAmount>,
         asset: &AssetCode,
         amount: impl Into<U256>,
         owner: UserAddress,
     ) -> Result<TransactionReceipt<L>, KeystoreError<L>> {
         let (note, info) = self
-            .build_freeze(freezer, fee, asset, amount.into(), owner)
+            .build_freeze(freezer, fee.into(), asset, amount.into(), owner)
             .await?;
         self.submit_cap(TransactionNote::Freeze(Box::new(note)), info)
             .await
@@ -2556,7 +2572,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + KeystoreBackend<'a, L> + Send + Sync
     pub async fn build_unfreeze(
         &mut self,
         freezer: Option<&UserAddress>,
-        fee: u64,
+        fee: impl Into<RecordAmount>,
         asset: &AssetCode,
         amount: impl Into<U256>,
         owner: UserAddress,
@@ -2566,7 +2582,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + KeystoreBackend<'a, L> + Send + Sync
             .build_freeze(
                 session,
                 freezer,
-                fee,
+                fee.into(),
                 asset,
                 amount.into(),
                 owner,
@@ -2581,13 +2597,13 @@ impl<'a, L: 'static + Ledger, Backend: 'a + KeystoreBackend<'a, L> + Send + Sync
     pub async fn unfreeze(
         &mut self,
         freezer: Option<&UserAddress>,
-        fee: u64,
+        fee: impl Into<RecordAmount>,
         asset: &AssetCode,
         amount: impl Into<U256>,
         owner: UserAddress,
     ) -> Result<TransactionReceipt<L>, KeystoreError<L>> {
         let (note, info) = self
-            .build_unfreeze(freezer, fee, asset, amount.into(), owner)
+            .build_unfreeze(freezer, fee.into(), asset, amount.into(), owner)
             .await?;
         self.submit_cap(TransactionNote::Freeze(Box::new(note)), info)
             .await
