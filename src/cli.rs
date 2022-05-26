@@ -47,6 +47,7 @@ use std::str::FromStr;
 use tagged_base64::TaggedBase64;
 
 /// The interface required of a particular ledger-specific instantiation.
+#[async_trait]
 pub trait CLI<'a> {
     /// The ledger for which we want to instantiate this CLI.
     type Ledger: 'static + Ledger;
@@ -56,7 +57,7 @@ pub trait CLI<'a> {
     type Args: CLIArgs;
 
     /// Create a backend for the keystore which is being controlled by the CLI.
-    fn init_backend(
+    async fn init_backend(
         universal_param: &'a UniversalParam,
         args: Self::Args,
     ) -> Result<Self::Backend, KeystoreError<Self::Ledger>>;
@@ -984,7 +985,7 @@ async fn keystore_for_test<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
 ) -> Result<Keystore<'a, C>, KeystoreError<L>> {
     let mut loader = TrivialKeystoreLoader { dir: path };
     let universal_param = Box::leak(Box::new(L::srs()));
-    let backend = C::init_backend(universal_param, args)?;
+    let backend = C::init_backend(universal_param, args).await?;
     Keystore::<C>::new(backend, &mut loader).await
 }
 
@@ -1028,7 +1029,7 @@ async fn keystore<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
     let mut loader = Loader::new(storage, reader);
 
     let universal_param = Box::leak(Box::new(L::srs()));
-    let backend = C::init_backend(universal_param, args)?;
+    let backend = C::init_backend(universal_param, args).await?;
 
     // Loading the keystore takes a while. Let the user know that's expected.
     //todo !jeb.bearer Make it faster
@@ -1141,12 +1142,13 @@ mod test {
 
     struct MockCLI;
 
+    #[async_trait]
     impl<'a> CLI<'a> for MockCLI {
         type Ledger = cap::Ledger;
         type Backend = MockBackend<'a>;
         type Args = MockArgs<'a>;
 
-        fn init_backend(
+        async fn init_backend(
             _universal_param: &'a UniversalParam,
             args: Self::Args,
         ) -> Result<Self::Backend, KeystoreError<Self::Ledger>> {
