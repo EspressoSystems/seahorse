@@ -45,6 +45,7 @@ use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::str::FromStr;
 use tagged_base64::TaggedBase64;
+use tempdir::TempDir;
 
 /// The interface required of a particular ledger-specific instantiation.
 #[async_trait]
@@ -979,26 +980,12 @@ pub fn key_gen<'a, C: CLI<'a>>(mut path: PathBuf) -> Result<(), KeystoreError<C:
     Ok(())
 }
 
-async fn keystore_for_test<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
-    path: PathBuf,
+async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
     args: C::Args,
-) -> Result<Keystore<'a, C>, KeystoreError<L>> {
-    let mut loader = TrivialKeystoreLoader { dir: path };
-    let universal_param = Box::leak(Box::new(L::srs()));
-    let backend = C::init_backend(universal_param, args).await?;
-    Keystore::<C>::new(backend, &mut loader).await
-}
-
-async fn keystore<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
-    args: C::Args,
-) -> Result<(Keystore<'a, C>, Reader, SharedIO), KeystoreError<L>> {
-    let (mut io, reader) = match args.io() {
-        Some(io) => (io.clone(), Reader::automated(io)),
-        None => (SharedIO::std(), Reader::interactive()),
-    };
-    let storage = match args.storage_path() {
-        Some(storage) if !args.use_tmp_storage() => storage,
-        None => {
+) -> Result<(), KeystoreError<L>> {
+    let (storage, _tmp_dir) = match args.storage_path() {
+        Some(storage) => (storage, None),
+        None if !args.use_tmp_storage() => {
             let home = std::env::var("HOME").map_err(|_| KeystoreError::Failed {
                 msg: String::from(
                     "HOME directory is not set. Please set your HOME directory, or specify \
@@ -1013,11 +1000,18 @@ async fn keystore<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
                     .replace('/', "_")
                     .replace('\\', "_")
             ));
-            dir
+            (dir, None)
         }
-        Some(storage) => return Ok((keystore_for_test::<L, C>(storage, args).await?, reader, io)),
+        None => {
+            let tmp_dir = TempDir::new("keystore").context(IoSnafu)?;
+            (PathBuf::from(tmp_dir.path()), Some(tmp_dir))
+        }
     };
 
+    let (mut io, reader) = match args.io() {
+        Some(io) => (io.clone(), Reader::automated(io)),
+        None => (SharedIO::std(), Reader::interactive()),
+    };
     cli_writeln!(
         io,
         "Welcome to the {} keystore, version {}",
@@ -1034,18 +1028,11 @@ async fn keystore<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
     // Loading the keystore takes a while. Let the user know that's expected.
     //todo !jeb.bearer Make it faster
     cli_writeln!(io, "connecting...");
-    let keystore = Keystore::<'a, C>::new(backend, &mut loader).await?;
+    let mut keystore = Keystore::<C>::new(backend, &mut loader).await?;
     cli_writeln!(io, "Type 'help' for a list of commands.");
-    Ok((keystore, loader.into_reader().unwrap(), io))
-}
-
-async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
-    args: C::Args,
-) -> Result<(), KeystoreError<L>> {
     let commands = init_commands::<C>();
 
-    let (mut keystore, mut input, mut io) = keystore::<L, C>(args).await?;
-
+    let mut input = loader.into_reader().unwrap();
     'repl: while let Some(line) = input.read_line() {
         let tokens = line.split_whitespace().collect::<Vec<_>>();
         if tokens.is_empty() {
@@ -1112,6 +1099,7 @@ mod test {
     use reef::cap;
     use std::time::Instant;
     use tempdir::TempDir;
+    use std::io::BufRead;
 
     type MockCapLedger<'a> = Arc<Mutex<MockLedger<'a, cap::Ledger, MockNetwork<'a>>>>;
 
@@ -1197,8 +1185,17 @@ mod test {
         });
 
         // Wait for the CLI to start up and then return the input and output pipes.
-        let input = Tee::new(input);
+        let mut input = Tee::new(input);
         let mut output = Tee::new(output);
+        wait_for_prompt(&mut output);
+        // Loader wants to verify the keyphase.  Input 1 here to accept the generated phrase.
+        writeln!(input, "1").unwrap();
+        let mut line = String::new();
+        // Enter a password for the loader
+        output.read_line(&mut line).unwrap();
+        writeln!(input, "password").unwrap();
+        output.read_line(&mut line).unwrap();
+        writeln!(input, "password").unwrap();
         wait_for_prompt(&mut output);
         (input, output)
     }
