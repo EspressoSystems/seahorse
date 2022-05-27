@@ -2026,6 +2026,44 @@
 <span id="2026">2026</span>
 <span id="2027">2027</span>
 <span id="2028">2028</span>
+<span id="2029">2029</span>
+<span id="2030">2030</span>
+<span id="2031">2031</span>
+<span id="2032">2032</span>
+<span id="2033">2033</span>
+<span id="2034">2034</span>
+<span id="2035">2035</span>
+<span id="2036">2036</span>
+<span id="2037">2037</span>
+<span id="2038">2038</span>
+<span id="2039">2039</span>
+<span id="2040">2040</span>
+<span id="2041">2041</span>
+<span id="2042">2042</span>
+<span id="2043">2043</span>
+<span id="2044">2044</span>
+<span id="2045">2045</span>
+<span id="2046">2046</span>
+<span id="2047">2047</span>
+<span id="2048">2048</span>
+<span id="2049">2049</span>
+<span id="2050">2050</span>
+<span id="2051">2051</span>
+<span id="2052">2052</span>
+<span id="2053">2053</span>
+<span id="2054">2054</span>
+<span id="2055">2055</span>
+<span id="2056">2056</span>
+<span id="2057">2057</span>
+<span id="2058">2058</span>
+<span id="2059">2059</span>
+<span id="2060">2060</span>
+<span id="2061">2061</span>
+<span id="2062">2062</span>
+<span id="2063">2063</span>
+<span id="2064">2064</span>
+<span id="2065">2065</span>
+<span id="2066">2066</span>
 </pre><pre class="rust"><code><span class="comment">// Copyright (c) 2022 Espresso Systems (espressosys.com)</span>
 <span class="comment">// This file is part of the Seahorse library.</span>
 
@@ -2042,6 +2080,7 @@
 <span class="kw">use</span> <span class="ident">arbitrary_wrappers</span>::<span class="kw-2">*</span>;
 <span class="kw">use</span> <span class="ident">ark_serialize</span>::<span class="kw-2">*</span>;
 <span class="kw">use</span> <span class="ident">chrono</span>::{<span class="ident">DateTime</span>, <span class="ident">Local</span>};
+<span class="kw">use</span> <span class="ident">derivative::Derivative</span>;
 <span class="kw">use</span> <span class="ident">derive_more</span>::<span class="kw-2">*</span>;
 <span class="kw">use</span> <span class="ident">espresso_macros::ser_test</span>;
 <span class="kw">use</span> <span class="ident">jf_cap</span>::{
@@ -2869,33 +2908,53 @@
 }
 
 <span class="attribute">#[<span class="ident">ser_test</span>(<span class="ident">arbitrary</span>, <span class="ident">ark</span>(<span class="bool-val">false</span>), <span class="ident">types</span>(<span class="ident">cap::Ledger</span>))]</span>
-<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Clone</span>, <span class="ident">Debug</span>, <span class="ident">Serialize</span>, <span class="ident">Deserialize</span>)]</span>
+<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Clone</span>, <span class="ident">Debug</span>, <span class="ident">Serialize</span>, <span class="ident">Deserialize</span>, <span class="ident">Derivative</span>)]</span>
 <span class="attribute">#[<span class="ident">serde</span>(<span class="ident">bound</span> <span class="op">=</span> <span class="string">&quot;&quot;</span>)]</span>
+<span class="attribute">#[<span class="ident">derivative</span>(<span class="ident">PartialEq</span>(<span class="ident">bound</span> <span class="op">=</span> <span class="string">&quot;L: Ledger&quot;</span>))]</span>
 <span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">TransactionHistoryEntry</span><span class="op">&lt;</span><span class="ident">L</span>: <span class="ident">Ledger</span><span class="op">&gt;</span> {
     <span class="kw">pub</span> <span class="ident">time</span>: <span class="ident">DateTime</span><span class="op">&lt;</span><span class="ident">Local</span><span class="op">&gt;</span>,
     <span class="kw">pub</span> <span class="ident">asset</span>: <span class="ident">AssetCode</span>,
     <span class="kw">pub</span> <span class="ident">kind</span>: <span class="ident">TransactionKind</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span>,
     <span class="kw">pub</span> <span class="ident">hash</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">TransactionHash</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span>,
-    <span class="comment">// If we sent this transaction, `senders` records the addresses of the spending keys used to</span>
-    <span class="comment">// submit it. If we received this transaction from someone else, we may not know who the senders</span>
-    <span class="comment">// are and this field may be empty.</span>
+    <span class="doccomment">/// Addresses used to build this transaction.</span>
+    <span class="doccomment">///</span>
+    <span class="doccomment">/// If we sent this transaction, `senders` records the addresses of the spending keys used to</span>
+    <span class="doccomment">/// submit it. If we received this transaction from someone else, we may not know who the</span>
+    <span class="doccomment">/// senders are and this field may be empty.</span>
     <span class="kw">pub</span> <span class="ident">senders</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">UserAddress</span><span class="op">&gt;</span>,
     <span class="comment">// Receivers and corresponding amounts.</span>
     <span class="kw">pub</span> <span class="ident">receivers</span>: <span class="ident">Vec</span><span class="op">&lt;</span>(<span class="ident">UserAddress</span>, <span class="ident">RecordAmount</span>)<span class="op">&gt;</span>,
-    <span class="comment">// If we sent this transaction, a receipt to track its progress.</span>
+    <span class="doccomment">/// Amount of change included in the transaction from the fee.</span>
+    <span class="doccomment">///</span>
+    <span class="doccomment">/// Every transaction includes a fee, but the record used to pay the fee may be larger than the</span>
+    <span class="doccomment">/// actual fee. In this case, one of the outputs of the transaction will contain change from the</span>
+    <span class="doccomment">/// fee, which the transaction sender receives when the transaction is finalized.</span>
+    <span class="doccomment">///</span>
+    <span class="doccomment">/// Note that `None` indicates that the amount of change is unknown, not that there is no</span>
+    <span class="doccomment">/// change, which would be indicated by `Some(0)`. The amount of change may be unknown if, for</span>
+    <span class="doccomment">/// example, this is a transaction we received from someone else, in which case we may not know</span>
+    <span class="doccomment">/// how much of a fee they paid and how much change they expect to get.</span>
+    <span class="kw">pub</span> <span class="ident">fee_change</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">RecordAmount</span><span class="op">&gt;</span>,
+    <span class="doccomment">/// Amount of change included in the transaction in the asset being transferred.</span>
+    <span class="doccomment">///</span>
+    <span class="doccomment">/// For non-native transfers, the amount of the asset being transferred which is consumed by the</span>
+    <span class="doccomment">/// transaction may exceed the amount that the sender wants to transfer, due to the way discrete</span>
+    <span class="doccomment">/// record amounts break down. In this case, one of the outputs of the transaction will contain</span>
+    <span class="doccomment">/// change from the fee, which the transaction sender receives when the transaction is</span>
+    <span class="doccomment">/// finalized.</span>
+    <span class="doccomment">///</span>
+    <span class="doccomment">/// For native transfers, the transfer inputs and the fee input get mixed together, so there is</span>
+    <span class="doccomment">/// only one change output, which accounts for both the fee change and the transfer change. In</span>
+    <span class="doccomment">/// this case, the total amount of change will be reflected in `fee_change` and `asset_change`</span>
+    <span class="doccomment">/// will be `Some(0)`.</span>
+    <span class="doccomment">///</span>
+    <span class="doccomment">/// Note that `None` indicates that the amount of change is unknown, not that there is no</span>
+    <span class="doccomment">/// change, which would be indicated by `Some(0)`. The amount of change may be unknown if, for</span>
+    <span class="doccomment">/// example, this is a transaction we received from someone else, and we do not hold the</span>
+    <span class="doccomment">/// necessary viewing keys to inspect the change outputs of the transaction.</span>
+    <span class="kw">pub</span> <span class="ident">asset_change</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">RecordAmount</span><span class="op">&gt;</span>,
+    <span class="doccomment">/// If we sent this transaction, a receipt to track its progress.</span>
     <span class="kw">pub</span> <span class="ident">receipt</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">TransactionReceipt</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span>,
-}
-
-<span class="kw">impl</span><span class="op">&lt;</span><span class="ident">L</span>: <span class="ident">Ledger</span><span class="op">&gt;</span> <span class="ident">PartialEq</span><span class="op">&lt;</span><span class="self">Self</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">TransactionHistoryEntry</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span> {
-    <span class="kw">fn</span> <span class="ident">eq</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">other</span>: <span class="kw-2">&amp;</span><span class="self">Self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">bool</span> {
-        <span class="self">self</span>.<span class="ident">time</span> <span class="op">=</span><span class="op">=</span> <span class="ident">other</span>.<span class="ident">time</span>
-            <span class="op">&amp;&amp;</span> <span class="self">self</span>.<span class="ident">asset</span> <span class="op">=</span><span class="op">=</span> <span class="ident">other</span>.<span class="ident">asset</span>
-            <span class="op">&amp;&amp;</span> <span class="self">self</span>.<span class="ident">kind</span> <span class="op">=</span><span class="op">=</span> <span class="ident">other</span>.<span class="ident">kind</span>
-            <span class="op">&amp;&amp;</span> <span class="self">self</span>.<span class="ident">hash</span> <span class="op">=</span><span class="op">=</span> <span class="ident">other</span>.<span class="ident">hash</span>
-            <span class="op">&amp;&amp;</span> <span class="self">self</span>.<span class="ident">senders</span> <span class="op">=</span><span class="op">=</span> <span class="ident">other</span>.<span class="ident">senders</span>
-            <span class="op">&amp;&amp;</span> <span class="self">self</span>.<span class="ident">receivers</span> <span class="op">=</span><span class="op">=</span> <span class="ident">other</span>.<span class="ident">receivers</span>
-            <span class="op">&amp;&amp;</span> <span class="self">self</span>.<span class="ident">receipt</span> <span class="op">=</span><span class="op">=</span> <span class="ident">other</span>.<span class="ident">receipt</span>
-    }
 }
 
 <span class="kw">impl</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span>: <span class="ident">Ledger</span><span class="op">&gt;</span> <span class="ident">Arbitrary</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">TransactionHistoryEntry</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span>
@@ -2919,6 +2978,8 @@
                     <span class="prelude-val">Ok</span>((<span class="ident">addr</span>.<span class="ident">into</span>(), <span class="ident">amt</span>.<span class="ident">into</span>()))
                 })
                 .<span class="ident">collect</span>::<span class="op">&lt;</span><span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="kw">_</span>, <span class="kw">_</span><span class="op">&gt;</span><span class="op">&gt;</span>()<span class="question-mark">?</span>,
+            <span class="ident">fee_change</span>: <span class="ident">u</span>.<span class="ident">arbitrary</span>::<span class="op">&lt;</span><span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">u128</span><span class="op">&gt;</span><span class="op">&gt;</span>()<span class="question-mark">?</span>.<span class="ident">map</span>(<span class="ident">RecordAmount::from</span>),
+            <span class="ident">asset_change</span>: <span class="ident">u</span>.<span class="ident">arbitrary</span>::<span class="op">&lt;</span><span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">u128</span><span class="op">&gt;</span><span class="op">&gt;</span>()<span class="question-mark">?</span>.<span class="ident">map</span>(<span class="ident">RecordAmount::from</span>),
             <span class="ident">receipt</span>: <span class="ident">u</span>.<span class="ident">arbitrary</span>()<span class="question-mark">?</span>,
         })
     }
@@ -3267,6 +3328,7 @@
         )
         .<span class="ident">context</span>(<span class="ident">CryptoSnafu</span>)<span class="question-mark">?</span>;
 
+        <span class="kw">let</span> <span class="ident">fee_change</span> <span class="op">=</span> <span class="ident">fee_change_ro</span>.<span class="ident">amount</span>;
         <span class="kw">let</span> <span class="ident">outputs</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="kw">_</span><span class="op">&gt;</span> <span class="op">=</span> <span class="macro">vec!</span>[<span class="ident">fee_change_ro</span>]
             .<span class="ident">into_iter</span>()
             .<span class="ident">chain</span>(<span class="ident">outputs</span>.<span class="ident">into_iter</span>())
@@ -3295,6 +3357,8 @@
                 .<span class="ident">iter</span>()
                 .<span class="ident">map</span>(<span class="op">|</span>(<span class="ident">pub_key</span>, <span class="ident">amount</span>, <span class="kw">_</span>)<span class="op">|</span> (<span class="ident">pub_key</span>.<span class="ident">address</span>(), <span class="kw-2">*</span><span class="ident">amount</span>))
                 .<span class="ident">collect</span>(),
+            <span class="ident">fee_change</span>: <span class="prelude-val">Some</span>(<span class="ident">fee_change</span>.<span class="ident">into</span>()),
+            <span class="ident">asset_change</span>: <span class="prelude-val">Some</span>(<span class="ident">RecordAmount::zero</span>()),
             <span class="ident">receipt</span>: <span class="prelude-val">None</span>,
         };
         <span class="prelude-val">Ok</span>((
@@ -3424,6 +3488,11 @@
         )
         .<span class="ident">context</span>(<span class="ident">CryptoSnafu</span>)<span class="question-mark">?</span>;
 
+        <span class="kw">let</span> <span class="ident">fee_change</span> <span class="op">=</span> <span class="ident">fee_out_rec</span>.<span class="ident">amount</span>;
+        <span class="kw">let</span> <span class="ident">asset_change</span> <span class="op">=</span> <span class="kw">match</span> <span class="kw-2">&amp;</span><span class="ident">change_ro</span> {
+            <span class="prelude-val">Some</span>(<span class="ident">ro</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ro</span>.<span class="ident">amount</span>.<span class="ident">into</span>(),
+            <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> <span class="ident">RecordAmount::zero</span>(),
+        };
         <span class="kw">let</span> <span class="ident">outputs</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="kw">_</span><span class="op">&gt;</span> <span class="op">=</span> <span class="macro">vec!</span>[<span class="ident">fee_out_rec</span>]
             .<span class="ident">into_iter</span>()
             .<span class="ident">chain</span>(<span class="ident">outputs</span>.<span class="ident">into_iter</span>())
@@ -3454,6 +3523,8 @@
                 .<span class="ident">iter</span>()
                 .<span class="ident">map</span>(<span class="op">|</span>(<span class="ident">pub_key</span>, <span class="ident">amount</span>, <span class="kw">_</span>)<span class="op">|</span> (<span class="ident">pub_key</span>.<span class="ident">address</span>(), <span class="kw-2">*</span><span class="ident">amount</span>))
                 .<span class="ident">collect</span>(),
+            <span class="ident">fee_change</span>: <span class="prelude-val">Some</span>(<span class="ident">fee_change</span>.<span class="ident">into</span>()),
+            <span class="ident">asset_change</span>: <span class="prelude-val">Some</span>(<span class="ident">asset_change</span>),
             <span class="ident">receipt</span>: <span class="prelude-val">None</span>,
         };
         <span class="prelude-val">Ok</span>((
@@ -3547,6 +3618,8 @@
             <span class="ident">hash</span>: <span class="prelude-val">None</span>,
             <span class="ident">senders</span>: <span class="macro">vec!</span>[<span class="ident">fee_rec</span>.<span class="ident">pub_key</span>.<span class="ident">address</span>()],
             <span class="ident">receivers</span>: <span class="macro">vec!</span>[(<span class="ident">receiver</span>.<span class="ident">address</span>(), <span class="ident">amount</span>)],
+            <span class="ident">fee_change</span>: <span class="prelude-val">Some</span>(<span class="ident">fee_rec</span>.<span class="ident">amount</span>.<span class="ident">into</span>()),
+            <span class="ident">asset_change</span>: <span class="prelude-val">Some</span>(<span class="ident">RecordAmount::zero</span>()),
             <span class="ident">receipt</span>: <span class="prelude-val">None</span>,
         };
         <span class="prelude-val">Ok</span>((
@@ -3612,6 +3685,7 @@
         <span class="kw">let</span> (<span class="ident">fee_info</span>, <span class="ident">fee_out_rec</span>) <span class="op">=</span> <span class="ident">TxnFeeInfo::new</span>(<span class="ident">rng</span>, <span class="ident">fee_input</span>, <span class="ident">fee</span>.<span class="ident">into</span>()).<span class="ident">unwrap</span>();
         <span class="kw">let</span> (<span class="ident">note</span>, <span class="ident">sig_key_pair</span>, <span class="ident">outputs</span>) <span class="op">=</span>
             <span class="ident">FreezeNote::generate</span>(<span class="ident">rng</span>, <span class="ident">inputs</span>, <span class="ident">fee_info</span>, <span class="ident">proving_key</span>).<span class="ident">context</span>(<span class="ident">CryptoSnafu</span>)<span class="question-mark">?</span>;
+        <span class="kw">let</span> <span class="ident">fee_change</span> <span class="op">=</span> <span class="ident">fee_out_rec</span>.<span class="ident">amount</span>;
         <span class="kw">let</span> <span class="ident">outputs</span> <span class="op">=</span> <span class="ident">std::iter::once</span>(<span class="ident">fee_out_rec</span>)
             .<span class="ident">chain</span>(<span class="ident">outputs</span>)
             .<span class="ident">collect</span>::<span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="kw">_</span><span class="op">&gt;</span><span class="op">&gt;</span>();
@@ -3633,6 +3707,8 @@
                 .<span class="ident">iter</span>()
                 .<span class="ident">map</span>(<span class="op">|</span>(<span class="ident">ro</span>, <span class="kw">_</span>)<span class="op">|</span> (<span class="ident">owner</span>.<span class="ident">clone</span>(), <span class="ident">ro</span>.<span class="ident">amount</span>.<span class="ident">into</span>()))
                 .<span class="ident">collect</span>(),
+            <span class="ident">fee_change</span>: <span class="prelude-val">Some</span>(<span class="ident">fee_change</span>.<span class="ident">into</span>()),
+            <span class="ident">asset_change</span>: <span class="prelude-val">Some</span>(<span class="ident">RecordAmount::zero</span>()),
             <span class="ident">receipt</span>: <span class="prelude-val">None</span>,
         };
         <span class="prelude-val">Ok</span>((

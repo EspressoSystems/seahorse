@@ -439,6 +439,8 @@
 <span id="439">439</span>
 <span id="440">440</span>
 <span id="441">441</span>
+<span id="442">442</span>
+<span id="443">443</span>
 </pre><pre class="rust"><code><span class="doccomment">/// Ledger scanning utilities.</span>
 <span class="doccomment">///</span>
 <span class="doccomment">/// This module provides an interface for searching a ledger for records belonging to a particular</span>
@@ -877,6 +879,8 @@
                 }
             })
             .<span class="ident">collect</span>(),
+        <span class="ident">fee_change</span>: <span class="prelude-val">None</span>,
+        <span class="ident">asset_change</span>: <span class="prelude-val">None</span>,
         <span class="ident">receipt</span>: <span class="prelude-val">None</span>,
     }
 }

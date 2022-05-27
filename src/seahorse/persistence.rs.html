@@ -774,6 +774,8 @@
 <span id="774">774</span>
 <span id="775">775</span>
 <span id="776">776</span>
+<span id="777">777</span>
+<span id="778">778</span>
 </pre><pre class="rust"><code><span class="comment">// Copyright (c) 2022 Espresso Systems (espressosys.com)</span>
 <span class="comment">// This file is part of the Seahorse library.</span>
 
@@ -1528,6 +1530,8 @@
                     <span class="ident">hash</span>: <span class="prelude-val">None</span>,
                     <span class="ident">senders</span>: <span class="macro">vec!</span>[<span class="ident">user_key</span>.<span class="ident">address</span>()],
                     <span class="ident">receivers</span>: <span class="macro">vec!</span>[],
+                    <span class="ident">fee_change</span>: <span class="prelude-val">None</span>,
+                    <span class="ident">asset_change</span>: <span class="prelude-val">None</span>,
                     <span class="ident">receipt</span>: <span class="prelude-val">None</span>,
                 })
                 .<span class="kw">await</span>
