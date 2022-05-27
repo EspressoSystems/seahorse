@@ -487,32 +487,12 @@ pub struct KeystoreSession<
 impl<'a, L: Ledger, Backend: KeystoreBackend<'a, L>, Meta: Serialize + DeserializeOwned + Send>
     KeystoreSession<'a, L, Backend, Meta>
 {
-    /// The storage layer used by this implementation.
-    // type Storage: KeystoreStorage<'a, L> + Send;
-
-    /// Load a keystore or create a new one.
-    ///
-    /// If a keystore exists in storage, it is loaded. Otherwise, [KeystoreBackend::create] is called to
-    /// create a new keystore.
-    // async fn load(&mut self) -> Result<KeystoreState<'a, L>, KeystoreError<L>> {
-    //     let mut storage = self.storage.lock().await;
-    //     if storage.exists() {
-    //         // If there is a stored keystore with this key pair, load it.
-    //         storage.load().await
-    //     } else {
-    //         // Otherwise, ask the network layer to create and register a brand new keystore.
-    //         let state = self.backend.create().await?;
-    //         storage.create(&state).await?;
-    //         Ok(state)
-    //     }
-    // }
-
     /// Make a change to the persisted state using a function describing a transaction.
     ///
     /// # Example
     ///
     /// ```ignore
-    /// backend.store(key_pair, |mut t| async move {
+    /// session.store(key_pair, |mut t| async move {
     ///     t.store_snapshot(keystore_state).await?;
     ///     // If this store fails, the effects of the previous store will be reverted.
     ///     t.store_asset(keystore_state, asset).await?;
