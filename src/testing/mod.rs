@@ -17,17 +17,40 @@
 /// test suite for the generic keystore interface, which is instantiated for each ledger/backend.
 use super::*;
 use crate::loader::LoaderMetadata;
-use crate::loader::TrivialKeystoreLoader;
 use async_std::sync::{Arc, Mutex};
 use chrono::Local;
 use futures::{channel::mpsc, stream::iter};
+use hd::KeyTree;
 use jf_cap::{MerkleTree, Signature, TransactionVerifyingKey};
 use key_set::{KeySet, OrderByOutputs, ProverKeySet, VerifierKeySet};
 use rand_chacha::rand_core::RngCore;
 use std::collections::{BTreeMap, HashSet};
+use std::path::PathBuf;
 use std::pin::Pin;
 use std::time::Instant;
 use tempdir::TempDir;
+
+// Loader for using in tests.  Just creates unit metadata and defualt Keytree.
+pub struct TrivialKeystoreLoader {
+    pub dir: PathBuf,
+}
+
+impl<L: Ledger> KeystoreLoader<L> for TrivialKeystoreLoader {
+    type Meta = LoaderMetadata;
+
+    fn location(&self) -> PathBuf {
+        self.dir.clone()
+    }
+
+    fn create(&mut self) -> Result<(LoaderMetadata, KeyTree), KeystoreError<L>> {
+        let key = KeyTree::from_password_and_salt(&[], &[0; 32]).context(KeySnafu)?;
+        Ok((Default::default(), key))
+    }
+
+    fn load(&mut self, _meta: &mut LoaderMetadata) -> Result<KeyTree, KeystoreError<L>> {
+        KeyTree::from_password_and_salt(&[], &[0; 32]).context(KeySnafu)
+    }
+}
 
 #[async_trait]
 pub trait MockNetwork<'a, L: Ledger> {
@@ -75,7 +98,6 @@ impl<'a, L: Ledger, N: MockNetwork<'a, L>> MockLedger<'a, L, N> {
             sync_index: Default::default(),
             initial_records: records,
             _phantom: Default::default(),
-            // storage: Default::default(),
         }
     }
 
@@ -230,7 +252,6 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         let mut loader = TrivialKeystoreLoader {
             dir: TempDir::new("test_keystore").unwrap().into_path(),
         };
-        // let storage = AtomicKeystoreStorage::new(&mut loader, 1024).unwrap();
         let key_stream = hd::KeyTree::random(rng).0;
         let backend = self
             .create_backend(ledger.clone(), vec![], key_stream)
@@ -270,6 +291,7 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         Vec<(
             Keystore<'a, Self::MockBackend, Self::Ledger, LoaderMetadata>,
             Vec<UserPubKey>,
+            TempDir,
         )>,
     ) {
         let mut rng = ChaChaRng::from_seed([42u8; 32]);
@@ -377,8 +399,9 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         let mut keystores = Vec::new();
         for (key_stream, key_pairs, initial_grants) in users {
             let mut rng = ChaChaRng::from_rng(&mut rng).unwrap();
+            let tmp_dir = TempDir::new("test_keystore").unwrap();
             let mut loader = TrivialKeystoreLoader {
-                dir: TempDir::new("test_keystore").unwrap().into_path(),
+                dir: tmp_dir.path().to_path_buf(),
             };
             let mut seed = [0u8; 32];
             rng.fill_bytes(&mut seed);
@@ -405,7 +428,7 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
                 keystore.await_key_scan(&key_pair.address()).await.unwrap();
                 pub_keys.push(key_pair.pub_key());
             }
-            keystores.push((keystore, pub_keys));
+            keystores.push((keystore, pub_keys, tmp_dir));
         }
 
         println!("Keystores set up: {}s", now.elapsed().as_secs_f32());
@@ -422,6 +445,7 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         keystores: &[(
             Keystore<'a, Self::MockBackend, Self::Ledger, LoaderMetadata>,
             Vec<UserPubKey>,
+            TempDir,
         )],
     ) {
         let memos_source = {
@@ -483,11 +507,12 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         keystores: &[(
             Keystore<'a, Self::MockBackend, Self::Ledger, LoaderMetadata>,
             Vec<UserPubKey>,
+            TempDir,
         )],
         t: EventIndex,
     ) {
         println!("waiting for sync point {}", t);
-        future::join_all(keystores.iter().map(|(keystore, _)| keystore.sync(t))).await;
+        future::join_all(keystores.iter().map(|(keystore, _, _)| keystore.sync(t))).await;
     }
 
     async fn check_storage(
@@ -495,9 +520,10 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         keystores: &[(
             Keystore<'a, Self::MockBackend, Self::Ledger, LoaderMetadata>,
             Vec<UserPubKey>,
+            TempDir,
         )],
     ) {
-        for (keystore, _) in keystores {
+        for (keystore, _, _) in keystores {
             let KeystoreSharedState { state, session, .. } = &*keystore.mutex.lock().await;
             let storage = &session.storage;
             let mut state = state.clone();

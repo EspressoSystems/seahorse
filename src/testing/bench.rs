@@ -109,7 +109,7 @@ async fn generate_independent_transactions<
     let viewing_key = ViewerKeyPair::generate(&mut rng);
     let freezing_key = FreezerKeyPair::generate(&mut rng);
     let (assets, mints): (Vec<_>, Vec<_>) = join_all(keystores.iter_mut().enumerate().map(
-        |(i, (keystore, pub_keys))| {
+        |(i, (keystore, pub_keys, _tmp_dir))| {
             let viewing_key = viewing_key.pub_key();
             let freezing_key = freezing_key.pub_key();
             async move {
@@ -155,7 +155,7 @@ async fn generate_independent_transactions<
         keystores
             .iter_mut()
             .zip(&assets)
-            .map(|((keystore, _), asset)| {
+            .map(|((keystore, _, _), asset)| {
                 let receiver = receiver.pub_key();
                 async move {
                     keystore
@@ -218,7 +218,7 @@ async fn bench_ledger_scanner_setup<
 
     // Mint a viewable asset for each keystore.
     join_all(keystores.iter_mut().zip(txns.mints).map(
-        |((keystore, _), (mint_note, mint_info))| async move {
+        |((keystore, _, _), (mint_note, mint_info))| async move {
             let receipt = keystore
                 .submit_cap(mint_note.into(), mint_info)
                 .await
@@ -242,7 +242,7 @@ async fn bench_ledger_scanner_setup<
             keystores
                 .iter_mut()
                 .zip(&txns.transfers[i * txns_per_block..])
-                .map(|((keystore, _), (xfr_note, xfr_info))| async move {
+                .map(|((keystore, _, _), (xfr_note, xfr_info))| async move {
                     let receipt = keystore
                         .submit_cap(xfr_note.clone().into(), xfr_info.clone())
                         .await

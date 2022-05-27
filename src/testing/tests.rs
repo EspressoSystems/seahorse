@@ -324,6 +324,7 @@ pub mod generic_keystore_tests {
             keystore: &(
                 Keystore<'b, impl KeystoreBackend<'b, L> + Sync + 'b, L, LoaderMetadata>,
                 Vec<UserPubKey>,
+                TempDir,
             ),
             expected_coin_balance: u64,
             starting_native_balance: U256,
@@ -1250,12 +1251,13 @@ pub mod generic_keystore_tests {
             keystores: &[(
                 Keystore<'b, impl KeystoreBackend<'b, L> + Sync + 'b, L, LoaderMetadata>,
                 Vec<UserPubKey>,
+                TempDir,
             )],
             balances: &[Vec<U256>],
             assets: &[AssetDefinition],
         ) {
             for (i, balance) in balances.iter().enumerate() {
-                let (keystore, pub_keys) = &keystores[i + 1];
+                let (keystore, pub_keys, _) = &keystores[i + 1];
 
                 // Check native asset balance.
                 assert_eq!(
@@ -1280,11 +1282,12 @@ pub mod generic_keystore_tests {
             keystores: &[(
                 Keystore<'b, impl KeystoreBackend<'b, L> + Sync + 'b, L, LoaderMetadata>,
                 Vec<UserPubKey>,
+                TempDir,
             )],
             histories: &[Vec<Vec<TransactionHistoryEntry<L>>>],
         ) {
             assert_eq!(keystores.len(), histories.len() + 1);
-            for ((keystore, _), history) in keystores.iter().skip(1).zip(histories) {
+            for ((keystore, _, _), history) in keystores.iter().skip(1).zip(histories) {
                 let mut keystore_history = keystore.transaction_history().await.unwrap();
                 assert_eq!(
                     keystore_history.len(),
@@ -1384,7 +1387,7 @@ pub mod generic_keystore_tests {
                         now.elapsed().as_secs_f32()
                     );
                     now = Instant::now();
-                    let (minter, minter_pub_keys) = &mut keystores[0];
+                    let (minter, minter_pub_keys, _) = &mut keystores[0];
                     minter
                         .mint(
                             Some(&minter_pub_keys[0].address()),
@@ -1944,7 +1947,7 @@ pub mod generic_keystore_tests {
             .await;
         ledger.lock().await.set_block_size(1).unwrap();
 
-        let (mut keystore1, pub_keys1) = keystores.remove(0);
+        let (mut keystore1, pub_keys1, _tmp_dir) = keystores.remove(0);
         let receipt = keystore1
             .transfer(
                 Some(&pub_keys1[0].address()),
@@ -2443,7 +2446,7 @@ pub mod generic_keystore_tests {
         // Check that temporary assets are not persisted, and that persisted assets are never
         // verified.
         {
-            let storage = &keystores[0].0.mutex.lock().await.session.storage;
+            let storage = &keystores[0].0.lock().await.session.storage;
             let loaded = storage.lock().await.load().await.unwrap();
             assert!(loaded.assets.iter().all(|asset| !asset.verified));
             assert!(loaded.assets.contains(AssetCode::native()));

@@ -8,16 +8,14 @@
 pub use crate::testing::MockLedger;
 
 use crate::{
-    asset_library::AssetInfo,
     events::{EventIndex, EventSource, LedgerEvent},
     hd,
     testing::{MockEventSource, MockNetwork as _},
-    txn_builder::{PendingTransaction, TransactionHistoryEntry, TransactionInfo, TransactionState},
+    txn_builder::{PendingTransaction, TransactionInfo, TransactionState},
     CryptoSnafu, KeystoreBackend, KeystoreError, KeystoreState,
 };
 use async_std::sync::{Arc, Mutex};
 use async_trait::async_trait;
-use derivative::Derivative;
 use futures::stream::Stream;
 use itertools::izip;
 use jf_cap::{
@@ -34,91 +32,6 @@ use reef::{
 use snafu::ResultExt;
 use std::collections::{HashMap, HashSet};
 use std::pin::Pin;
-
-#[derive(Clone, Debug, Derivative)]
-#[derivative(Default(bound = "L: reef::Ledger"))]
-pub struct MockStorage<'a, L: reef::Ledger> {
-    committed: Option<KeystoreState<'a, L>>,
-    working: Option<KeystoreState<'a, L>>,
-    txn_history: Vec<TransactionHistoryEntry<L>>,
-}
-
-impl<'a, L: reef::Ledger> MockStorage<'a, L> {
-    /// Set up the mock storage. Returns `None` if it has already been
-    /// initialized.
-    pub fn initialize(
-        &mut self,
-        committed: KeystoreState<'a, L>,
-        working: KeystoreState<'a, L>,
-    ) -> Option<()> {
-        match (&mut self.committed, &mut self.working) {
-            (None, None) => {
-                self.committed = Some(committed);
-                self.working = Some(working);
-                Some(())
-            }
-            _ => None,
-        }
-    }
-}
-
-impl<'a, L: reef::Ledger> MockStorage<'a, L> {
-    fn exists(&self) -> bool {
-        self.committed.is_some()
-    }
-
-    async fn load(&mut self) -> Result<KeystoreState<'a, L>, KeystoreError<L>> {
-        Ok(self.committed.as_ref().unwrap().clone())
-    }
-
-    async fn store_snapshot(
-        &mut self,
-        state: &KeystoreState<'a, L>,
-    ) -> Result<(), KeystoreError<L>> {
-        if let Some(working) = &mut self.working {
-            working.txn_state = state.txn_state.clone();
-            working.key_state = state.key_state.clone();
-
-            // Store updated accounts.
-            working.viewing_accounts = state.viewing_accounts.clone();
-            working.freezing_accounts = state.freezing_accounts.clone();
-            working.sending_accounts = state.sending_accounts.clone();
-            for account in working.viewing_accounts.values() {
-                working.assets.add_viewing_key(account.key.pub_key());
-            }
-        }
-        Ok(())
-    }
-
-    async fn store_asset(&mut self, asset: &AssetInfo) -> Result<(), KeystoreError<L>> {
-        if let Some(working) = &mut self.working {
-            working.assets.insert(asset.clone());
-        }
-        Ok(())
-    }
-
-    async fn store_transaction(
-        &mut self,
-        txn: TransactionHistoryEntry<L>,
-    ) -> Result<(), KeystoreError<L>> {
-        self.txn_history.push(txn);
-        Ok(())
-    }
-
-    async fn transaction_history(
-        &mut self,
-    ) -> Result<Vec<TransactionHistoryEntry<L>>, KeystoreError<L>> {
-        Ok(self.txn_history.clone())
-    }
-
-    async fn commit(&mut self) {
-        self.committed = self.working.clone();
-    }
-
-    async fn revert(&mut self) {
-        self.working = self.committed.clone();
-    }
-}
 
 pub struct MockNetworkWithHeight<'a, const H: u8> {
     validator: cap::Validator,

@@ -19,7 +19,7 @@
 use crate::{
     events::EventIndex,
     io::SharedIO,
-    loader::{Loader, LoaderMetadata, TrivialKeystoreLoader},
+    loader::{Loader, LoaderMetadata},
     reader::Reader,
     AssetInfo, BincodeSnafu, IoSnafu, KeystoreBackend, KeystoreError, TransactionReceipt,
     TransactionStatus,
@@ -1097,9 +1097,9 @@ mod test {
     use pipe::{PipeReader, PipeWriter};
     use rand_chacha::{rand_core::SeedableRng, ChaChaRng};
     use reef::cap;
+    use std::io::BufRead;
     use std::time::Instant;
     use tempdir::TempDir;
-    use std::io::BufRead;
 
     type MockCapLedger<'a> = Arc<Mutex<MockLedger<'a, cap::Ledger, MockNetwork<'a>>>>;
 
@@ -1160,7 +1160,7 @@ mod test {
         // the keystores we create through the CLI can deterministically generate the keys that own
         // the initial records.
         let key_streams = iter(keystores)
-            .then(|(keystore, _)| async move { keystore.lock().await.backend().key_stream() })
+            .then(|(keystore, _, _)| async move { keystore.lock().await.backend().key_stream() })
             .collect::<Vec<_>>()
             .await;
         (ledger, key_streams)
