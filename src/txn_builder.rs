@@ -14,6 +14,7 @@ use arbitrary::{Arbitrary, Unstructured};
 use arbitrary_wrappers::*;
 use ark_serialize::*;
 use chrono::{DateTime, Local};
+use derivative::Derivative;
 use derive_more::*;
 use espresso_macros::ser_test;
 use jf_cap::{
@@ -841,33 +842,53 @@ where
 }
 
 #[ser_test(arbitrary, ark(false), types(cap::Ledger))]
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Derivative)]
 #[serde(bound = "")]
+#[derivative(PartialEq(bound = "L: Ledger"))]
 pub struct TransactionHistoryEntry<L: Ledger> {
     pub time: DateTime<Local>,
     pub asset: AssetCode,
     pub kind: TransactionKind<L>,
     pub hash: Option<TransactionHash<L>>,
-    // If we sent this transaction, `senders` records the addresses of the spending keys used to
-    // submit it. If we received this transaction from someone else, we may not know who the senders
-    // are and this field may be empty.
+    /// Addresses used to build this transaction.
+    ///
+    /// If we sent this transaction, `senders` records the addresses of the spending keys used to
+    /// submit it. If we received this transaction from someone else, we may not know who the
+    /// senders are and this field may be empty.
     pub senders: Vec<UserAddress>,
     // Receivers and corresponding amounts.
     pub receivers: Vec<(UserAddress, RecordAmount)>,
-    // If we sent this transaction, a receipt to track its progress.
+    /// Amount of change included in the transaction from the fee.
+    ///
+    /// Every transaction includes a fee, but the record used to pay the fee may be larger than the
+    /// actual fee. In this case, one of the outputs of the transaction will contain change from the
+    /// fee, which the transaction sender receives when the transaction is finalized.
+    ///
+    /// Note that `None` indicates that the amount of change is unknown, not that there is no
+    /// change, which would be indicated by `Some(0)`. The amount of change may be unknown if, for
+    /// example, this is a transaction we received from someone else, in which case we may not know
+    /// how much of a fee they paid and how much change they expect to get.
+    pub fee_change: Option<RecordAmount>,
+    /// Amount of change included in the transaction in the asset being transferred.
+    ///
+    /// For non-native transfers, the amount of the asset being transferred which is consumed by the
+    /// transaction may exceed the amount that the sender wants to transfer, due to the way discrete
+    /// record amounts break down. In this case, one of the outputs of the transaction will contain
+    /// change from the fee, which the transaction sender receives when the transaction is
+    /// finalized.
+    ///
+    /// For native transfers, the transfer inputs and the fee input get mixed together, so there is
+    /// only one change output, which accounts for both the fee change and the transfer change. In
+    /// this case, the total amount of change will be reflected in `fee_change` and `asset_change`
+    /// will be `Some(0)`.
+    ///
+    /// Note that `None` indicates that the amount of change is unknown, not that there is no
+    /// change, which would be indicated by `Some(0)`. The amount of change may be unknown if, for
+    /// example, this is a transaction we received from someone else, and we do not hold the
+    /// necessary viewing keys to inspect the change outputs of the transaction.
+    pub asset_change: Option<RecordAmount>,
+    /// If we sent this transaction, a receipt to track its progress.
     pub receipt: Option<TransactionReceipt<L>>,
-}
-
-impl<L: Ledger> PartialEq<Self> for TransactionHistoryEntry<L> {
-    fn eq(&self, other: &Self) -> bool {
-        self.time == other.time
-            && self.asset == other.asset
-            && self.kind == other.kind
-            && self.hash == other.hash
-            && self.senders == other.senders
-            && self.receivers == other.receivers
-            && self.receipt == other.receipt
-    }
 }
 
 impl<'a, L: Ledger> Arbitrary<'a> for TransactionHistoryEntry<L>
@@ -891,6 +912,8 @@ where
                     Ok((addr.into(), amt.into()))
                 })
                 .collect::<Result<_, _>>()?,
+            fee_change: u.arbitrary::<Option<u128>>()?.map(RecordAmount::from),
+            asset_change: u.arbitrary::<Option<u128>>()?.map(RecordAmount::from),
             receipt: u.arbitrary()?,
         })
     }
@@ -1239,6 +1262,7 @@ impl<L: Ledger> TransactionState<L> {
         )
         .context(CryptoSnafu)?;
 
+        let fee_change = fee_change_ro.amount;
         let outputs: Vec<_> = vec![fee_change_ro]
             .into_iter()
             .chain(outputs.into_iter())
@@ -1267,6 +1291,8 @@ impl<L: Ledger> TransactionState<L> {
                 .iter()
                 .map(|(pub_key, amount, _)| (pub_key.address(), *amount))
                 .collect(),
+            fee_change: Some(fee_change.into()),
+            asset_change: Some(RecordAmount::zero()),
             receipt: None,
         };
         Ok((
@@ -1396,6 +1422,11 @@ impl<L: Ledger> TransactionState<L> {
         )
         .context(CryptoSnafu)?;
 
+        let fee_change = fee_out_rec.amount;
+        let asset_change = match &change_ro {
+            Some(ro) => ro.amount.into(),
+            None => RecordAmount::zero(),
+        };
         let outputs: Vec<_> = vec![fee_out_rec]
             .into_iter()
             .chain(outputs.into_iter())
@@ -1426,6 +1457,8 @@ impl<L: Ledger> TransactionState<L> {
                 .iter()
                 .map(|(pub_key, amount, _)| (pub_key.address(), *amount))
                 .collect(),
+            fee_change: Some(fee_change.into()),
+            asset_change: Some(asset_change),
             receipt: None,
         };
         Ok((
@@ -1519,6 +1552,8 @@ impl<L: Ledger> TransactionState<L> {
             hash: None,
             senders: vec![fee_rec.pub_key.address()],
             receivers: vec![(receiver.address(), amount)],
+            fee_change: Some(fee_rec.amount.into()),
+            asset_change: Some(RecordAmount::zero()),
             receipt: None,
         };
         Ok((
@@ -1584,6 +1619,7 @@ impl<L: Ledger> TransactionState<L> {
         let (fee_info, fee_out_rec) = TxnFeeInfo::new(rng, fee_input, fee.into()).unwrap();
         let (note, sig_key_pair, outputs) =
             FreezeNote::generate(rng, inputs, fee_info, proving_key).context(CryptoSnafu)?;
+        let fee_change = fee_out_rec.amount;
         let outputs = std::iter::once(fee_out_rec)
             .chain(outputs)
             .collect::<Vec<_>>();
@@ -1605,6 +1641,8 @@ impl<L: Ledger> TransactionState<L> {
                 .iter()
                 .map(|(ro, _)| (owner.clone(), ro.amount.into()))
                 .collect(),
+            fee_change: Some(fee_change.into()),
+            asset_change: Some(RecordAmount::zero()),
             receipt: None,
         };
         Ok((

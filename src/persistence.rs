@@ -752,6 +752,8 @@ mod tests {
                     hash: None,
                     senders: vec![user_key.address()],
                     receivers: vec![],
+                    fee_change: None,
+                    asset_change: None,
                     receipt: None,
                 })
                 .await

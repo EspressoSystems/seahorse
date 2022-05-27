@@ -436,6 +436,8 @@ pub fn receive_history_entry<L: Ledger>(
                 }
             })
             .collect(),
+        fee_change: None,
+        asset_change: None,
         receipt: None,
     }
 }
