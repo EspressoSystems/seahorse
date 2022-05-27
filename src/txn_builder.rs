@@ -311,8 +311,8 @@ impl RecordDatabase {
             .rev()
             .filter_map(move |(_, uid)| {
                 let record = &self.record_info[uid];
-                if record.amount().is_zero() || record.on_hold(now) {
-                    // Skip useless dummy records and records that are on hold
+                if record.on_hold(now) {
+                    // Skip records that are on hold
                     None
                 } else {
                     Some(record)
@@ -1764,6 +1764,12 @@ impl<L: Ledger> TransactionState<L> {
         let mut result = vec![];
         let mut current_amount = U256::zero();
         for record in self.records.input_records(asset, owner, frozen, now) {
+            // Skip 0-amount records; they take up slots in the transaction inputs without
+            // contributing to the total amount we're trying to consume.
+            if record.amount().is_zero() {
+                continue;
+            }
+
             if let Some(max_records) = max_records {
                 if result.len() >= max_records {
                     // Too much fragmentation: we can't make the required amount using few enough
@@ -1860,17 +1866,63 @@ impl<L: Ledger> TransactionState<L> {
         key_pairs: &'l [UserKeyPair],
         fee: RecordAmount,
     ) -> Result<FeeInput<'l>, TransactionError> {
-        let mut records = self.find_records(
-            &AssetCode::native(),
-            key_pairs,
-            FreezeFlag::Unfrozen,
-            fee.into(),
-            Some(1),
-        )?;
-        assert_eq!(records.len(), 1);
-        let (owner_keypair, mut records, _) = records.remove(0);
-        assert_eq!(records.len(), 1);
-        let (ro, uid) = records.remove(0);
+        let (ro, uid, owner_keypair) = if fee.is_zero() {
+            // For 0 fees, the allocation scheme is different than for other kinds of allocations.
+            // For one thing, CAP requires one fee input record even if the amount of the record is
+            // zero. This differs from other kinds of input records. For transfer inputs, for
+            // example, the only thing that matters is the total input amount.
+            //
+            // Also, when the fee is 0, we know we are going to get the entirety of the fee back as
+            // change when the transaction finalizes, so we don't have to worry about avoiding
+            // fragmentation due to records being broken up into change. Therefore it is better to
+            // use the _smallest_ available record, so the least amount of native balance is on hold
+            // while the transaction is pending, rather than the largest available record to try and
+            // avoid fragmentation.
+            //
+            // We can handle both of these constraints by simply finding the smallest native record
+            // in any of the available accounts.
+            let now = self.validator.now();
+            key_pairs
+                .iter()
+                .flat_map(|key| {
+                    // List the spendable native records for this key, and tag them with `key` so
+                    // that when we collect records from multiple keys, we remember which key owns
+                    // each record.
+                    self.records
+                        .input_records(
+                            &AssetCode::native(),
+                            &key.address(),
+                            FreezeFlag::Unfrozen,
+                            now,
+                        )
+                        .map(move |record| (record.ro.clone(), record.uid, key))
+                })
+                // Find the smallest record among all the records from all the keys.
+                .min_by_key(|(ro, _, _)| ro.amount)
+                // If there weren't any records at all, we simply cannot pay the fee -- even though
+                // the fee amount is 0!
+                .ok_or(TransactionError::InsufficientBalance {
+                    asset: AssetCode::native(),
+                    required: fee.into(),
+                    actual: U256::zero(),
+                })?
+        } else {
+            // When the fee is nonzero, fee allocation is just like allocation of any other input,
+            // and we can call out to the regular record allocation algorithm (using
+            // `max_records == Some(1)`, since we cannot break fees into multiple records).
+            let mut records = self.find_records(
+                &AssetCode::native(),
+                key_pairs,
+                FreezeFlag::Unfrozen,
+                fee.into(),
+                Some(1),
+            )?;
+            assert_eq!(records.len(), 1);
+            let (owner_keypair, mut records, _) = records.remove(0);
+            assert_eq!(records.len(), 1);
+            let (ro, uid) = records.remove(0);
+            (ro, uid, owner_keypair)
+        };
 
         Ok(FeeInput {
             ro,
