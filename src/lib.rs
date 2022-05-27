@@ -539,16 +539,7 @@ impl<'a, L: Ledger, Backend: KeystoreBackend<'a, L>, Meta: Serialize + Deseriali
         fut.await
     }
 
-    /// Access the persistent storage layer.
-    ///
-    /// Note that the return type of this function requires the implementation to guard the storage
-    /// layer with a mutex, even if it is not internally shared between threads. This is meant to
-    /// allow shared access to the storage layer internally, but not to require it. A better
-    /// interface would be to have an associated type
-    ///         `type<'l> StorageRef: 'l +  Deref<Target = Self::Storage> + DerefMut`
-    /// This could be [MutexGuard], [async_std::sync::RwLockWriteGuard], or just
-    /// `&mut Self::Storage`, depending on the needs of the implementation. This should be cleaned
-    /// up if and when GATs stabilize.
+    /// Access the persistent storage layer
     pub async fn storage(&mut self) -> MutexGuard<'_, AtomicKeystoreStorage<'a, L, Meta>> {
         self.storage.lock().await
     }
