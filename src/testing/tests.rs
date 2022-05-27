@@ -322,7 +322,7 @@ pub mod generic_keystore_tests {
         // which is longer than we want to borrow `keystores` for).
         async fn check_balance<'b, L: 'static + Ledger>(
             keystore: &(
-                Keystore<'b, impl KeystoreBackend<'b, L> + Sync + 'b, L, LoaderMetadata>,
+                Keystore<'b, impl KeystoreBackend<'b, L> + Sync + 'b, L, ()>,
                 Vec<UserPubKey>,
                 TempDir,
             ),
@@ -1249,7 +1249,7 @@ pub mod generic_keystore_tests {
         // for).
         async fn check_balances<'b, L: Ledger + 'static>(
             keystores: &[(
-                Keystore<'b, impl KeystoreBackend<'b, L> + Sync + 'b, L, LoaderMetadata>,
+                Keystore<'b, impl KeystoreBackend<'b, L> + Sync + 'b, L, ()>,
                 Vec<UserPubKey>,
                 TempDir,
             )],
@@ -1280,7 +1280,7 @@ pub mod generic_keystore_tests {
 
         async fn check_histories<'b, L: Ledger + 'static>(
             keystores: &[(
-                Keystore<'b, impl KeystoreBackend<'b, L> + Sync + 'b, L, LoaderMetadata>,
+                Keystore<'b, impl KeystoreBackend<'b, L> + Sync + 'b, L, ()>,
                 Vec<UserPubKey>,
                 TempDir,
             )],
@@ -1967,7 +1967,7 @@ pub mod generic_keystore_tests {
         );
 
         // A new keystore joins the system after there are already some transactions on the ledger.
-        let mut keystore2 = t.create_keystore(&mut rng, &ledger).await;
+        let (mut keystore2, _tmp_dir2) = t.create_keystore(&mut rng, &ledger).await;
         keystore2.sync(ledger.lock().await.now()).await.unwrap();
         let pub_key2 = keystore2
             .generate_user_key("sending_key".into(), None)

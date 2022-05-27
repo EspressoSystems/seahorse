@@ -16,7 +16,6 @@
 /// properties not exposed or guaranteed by the generic interface. The file tests.rs contains the
 /// test suite for the generic keystore interface, which is instantiated for each ledger/backend.
 use super::*;
-use crate::loader::LoaderMetadata;
 use async_std::sync::{Arc, Mutex};
 use chrono::Local;
 use futures::{channel::mpsc, stream::iter};
@@ -33,22 +32,23 @@ use tempdir::TempDir;
 // Loader for using in tests.  Just creates unit metadata and defualt Keytree.
 pub struct TrivialKeystoreLoader {
     pub dir: PathBuf,
+    rng: ChaChaRng,
 }
 
 impl<L: Ledger> KeystoreLoader<L> for TrivialKeystoreLoader {
-    type Meta = LoaderMetadata;
+    type Meta = ();
 
     fn location(&self) -> PathBuf {
         self.dir.clone()
     }
 
-    fn create(&mut self) -> Result<(LoaderMetadata, KeyTree), KeystoreError<L>> {
-        let key = KeyTree::from_password_and_salt(&[], &[0; 32]).context(KeySnafu)?;
+    fn create(&mut self) -> Result<((), KeyTree), KeystoreError<L>> {
+        let key = KeyTree::random(&mut self.rng).0;
         Ok((Default::default(), key))
     }
 
-    fn load(&mut self, _meta: &mut LoaderMetadata) -> Result<KeyTree, KeystoreError<L>> {
-        KeyTree::from_password_and_salt(&[], &[0; 32]).context(KeySnafu)
+    fn load(&mut self, _meta: &mut ()) -> Result<KeyTree, KeystoreError<L>> {
+        Ok(KeyTree::random(&mut self.rng).0)
     }
 }
 
@@ -248,15 +248,17 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         &mut self,
         rng: &mut ChaChaRng,
         ledger: &Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork>>>,
-    ) -> Keystore<'a, Self::MockBackend, Self::Ledger, LoaderMetadata> {
+    ) -> (Keystore<'a, Self::MockBackend, Self::Ledger, ()>, TempDir) {
+        let temp_dir = TempDir::new("test_keystore").unwrap();
         let mut loader = TrivialKeystoreLoader {
-            dir: TempDir::new("test_keystore").unwrap().into_path(),
+            dir: temp_dir.path().to_path_buf(),
+            rng: rng.clone(),
         };
         let key_stream = hd::KeyTree::random(rng).0;
         let backend = self
             .create_backend(ledger.clone(), vec![], key_stream)
             .await;
-        Keystore::new(backend, &mut loader).await.unwrap()
+        (Keystore::new(backend, &mut loader).await.unwrap(), temp_dir)
     }
 
     async fn create_keystore_with_state(
@@ -264,17 +266,22 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         rng: &mut ChaChaRng,
         ledger: &Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork>>>,
         state: KeystoreState<'a, Self::Ledger>,
-    ) -> Keystore<'a, Self::MockBackend, Self::Ledger, LoaderMetadata> {
+    ) -> (Keystore<'a, Self::MockBackend, Self::Ledger, ()>, TempDir) {
+        let temp_dir = TempDir::new("test_keystore").unwrap();
         let mut loader = TrivialKeystoreLoader {
-            dir: TempDir::new("test_keystore").unwrap().into_path(),
+            dir: temp_dir.path().to_path_buf(),
+            rng: rng.clone(),
         };
         let key_stream = hd::KeyTree::random(rng).0;
         let backend = self
             .create_backend(ledger.clone(), vec![], key_stream)
             .await;
-        Keystore::with_state(backend, &mut loader, state)
-            .await
-            .unwrap()
+        (
+            Keystore::with_state(backend, &mut loader, state)
+                .await
+                .unwrap(),
+            temp_dir,
+        )
     }
 
     /// Creates two key pairs for each keystore.
@@ -289,7 +296,7 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
     ) -> (
         Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork>>>,
         Vec<(
-            Keystore<'a, Self::MockBackend, Self::Ledger, LoaderMetadata>,
+            Keystore<'a, Self::MockBackend, Self::Ledger, ()>,
             Vec<UserPubKey>,
             TempDir,
         )>,
@@ -402,6 +409,7 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
             let tmp_dir = TempDir::new("test_keystore").unwrap();
             let mut loader = TrivialKeystoreLoader {
                 dir: tmp_dir.path().to_path_buf(),
+                rng: rng.clone(),
             };
             let mut seed = [0u8; 32];
             rng.fill_bytes(&mut seed);
@@ -443,7 +451,7 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         &self,
         ledger: &Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork>>>,
         keystores: &[(
-            Keystore<'a, Self::MockBackend, Self::Ledger, LoaderMetadata>,
+            Keystore<'a, Self::MockBackend, Self::Ledger, ()>,
             Vec<UserPubKey>,
             TempDir,
         )],
@@ -505,7 +513,7 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
     async fn sync_with(
         &self,
         keystores: &[(
-            Keystore<'a, Self::MockBackend, Self::Ledger, LoaderMetadata>,
+            Keystore<'a, Self::MockBackend, Self::Ledger, ()>,
             Vec<UserPubKey>,
             TempDir,
         )],
@@ -518,7 +526,7 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
     async fn check_storage(
         &self,
         keystores: &[(
-            Keystore<'a, Self::MockBackend, Self::Ledger, LoaderMetadata>,
+            Keystore<'a, Self::MockBackend, Self::Ledger, ()>,
             Vec<UserPubKey>,
             TempDir,
         )],

@@ -100,7 +100,7 @@ async fn generate_independent_transactions<
 
     // Add the key to a fresh keystore to force it to be registered in the address book. We
     // will not use this keystore again.
-    let mut w = t.create_keystore(&mut rng, &ledger).await;
+    let (mut w, _) = t.create_keystore(&mut rng, &ledger).await;
     w.add_user_key(receiver.clone(), "key".into(), EventIndex::default())
         .await
         .unwrap();
@@ -211,7 +211,7 @@ async fn bench_ledger_scanner_setup<
 
     // Add the receiver key to a fresh keystore to force it to be registered in the address
     // book. We will not use this keystore again.
-    let mut w = t.create_keystore(&mut rng, &ledger).await;
+    let (mut w, _) = t.create_keystore(&mut rng, &ledger).await;
     w.add_user_key(txns.receiver.clone(), "key".into(), EventIndex::default())
         .await
         .unwrap();
@@ -314,7 +314,7 @@ fn bench_ledger_scanner_run<
             async move {
                 let mut dur = Duration::default();
                 for _ in 0..n {
-                    let mut w = bench
+                    let (mut w, _tmp_dir) = bench
                         .t
                         .create_keystore_with_state(
                             &mut bench.rng,
@@ -357,7 +357,7 @@ fn bench_ledger_scanner_run<
                     let state = bench.initial_state.clone();
                     let start = Instant::now();
                     // Create the keystore, starting the main event thread.
-                    let w = bench
+                    let (w, _tmp_dir) = bench
                         .t
                         .create_keystore_with_state(&mut bench.rng, &bench.ledger, state)
                         .await;
