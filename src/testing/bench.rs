@@ -100,7 +100,7 @@ async fn generate_independent_transactions<
 
     // Add the key to a fresh keystore to force it to be registered in the address book. We
     // will not use this keystore again.
-    let (mut w, _) = t.create_keystore(&mut rng, &ledger).await;
+    let (mut w, _tmp_dir) = t.create_keystore(&mut rng, &ledger).await;
     w.add_user_key(receiver.clone(), "key".into(), EventIndex::default())
         .await
         .unwrap();
@@ -155,7 +155,7 @@ async fn generate_independent_transactions<
         keystores
             .iter_mut()
             .zip(&assets)
-            .map(|((keystore, _, _), asset)| {
+            .map(|((keystore, _, _tmp_dir), asset)| {
                 let receiver = receiver.pub_key();
                 async move {
                     keystore
@@ -211,14 +211,14 @@ async fn bench_ledger_scanner_setup<
 
     // Add the receiver key to a fresh keystore to force it to be registered in the address
     // book. We will not use this keystore again.
-    let (mut w, _) = t.create_keystore(&mut rng, &ledger).await;
+    let (mut w, _tmp_dir) = t.create_keystore(&mut rng, &ledger).await;
     w.add_user_key(txns.receiver.clone(), "key".into(), EventIndex::default())
         .await
         .unwrap();
 
     // Mint a viewable asset for each keystore.
     join_all(keystores.iter_mut().zip(txns.mints).map(
-        |((keystore, _, _), (mint_note, mint_info))| async move {
+        |((keystore, _, _tmp_dir), (mint_note, mint_info))| async move {
             let receipt = keystore
                 .submit_cap(mint_note.into(), mint_info)
                 .await
@@ -242,7 +242,7 @@ async fn bench_ledger_scanner_setup<
             keystores
                 .iter_mut()
                 .zip(&txns.transfers[i * txns_per_block..])
-                .map(|((keystore, _, _), (xfr_note, xfr_info))| async move {
+                .map(|((keystore, _, _tmp_dir), (xfr_note, xfr_info))| async move {
                     let receipt = keystore
                         .submit_cap(xfr_note.clone().into(), xfr_info.clone())
                         .await
