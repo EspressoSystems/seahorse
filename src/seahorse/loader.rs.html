@@ -348,7 +348,6 @@
 <span id="348">348</span>
 <span id="349">349</span>
 <span id="350">350</span>
-<span id="351">351</span>
 </pre><pre class="rust"><code><span class="comment">// Copyright (c) 2022 Espresso Systems (espressosys.com)</span>
 <span class="comment">// This file is part of the Seahorse library.</span>
 
@@ -386,7 +385,7 @@
 <span class="comment">// information about the keystore without decrypting. This also aids in the key derivation process.</span>
 <span class="comment">//</span>
 <span class="comment">// DO NOT put secrets in here.</span>
-<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Clone</span>, <span class="ident">Debug</span>, <span class="ident">PartialEq</span>, <span class="ident">Serialize</span>, <span class="ident">Deserialize</span>)]</span>
+<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Clone</span>, <span class="ident">Debug</span>, <span class="ident">PartialEq</span>, <span class="ident">Serialize</span>, <span class="ident">Deserialize</span>, <span class="ident">Default</span>)]</span>
 <span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">LoaderMetadata</span> {
     <span class="ident">version</span>: (<span class="ident">u8</span>, <span class="ident">u8</span>, <span class="ident">u8</span>),
     <span class="ident">salt</span>: <span class="ident">Salt</span>,
@@ -638,7 +637,6 @@
             <span class="ident">encrypted_mnemonic</span>,
             <span class="ident">encrypted_bytes</span>,
         };
-
         <span class="prelude-val">Ok</span>((<span class="ident">meta</span>, <span class="ident">key</span>))
     }
 

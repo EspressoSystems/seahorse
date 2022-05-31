@@ -776,6 +776,7 @@
 <span id="776">776</span>
 <span id="777">777</span>
 <span id="778">778</span>
+<span id="779">779</span>
 </pre><pre class="rust"><code><span class="comment">// Copyright (c) 2022 Espresso Systems (espressosys.com)</span>
 <span class="comment">// This file is part of the Seahorse library.</span>
 
@@ -791,11 +792,10 @@
     <span class="ident">hd::KeyTree</span>,
     <span class="ident">loader::KeystoreLoader</span>,
     <span class="ident">txn_builder::TransactionState</span>,
-    <span class="ident">KeyStreamState</span>, <span class="ident">KeystoreError</span>, <span class="ident">KeystoreState</span>, <span class="ident">KeystoreStorage</span>, <span class="ident">TransactionHistoryEntry</span>,
+    <span class="ident">KeyStreamState</span>, <span class="ident">KeystoreError</span>, <span class="ident">KeystoreState</span>, <span class="ident">TransactionHistoryEntry</span>,
 };
 <span class="kw">use</span> <span class="ident">arbitrary</span>::{<span class="ident">Arbitrary</span>, <span class="ident">Unstructured</span>};
 <span class="kw">use</span> <span class="ident">async_std::sync::Arc</span>;
-<span class="kw">use</span> <span class="ident">async_trait::async_trait</span>;
 <span class="kw">use</span> <span class="ident">atomic_store</span>::{
     <span class="ident">error::PersistenceError</span>,
     <span class="ident">load_store</span>::{<span class="ident">BincodeLoadStore</span>, <span class="ident">LoadStore</span>},
@@ -810,7 +810,7 @@
 <span class="kw">use</span> <span class="ident">snafu::ResultExt</span>;
 
 <span class="comment">// Serialization intermediate for the static part of a KeystoreState.</span>
-<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Deserialize</span>, <span class="ident">Serialize</span>)]</span>
+<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Deserialize</span>, <span class="ident">Serialize</span>, <span class="ident">Debug</span>)]</span>
 <span class="kw">struct</span> <span class="ident">KeystoreStaticState</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span><span class="op">&gt;</span> {
     <span class="attribute">#[<span class="ident">serde</span>(<span class="ident">with</span> <span class="op">=</span> <span class="string">&quot;serde_ark_unchecked&quot;</span>)]</span>
     <span class="ident">proving_keys</span>: <span class="ident">Arc</span><span class="op">&lt;</span><span class="ident">ProverKeySet</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">OrderByOutputs</span><span class="op">&gt;</span><span class="op">&gt;</span>,
@@ -1020,6 +1020,7 @@
             <span class="ident">file_fill_size</span>,
         )
         .<span class="ident">context</span>(<span class="ident"><span class="kw">crate</span>::PersistenceSnafu</span>)<span class="question-mark">?</span>;
+
         <span class="kw">let</span> <span class="ident">dynamic_state</span> <span class="op">=</span> <span class="ident">RollingLog::load</span>(
             <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">atomic_loader</span>,
             <span class="ident">adaptor</span>.<span class="ident">cast</span>(),
@@ -1101,15 +1102,12 @@
     }
 }
 
-<span class="attribute">#[<span class="ident">async_trait</span>]</span>
-<span class="kw">impl</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span>: <span class="ident">Ledger</span>, <span class="ident">Meta</span>: <span class="ident">Send</span> <span class="op">+</span> <span class="ident">Serialize</span> <span class="op">+</span> <span class="ident">DeserializeOwned</span><span class="op">&gt;</span> <span class="ident">KeystoreStorage</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span><span class="op">&gt;</span>
-    <span class="kw">for</span> <span class="ident">AtomicKeystoreStorage</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span>, <span class="ident">Meta</span><span class="op">&gt;</span>
-{
-    <span class="kw">fn</span> <span class="ident">exists</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">bool</span> {
+<span class="kw">impl</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span>: <span class="ident">Ledger</span>, <span class="ident">Meta</span>: <span class="ident">Send</span> <span class="op">+</span> <span class="ident">Serialize</span> <span class="op">+</span> <span class="ident">DeserializeOwned</span><span class="op">&gt;</span> <span class="ident">AtomicKeystoreStorage</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span>, <span class="ident">Meta</span><span class="op">&gt;</span> {
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">exists</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">bool</span> {
         <span class="self">self</span>.<span class="ident">persisted_meta</span>.<span class="ident">load_latest</span>().<span class="ident">is_ok</span>()
     }
 
-    <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">load</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">KeystoreState</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span><span class="op">&gt;</span>, <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
+    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">load</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">KeystoreState</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span><span class="op">&gt;</span>, <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
         <span class="comment">// This function is called once, when the keystore is loaded. It is a good place to persist</span>
         <span class="comment">// changes to the metadata that happened during loading.</span>
         <span class="self">self</span>.<span class="ident">commit</span>().<span class="kw">await</span>;
@@ -1118,6 +1116,7 @@
             .<span class="ident">static_data</span>
             .<span class="ident">load_latest</span>()
             .<span class="ident">context</span>(<span class="ident"><span class="kw">crate</span>::PersistenceSnafu</span>)<span class="question-mark">?</span>;
+
         <span class="kw">let</span> <span class="ident">dynamic_state</span> <span class="op">=</span> <span class="self">self</span>
             .<span class="ident">dynamic_state</span>
             .<span class="ident">load_latest</span>()
@@ -1159,7 +1158,10 @@
         })
     }
 
-    <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">store_snapshot</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">w</span>: <span class="kw-2">&amp;</span><span class="ident">KeystoreState</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span><span class="op">&gt;</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(), <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
+    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">store_snapshot</span>(
+        <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>,
+        <span class="ident">w</span>: <span class="kw-2">&amp;</span><span class="ident">KeystoreState</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span><span class="op">&gt;</span>,
+    ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(), <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
         <span class="self">self</span>.<span class="ident">dynamic_state</span>
             .<span class="ident">store_resource</span>(<span class="kw-2">&amp;</span><span class="ident">KeystoreSnapshot::from</span>(<span class="ident">w</span>))
             .<span class="ident">context</span>(<span class="ident"><span class="kw">crate</span>::PersistenceSnafu</span>)<span class="question-mark">?</span>;
@@ -1167,7 +1169,7 @@
         <span class="prelude-val">Ok</span>(())
     }
 
-    <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">store_asset</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">asset</span>: <span class="kw-2">&amp;</span><span class="ident">AssetInfo</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(), <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
+    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">store_asset</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">asset</span>: <span class="kw-2">&amp;</span><span class="ident">AssetInfo</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(), <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
         <span class="self">self</span>.<span class="ident">assets</span>
             .<span class="ident">store_resource</span>(<span class="ident">asset</span>)
             .<span class="ident">context</span>(<span class="ident"><span class="kw">crate</span>::PersistenceSnafu</span>)<span class="question-mark">?</span>;
@@ -1175,7 +1177,7 @@
         <span class="prelude-val">Ok</span>(())
     }
 
-    <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">store_transaction</span>(
+    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">store_transaction</span>(
         <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>,
         <span class="ident">txn</span>: <span class="ident">TransactionHistoryEntry</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(), <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
@@ -1186,7 +1188,7 @@
         <span class="prelude-val">Ok</span>(())
     }
 
-    <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">transaction_history</span>(
+    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">transaction_history</span>(
         <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">TransactionHistoryEntry</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span>, <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
         <span class="self">self</span>.<span class="ident">txn_history</span>
@@ -1195,7 +1197,7 @@
             .<span class="ident">collect</span>()
     }
 
-    <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">commit</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>) {
+    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">commit</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>) {
         {
             <span class="kw">if</span> <span class="self">self</span>.<span class="ident">meta_dirty</span> {
                 <span class="self">self</span>.<span class="ident">persisted_meta</span>.<span class="ident">commit_version</span>().<span class="ident">unwrap</span>();
@@ -1237,7 +1239,7 @@
         <span class="self">self</span>.<span class="ident">txn_history_dirty</span> <span class="op">=</span> <span class="bool-val">false</span>;
     }
 
-    <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">revert</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>) {
+    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">revert</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>) {
         <span class="self">self</span>.<span class="ident">persisted_meta</span>.<span class="ident">revert_version</span>().<span class="ident">unwrap</span>();
         <span class="self">self</span>.<span class="ident">static_data</span>.<span class="ident">revert_version</span>().<span class="ident">unwrap</span>();
         <span class="self">self</span>.<span class="ident">dynamic_state</span>.<span class="ident">revert_version</span>().<span class="ident">unwrap</span>();
