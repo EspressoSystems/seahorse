@@ -323,8 +323,9 @@ pub mod generic_keystore_tests {
         // which is longer than we want to borrow `keystores` for).
         async fn check_balance<'b, L: 'static + Ledger>(
             keystore: &(
-                Keystore<'b, impl KeystoreBackend<'b, L> + Sync + 'b, L>,
+                Keystore<'b, impl KeystoreBackend<'b, L> + Sync + 'b, L, ChaChaRng>,
                 Vec<UserPubKey>,
+                TempDir,
             ),
             expected_coin_balance: u64,
             starting_native_balance: U256,
@@ -1259,14 +1260,15 @@ pub mod generic_keystore_tests {
         // for).
         async fn check_balances<'b, L: Ledger + 'static>(
             keystores: &[(
-                Keystore<'b, impl KeystoreBackend<'b, L> + Sync + 'b, L>,
+                Keystore<'b, impl KeystoreBackend<'b, L> + Sync + 'b, L, ChaChaRng>,
                 Vec<UserPubKey>,
+                TempDir,
             )],
             balances: &[Vec<U256>],
             assets: &[AssetDefinition],
         ) {
             for (i, balance) in balances.iter().enumerate() {
-                let (keystore, pub_keys) = &keystores[i + 1];
+                let (keystore, pub_keys, _) = &keystores[i + 1];
 
                 // Check native asset balance.
                 assert_eq!(
@@ -1289,13 +1291,14 @@ pub mod generic_keystore_tests {
 
         async fn check_histories<'b, L: Ledger + 'static>(
             keystores: &[(
-                Keystore<'b, impl KeystoreBackend<'b, L> + Sync + 'b, L>,
+                Keystore<'b, impl KeystoreBackend<'b, L> + Sync + 'b, L, ChaChaRng>,
                 Vec<UserPubKey>,
+                TempDir,
             )],
             histories: &[Vec<Vec<TransactionHistoryEntry<L>>>],
         ) {
             assert_eq!(keystores.len(), histories.len() + 1);
-            for ((keystore, _), history) in keystores.iter().skip(1).zip(histories) {
+            for ((keystore, _, _), history) in keystores.iter().skip(1).zip(histories) {
                 let mut keystore_history = keystore.transaction_history().await.unwrap();
                 assert_eq!(
                     keystore_history.len(),
@@ -1402,7 +1405,7 @@ pub mod generic_keystore_tests {
                         now.elapsed().as_secs_f32()
                     );
                     now = Instant::now();
-                    let (minter, minter_pub_keys) = &mut keystores[0];
+                    let (minter, minter_pub_keys, _) = &mut keystores[0];
                     minter
                         .mint(
                             Some(&minter_pub_keys[0].address()),
@@ -1921,7 +1924,7 @@ pub mod generic_keystore_tests {
         t.sync(&ledger, &keystores).await;
 
         // Check that the scan is persisted, so it would restart if the keystore crashed.
-        t.check_storage(&ledger, &keystores).await;
+        t.check_storage(&keystores).await;
 
         // Check that the scan discovered the existing record.
         keystores[0].0.await_key_scan(&key.address()).await.unwrap();
@@ -1968,7 +1971,7 @@ pub mod generic_keystore_tests {
             .await;
         ledger.lock().await.set_block_size(1).unwrap();
 
-        let (mut keystore1, pub_keys1) = keystores.remove(0);
+        let (mut keystore1, pub_keys1, _tmp_dir) = keystores.remove(0);
         let receipt = keystore1
             .transfer(
                 Some(&pub_keys1[0].address()),
@@ -1988,7 +1991,7 @@ pub mod generic_keystore_tests {
         );
 
         // A new keystore joins the system after there are already some transactions on the ledger.
-        let mut keystore2 = t.create_keystore(&mut rng, &ledger).await;
+        let (mut keystore2, _tmp_dir2) = t.create_keystore(&mut rng, &ledger).await;
         keystore2.sync(ledger.lock().await.now()).await.unwrap();
         let pub_key2 = keystore2
             .generate_user_key("sending_key".into(), None)
@@ -2360,7 +2363,7 @@ pub mod generic_keystore_tests {
         let mut rng = ChaChaRng::from_seed([37; 32]);
         let mut now = Instant::now();
         let initial_grant = 10;
-        let (ledger, mut keystores) = t
+        let (_ledger, mut keystores) = t
             .create_test_network(&[(2, 2)], vec![initial_grant], &mut now)
             .await;
 
@@ -2418,6 +2421,7 @@ pub mod generic_keystore_tests {
                 temporary: true,
             }
         );
+
         assert_eq!(
             imported[1],
             AssetInfo {
@@ -2466,7 +2470,7 @@ pub mod generic_keystore_tests {
         // Check that temporary assets are not persisted, and that persisted assets are never
         // verified.
         {
-            let storage = &ledger.lock().await.storage[0];
+            let storage = &keystores[0].0.lock().await.session.storage;
             let loaded = storage.lock().await.load().await.unwrap();
             assert!(loaded.assets.iter().all(|asset| !asset.verified));
             assert!(loaded.assets.contains(AssetCode::native()));
@@ -2496,7 +2500,7 @@ pub mod generic_keystore_tests {
 
         // Check that `asset2` is now persisted, but still no assets in storage are verified.
         {
-            let storage = &ledger.lock().await.storage[0];
+            let storage = &keystores[0].0.mutex.lock().await.session.storage;
             let loaded = storage.lock().await.load().await.unwrap();
             assert!(loaded.assets.iter().all(|asset| !asset.verified));
             assert!(loaded.assets.contains(AssetCode::native()));
@@ -2509,7 +2513,7 @@ pub mod generic_keystore_tests {
         // with the verified information, we get back the current in-memory information (which was
         // generated in a different order).
         let loaded = {
-            let storage = &ledger.lock().await.storage[0];
+            let storage = &keystores[0].0.mutex.lock().await.session.storage;
             let mut assets = storage.lock().await.load().await.unwrap().assets;
             for asset in &imported {
                 assets.insert(asset.clone());
@@ -2538,8 +2542,7 @@ pub mod generic_keystore_tests {
             .create_test_network(&[(2, 2)], vec![10, 0], &mut now)
             .await;
         ledger.lock().await.set_block_size(1).unwrap();
-        t.check_storage(&ledger, &keystores).await;
-        println!("Checking accounts");
+        t.check_storage(&keystores).await;
 
         // The default accounts have no name and a balance of the native assets.
         for pub_key in &keystores[0].1 {
@@ -2577,7 +2580,7 @@ pub mod generic_keystore_tests {
                 scan_status: None,
             }
         );
-        t.check_storage(&ledger, &keystores).await;
+        t.check_storage(&keystores).await;
 
         // Transfer to the new account, make sure it gets marked used and gets the new balance,
         // records, and assets.
@@ -2599,7 +2602,7 @@ pub mod generic_keystore_tests {
             assert_eq!(account.records[0].amount(), 2.into());
             assert_eq!(account.records[0].ro.asset_def, AssetDefinition::native());
         }
-        t.check_storage(&ledger, &keystores).await;
+        t.check_storage(&keystores).await;
 
         // Create empty viewing and freezing accounts.
         let viewing_key = keystores[0]
@@ -2640,7 +2643,7 @@ pub mod generic_keystore_tests {
                 scan_status: None,
             }
         );
-        t.check_storage(&ledger, &keystores).await;
+        t.check_storage(&keystores).await;
 
         // Generate one asset that is just viewable and one that is both viewable and freezable.
         let viewable_asset = keystores[0]
@@ -2731,7 +2734,7 @@ pub mod generic_keystore_tests {
                 .unwrap()
                 .used
         );
-        t.check_storage(&ledger, &keystores).await;
+        t.check_storage(&keystores).await;
 
         // Mint the freezable asset.
         let receipt = keystores[0]
@@ -2762,7 +2765,7 @@ pub mod generic_keystore_tests {
             assert_eq!(account.records.len(), 1);
             assert_eq!(account.records[0].ro.asset_def.code, freezable_asset.code);
         }
-        t.check_storage(&ledger, &keystores).await;
+        t.check_storage(&keystores).await;
 
         // Check that the native records consumed to pay the minting fees no longer show up in the
         // sending account.
@@ -2778,7 +2781,7 @@ pub mod generic_keystore_tests {
         let mut t = T::default();
         let mut rng = ChaChaRng::from_seed([4; 32]);
         let mut now = Instant::now();
-        let (ledger, mut keystores) = t.create_test_network(&[(2, 2)], vec![0], &mut now).await;
+        let (_ledger, mut keystores) = t.create_test_network(&[(2, 2)], vec![0], &mut now).await;
 
         // Case 1: update user-defined asset with user-defined asset.
         let asset1 = keystores[0]
@@ -2802,7 +2805,7 @@ pub mod generic_keystore_tests {
         let info = keystores[0].0.asset(asset1.code).await.unwrap();
         assert_eq!(info.name, Some("asset1".into()));
         assert_eq!(info.description, Some("asset1 description".into()));
-        t.check_storage(&ledger, &keystores).await;
+        t.check_storage(&keystores).await;
 
         // Create verified asset library containing one user-defined asset and one other asset.
         let key_pair = KeyPair::generate(&mut rng);
@@ -2828,7 +2831,7 @@ pub mod generic_keystore_tests {
         let info = keystores[0].0.asset(asset1.code).await.unwrap();
         assert_eq!(info.name, Some("asset1_verified".into()));
         assert_eq!(info.description, Some("asset1_verified description".into()));
-        t.check_storage(&ledger, &keystores).await;
+        t.check_storage(&keystores).await;
 
         // Case 3: update verified asset with user-defined asset.
         keystores[0]
@@ -2843,7 +2846,7 @@ pub mod generic_keystore_tests {
         let info = keystores[0].0.asset(asset2.code).await.unwrap();
         assert_eq!(info.name, Some("asset2_verified".into()));
         assert_eq!(info.description, Some("asset2_verified description".into()));
-        t.check_storage(&ledger, &keystores).await;
+        t.check_storage(&keystores).await;
 
         // Case 4: update verified asset with verified asset.
         let verified_assets = VerifiedAssetLibrary::new(
@@ -2863,7 +2866,7 @@ pub mod generic_keystore_tests {
             info.description,
             Some("asset2_verified_new description".into())
         );
-        t.check_storage(&ledger, &keystores).await;
+        t.check_storage(&keystores).await;
     }
 
     #[async_std::test]

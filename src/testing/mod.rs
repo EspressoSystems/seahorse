@@ -19,12 +19,39 @@ use super::*;
 use async_std::sync::{Arc, Mutex};
 use chrono::Local;
 use futures::{channel::mpsc, stream::iter};
+use hd::KeyTree;
 use jf_cap::{MerkleTree, Signature, TransactionVerifyingKey};
 use key_set::{KeySet, OrderByOutputs, ProverKeySet, VerifierKeySet};
 use rand_chacha::rand_core::RngCore;
 use std::collections::{BTreeMap, HashSet};
+use std::path::PathBuf;
 use std::pin::Pin;
 use std::time::Instant;
+use tempdir::TempDir;
+
+// Loader for using in tests.  Just creates unit metadata and defualt Keytree.
+pub struct TrivialKeystoreLoader {
+    pub dir: PathBuf,
+    rng: ChaChaRng,
+}
+
+impl<L: Ledger> KeystoreLoader<L> for TrivialKeystoreLoader {
+    type Meta = ChaChaRng;
+
+    fn location(&self) -> PathBuf {
+        self.dir.clone()
+    }
+
+    fn create(&mut self) -> Result<(ChaChaRng, KeyTree), KeystoreError<L>> {
+        let rng = self.rng.clone();
+        let key = KeyTree::random(&mut self.rng).0;
+        Ok((rng, key))
+    }
+
+    fn load(&mut self, meta: &mut ChaChaRng) -> Result<KeyTree, KeystoreError<L>> {
+        Ok(KeyTree::random(meta).0.clone())
+    }
+}
 
 #[async_trait]
 pub trait MockNetwork<'a, L: Ledger> {
@@ -46,21 +73,20 @@ pub trait MockNetwork<'a, L: Ledger> {
     ) -> Result<LedgerEvent<L>, KeystoreError<L>>;
 }
 
-pub struct MockLedger<'a, L: Ledger, N: MockNetwork<'a, L>, S: KeystoreStorage<'a, L>> {
+pub struct MockLedger<'a, L: Ledger, N: MockNetwork<'a, L>> {
     network: N,
     current_block: Block<L>,
     block_size: usize,
     hold_next_transaction: bool,
     held_transaction: Option<Transaction<L>>,
     mangled: bool,
-    storage: Vec<Arc<Mutex<S>>>,
     missing_memos: usize,
     sync_index: EventIndex,
     initial_records: MerkleTree,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
 
-impl<'a, L: Ledger, N: MockNetwork<'a, L>, S: KeystoreStorage<'a, L>> MockLedger<'a, L, N, S> {
+impl<'a, L: Ledger, N: MockNetwork<'a, L>> MockLedger<'a, L, N> {
     pub fn new(network: N, records: MerkleTree) -> Self {
         Self {
             network,
@@ -69,7 +95,6 @@ impl<'a, L: Ledger, N: MockNetwork<'a, L>, S: KeystoreStorage<'a, L>> MockLedger
             hold_next_transaction: false,
             held_transaction: None,
             mangled: false,
-            storage: Default::default(),
             missing_memos: 0,
             sync_index: Default::default(),
             initial_records: records,
@@ -205,14 +230,12 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
     type Ledger: 'static + Ledger;
     type MockBackend: 'a + KeystoreBackend<'a, Self::Ledger> + Send + Sync;
     type MockNetwork: 'a + MockNetwork<'a, Self::Ledger> + Send;
-    type MockStorage: 'a + KeystoreStorage<'a, Self::Ledger> + Send;
 
     async fn create_backend(
         &mut self,
-        ledger: Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork, Self::MockStorage>>>,
+        ledger: Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork>>>,
         initial_grants: Vec<(RecordOpening, u64)>,
         key_stream: hd::KeyTree,
-        storage: Arc<Mutex<Self::MockStorage>>,
     ) -> Self::MockBackend;
     async fn create_network(
         &mut self,
@@ -221,43 +244,53 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         records: MerkleTree,
         initial_grants: Vec<(RecordOpening, u64)>,
     ) -> Self::MockNetwork;
-    async fn create_storage(&mut self) -> Self::MockStorage;
 
     async fn create_keystore(
         &mut self,
         rng: &mut ChaChaRng,
-        ledger: &Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork, Self::MockStorage>>>,
-    ) -> Keystore<'a, Self::MockBackend, Self::Ledger> {
-        let storage = self.create_storage().await;
-        let key_stream = hd::KeyTree::random(rng).0;
+        ledger: &Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork>>>,
+    ) -> (
+        Keystore<'a, Self::MockBackend, Self::Ledger, ChaChaRng>,
+        TempDir,
+    ) {
+        let temp_dir = TempDir::new("test_keystore").unwrap();
+        let mut key_stream_rng = rng.clone();
+        let mut loader = TrivialKeystoreLoader {
+            dir: temp_dir.path().to_path_buf(),
+            rng: ChaChaRng::from_rng(rng).unwrap(),
+        };
+        let key_stream = hd::KeyTree::random(&mut key_stream_rng).0;
         let backend = self
-            .create_backend(
-                ledger.clone(),
-                vec![],
-                key_stream,
-                Arc::new(Mutex::new(storage)),
-            )
+            .create_backend(ledger.clone(), vec![], key_stream)
             .await;
-        Keystore::new(backend).await.unwrap()
+        (Keystore::new(backend, &mut loader).await.unwrap(), temp_dir)
     }
 
     async fn create_keystore_with_state(
         &mut self,
         rng: &mut ChaChaRng,
-        ledger: &Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork, Self::MockStorage>>>,
+        ledger: &Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork>>>,
         state: KeystoreState<'a, Self::Ledger>,
-    ) -> Keystore<'a, Self::MockBackend, Self::Ledger> {
-        let storage = self.create_storage().await;
-        let key_stream = hd::KeyTree::random(rng).0;
+    ) -> (
+        Keystore<'a, Self::MockBackend, Self::Ledger, ChaChaRng>,
+        TempDir,
+    ) {
+        let mut key_stream_rng = rng.clone();
+        let temp_dir = TempDir::new("test_keystore").unwrap();
+        let mut loader = TrivialKeystoreLoader {
+            dir: temp_dir.path().to_path_buf(),
+            rng: ChaChaRng::from_rng(rng).unwrap(),
+        };
+        let key_stream = hd::KeyTree::random(&mut key_stream_rng).0;
         let backend = self
-            .create_backend(
-                ledger.clone(),
-                vec![],
-                key_stream,
-                Arc::new(Mutex::new(storage)),
-            )
+            .create_backend(ledger.clone(), vec![], key_stream)
             .await;
-        Keystore::with_state(backend, state).await.unwrap()
+        (
+            Keystore::with_state(backend, &mut loader, state)
+                .await
+                .unwrap(),
+            temp_dir,
+        )
     }
 
     /// Creates two key pairs for each keystore.
@@ -270,10 +303,11 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         initial_grants: Vec<u64>,
         now: &mut Instant,
     ) -> (
-        Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork, Self::MockStorage>>>,
+        Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork>>>,
         Vec<(
-            Keystore<'a, Self::MockBackend, Self::Ledger>,
+            Keystore<'a, Self::MockBackend, Self::Ledger, ChaChaRng>,
             Vec<UserPubKey>,
+            TempDir,
         )>,
     ) {
         let mut rng = ChaChaRng::from_seed([42u8; 32]);
@@ -352,6 +386,12 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         let (freeze_prove_key, freeze_verif_key, _) =
             jf_cap::proof::freeze::preprocess(universal_param, 2, Self::Ledger::merkle_height())
                 .unwrap();
+        let prover_key_set = ProverKeySet {
+            xfr: KeySet::new(xfr_prove_keys.into_iter()).unwrap(),
+            mint: mint_prove_key,
+            freeze: KeySet::new(vec![freeze_prove_key].into_iter()).unwrap(),
+        };
+
         let ledger = Arc::new(Mutex::new(MockLedger::new(
             self.create_network(
                 VerifierKeySet {
@@ -362,11 +402,7 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
                     )
                     .unwrap(),
                 },
-                ProverKeySet {
-                    xfr: KeySet::new(xfr_prove_keys.into_iter()).unwrap(),
-                    mint: mint_prove_key,
-                    freeze: KeySet::new(vec![freeze_prove_key].into_iter()).unwrap(),
-                },
+                prover_key_set.clone(),
                 record_merkle_tree.clone(),
                 initial_records,
             )
@@ -379,15 +415,17 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         let mut keystores = Vec::new();
         for (key_stream, key_pairs, initial_grants) in users {
             let mut rng = ChaChaRng::from_rng(&mut rng).unwrap();
-            let ledger = ledger.clone();
-            let storage = Arc::new(Mutex::new(self.create_storage().await));
-            ledger.lock().await.storage.push(storage.clone());
-
+            let tmp_dir = TempDir::new("test_keystore").unwrap();
+            let mut loader = TrivialKeystoreLoader {
+                dir: tmp_dir.path().to_path_buf(),
+                rng: ChaChaRng::from_rng(&mut rng).unwrap(),
+            };
             let mut seed = [0u8; 32];
             rng.fill_bytes(&mut seed);
             let mut keystore = Keystore::new(
-                self.create_backend(ledger, initial_grants, key_stream, storage)
+                self.create_backend(ledger.clone(), initial_grants, key_stream)
                     .await,
+                &mut loader,
             )
             .await
             .unwrap();
@@ -403,10 +441,11 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
 
                 // Wait for the keystore to find any records already belonging to this key from the
                 // initial grants.
+
                 keystore.await_key_scan(&key_pair.address()).await.unwrap();
                 pub_keys.push(key_pair.pub_key());
             }
-            keystores.push((keystore, pub_keys));
+            keystores.push((keystore, pub_keys, tmp_dir));
         }
 
         println!("Keystores set up: {}s", now.elapsed().as_secs_f32());
@@ -414,16 +453,16 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
 
         // Sync with any events that were emitted during ledger setup.
         self.sync(&ledger, &keystores).await;
-
         (ledger, keystores)
     }
 
     async fn sync(
         &self,
-        ledger: &Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork, Self::MockStorage>>>,
+        ledger: &Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork>>>,
         keystores: &[(
-            Keystore<'a, Self::MockBackend, Self::Ledger>,
+            Keystore<'a, Self::MockBackend, Self::Ledger, ChaChaRng>,
             Vec<UserPubKey>,
+            TempDir,
         )],
     ) {
         let memos_source = {
@@ -477,33 +516,33 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         // Since we're syncing with the time stamp from the most recent event, the keystores should
         // be in a stable state once they have processed up to that event. Check that each keystore
         // has persisted all of its in-memory state at this point.
-        self.check_storage(ledger, keystores).await;
+        self.check_storage(keystores).await;
     }
 
     async fn sync_with(
         &self,
         keystores: &[(
-            Keystore<'a, Self::MockBackend, Self::Ledger>,
+            Keystore<'a, Self::MockBackend, Self::Ledger, ChaChaRng>,
             Vec<UserPubKey>,
+            TempDir,
         )],
         t: EventIndex,
     ) {
         println!("waiting for sync point {}", t);
-        future::join_all(keystores.iter().map(|(keystore, _)| keystore.sync(t))).await;
+        future::join_all(keystores.iter().map(|(keystore, _, _)| keystore.sync(t))).await;
     }
 
     async fn check_storage(
         &self,
-        ledger: &Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork, Self::MockStorage>>>,
         keystores: &[(
-            Keystore<'a, Self::MockBackend, Self::Ledger>,
+            Keystore<'a, Self::MockBackend, Self::Ledger, ChaChaRng>,
             Vec<UserPubKey>,
+            TempDir,
         )],
     ) {
-        let ledger = ledger.lock().await;
-        for ((keystore, _), storage) in keystores.iter().zip(&ledger.storage) {
-            let KeystoreSharedState { state, .. } = &*keystore.mutex.lock().await;
-
+        for (keystore, _, _) in keystores {
+            let KeystoreSharedState { state, session, .. } = &*keystore.mutex.lock().await;
+            let storage = &session.storage;
             let mut state = state.clone();
             let mut loaded = storage.lock().await.load().await.unwrap();
 
@@ -546,7 +585,6 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
                     .collect(),
                 loaded.viewing_accounts.keys().cloned().collect(),
             );
-
             assert_keystore_states_eq(&state, &loaded);
         }
     }
@@ -679,10 +717,11 @@ pub async fn await_transaction<
     'a,
     L: Ledger + 'static,
     Backend: KeystoreBackend<'a, L> + Sync + 'a,
+    Meta: 'a + Serialize + DeserializeOwned + Send + Clone + PartialEq,
 >(
     receipt: &TransactionReceipt<L>,
-    sender: &Keystore<'a, Backend, L>,
-    receivers: &[&Keystore<'a, Backend, L>],
+    sender: &Keystore<'a, Backend, L, Meta>,
+    receivers: &[&Keystore<'a, Backend, L, Meta>],
 ) {
     assert_eq!(
         sender.await_transaction(receipt).await.unwrap(),

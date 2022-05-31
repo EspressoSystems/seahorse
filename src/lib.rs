@@ -46,6 +46,8 @@ use crate::{
     asset_library::{AssetLibrary, VerifiedAssetLibrary},
     events::{EventIndex, EventSource, LedgerEvent},
     key_scan::{receive_history_entry, BackgroundKeyScan, ScanOutputs},
+    loader::KeystoreLoader,
+    persistence::AtomicKeystoreStorage,
     txn_builder::*,
 };
 use arbitrary::Arbitrary;
@@ -82,7 +84,7 @@ use reef::{
     },
     *,
 };
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use snafu::{ResultExt, Snafu};
 use std::collections::HashMap;
 use std::convert::TryFrom;
@@ -261,78 +263,6 @@ pub struct KeystoreState<'a, L: Ledger> {
     pub assets: AssetLibrary,
 }
 
-/// The interface required by the keystore from the persistence layer.
-///
-/// See [persistence::AtomicKeystoreStorage] for an implementation of this interface which works for
-/// any CAP ledger.
-///
-/// Most code should not use this interface directly. Instead, use [KeystoreBackend::store] with
-/// [StorageTransaction] for a safer, RAII-based transactional interface.
-///
-/// The persistent storage needed by the keystore is divided into 3 categories, based on usage
-/// patterns and how often they change.
-///
-/// 1. Static data. This is data which is initialized when the keystore is created and never changes.
-///
-///    There is no interface in the [KeystoreStorage] trait for storing static data. When a new keystore
-///    is created, the [Keystore] will call [KeystoreBackend::create], which is responsible for working
-///    with the storage layer to persist the keystore's static data.
-///
-/// 2. Dynamic state. This is data which changes frequently, but grows boundedly or very slowly.
-///
-///    This includes the state of the ledger and the set of records owned by this keystore.
-///
-/// 3. Monotonic data. This is data which grows monotonically and never shrinks.
-///
-///    The monotonic data of a keystore is the set of assets types in the asset library and the
-///    transaction history.
-///
-/// The storage layer must provide a transactional interface. Updates to the individual storage
-/// categories have no observable affects (that is, their results will not affect the next call to
-/// [KeystoreStorage::load]) until [KeystoreStorage::commit] succeeds. If there are outstanding changes
-/// that have not been committed, [KeystoreStorage::revert] can be used to roll back the entire state
-/// of the persistent store to its state at the most recent commit.
-///
-/// This interface is specified separately from the [KeystoreBackend] interface to allow the
-/// implementation to separate the persistence layer from the network layer that implements the rest
-/// of the backend with minimal boilerplate. This allows a ledger-agnostic implementation of the
-/// storage layer to work with multiple ledger-specific implementations of the networking layer. It
-/// is also useful for mocking the storage layer during testing.
-#[async_trait]
-pub trait KeystoreStorage<'a, L: Ledger> {
-    /// Check if there is already a stored keystore with this key.
-    fn exists(&self) -> bool;
-
-    /// Load the stored keystore identified by the given key.
-    ///
-    /// This function may assume `self.exists()`.
-    async fn load(&mut self) -> Result<KeystoreState<'a, L>, KeystoreError<L>>;
-
-    /// Store a snapshot of the keystore's dynamic state.
-    async fn store_snapshot(
-        &mut self,
-        state: &KeystoreState<'a, L>,
-    ) -> Result<(), KeystoreError<L>>;
-
-    /// Append a new asset to the growing asset library.
-    async fn store_asset(&mut self, asset: &AssetInfo) -> Result<(), KeystoreError<L>>;
-
-    /// Add a transaction to the transaction history.
-    async fn store_transaction(
-        &mut self,
-        txn: TransactionHistoryEntry<L>,
-    ) -> Result<(), KeystoreError<L>>;
-    async fn transaction_history(
-        &mut self,
-    ) -> Result<Vec<TransactionHistoryEntry<L>>, KeystoreError<L>>;
-
-    /// Commit to outstanding changes.
-    async fn commit(&mut self);
-
-    /// Roll back the persisted state to the previous commit.
-    async fn revert(&mut self);
-}
-
 /// Interface for atomic storage transactions.
 ///
 /// Any changes made to the persistent storage state through this struct will be part of a single
@@ -342,19 +272,35 @@ pub trait KeystoreStorage<'a, L: Ledger> {
 /// This struct should not be constructed directly, but instead a transaction should be obtained
 /// through the [KeystoreBackend::store] method, which will automatically commit the transaction after
 /// it succeeds.
-pub struct StorageTransaction<'a, 'l, L: Ledger, Backend: KeystoreBackend<'a, L> + ?Sized> {
+pub struct StorageTransaction<
+    'a,
+    'l,
+    L: Ledger,
+    Backend: KeystoreBackend<'a, L> + ?Sized,
+    Meta: Serialize + DeserializeOwned + Send,
+> {
     pub backend: &'l mut Backend,
+    storage: Arc<Mutex<AtomicKeystoreStorage<'a, L, Meta>>>,
     cancelled: bool,
     _phantom: std::marker::PhantomData<&'a ()>,
     _phantom2: std::marker::PhantomData<L>,
 }
 
-impl<'a, 'l, L: Ledger, Backend: KeystoreBackend<'a, L> + ?Sized>
-    StorageTransaction<'a, 'l, L, Backend>
+impl<
+        'a,
+        'l,
+        L: Ledger,
+        Backend: KeystoreBackend<'a, L> + ?Sized,
+        Meta: Serialize + DeserializeOwned + Send,
+    > StorageTransaction<'a, 'l, L, Backend, Meta>
 {
-    fn new(backend: &'l mut Backend) -> Self {
+    fn new(
+        backend: &'l mut Backend,
+        storage: Arc<Mutex<AtomicKeystoreStorage<'a, L, Meta>>>,
+    ) -> Self {
         Self {
             backend,
+            storage,
             cancelled: false,
             _phantom: Default::default(),
             _phantom2: Default::default(),
@@ -415,13 +361,18 @@ impl<'a, 'l, L: Ledger, Backend: KeystoreBackend<'a, L> + ?Sized>
         }
     }
 
-    async fn storage(&mut self) -> MutexGuard<'_, <Backend as KeystoreBackend<'a, L>>::Storage> {
-        self.backend.storage().await
+    async fn storage(&mut self) -> MutexGuard<'_, AtomicKeystoreStorage<'a, L, Meta>> {
+        self.storage.lock().await
     }
 }
 
-impl<'a, 'l, L: Ledger, Backend: KeystoreBackend<'a, L> + ?Sized> Drop
-    for StorageTransaction<'a, 'l, L, Backend>
+impl<
+        'a,
+        'l,
+        L: Ledger,
+        Backend: KeystoreBackend<'a, L> + ?Sized,
+        Meta: Serialize + DeserializeOwned + Send,
+    > Drop for StorageTransaction<'a, 'l, L, Backend, Meta>
 {
     fn drop(&mut self) {
         block_on(self.cancel())
@@ -449,68 +400,6 @@ pub trait KeystoreBackend<'a, L: Ledger>: Send {
     /// (for example, block events from a network query service and memo events from a centralized
     /// memo store) or they may aggregate all events into a single stream from a single source.
     type EventStream: 'a + Stream<Item = (LedgerEvent<L>, EventSource)> + Unpin + Send;
-
-    /// The storage layer used by this implementation.
-    type Storage: KeystoreStorage<'a, L> + Send;
-
-    /// Access the persistent storage layer.
-    ///
-    /// The interface is specified this way, with the main storage interface in a separate trait and
-    /// an accessor function here, to allow implementations of [KeystoreBackend] to split the storage
-    /// layer from the networking layer, since the two concerns are generally separate.
-    ///
-    /// Note that the return type of this function requires the implementation to guard the storage
-    /// layer with a mutex, even if it is not internally shared between threads. This is meant to
-    /// allow shared access to the storage layer internally, but not to require it. A better
-    /// interface would be to have an associated type
-    ///         `type<'l> StorageRef: 'l +  Deref<Target = Self::Storage> + DerefMut`
-    /// This could be [MutexGuard], [async_std::sync::RwLockWriteGuard], or just
-    /// `&mut Self::Storage`, depending on the needs of the implementation. This should be cleaned
-    /// up if and when GATs stabilize.
-    async fn storage<'l>(&'l mut self) -> MutexGuard<'l, Self::Storage>;
-
-    /// Load a keystore or create a new one.
-    ///
-    /// If a keystore exists in storage, it is loaded. Otherwise, [KeystoreBackend::create] is called to
-    /// create a new keystore.
-    async fn load(&mut self) -> Result<KeystoreState<'a, L>, KeystoreError<L>> {
-        let mut storage = self.storage().await;
-        if storage.exists() {
-            // If there is a stored keystore with this key pair, load it.
-            storage.load().await
-        } else {
-            // Otherwise, ask the network layer to create and register a brand new keystore.
-            drop(storage);
-            self.create().await
-        }
-    }
-
-    /// Make a change to the persisted state using a function describing a transaction.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// backend.store(key_pair, |mut t| async move {
-    ///     t.store_snapshot(keystore_state).await?;
-    ///     // If this store fails, the effects of the previous store will be reverted.
-    ///     t.store_asset(keystore_state, asset).await?;
-    ///     // Use `t.backend` to access other backend functions during the transaction. Any
-    ///     // failures here will revert all previous stores.
-    ///     t.backend.do_something().await?;
-    ///     Ok(t)
-    /// }).await?;
-    /// ```
-    async fn store<'l, F, Fut>(&'l mut self, update: F) -> Result<(), KeystoreError<L>>
-    where
-        F: Send + FnOnce(StorageTransaction<'a, 'l, L, Self>) -> Fut,
-        Fut: Send + Future<Output = Result<StorageTransaction<'a, 'l, L, Self>, KeystoreError<L>>>,
-    {
-        let fut = update(StorageTransaction::new(self)).and_then(|txn| async move {
-            txn.backend.storage().await.commit().await;
-            Ok(())
-        });
-        fut.await
-    }
 
     /// Get the HD key tree which the keystore should use to generate keys.
     ///
@@ -582,14 +471,61 @@ pub trait KeystoreBackend<'a, L: Ledger>: Send {
 }
 
 /// Transient state derived from the persistent [KeystoreState].
-pub struct KeystoreSession<'a, L: Ledger, Backend: KeystoreBackend<'a, L>> {
+pub struct KeystoreSession<
+    'a,
+    L: Ledger,
+    Backend: KeystoreBackend<'a, L>,
+    Meta: Serialize + DeserializeOwned + Send,
+> {
     backend: Backend,
+    storage: Arc<Mutex<AtomicKeystoreStorage<'a, L, Meta>>>,
     rng: ChaChaRng,
     viewer_key_stream: hd::KeyTree,
     user_key_stream: hd::KeyTree,
     freezer_key_stream: hd::KeyTree,
     _marker: std::marker::PhantomData<&'a ()>,
     _marker2: std::marker::PhantomData<L>,
+}
+
+impl<'a, L: Ledger, Backend: KeystoreBackend<'a, L>, Meta: Serialize + DeserializeOwned + Send>
+    KeystoreSession<'a, L, Backend, Meta>
+{
+    /// Make a change to the persisted state using a function describing a transaction.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// session.store(key_pair, |mut t| async move {
+    ///     t.store_snapshot(keystore_state).await?;
+    ///     // If this store fails, the effects of the previous store will be reverted.
+    ///     t.store_asset(keystore_state, asset).await?;
+    ///     // Use `t.backend` to access other backend functions during the transaction. Any
+    ///     // failures here will revert all previous stores.
+    ///     t.backend.do_something().await?;
+    ///     Ok(t)
+    /// }).await?;
+    /// ```
+    async fn store<'l, F, Fut>(&'l mut self, update: F) -> Result<(), KeystoreError<L>>
+    where
+        F: Send + FnOnce(StorageTransaction<'a, 'l, L, Backend, Meta>) -> Fut,
+        Fut: Send
+            + Future<Output = Result<StorageTransaction<'a, 'l, L, Backend, Meta>, KeystoreError<L>>>,
+    {
+        let fut = update(StorageTransaction::new(
+            &mut self.backend,
+            self.storage.clone(),
+        ))
+        .and_then(|mut txn| async move {
+            txn.storage().await.commit().await;
+            Ok(())
+        });
+        fut.await
+    }
+
+    /// Access the persistent storage layer
+    pub async fn storage(&mut self) -> MutexGuard<'_, AtomicKeystoreStorage<'a, L, Meta>> {
+        self.storage.lock().await
+    }
 }
 
 // Trait used to indicate that an abstract return type captures a reference with the lifetime 'a.
@@ -656,9 +592,11 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         }
     }
 
-    pub async fn transaction_status(
+    pub async fn transaction_status<
+        Meta: Serialize + DeserializeOwned + Send + Clone + PartialEq,
+    >(
         &mut self,
-        session: &mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>>,
+        session: &mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>, Meta>,
         receipt: &TransactionReceipt<L>,
     ) -> Result<TransactionStatus, KeystoreError<L>> {
         match self.txn_state.transactions.status(&receipt.uid) {
@@ -690,9 +628,9 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         }
     }
 
-    async fn handle_event(
+    async fn handle_event<Meta: Serialize + DeserializeOwned + Send>(
         &mut self,
-        session: &mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>>,
+        session: &mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>, Meta>,
         event: LedgerEvent<L>,
         source: EventSource,
     ) -> EventSummary<L> {
@@ -956,7 +894,6 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         };
 
         if let Err(err) = session
-            .backend
             .store(|mut t| async {
                 t.store_snapshot(self).await?;
                 Ok(t)
@@ -972,9 +909,9 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         summary
     }
 
-    async fn try_open_memos(
+    async fn try_open_memos<Meta: Serialize + DeserializeOwned + Send>(
         &mut self,
-        session: &mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>>,
+        session: &mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>, Meta>,
         key_pair: &UserKeyPair,
         memos: &[(ReceiverMemo, RecordCommitment, u64, MerklePath)],
         transaction: Option<(u64, u64, TransactionHash<L>, TransactionKind<L>)>,
@@ -1011,9 +948,9 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         records
     }
 
-    async fn receive_attached_records(
+    async fn receive_attached_records<Meta: Serialize + DeserializeOwned + Send>(
         &mut self,
-        session: &mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>>,
+        session: &mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>, Meta>,
         block_id: u64,
         txn_id: u64,
         txn: &Transaction<L>,
@@ -1080,9 +1017,9 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         Ok(())
     }
 
-    async fn add_receive_history(
+    async fn add_receive_history<Meta: Serialize + DeserializeOwned + Send>(
         &mut self,
-        session: &mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>>,
+        session: &mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>, Meta>,
         block_id: u64,
         txn_id: u64,
         kind: TransactionKind<L>,
@@ -1092,7 +1029,6 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         let history = receive_history_entry(kind, txn_hash, records);
 
         if let Err(err) = session
-            .backend
             .store(|mut t| async move {
                 t.store_transaction(history).await?;
                 Ok(t)
@@ -1106,9 +1042,9 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         }
     }
 
-    async fn add_records(
+    async fn add_records<Meta: Serialize + DeserializeOwned + Send>(
         &mut self,
-        session: &mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>>,
+        session: &mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>, Meta>,
         key_pair: &UserKeyPair,
         records: Vec<(RecordOpening, u64, MerklePath)>,
     ) -> Result<(), KeystoreError<L>> {
@@ -1138,9 +1074,9 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         Ok(())
     }
 
-    async fn import_memo(
+    async fn import_memo<Meta: Serialize + DeserializeOwned + Send>(
         &mut self,
-        session: &mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>>,
+        session: &mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>, Meta>,
         memo: ReceiverMemo,
         comm: RecordCommitment,
         uid: u64,
@@ -1193,9 +1129,9 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         pending
     }
 
-    async fn view_transaction(
+    async fn view_transaction<Meta: Serialize + DeserializeOwned + Send>(
         &mut self,
-        session: &mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>>,
+        session: &mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>, Meta>,
         txn: &Transaction<L>,
         uids: &mut [(u64, bool)],
     ) {
@@ -1261,9 +1197,9 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         }
     }
 
-    async fn update_nullifier_proofs(
+    async fn update_nullifier_proofs<Meta: Serialize + DeserializeOwned + Send>(
         &mut self,
-        session: &mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>>,
+        session: &mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>, Meta>,
         txn: &mut Transaction<L>,
     ) -> Result<(), KeystoreError<L>> {
         let mut proofs = Vec::new();
@@ -1285,9 +1221,9 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
     // `submit_elaborated_transaction`, where the default async desugaring loses track of the `Send`
     // impl for the result type. As with the other function, this can be fixed by manually
     // desugaring the type signature.
-    fn define_asset<'b>(
+    fn define_asset<'b, Meta: Serialize + DeserializeOwned + Send + Send>(
         &'b mut self,
-        session: &'b mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>>,
+        session: &'b mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>, Meta>,
         name: String,
         description: &'b [u8],
         policy: AssetPolicy,
@@ -1312,7 +1248,6 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
             // might lose the seed if we crash at the wrong time) and we don't want it in our
             // in-memory state if we're not going to report success.
             session
-                .backend
                 .store(|mut t| async {
                     t.store_asset(&asset).await?;
                     Ok(t)
@@ -1325,9 +1260,9 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         }
     }
 
-    async fn import_asset(
+    async fn import_asset<Meta: Serialize + DeserializeOwned + Send>(
         &mut self,
-        session: &mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>>,
+        session: &mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>, Meta>,
         asset: AssetInfo,
     ) -> Result<(), KeystoreError<L>> {
         if let Some(old) = self.assets.get(asset.definition.code) {
@@ -1340,7 +1275,6 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
 
         // Persist the change before modifying in-memory data structures, in case persistence fails.
         session
-            .backend
             .store(|mut t| async {
                 t.store_asset(&asset).await?;
                 Ok(t)
@@ -1361,9 +1295,9 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
     // stream will be returned. Note that the caller is responsible for actually starting the task
     // which processes this scan, since the Keystore (not the KeystoreState) has the data structures
     // needed to manage tasks (the AsyncScope, mutexes, etc.).
-    async fn add_user_key(
+    async fn add_user_key<Meta: Serialize + DeserializeOwned + Send>(
         &mut self,
-        session: &mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>>,
+        session: &mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>, Meta>,
         user_key: Option<UserKeyPair>,
         description: String,
         scan_from: Option<EventIndex>,
@@ -1436,7 +1370,6 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         // remote services.
         self.sending_accounts.insert(user_key.address(), account);
         if let Err(err) = session
-            .backend
             .store(|mut t| async {
                 t.store_snapshot(self).await?;
                 // If we successfully updated our data structures, register the key with the
@@ -1458,9 +1391,9 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         Ok((user_key, events))
     }
 
-    async fn add_viewing_key(
+    async fn add_viewing_key<Meta: Serialize + DeserializeOwned + Send>(
         &mut self,
-        session: &mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>>,
+        session: &mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>, Meta>,
         viewing_key: ViewerKeyPair,
         description: String,
     ) -> Result<(), KeystoreError<L>> {
@@ -1474,7 +1407,6 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
             Account::new(viewing_key.clone(), description),
         );
         session
-            .backend
             .store(|mut t| async {
                 t.store_snapshot(self).await?;
                 Ok(t)
@@ -1484,9 +1416,9 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         Ok(())
     }
 
-    async fn add_freeze_key(
+    async fn add_freeze_key<Meta: Serialize + DeserializeOwned + Send>(
         &mut self,
-        session: &mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>>,
+        session: &mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>, Meta>,
         freeze_key: FreezerKeyPair,
         description: String,
     ) -> Result<(), KeystoreError<L>> {
@@ -1497,7 +1429,6 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         self.freezing_accounts
             .insert(freeze_key.pub_key(), Account::new(freeze_key, description));
         session
-            .backend
             .store(|mut t| async {
                 t.store_snapshot(self).await?;
                 Ok(t)
@@ -1507,9 +1438,9 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         Ok(())
     }
 
-    fn build_transfer<'k>(
+    fn build_transfer<'k, Meta: Serialize + DeserializeOwned + Send>(
         &mut self,
-        session: &mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>>,
+        session: &mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>, Meta>,
         spec: TransferSpec<'k>,
     ) -> Result<(TransferNote, TransactionInfo<L>), KeystoreError<L>> {
         self.txn_state
@@ -1517,9 +1448,9 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
             .context(TransactionSnafu)
     }
 
-    async fn build_mint(
+    async fn build_mint<Meta: Serialize + DeserializeOwned + Send>(
         &mut self,
-        session: &mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>>,
+        session: &mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>, Meta>,
         minter: Option<&UserAddress>,
         fee: RecordAmount,
         asset_code: &AssetCode,
@@ -1555,9 +1486,9 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
     }
 
     #[allow(clippy::too_many_arguments)]
-    async fn build_freeze(
+    async fn build_freeze<Meta: Serialize + DeserializeOwned + Send>(
         &mut self,
-        session: &mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>>,
+        session: &mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>, Meta>,
         fee_address: Option<&UserAddress>,
         fee: RecordAmount,
         asset: &AssetCode,
@@ -1596,9 +1527,9 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
             .context(TransactionSnafu)
     }
 
-    async fn submit_transaction(
+    async fn submit_transaction<Meta: Serialize + DeserializeOwned + Send>(
         &mut self,
-        session: &mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>>,
+        session: &mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>, Meta>,
         note: TransactionNote,
         info: TransactionInfo<L>,
     ) -> Result<TransactionReceipt<L>, KeystoreError<L>> {
@@ -1630,9 +1561,9 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
     // `impl 'a + 'b + ...` does not work, so we use the work-around described at
     // https://stackoverflow.com/questions/50547766/how-can-i-get-impl-trait-to-use-the-appropriate-lifetime-for-a-mutable-reference
     // to indicate the captured lifetime using the Captures trait.
-    fn submit_elaborated_transaction<'b>(
+    fn submit_elaborated_transaction<'b, Meta: Serialize + DeserializeOwned + Send + Send>(
         &'b mut self,
-        session: &'b mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>>,
+        session: &'b mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>, Meta>,
         txn: Transaction<L>,
         mut info: TransactionInfo<L>,
     ) -> impl 'b + Captures<'a> + Future<Output = Result<TransactionReceipt<L>, KeystoreError<L>>> + Send
@@ -1649,7 +1580,6 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
             // Persist the pending transaction.
             let history = info.history.clone();
             if let Err(err) = session
-                .backend
                 .store(|mut t| async {
                     t.store_snapshot(self).await?;
 
@@ -1703,30 +1633,42 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
 /// It is a soundness requirement that the destructor of a [Keystore] run when the [Keystore] is
 /// dropped. Therefore, [std::mem::forget] must not be used to forget a [Keystore] without running its
 /// destructor.
-pub struct Keystore<'a, Backend: KeystoreBackend<'a, L>, L: Ledger> {
+pub struct Keystore<
+    'a,
+    Backend: KeystoreBackend<'a, L>,
+    L: Ledger,
+    Meta: Serialize + DeserializeOwned + Send,
+> {
     // Data shared between the main thread and the event handling thread:
     //  * the trusted, persistent keystore state
     //  * the trusted, ephemeral keystore session
     //  * promise completion handles for futures returned by sync(), indexed by the timestamp at
     //    which the corresponding future is supposed to complete. Handles are added in sync() (main
     //    thread) and removed and completed in the event thread
-    mutex: Arc<Mutex<KeystoreSharedState<'a, L, Backend>>>,
+    mutex: Arc<Mutex<KeystoreSharedState<'a, L, Backend, Meta>>>,
     // Handle for the background tasks running the event handling loop and retroactive ledger scans.
     // When dropped, this handle will cancel the tasks.
     task_scope: AsyncScope<'a, ()>,
 }
 
 /// Keystore state which is shared with event handling threads.
-pub struct KeystoreSharedState<'a, L: Ledger, Backend: KeystoreBackend<'a, L>> {
+pub struct KeystoreSharedState<
+    'a,
+    L: Ledger,
+    Backend: KeystoreBackend<'a, L>,
+    Meta: Serialize + DeserializeOwned + Send,
+> {
     state: KeystoreState<'a, L>,
-    session: KeystoreSession<'a, L, Backend>,
+    session: KeystoreSession<'a, L, Backend, Meta>,
     sync_handles: Vec<(EventIndex, oneshot::Sender<()>)>,
     txn_subscribers: HashMap<TransactionUID<L>, Vec<oneshot::Sender<TransactionStatus>>>,
     pending_foreign_txns: HashMap<Nullifier, Vec<oneshot::Sender<TransactionStatus>>>,
     pending_key_scans: HashMap<UserAddress, Vec<oneshot::Sender<()>>>,
 }
 
-impl<'a, L: Ledger, Backend: KeystoreBackend<'a, L>> KeystoreSharedState<'a, L, Backend> {
+impl<'a, L: Ledger, Backend: KeystoreBackend<'a, L>, Meta: Serialize + DeserializeOwned + Send>
+    KeystoreSharedState<'a, L, Backend, Meta>
+{
     pub fn backend(&self) -> &Backend {
         &self.session.backend
     }
@@ -1766,8 +1708,12 @@ type BoxFuture<'a, T> = std::pin::Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 pub trait SendFuture<'a, T>: Future<Output = T> + Captures<'a> + Send {}
 impl<'a, T, F: Future<Output = T> + Captures<'a> + Send> SendFuture<'a, T> for F {}
 
-impl<'a, L: 'static + Ledger, Backend: 'a + KeystoreBackend<'a, L> + Send + Sync>
-    Keystore<'a, Backend, L>
+impl<
+        'a,
+        L: 'static + Ledger,
+        Backend: 'a + KeystoreBackend<'a, L> + Send + Sync,
+        Meta: 'a + Serialize + DeserializeOwned + Send + Clone + PartialEq,
+    > Keystore<'a, Backend, L, Meta>
 {
     // This function suffers from github.com/rust-lang/rust/issues/89657, in which, if we define it
     // as an async function, the compiler loses track of the fact that the resulting opaque Future
@@ -1782,25 +1728,36 @@ impl<'a, L: 'static + Ledger, Backend: 'a + KeystoreBackend<'a, L> + Send + Sync
     // erasure. I don't know why this doesn't crash the compiler, but it doesn't.
     pub fn new(
         mut backend: Backend,
-    ) -> BoxFuture<'a, Result<Keystore<'a, Backend, L>, KeystoreError<L>>> {
+        loader: &mut impl KeystoreLoader<L, Meta = Meta>,
+    ) -> BoxFuture<'a, Result<Keystore<'a, Backend, L, Meta>, KeystoreError<L>>> {
+        let mut storage = AtomicKeystoreStorage::new(loader, 1024).unwrap();
         Box::pin(async move {
-            let state = backend.load().await?;
-            Self::new_impl(backend, state).await
+            let state = if storage.exists() {
+                storage.load().await?
+            } else {
+                let state = backend.create().await?;
+                storage.create(&state).await?;
+                state
+            };
+            Self::new_impl(backend, storage, state).await
         })
     }
 
     #[cfg(any(test, bench, feature = "testing"))]
     pub fn with_state(
         backend: Backend,
+        loader: &mut impl KeystoreLoader<L, Meta = Meta>,
         state: KeystoreState<'a, L>,
-    ) -> BoxFuture<'a, Result<Keystore<'a, Backend, L>, KeystoreError<L>>> {
-        Box::pin(async move { Self::new_impl(backend, state).await })
+    ) -> BoxFuture<'a, Result<Keystore<'a, Backend, L, Meta>, KeystoreError<L>>> {
+        let storage = AtomicKeystoreStorage::new(loader, 1024).unwrap();
+        Box::pin(async move { Self::new_impl(backend, storage, state).await })
     }
 
     async fn new_impl(
         backend: Backend,
+        storage: AtomicKeystoreStorage<'a, L, Meta>,
         mut state: KeystoreState<'a, L>,
-    ) -> Result<Keystore<'a, Backend, L>, KeystoreError<L>> {
+    ) -> Result<Keystore<'a, Backend, L, Meta>, KeystoreError<L>> {
         let mut events = backend.subscribe(state.txn_state.now, None).await;
         let mut key_scans = vec![];
         for account in state.viewing_accounts.values() {
@@ -1814,6 +1771,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + KeystoreBackend<'a, L> + Send + Sync
         let key_tree = backend.key_stream();
         let mut session = KeystoreSession {
             backend,
+            storage: Arc::new(Mutex::new(storage)),
             rng: ChaChaRng::from_entropy(),
             viewer_key_stream: key_tree.derive_sub_tree("viewer".as_bytes()),
             freezer_key_stream: key_tree.derive_sub_tree("freezer".as_bytes()),
@@ -1947,7 +1905,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + KeystoreBackend<'a, L> + Send + Sync
     }
 
     /// Access the shared state directly.
-    pub async fn lock(&self) -> MutexGuard<'_, KeystoreSharedState<'a, L, Backend>> {
+    pub async fn lock(&self) -> MutexGuard<'_, KeystoreSharedState<'a, L, Backend, Meta>> {
         self.mutex.lock().await
     }
 
@@ -2170,7 +2128,7 @@ impl<'a, L: 'static + Ledger, Backend: 'a + KeystoreBackend<'a, L> + Send + Sync
     > {
         Box::pin(async move {
             let KeystoreSharedState { session, .. } = &mut *self.mutex.lock().await;
-            let mut storage = session.backend.storage().await;
+            let mut storage = session.storage.lock().await;
             storage.transaction_history().await
         })
     }
@@ -2752,7 +2710,6 @@ impl<'a, L: 'static + Ledger, Backend: 'a + KeystoreBackend<'a, L> + Send + Sync
                             println!("Error saving records from key scan {}: {}", address, err);
                         }
                         if let Err(err) = session
-                            .backend
                             .store(|mut t| async {
                                 for h in history {
                                     t.store_transaction(h).await?;
@@ -2780,7 +2737,6 @@ impl<'a, L: 'static + Ledger, Backend: 'a + KeystoreBackend<'a, L> + Send + Sync
                     };
 
                     session
-                        .backend
                         .store(|mut t| async {
                             t.store_snapshot(state).await?;
                             Ok(t)

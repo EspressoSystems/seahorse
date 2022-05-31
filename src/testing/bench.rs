@@ -68,7 +68,6 @@ type MockLedger<'a, T> = super::MockLedger<
     'a,
     <T as SystemUnderTest<'a>>::Ledger,
     <T as SystemUnderTest<'a>>::MockNetwork,
-    <T as SystemUnderTest<'a>>::MockStorage,
 >;
 
 // A cache of benchmark setups with pre-generated event streams, indexed by number of blocks and
@@ -101,7 +100,7 @@ async fn generate_independent_transactions<
 
     // Add the key to a fresh keystore to force it to be registered in the address book. We
     // will not use this keystore again.
-    let mut w = t.create_keystore(&mut rng, &ledger).await;
+    let (mut w, _) = t.create_keystore(&mut rng, &ledger).await;
     w.add_user_key(receiver.clone(), "key".into(), EventIndex::default())
         .await
         .unwrap();
@@ -110,7 +109,7 @@ async fn generate_independent_transactions<
     let viewing_key = ViewerKeyPair::generate(&mut rng);
     let freezing_key = FreezerKeyPair::generate(&mut rng);
     let (assets, mints): (Vec<_>, Vec<_>) = join_all(keystores.iter_mut().enumerate().map(
-        |(i, (keystore, pub_keys))| {
+        |(i, (keystore, pub_keys, _tmp_dir))| {
             let viewing_key = viewing_key.pub_key();
             let freezing_key = freezing_key.pub_key();
             async move {
@@ -156,7 +155,7 @@ async fn generate_independent_transactions<
         keystores
             .iter_mut()
             .zip(&assets)
-            .map(|((keystore, _), asset)| {
+            .map(|((keystore, _, _), asset)| {
                 let receiver = receiver.pub_key();
                 async move {
                     keystore
@@ -212,14 +211,14 @@ async fn bench_ledger_scanner_setup<
 
     // Add the receiver key to a fresh keystore to force it to be registered in the address
     // book. We will not use this keystore again.
-    let mut w = t.create_keystore(&mut rng, &ledger).await;
+    let (mut w, _) = t.create_keystore(&mut rng, &ledger).await;
     w.add_user_key(txns.receiver.clone(), "key".into(), EventIndex::default())
         .await
         .unwrap();
 
     // Mint a viewable asset for each keystore.
     join_all(keystores.iter_mut().zip(txns.mints).map(
-        |((keystore, _), (mint_note, mint_info))| async move {
+        |((keystore, _, _), (mint_note, mint_info))| async move {
             let receipt = keystore
                 .submit_cap(mint_note.into(), mint_info)
                 .await
@@ -243,7 +242,7 @@ async fn bench_ledger_scanner_setup<
             keystores
                 .iter_mut()
                 .zip(&txns.transfers[i * txns_per_block..])
-                .map(|((keystore, _), (xfr_note, xfr_info))| async move {
+                .map(|((keystore, _, _), (xfr_note, xfr_info))| async move {
                     let receipt = keystore
                         .submit_cap(xfr_note.clone().into(), xfr_info.clone())
                         .await
@@ -315,7 +314,7 @@ fn bench_ledger_scanner_run<
             async move {
                 let mut dur = Duration::default();
                 for _ in 0..n {
-                    let mut w = bench
+                    let (mut w, _tmp_dir) = bench
                         .t
                         .create_keystore_with_state(
                             &mut bench.rng,
@@ -358,7 +357,7 @@ fn bench_ledger_scanner_run<
                     let state = bench.initial_state.clone();
                     let start = Instant::now();
                     // Create the keystore, starting the main event thread.
-                    let w = bench
+                    let (w, _tmp_dir) = bench
                         .t
                         .create_keystore_with_state(&mut bench.rng, &bench.ledger, state)
                         .await;
