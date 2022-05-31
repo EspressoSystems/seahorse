@@ -3196,7 +3196,7 @@ pub mod generic_keystore_tests {
         // the fee, but it doesn't actually have any records. This was once a bug that caused a
         // panic. To test with these conditions, we will create a fresh keystore with two accounts,
         // and fund only the second one.
-        let mut sender = t.create_keystore(&mut rng, &ledger).await;
+        let (mut sender, _tmp_dir) = t.create_keystore(&mut rng, &ledger).await;
         sender
             .generate_user_key("account0".into(), None)
             .await
