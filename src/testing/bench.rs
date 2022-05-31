@@ -151,27 +151,24 @@ async fn generate_independent_transactions<
     // Create events by making a number of transfers. We transfer from a number of different
     // keystores so we can easily parallelize the transfers, which speeds things up and allows
     // them all to be included in the same block.
-    let transfers = join_all(
-        keystores
-            .iter_mut()
-            .zip(&assets)
-            .map(|((keystore, _, _tmp_dir), asset)| {
-                let receiver = receiver.pub_key();
-                async move {
-                    keystore
-                        .build_transfer(
-                            None,
-                            &asset.definition.code,
-                            &[(receiver, 1, false)],
-                            1,
-                            vec![],
-                            None,
-                        )
-                        .await
-                        .unwrap()
-                }
-            }),
-    )
+    let transfers = join_all(keystores.iter_mut().zip(&assets).map(
+        |((keystore, _, _tmp_dir), asset)| {
+            let receiver = receiver.pub_key();
+            async move {
+                keystore
+                    .build_transfer(
+                        None,
+                        &asset.definition.code,
+                        &[(receiver, 1, false)],
+                        1,
+                        vec![],
+                        None,
+                    )
+                    .await
+                    .unwrap()
+            }
+        },
+    ))
     .await;
 
     // Let the keystores finish processing events. This keeps the setup keystores' event threads from
@@ -242,13 +239,15 @@ async fn bench_ledger_scanner_setup<
             keystores
                 .iter_mut()
                 .zip(&txns.transfers[i * txns_per_block..])
-                .map(|((keystore, _, _tmp_dir), (xfr_note, xfr_info))| async move {
-                    let receipt = keystore
-                        .submit_cap(xfr_note.clone().into(), xfr_info.clone())
-                        .await
-                        .unwrap();
-                    keystore.await_transaction(&receipt).await.unwrap();
-                }),
+                .map(
+                    |((keystore, _, _tmp_dir), (xfr_note, xfr_info))| async move {
+                        let receipt = keystore
+                            .submit_cap(xfr_note.clone().into(), xfr_info.clone())
+                            .await
+                            .unwrap();
+                        keystore.await_transaction(&receipt).await.unwrap();
+                    },
+                ),
         )
         .await;
     }
