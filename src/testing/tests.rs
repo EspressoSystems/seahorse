@@ -3182,4 +3182,72 @@ pub mod generic_keystore_tests {
             max_record_times_2
         );
     }
+
+    #[async_std::test]
+    pub async fn test_zero_fee<'a, T: SystemUnderTest<'a>>() {
+        let mut t = T::default();
+        let mut now = Instant::now();
+        let mut rng = ChaChaRng::from_seed([118; 32]);
+        let (ledger, mut keystores) = t.create_test_network(&[(4, 4)], vec![2], &mut now).await;
+        ledger.lock().await.set_block_size(1).unwrap();
+
+        // Allocating a zero fee is tricky if the keystore has one account with 0 native tokens and
+        // one account with nonzero -- since the first account technically has enough balance to pay
+        // the fee, but it doesn't actually have any records. This was once a bug that caused a
+        // panic. To test with these conditions, we will create a fresh keystore with two accounts,
+        // and fund only the second one.
+        let mut sender = t.create_keystore(&mut rng, &ledger).await;
+        sender
+            .generate_user_key("account0".into(), None)
+            .await
+            .unwrap();
+        sender
+            .generate_user_key("account1".into(), None)
+            .await
+            .unwrap();
+        let accounts = sender.pub_keys().await;
+
+        // Fund the second account.
+        let txn = keystores[0]
+            .0
+            .transfer(None, &AssetCode::native(), &[(accounts[1].clone(), 1)], 0)
+            .await
+            .unwrap();
+        await_transaction(&txn, &keystores[0].0, &[&sender]).await;
+        assert_eq!(
+            sender
+                .balance_breakdown(&accounts[0].address(), &AssetCode::native())
+                .await,
+            0u64.into()
+        );
+        assert_eq!(
+            sender
+                .balance_breakdown(&accounts[1].address(), &AssetCode::native())
+                .await,
+            1u64.into()
+        );
+
+        // Mint a non-native asset which we can transfer, to test the path where fees and transfer
+        // inputs are allocated separately.
+        let asset = sender
+            .define_asset("asset".into(), &[], AssetPolicy::default())
+            .await
+            .unwrap();
+        let txn = sender
+            .mint(None, 0, &asset.code, 1, accounts[0].clone())
+            .await
+            .unwrap();
+        await_transaction(&txn, &sender, &[]).await;
+        assert_eq!(sender.balance(&asset.code).await, 1u64.into());
+
+        // Now do a non-native transfer with a 0 fee.
+        let txn = sender
+            .transfer(None, &asset.code, &[(keystores[0].1[0].clone(), 1)], 0)
+            .await
+            .unwrap();
+        await_transaction(&txn, &sender, &[&keystores[0].0]).await;
+        assert_eq!(sender.balance(&AssetCode::native()).await, 1u64.into());
+        assert_eq!(sender.balance(&asset.code).await, 0u64.into());
+        assert_eq!(keystores[0].0.balance(&asset.code).await, 1u64.into());
+    }
 }
