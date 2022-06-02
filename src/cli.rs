@@ -19,10 +19,10 @@
 use crate::{
     events::EventIndex,
     io::SharedIO,
-    loader::{InteractiveLoader, KeystoreLoader, MnemonicPasswordLogin},
+    loader::{InteractiveLoader, MnemonicPasswordLogin},
     reader::Reader,
-    AssetInfo, BincodeSnafu, IoSnafu, KeystoreBackend, KeystoreError, TransactionReceipt,
-    TransactionStatus,
+    AssetInfo, BincodeSnafu, IoSnafu, KeystoreBackend, KeystoreError, RecordAmount,
+    TransactionReceipt, TransactionStatus,
 };
 use async_std::task::block_on;
 use async_trait::async_trait;
@@ -61,7 +61,6 @@ pub trait CLI<'a> {
     async fn init_backend(
         universal_param: &'a UniversalParam,
         args: Self::Args,
-        loader: &mut (impl KeystoreLoader<Self::Ledger, Meta = MnemonicPasswordLogin> + Send),
     ) -> Result<Self::Backend, KeystoreError<Self::Ledger>>;
 
     /// Add extra, ledger-specific commands to the generic CLI interface.
@@ -98,7 +97,8 @@ pub trait CLIArgs {
     fn use_tmp_storage(&self) -> bool;
 }
 
-pub type Keystore<'a, C> = crate::Keystore<'a, <C as CLI<'a>>::Backend, <C as CLI<'a>>::Ledger>;
+pub type Keystore<'a, C> =
+    crate::Keystore<'a, <C as CLI<'a>>::Backend, <C as CLI<'a>>::Ledger, MnemonicPasswordLogin>;
 
 /// A REPL command.
 ///
@@ -164,7 +164,7 @@ macro_rules! cli_input_from_str {
 
 cli_input_from_str! {
     bool, u64, AssetCode, AssetInfo, EventIndex, FreezerPubKey, MerklePath, PathBuf, ReceiverMemo,
-    RecordCommitment, String, UserAddress, UserPubKey, ViewerPubKey
+    RecordAmount, RecordCommitment, String, UserAddress, UserPubKey, ViewerPubKey
 }
 
 impl<'a, C: CLI<'a>, L: Ledger> CLIInput<'a, C> for TransactionReceipt<L> {
@@ -503,7 +503,8 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             transfer,
             "transfer some owned assets to another user's public key",
             C,
-            |io, keystore, asset: ListItem<AssetCode>, to: UserPubKey, amount: u64, fee: u64; from: Option<UserAddress>, wait: Option<bool>| {
+            |io, keystore, asset: ListItem<AssetCode>, to: UserPubKey, amount: RecordAmount, fee: RecordAmount;
+             from: Option<UserAddress>, wait: Option<bool>| {
                 let res = keystore.transfer(from.as_ref().map(|addr| &addr.0), &asset.item, &[(to, amount)], fee).await;
                 finish_transaction::<C>(io, keystore, res, wait, "transferred").await;
             }
@@ -514,7 +515,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             C,
             |io, keystore, desc: String; name: Option<String>, viewing_key: Option<ViewerPubKey>,
              freezing_key: Option<FreezerPubKey>, view_amount: Option<bool>,
-             view_address: Option<bool>, view_blind: Option<bool>, viewing_threshold: Option<u64>|
+             view_address: Option<bool>, view_blind: Option<bool>, viewing_threshold: Option<RecordAmount>|
             {
                 let mut policy = AssetPolicy::default();
                 if let Some(viewing_key) = viewing_key {
@@ -551,7 +552,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                     }
                 }
                 if let Some(viewing_threshold) = viewing_threshold {
-                    policy = policy.set_reveal_threshold(viewing_threshold);
+                    policy = policy.set_reveal_threshold(viewing_threshold.into());
                 }
                 match keystore.define_asset(name.unwrap_or_default(), desc.as_bytes(), policy).await {
                     Ok(def) => {
@@ -567,7 +568,8 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             mint,
             "mint an asset from an owned address to a user's public key",
             C,
-            |io, keystore, asset: ListItem<AssetCode>, to: UserPubKey, amount: u64, fee: u64; fee_account: Option<UserAddress>, wait: Option<bool>| {
+            |io, keystore, asset: ListItem<AssetCode>, to: UserPubKey, amount: RecordAmount, fee: RecordAmount;
+             fee_account: Option<UserAddress>, wait: Option<bool>| {
                 let res = keystore.mint(fee_account.as_ref().map(|addr| &addr.0), fee, &asset.item, amount, to).await;
                 finish_transaction::<C>(io, keystore, res, wait, "minted").await;
             }
@@ -576,8 +578,8 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             freeze,
             "freeze assets owned by another user's address",
             C,
-            |io, keystore, asset: ListItem<AssetCode>, target: UserAddress,
-             amount: U256, fee: u64; fee_account: Option<UserAddress>, wait: Option<bool>|
+            |io, keystore, asset: ListItem<AssetCode>, target: UserAddress, amount: U256, fee: RecordAmount;
+             fee_account: Option<UserAddress>, wait: Option<bool>|
             {
                 let res = keystore.freeze(fee_account.as_ref().map(|addr| &addr.0), fee, &asset.item, amount, target.0).await;
                 finish_transaction::<C>(io, keystore, res, wait, "frozen").await;
@@ -587,8 +589,8 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             unfreeze,
             "unfreeze previously frozen assets owned by another user's address",
             C,
-            |io, keystore, asset: ListItem<AssetCode>, target: UserAddress,
-             amount: U256, fee: u64; fee_account: Option<UserAddress>, wait: Option<bool>|
+            |io, keystore, asset: ListItem<AssetCode>, target: UserAddress, amount: U256, fee: RecordAmount;
+             fee_account: Option<UserAddress>, wait: Option<bool>|
             {
                 let res = keystore.unfreeze(fee_account.as_ref().map(|addr| &addr.0), fee, &asset.item, amount, target.0).await;
                 finish_transaction::<C>(io, keystore, res, wait, "unfrozen").await;
@@ -1023,12 +1025,12 @@ async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
     let mut loader = InteractiveLoader::new(storage, reader);
 
     let universal_param = Box::leak(Box::new(L::srs()));
-    let backend = C::init_backend(universal_param, args, &mut loader).await?;
+    let backend = C::init_backend(universal_param, args).await?;
 
     // Loading the keystore takes a while. Let the user know that's expected.
     //todo !jeb.bearer Make it faster
     cli_writeln!(io, "connecting...");
-    let mut keystore = Keystore::<C>::new(backend).await?;
+    let mut keystore = Keystore::<C>::new(backend, &mut loader).await?;
     cli_writeln!(io, "Type 'help' for a list of commands.");
     let commands = init_commands::<C>();
 
@@ -1084,7 +1086,7 @@ mod test {
         io::Tee,
         testing::{
             cli_match::*,
-            mocks::{MockBackend, MockLedger, MockNetwork, MockStorage, MockSystem},
+            mocks::{MockBackend, MockLedger, MockNetwork, MockSystem},
             SystemUnderTest,
         },
     };
@@ -1097,15 +1099,17 @@ mod test {
     use pipe::{PipeReader, PipeWriter};
     use rand_chacha::{rand_core::SeedableRng, ChaChaRng};
     use reef::cap;
+    use std::io::BufRead;
     use std::time::Instant;
+    use tempdir::TempDir;
 
-    type MockCapLedger<'a> =
-        Arc<Mutex<MockLedger<'a, cap::Ledger, MockNetwork<'a>, MockStorage<'a, cap::Ledger>>>>;
+    type MockCapLedger<'a> = Arc<Mutex<MockLedger<'a, cap::Ledger, MockNetwork<'a>>>>;
 
     struct MockArgs<'a> {
         io: SharedIO,
         key_stream: hd::KeyTree,
         ledger: MockCapLedger<'a>,
+        path: Option<PathBuf>,
     }
 
     impl<'a> CLIArgs for MockArgs<'a> {
@@ -1114,7 +1118,7 @@ mod test {
         }
 
         fn storage_path(&self) -> Option<PathBuf> {
-            None
+            self.path.clone()
         }
 
         fn io(&self) -> Option<SharedIO> {
@@ -1137,13 +1141,8 @@ mod test {
         async fn init_backend(
             _universal_param: &'a UniversalParam,
             args: Self::Args,
-            _loader: &mut (impl KeystoreLoader<Self::Ledger, Meta = MnemonicPasswordLogin> + Send),
         ) -> Result<Self::Backend, KeystoreError<Self::Ledger>> {
-            Ok(MockBackend::new(
-                args.ledger.clone(),
-                Default::default(),
-                args.key_stream,
-            ))
+            Ok(MockBackend::new(args.ledger.clone(), args.key_stream))
         }
     }
 
@@ -1163,7 +1162,7 @@ mod test {
         // the keystores we create through the CLI can deterministically generate the keys that own
         // the initial records.
         let key_streams = iter(keystores)
-            .then(|(keystore, _)| async move { keystore.lock().await.backend().key_stream() })
+            .then(|(keystore, _, _)| async move { keystore.lock().await.backend().key_stream() })
             .collect::<Vec<_>>()
             .await;
         (ledger, key_streams)
@@ -1172,6 +1171,7 @@ mod test {
     fn create_keystore(
         ledger: MockCapLedger<'static>,
         key_stream: hd::KeyTree,
+        path: PathBuf,
     ) -> (Tee<PipeWriter>, Tee<PipeReader>) {
         let (io, input, output) = SharedIO::pipe();
 
@@ -1181,13 +1181,23 @@ mod test {
                 io,
                 key_stream,
                 ledger,
+                path: Some(path),
             };
             cli_main::<cap::Ledger, MockCLI>(args).await.unwrap();
         });
 
         // Wait for the CLI to start up and then return the input and output pipes.
-        let input = Tee::new(input);
+        let mut input = Tee::new(input);
         let mut output = Tee::new(output);
+        wait_for_prompt(&mut output);
+        // Loader wants to verify the keyphase.  Input 1 here to accept the generated phrase.
+        writeln!(input, "1").unwrap();
+        let mut line = String::new();
+        // Enter a password for the loader
+        output.read_line(&mut line).unwrap();
+        writeln!(input, "password").unwrap();
+        output.read_line(&mut line).unwrap();
+        writeln!(input, "password").unwrap();
         wait_for_prompt(&mut output);
         (input, output)
     }
@@ -1196,16 +1206,28 @@ mod test {
     async fn test_view_freeze() {
         let mut t = MockSystem::default();
         let (ledger, key_streams) = create_network(&mut t, &[2000, 2000, 0]).await;
+        let tmp_dir1 = TempDir::new("keystore").unwrap();
+        let tmp_dir2 = TempDir::new("keystore").unwrap();
+        let tmp_dir3 = TempDir::new("keystore").unwrap();
 
         // Create three keystore clients: one to mint and view an asset, one to make an anonymous
         // transfer, and one to receive an anonymous transfer. We will see if the viewer can
         // discover the output record of the anonymous transfer, in which it is not a participant.
-        let (mut viewer_input, mut viewer_output) =
-            create_keystore(ledger.clone(), key_streams[0].clone());
-        let (mut sender_input, mut sender_output) =
-            create_keystore(ledger.clone(), key_streams[1].clone());
-        let (mut receiver_input, mut receiver_output) =
-            create_keystore(ledger, key_streams[2].clone());
+        let (mut viewer_input, mut viewer_output) = create_keystore(
+            ledger.clone(),
+            key_streams[0].clone(),
+            PathBuf::from(tmp_dir1.path()),
+        );
+        let (mut sender_input, mut sender_output) = create_keystore(
+            ledger.clone(),
+            key_streams[1].clone(),
+            PathBuf::from(tmp_dir2.path()),
+        );
+        let (mut receiver_input, mut receiver_output) = create_keystore(
+            ledger,
+            key_streams[2].clone(),
+            PathBuf::from(tmp_dir3.path()),
+        );
 
         // Get the viewer's funded address.
         writeln!(viewer_input, "gen_key sending scan_from=start wait=true").unwrap();
@@ -1386,10 +1408,15 @@ mod test {
         let seed = AssetCodeSeed::generate(&mut rng);
         let code = AssetCode::new_domestic(seed, "my_asset".as_bytes());
         let definition = AssetDefinition::new(code, AssetPolicy::default()).unwrap();
+        let tmp_dir = TempDir::new("keystore").unwrap();
 
         let mut t = MockSystem::default();
         let (ledger, key_streams) = create_network(&mut t, &[0]).await;
-        let (mut input, mut output) = create_keystore(ledger.clone(), key_streams[0].clone());
+        let (mut input, mut output) = create_keystore(
+            ledger.clone(),
+            key_streams[0].clone(),
+            PathBuf::from(tmp_dir.path()),
+        );
 
         // Load without mint info.
         writeln!(input, "import_asset definition:{}", definition).unwrap();
