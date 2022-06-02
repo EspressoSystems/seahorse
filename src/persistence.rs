@@ -120,7 +120,7 @@ where
     }
 }
 
-struct EncryptingResourceAdapter<T> {
+pub struct EncryptingResourceAdapter<T> {
     cipher: Cipher<ChaChaRng>,
     _phantom: std::marker::PhantomData<T>,
 }

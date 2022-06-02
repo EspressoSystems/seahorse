@@ -20,6 +20,7 @@
 //! ledger to the ledger-agnostic interfaces defined here.
 pub mod accounts;
 pub mod asset_library;
+pub mod assets;
 pub mod cli;
 pub mod encryption;
 pub mod events;
