@@ -1,6 +1,7 @@
 use crate::persistence::EncryptingResourceAdapter;
 use atomic_store::RollingLog;
 use jf_cap::structs::{AssetCode, AssetPolicy};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use snafu::Snafu;
 use std::collections::HashMap;
 use std::hash::Hash;
@@ -10,27 +11,46 @@ use std::ops::{Deref, DerefMut};
 #[snafu(visibility(pub))]
 pub enum KeyValueStoreError {
     KeyNotFound,
+    PersistenceError {
+        source: atomic_store::error::PersistenceError,
+    },
 }
 
-pub struct KeyValueStore<K: Hash + PartialEq + Clone, V: Clone> {
+impl From<atomic_store::error::PersistenceError> for KeyValueStoreError {
+    fn from(source: atomic_store::error::PersistenceError) -> Self {
+        Self::PersistenceError { source }
+    }
+}
+
+pub struct KeyValueStore<
+    K: DeserializeOwned + Eq + Hash + Serialize,
+    V: DeserializeOwned + Serialize,
+> {
     store: RollingLog<EncryptingResourceAdapter<HashMap<K, V>>>,
     index: HashMap<K, V>,
 }
 
-impl<K: Hash + PartialEq + Clone, V: Clone> KeyValueStore<K, V> {
+impl<
+        K: Clone + DeserializeOwned + Eq + Hash + Serialize,
+        V: Clone + DeserializeOwned + Serialize,
+    > KeyValueStore<K, V>
+{
     fn new(
-        store: RollingLog<EncryptingResourceAdapter<(K, V)>>,
+        store: RollingLog<EncryptingResourceAdapter<HashMap<K, V>>>,
     ) -> Result<Self, KeyValueStoreError> {
-        let index = store.load_latest().context(crate::PersistenceSnafu)?;
+        let index = HashMap::from(store.load_latest()?);
         Ok(Self { store, index })
     }
 
-    fn iter(&self) -> impl Iterator<Item = V> {
+    fn iter(&self) -> impl Iterator<Item = &V> {
         self.index.values()
     }
 
     fn load(&self, key: &K) -> Result<V, KeyValueStoreError> {
-        self.index.get(key).ok_or(KeyValueStoreError::KeyNotFound)
+        self.index
+            .get(key)
+            .cloned()
+            .ok_or(KeyValueStoreError::KeyNotFound)
     }
 
     fn store(&mut self, key: &K, value: &V) -> Result<(), KeyValueStoreError> {
@@ -40,16 +60,22 @@ impl<K: Hash + PartialEq + Clone, V: Clone> KeyValueStore<K, V> {
 
     fn commit_version(&mut self) -> Result<(), KeyValueStoreError> {
         self.store.store_resource(&self.index)?;
-        self.store.commit_version();
-        Ok(())
+        Ok(self.store.commit_version()?)
     }
 
     fn revert_version(&mut self) -> Result<(), KeyValueStoreError> {
         self.index = self.store.load_latest()?;
         Ok(())
     }
+
+    fn delete(&mut self, key: &K) -> Result<V, KeyValueStoreError> {
+        self.index
+            .remove(key)
+            .ok_or(KeyValueStoreError::KeyNotFound)
+    }
 }
 
+#[derive(Clone, Deserialize, Serialize)]
 pub struct Asset {
     // TODO !keyao `pk` or `primary_key`?
     pk: AssetCode,
@@ -62,8 +88,7 @@ impl Asset {
     }
 }
 
-type AssetsStore =
-    KeyValueStore<EncryptingResourceAdapter<AssetCode>, EncryptingResourceAdapter<Asset>>;
+type AssetsStore = KeyValueStore<AssetCode, Asset>;
 
 pub struct AssetEditor<'a> {
     asset: Asset,
@@ -71,6 +96,10 @@ pub struct AssetEditor<'a> {
 }
 
 impl<'a> AssetEditor<'a> {
+    pub fn new(store: &'a mut AssetsStore, asset: Asset) -> Self {
+        Self { asset, store }
+    }
+
     pub fn set_data(mut self, data: AssetPolicy) -> Self {
         self.asset.data = data;
         self
@@ -101,12 +130,12 @@ pub struct Assets {
 }
 
 impl Assets {
-    pub fn iter(&self) -> impl Iterator<Item = Asset> {
-        self.store.iter().map(|(_pk, resource)| resource)
+    pub fn iter(&self) -> impl Iterator<Item = &Asset> {
+        self.store.iter()
     }
 
     pub fn get(&self, pk: &AssetCode) -> Result<Asset, KeyValueStoreError> {
-        self.store.load(self, pk)
+        self.store.load(pk)
     }
 
     pub fn get_mut(&mut self, pk: &AssetCode) -> Result<AssetEditor<'_>, KeyValueStoreError> {
@@ -123,7 +152,7 @@ impl Assets {
         Ok(AssetEditor::new(&mut self.store, asset))
     }
 
-    pub fn delete(&mut self, pk_to_delete: &AssetCode) -> Result<Asset, KeyValueStoreError> {
-        self.store.delete(pk_to_delete)
+    pub fn delete(&mut self, pk: &AssetCode) -> Result<Asset, KeyValueStoreError> {
+        self.store.delete(pk)
     }
 }
