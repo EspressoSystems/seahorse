@@ -27,6 +27,7 @@ pub mod events;
 pub mod hd;
 pub mod io;
 mod key_scan;
+pub mod key_value_store;
 pub mod loader;
 pub mod persistence;
 pub mod reader;

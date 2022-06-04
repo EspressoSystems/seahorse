@@ -1,83 +1,12 @@
-use crate::persistence::EncryptingResourceAdapter;
+use crate::{key_value_store::*, persistence::EncryptingResourceAdapter};
 use atomic_store::RollingLog;
 use jf_cap::structs::{AssetCode, AssetPolicy};
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use snafu::Snafu;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::hash::Hash;
 use std::ops::{Deref, DerefMut};
-
-#[derive(Debug, Snafu)]
-#[snafu(visibility(pub))]
-pub enum KeyValueStoreError {
-    KeyNotFound,
-    PersistenceError {
-        source: atomic_store::error::PersistenceError,
-    },
-}
-
-impl From<atomic_store::error::PersistenceError> for KeyValueStoreError {
-    fn from(source: atomic_store::error::PersistenceError) -> Self {
-        Self::PersistenceError { source }
-    }
-}
-
-pub struct KeyValueStore<
-    K: DeserializeOwned + Eq + Hash + Serialize,
-    V: DeserializeOwned + Serialize,
-> {
-    store: RollingLog<EncryptingResourceAdapter<HashMap<K, V>>>,
-    index: HashMap<K, V>,
-}
-
-impl<
-        K: Clone + DeserializeOwned + Eq + Hash + Serialize,
-        V: Clone + DeserializeOwned + Serialize,
-    > KeyValueStore<K, V>
-{
-    fn new(
-        store: RollingLog<EncryptingResourceAdapter<HashMap<K, V>>>,
-    ) -> Result<Self, KeyValueStoreError> {
-        let index = HashMap::from(store.load_latest()?);
-        Ok(Self { store, index })
-    }
-
-    fn iter(&self) -> impl Iterator<Item = &V> {
-        self.index.values()
-    }
-
-    fn load(&self, key: &K) -> Result<V, KeyValueStoreError> {
-        self.index
-            .get(key)
-            .cloned()
-            .ok_or(KeyValueStoreError::KeyNotFound)
-    }
-
-    fn store(&mut self, key: &K, value: &V) -> Result<(), KeyValueStoreError> {
-        self.index.insert(key.clone(), value.clone());
-        Ok(())
-    }
-
-    fn commit_version(&mut self) -> Result<(), KeyValueStoreError> {
-        self.store.store_resource(&self.index)?;
-        Ok(self.store.commit_version()?)
-    }
-
-    fn revert_version(&mut self) -> Result<(), KeyValueStoreError> {
-        self.index = self.store.load_latest()?;
-        Ok(())
-    }
-
-    fn delete(&mut self, key: &K) -> Result<V, KeyValueStoreError> {
-        self.index
-            .remove(key)
-            .ok_or(KeyValueStoreError::KeyNotFound)
-    }
-}
 
 #[derive(Clone, Deserialize, Serialize)]
 pub struct Asset {
-    // TODO !keyao `pk` or `primary_key`?
     pk: AssetCode,
     pub data: AssetPolicy,
 }
@@ -130,6 +59,13 @@ pub struct Assets {
 }
 
 impl Assets {
+    pub fn new(
+        store: RollingLog<EncryptingResourceAdapter<HashMap<AssetCode, Asset>>>,
+    ) -> Result<Self, KeyValueStoreError> {
+        let store = KeyValueStore::new(store)?;
+        Ok(Self { store })
+    }
+
     pub fn iter(&self) -> impl Iterator<Item = &Asset> {
         self.store.iter()
     }
@@ -143,9 +79,17 @@ impl Assets {
         Ok(AssetEditor::new(&mut self.store, asset))
     }
 
+    pub fn commit(&mut self) -> Result<(), KeyValueStoreError> {
+        self.store.commit_version()
+    }
+
+    pub fn revert(&mut self) -> Result<(), KeyValueStoreError> {
+        self.store.revert_version()
+    }
+
     pub fn create(&mut self, pk: AssetCode) -> Result<AssetEditor<'_>, KeyValueStoreError> {
         let asset = Asset {
-            pk: pk.clone(),
+            pk,
             data: Default::default(),
         };
         self.store.store(&pk, &asset)?;
