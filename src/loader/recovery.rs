@@ -18,11 +18,11 @@ use std::path::PathBuf;
 ///
 /// If encrypted keystore files already exist, this loader will use the given mnemonic phrase to
 /// decrypt them, change the keystore's password, and then re-encrypt it. If no files exist, the
-/// loader will create a new wallet using the given mnemonic and password. If the mnemonic used is
-/// in fact the same as the mnemonic used to create a wallet which has been lost, then the caller
+/// loader will create a new keystore using the given mnemonic and password. If the mnemonic used is
+/// in fact the same as the mnemonic used to create a keystore which has been lost, then the caller
 /// can recover their assets using [generate_user_key](crate::Keystore::generate_user_key) with
 /// `scan_from` set to `Some(EventIndex::default())`. This will result in regenerating the same keys
-/// that belonged to the old wallet and scanning the ledger for records belonging to those keys.
+/// that belonged to the old keystore and scanning the ledger for records belonging to those keys.
 ///
 /// Note that in the second case, recovery without encrypted keystore files, the loader cannot check
 /// if the given mnemonic is correct. The caller will only discover that they have used the wrong

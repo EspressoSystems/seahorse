@@ -16,11 +16,12 @@ use reader::Reader;
 use reef::Ledger;
 use std::path::{Path, PathBuf};
 
-/// Load or a create a wallet with interactive, text-based login.
+/// Load or a create a keystore with interactive, text-based login.
 ///
 /// This loader will read from the given reader to gather configuration and authentication when
-/// creating or opening a wallet. It supports the creation of new wallets with a mnemonic recovery
-/// phrase and a password for convenience, as well as logging into existing wallets with a password.
+/// creating or opening a keystore. It supports the creation of new keystores with a mnemonic
+/// recovery phrase and a password for convenience, as well as logging into existing keystores with
+/// a password.
 pub struct InteractiveLoader {
     dir: PathBuf,
     pub rng: ChaChaRng,

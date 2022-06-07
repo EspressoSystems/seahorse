@@ -37,7 +37,7 @@ impl<L: Ledger> KeystoreLoader<L> for LoginLoader {
 
     fn create(&mut self) -> Result<(Self::Meta, KeyTree), KeystoreError<L>> {
         Err(KeystoreError::Failed {
-            msg: String::from("LoginLoader does not support creating a new wallet"),
+            msg: String::from("LoginLoader does not support creating a new keystore"),
         })
     }
 

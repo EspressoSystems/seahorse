@@ -73,7 +73,7 @@ impl<L: Ledger> KeystoreLoader<L> for CreateLoader {
     fn load(&mut self, meta: &mut Self::Meta) -> Result<KeyTree, KeystoreError<L>> {
         if self.exclusive {
             return Err(KeystoreError::Failed {
-                msg: String::from("using an exclusive CreateLoader with an existing wallet"),
+                msg: String::from("using an exclusive CreateLoader with an existing keystore"),
             });
         }
 

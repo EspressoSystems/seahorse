@@ -134,14 +134,15 @@ pub trait KeystoreLoader<L: Ledger> {
 /// password and salt. At this point, the user is able to log into their keystore through the normal
 /// login flow, using only the new password.
 ///
-/// When the keystore files are not available, recovery is exactly the same as creating a new wallet
-/// using the owner's original mnemonic phrase and a new password. It is then incumbent upon the
-/// owner of the wallet to regenerate their keys. If they used the correct mnemonic, the new keys
-/// will be the same keys that were generated in the original wallet, and they will be able to
-/// recover access to their on-chain assets. Note, however, that off-chain metadata that was stored
-/// in the lost keystore files cannot be recovered this way. Also note that since the original
-/// metadata is not available in this case, there is no way to report an error if the user enters
-/// the wrong mnemonic. If they do, they will simply be unable to recover their on-chain assets.
+/// When the keystore files are not available, recovery is exactly the same as creating a new
+/// keystore using the owner's original mnemonic phrase and a new password. It is then incumbent
+/// upon the owner of the keystore to regenerate their keys. If they used the correct mnemonic, the
+/// new keys will be the same keys that were generated in the original keystore, and they will be
+/// able to recover access to their on-chain assets. Note, however, that off-chain metadata that was
+/// stored in the lost keystore files cannot be recovered this way. Also note that since the
+/// original metadata is not available in this case, there is no way to report an error if the user
+/// enters the wrong mnemonic. If they do, they will simply be unable to recover their on-chain
+/// assets.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct MnemonicPasswordLogin {
     version: (u8, u8, u8),
