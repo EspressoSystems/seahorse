@@ -17,7 +17,7 @@
 //! * [RecoveryLoader]
 
 use crate::{
-    encryption::{Cipher, CipherText},
+    encryption::{Cipher, CipherText, Decrypter},
     hd::{KeyTree, Mnemonic, Salt},
     EncryptionSnafu, KeySnafu, KeystoreError, Ledger,
 };
@@ -173,7 +173,7 @@ impl MnemonicPasswordLogin {
         rng.fill_bytes(&mut bytes);
         let encrypted_bytes = Cipher::new(
             KeyTree::from_mnemonic(mnemonic).derive_sub_tree(Self::KEY_CHECK_SUB_TREE.as_bytes()),
-            Some(ChaChaRng::from_rng(rng).unwrap()),
+            ChaChaRng::from_rng(rng).unwrap(),
         )
         .encrypt(&bytes)
         .context(EncryptionSnafu)?;
@@ -198,7 +198,7 @@ impl MnemonicPasswordLogin {
     /// Check if a password phrase matches the one associated with this metadata.
     pub fn check_mnemonic(&self, mnemonic: &Mnemonic) -> bool {
         // Check if the mnemonic is correct by attempting to decrypt the random bytes.
-        Cipher::decrypter(
+        Decrypter::new(
             KeyTree::from_mnemonic(mnemonic).derive_sub_tree(Self::KEY_CHECK_SUB_TREE.as_bytes()),
         )
         .decrypt(&self.encrypted_bytes)
@@ -213,7 +213,7 @@ impl MnemonicPasswordLogin {
         // If we can't, the key is wrong.
         let decryption_key = KeyTree::from_password_and_salt(password, &self.salt).ok()?;
         if let Ok(mnemonic_bytes) =
-            Cipher::decrypter(decryption_key.derive_sub_tree(Self::KEY_CHECK_SUB_TREE.as_bytes()))
+            Decrypter::new(decryption_key.derive_sub_tree(Self::KEY_CHECK_SUB_TREE.as_bytes()))
                 .decrypt(&self.encrypted_mnemonic)
         {
             // If the data decrypts successfully, then `mnemonic_bytes` is authenticated, so we can
@@ -260,7 +260,7 @@ impl MnemonicPasswordLogin {
         let (encryption_key, salt) = KeyTree::from_password(rng, password).context(KeySnafu)?;
         let encrypted_mnemonic = Cipher::new(
             encryption_key.derive_sub_tree(Self::KEY_CHECK_SUB_TREE.as_bytes()),
-            Some(ChaChaRng::from_rng(rng).unwrap()),
+            ChaChaRng::from_rng(rng).unwrap(),
         )
         .encrypt(mnemonic.phrase().as_bytes())
         .context(EncryptionSnafu)?;
