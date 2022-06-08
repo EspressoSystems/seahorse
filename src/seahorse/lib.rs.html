@@ -2747,12 +2747,6 @@
 <span id="2747">2747</span>
 <span id="2748">2748</span>
 <span id="2749">2749</span>
-<span id="2750">2750</span>
-<span id="2751">2751</span>
-<span id="2752">2752</span>
-<span id="2753">2753</span>
-<span id="2754">2754</span>
-<span id="2755">2755</span>
 </pre><pre class="rust"><code><span class="comment">// Copyright (c) 2022 Espresso Systems (espressosys.com)</span>
 <span class="comment">// This file is part of the Seahorse library.</span>
 
@@ -3155,12 +3149,6 @@
     <span class="doccomment">/// (for example, block events from a network query service and memo events from a centralized</span>
     <span class="doccomment">/// memo store) or they may aggregate all events into a single stream from a single source.</span>
     <span class="kw">type</span> <span class="ident">EventStream</span>: <span class="lifetime">&#39;a</span> <span class="op">+</span> <span class="ident">Stream</span><span class="op">&lt;</span><span class="ident">Item</span> <span class="op">=</span> (<span class="ident">LedgerEvent</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span>, <span class="ident">EventSource</span>)<span class="op">&gt;</span> <span class="op">+</span> <span class="ident">Unpin</span> <span class="op">+</span> <span class="ident">Send</span>;
-
-    <span class="doccomment">/// Get the HD key tree which the keystore should use to generate keys.</span>
-    <span class="doccomment">///</span>
-    <span class="doccomment">/// This should be configured when the keystore is created, for example, by deriving a key tree</span>
-    <span class="doccomment">/// from a mnemonic phrase.</span>
-    <span class="kw">fn</span> <span class="ident">key_stream</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">hd::KeyTree</span>;
 
     <span class="doccomment">/// Create a new keystore.</span>
     <span class="doccomment">///</span>
@@ -4523,7 +4511,7 @@
                 ));
             }
         }
-        <span class="kw">let</span> <span class="ident">key_tree</span> <span class="op">=</span> <span class="ident">backend</span>.<span class="ident">key_stream</span>();
+        <span class="kw">let</span> <span class="ident">key_tree</span> <span class="op">=</span> <span class="ident">storage</span>.<span class="ident">key_stream</span>();
         <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">session</span> <span class="op">=</span> <span class="ident">KeystoreSession</span> {
             <span class="ident">backend</span>,
             <span class="ident">storage</span>: <span class="ident">Arc::new</span>(<span class="ident">Mutex::new</span>(<span class="ident">storage</span>)),
