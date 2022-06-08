@@ -1326,7 +1326,6 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                 // new key, so keep incrementing the key stream state and generating keys until we
                 // find one that is new.
                 let user_key = loop {
-                    println!("generating key number {}", &self.key_state.user);
                     let user_key = session
                         .user_key_stream
                         .derive_user_key_pair(&self.key_state.user.to_le_bytes());
