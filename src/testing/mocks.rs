@@ -9,7 +9,6 @@ pub use crate::testing::MockLedger;
 
 use crate::{
     events::{EventIndex, EventSource, LedgerEvent},
-    hd,
     testing::{MockEventSource, MockNetwork as _},
     txn_builder::{PendingTransaction, TransactionInfo, TransactionState},
     CryptoSnafu, KeystoreBackend, KeystoreError, KeystoreState,
@@ -208,15 +207,13 @@ impl<'a, const H: u8> super::MockNetwork<'a, cap::LedgerWithHeight<H>>
 #[derive(Clone)]
 pub struct MockBackendWithHeight<'a, const H: u8> {
     ledger: Arc<Mutex<MockLedger<'a, cap::LedgerWithHeight<H>, MockNetworkWithHeight<'a, H>>>>,
-    key_stream: hd::KeyTree,
 }
 
 impl<'a, const H: u8> MockBackendWithHeight<'a, H> {
     pub fn new(
         ledger: Arc<Mutex<MockLedger<'a, cap::LedgerWithHeight<H>, MockNetworkWithHeight<'a, H>>>>,
-        key_stream: hd::KeyTree,
     ) -> Self {
-        Self { ledger, key_stream }
+        Self { ledger }
     }
 }
 
@@ -267,10 +264,6 @@ impl<'a, const H: u8> KeystoreBackend<'a, cap::LedgerWithHeight<H>>
             }
         };
         Ok(state)
-    }
-
-    fn key_stream(&self) -> hd::KeyTree {
-        self.key_stream.clone()
     }
 
     async fn subscribe(&self, from: EventIndex, to: Option<EventIndex>) -> Self::EventStream {
@@ -372,9 +365,8 @@ impl<'a, const H: u8> super::SystemUnderTest<'a> for MockSystemWithHeight<H> {
         &mut self,
         ledger: Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork>>>,
         _initial_grants: Vec<(RecordOpening, u64)>,
-        key_stream: hd::KeyTree,
     ) -> Self::MockBackend {
-        MockBackendWithHeight::new(ledger, key_stream)
+        MockBackendWithHeight::new(ledger)
     }
 }
 
