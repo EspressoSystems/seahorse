@@ -147,6 +147,9 @@ pub enum KeystoreError<L: Ledger> {
     KeyError {
         source: argon2::Error,
     },
+    KeyValueStoreError {
+        source: crate::key_value_store::KeyValueStoreError,
+    },
     NoSuchAccount {
         address: UserAddress,
     },
