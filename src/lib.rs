@@ -401,12 +401,6 @@ pub trait KeystoreBackend<'a, L: Ledger>: Send {
     /// memo store) or they may aggregate all events into a single stream from a single source.
     type EventStream: 'a + Stream<Item = (LedgerEvent<L>, EventSource)> + Unpin + Send;
 
-    /// Get the HD key tree which the keystore should use to generate keys.
-    ///
-    /// This should be configured when the keystore is created, for example, by deriving a key tree
-    /// from a mnemonic phrase.
-    fn key_stream(&self) -> hd::KeyTree;
-
     /// Create a new keystore.
     ///
     /// This method should query the current state of the network (or at least some past state) and
@@ -1768,7 +1762,7 @@ impl<
                 ));
             }
         }
-        let key_tree = backend.key_stream();
+        let key_tree = storage.key_stream();
         let mut session = KeystoreSession {
             backend,
             storage: Arc::new(Mutex::new(storage)),

@@ -773,18 +773,19 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                                 if wait == Some(true) {
                                     if let Err(err) = keystore.await_key_scan(&key.address()).await {
                                         cli_writeln!(io, "Error waiting for key scan: {}", err);
+                                        return
                                     }
-                                } else {
+                                } else{
                                     cli_writeln!(io,
                                         "Note: assets belonging to this key will become available
                                         after a scan of the ledger. This may take a long time. If
-                                        you have the owner memo for a record you want to use
+                                        you have the owner memo for a record you want to uses
                                         immediately, use import_memo.");
-                                    // Output both the public key and the address when loading a
-                                    // sending key.
-                                    cli_writeln!(io, "{}", key.pub_key());
-                                    cli_writeln!(io, "{}", UserAddress(key.address()));
                                 }
+                                // Output both the public key and the address when loading a
+                                // sending key.
+                                cli_writeln!(io, "{}", key.pub_key());
+                                cli_writeln!(io, "{}", UserAddress(key.address()));
                             }
                             Err(err) => cli_writeln!(io, "Error saving sending key: {}", err),
                         },
@@ -1082,7 +1083,6 @@ async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
 mod test {
     use super::*;
     use crate::{
-        hd,
         io::Tee,
         testing::{
             cli_match::*,
@@ -1107,7 +1107,6 @@ mod test {
 
     struct MockArgs<'a> {
         io: SharedIO,
-        key_stream: hd::KeyTree,
         ledger: MockCapLedger<'a>,
         path: Option<PathBuf>,
     }
@@ -1142,14 +1141,20 @@ mod test {
             _universal_param: &'a UniversalParam,
             args: Self::Args,
         ) -> Result<Self::Backend, KeystoreError<Self::Ledger>> {
-            Ok(MockBackend::new(args.ledger.clone(), args.key_stream))
+            Ok(MockBackend::new(args.ledger.clone()))
         }
     }
-
+    fn write_key_file(path: PathBuf, key: UserKeyPair) -> PathBuf {
+        let full_path = path.clone().join("keys");
+        let mut file = File::create(full_path.clone()).unwrap();
+        let bytes = bincode::serialize(&key).unwrap();
+        file.write_all(&bytes).unwrap();
+        full_path
+    }
     async fn create_network<'a>(
         t: &mut MockSystem,
         initial_grants: &[u64],
-    ) -> (MockCapLedger<'a>, Vec<hd::KeyTree>) {
+    ) -> (MockCapLedger<'a>, Vec<Vec<UserKeyPair>>) {
         // Use `create_test_network` to create a ledger with some initial records.
         let (ledger, keystores) = t
             .create_test_network(&[(3, 3)], initial_grants.to_vec(), &mut Instant::now())
@@ -1162,7 +1167,19 @@ mod test {
         // the keystores we create through the CLI can deterministically generate the keys that own
         // the initial records.
         let key_streams = iter(keystores)
-            .then(|(keystore, _, _)| async move { keystore.lock().await.backend().key_stream() })
+            .then(|(keystore, _, _)| async move {
+                let mut keys = vec![];
+                let pub_keys = keystore.pub_keys().await;
+                for pub_key in pub_keys {
+                    keys.push(
+                        keystore
+                            .get_user_private_key(&pub_key.address())
+                            .await
+                            .unwrap(),
+                    );
+                }
+                keys
+            })
             .collect::<Vec<_>>()
             .await;
         (ledger, key_streams)
@@ -1170,7 +1187,6 @@ mod test {
 
     fn create_keystore(
         ledger: MockCapLedger<'static>,
-        key_stream: hd::KeyTree,
         path: PathBuf,
     ) -> (Tee<PipeWriter>, Tee<PipeReader>) {
         let (io, input, output) = SharedIO::pipe();
@@ -1179,7 +1195,6 @@ mod test {
         spawn(async move {
             let args = MockArgs {
                 io,
-                key_stream,
                 ledger,
                 path: Some(path),
             };
@@ -1199,13 +1214,38 @@ mod test {
         output.read_line(&mut line).unwrap();
         writeln!(input, "password").unwrap();
         wait_for_prompt(&mut output);
+
         (input, output)
+    }
+
+    fn add_funded_keys(
+        input: &mut impl Write,
+        output: &mut impl BufRead,
+        private_keys: &Vec<UserKeyPair>,
+        path: PathBuf,
+    ) -> Vec<(String, String)> {
+        let mut keys = vec![];
+        for pk in private_keys {
+            let file_name = write_key_file(path.clone(), pk.clone());
+            writeln!(
+                input,
+                "load_key sending {} scan_from=start wait=true",
+                file_name.to_str().unwrap()
+            )
+            .unwrap();
+            let matches =
+                match_output(output, &["(?P<pub_key>USERPUBKEY~.*)", "(?P<addr>ADDR~.*)"]);
+            let pub_key = matches.get("pub_key");
+            let address = matches.get("addr");
+            keys.push((address, pub_key));
+        }
+        keys
     }
 
     #[async_std::test]
     async fn test_view_freeze() {
         let mut t = MockSystem::default();
-        let (ledger, key_streams) = create_network(&mut t, &[2000, 2000, 0]).await;
+        let (ledger, private_keys) = create_network(&mut t, &[2000, 2000, 0]).await;
         let tmp_dir1 = TempDir::new("keystore").unwrap();
         let tmp_dir2 = TempDir::new("keystore").unwrap();
         let tmp_dir3 = TempDir::new("keystore").unwrap();
@@ -1213,45 +1253,30 @@ mod test {
         // Create three keystore clients: one to mint and view an asset, one to make an anonymous
         // transfer, and one to receive an anonymous transfer. We will see if the viewer can
         // discover the output record of the anonymous transfer, in which it is not a participant.
-        let (mut viewer_input, mut viewer_output) = create_keystore(
-            ledger.clone(),
-            key_streams[0].clone(),
-            PathBuf::from(tmp_dir1.path()),
-        );
-        let (mut sender_input, mut sender_output) = create_keystore(
-            ledger.clone(),
-            key_streams[1].clone(),
-            PathBuf::from(tmp_dir2.path()),
-        );
-        let (mut receiver_input, mut receiver_output) = create_keystore(
-            ledger,
-            key_streams[2].clone(),
-            PathBuf::from(tmp_dir3.path()),
-        );
+        let (mut viewer_input, mut viewer_output) =
+            create_keystore(ledger.clone(), PathBuf::from(tmp_dir1.path()));
+        let (mut sender_input, mut sender_output) =
+            create_keystore(ledger.clone(), PathBuf::from(tmp_dir2.path()));
+        let (mut receiver_input, mut receiver_output) =
+            create_keystore(ledger, PathBuf::from(tmp_dir3.path()));
 
-        // Get the viewer's funded address.
-        writeln!(viewer_input, "gen_key sending scan_from=start wait=true").unwrap();
-        let matches = match_output(&mut viewer_output, &["(?P<addr>ADDR~.*)"]);
-        let viewer_address = matches.get("addr");
-        writeln!(viewer_input, "balance 0").unwrap();
-        match_output(
+        // Get the viewer's address.
+        let (viewer_address, _) = add_funded_keys(
+            &mut viewer_input,
             &mut viewer_output,
-            &[format!("{} {}", viewer_address, 1000)],
-        );
+            &private_keys[0],
+            PathBuf::from(tmp_dir1.path()),
+        )[0]
+        .clone();
 
         // Get the sender's funded public key and address.
-        writeln!(sender_input, "gen_key sending scan_from=start wait=true").unwrap();
-        let matches = match_output(
+        let (sender_address, sender_pub_key) = add_funded_keys(
+            &mut sender_input,
             &mut sender_output,
-            &["(?P<pub_key>USERPUBKEY~.*)", "(?P<addr>ADDR~.*)"],
-        );
-        let sender_pub_key = matches.get("pub_key");
-        let sender_address = matches.get("addr");
-        writeln!(sender_input, "balance 0").unwrap();
-        match_output(
-            &mut sender_output,
-            &[format!("{} {}", sender_address, 1000)],
-        );
+            &private_keys[1],
+            PathBuf::from(tmp_dir1.path()),
+        )[0]
+        .clone();
 
         // Get the receiver's (unfunded) public key and address.
         writeln!(receiver_input, "gen_key sending").unwrap();
@@ -1411,12 +1436,9 @@ mod test {
         let tmp_dir = TempDir::new("keystore").unwrap();
 
         let mut t = MockSystem::default();
-        let (ledger, key_streams) = create_network(&mut t, &[0]).await;
-        let (mut input, mut output) = create_keystore(
-            ledger.clone(),
-            key_streams[0].clone(),
-            PathBuf::from(tmp_dir.path()),
-        );
+        let (ledger, _keys) = create_network(&mut t, &[0]).await;
+        let (mut input, mut output) =
+            create_keystore(ledger.clone(), PathBuf::from(tmp_dir.path()));
 
         // Load without mint info.
         writeln!(input, "import_asset definition:{}", definition).unwrap();

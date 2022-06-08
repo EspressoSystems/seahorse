@@ -100,7 +100,9 @@ async fn generate_independent_transactions<
 
     // Add the key to a fresh keystore to force it to be registered in the address book. We
     // will not use this keystore again.
-    let (mut w, _tmp_dir) = t.create_keystore(&mut rng, &ledger).await;
+    let (mut w, _tmp_dir) = t
+        .create_keystore(KeyTree::random(&mut rng).0, &ledger)
+        .await;
     w.add_user_key(receiver.clone(), "key".into(), EventIndex::default())
         .await
         .unwrap();
@@ -208,7 +210,9 @@ async fn bench_ledger_scanner_setup<
 
     // Add the receiver key to a fresh keystore to force it to be registered in the address
     // book. We will not use this keystore again.
-    let (mut w, _tmp_dir) = t.create_keystore(&mut rng, &ledger).await;
+    let (mut w, _tmp_dir) = t
+        .create_keystore(KeyTree::random(&mut rng).0, &ledger)
+        .await;
     w.add_user_key(txns.receiver.clone(), "key".into(), EventIndex::default())
         .await
         .unwrap();
@@ -316,7 +320,7 @@ fn bench_ledger_scanner_run<
                     let (mut w, _tmp_dir) = bench
                         .t
                         .create_keystore_with_state(
-                            &mut bench.rng,
+                            KeyTree::random(&mut bench.rng).0,
                             &bench.ledger,
                             bench.initial_state.clone(),
                         )
@@ -358,7 +362,11 @@ fn bench_ledger_scanner_run<
                     // Create the keystore, starting the main event thread.
                     let (w, _tmp_dir) = bench
                         .t
-                        .create_keystore_with_state(&mut bench.rng, &bench.ledger, state)
+                        .create_keystore_with_state(
+                            KeyTree::random(&mut bench.rng).0,
+                            &bench.ledger,
+                            state,
+                        )
                         .await;
                     // Wait for the keystore to scan all the events.
                     w.sync(bench.end_time).await.unwrap();
