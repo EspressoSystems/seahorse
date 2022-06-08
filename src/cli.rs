@@ -1218,7 +1218,6 @@ mod test {
         (input, output)
     }
 
-    // Add
     fn add_funded_keys(
         input: &mut impl Write,
         output: &mut impl BufRead,
