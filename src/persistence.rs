@@ -318,6 +318,10 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicWalletStora
     pub fn key_stream(&self) -> KeyTree {
         self.wallet_key_tree.clone()
     }
+
+    pub fn meta(&self) -> &Meta {
+        &self.meta
+    }
 }
 
 #[async_trait]
