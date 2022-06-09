@@ -22,7 +22,7 @@ use zeroize::{Zeroize, Zeroizing};
 // the compiler leaving unreachable, implicit copies of the secret scattered around memory.
 //
 // This is especially useful when S is zeroizing on drop.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 struct Pinned<S> {
     secret: S,
     _pin: PhantomPinned,
@@ -97,7 +97,7 @@ secret_default_arrays!(
 );
 
 /// A wrapper around a secret which cannot be copied.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Secret<S: Zeroize>(Pin<Box<Pinned<Zeroizing<S>>>>);
 
 impl<S: Zeroize + SecretDefault> Secret<S> {

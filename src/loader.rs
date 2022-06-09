@@ -8,35 +8,143 @@
 //! Traits and types for creating and loading keystores.
 //!
 //! This module defines the [KeystoreLoader] interface, which allows various implementations as
-//! plugins to the persistence layer. It also provides a generally useful implementation [Loader],
-//! which loads an encrypted keystore from the file system using a mnemonic phrase to generate keys
-//! and a password to provide a more convenient login interface.
-use super::{encryption, hd, reader, EncryptionSnafu, KeySnafu, KeystoreError, MnemonicSnafu};
-use encryption::{Cipher, CipherText, Salt};
-use hd::{KeyTree, Mnemonic};
+//! plugins to the persistence layer. It also provides a ew generally useful implementations based
+//! on the [MnemonicPasswordLogin] mechanism:
+//!
+//! * [InteractiveLoader]
+//! * [CreateLoader]
+//! * [LoginLoader]
+//! * [RecoveryLoader]
+
+use crate::{
+    encryption::{Cipher, CipherText, Decrypter},
+    hd::{KeyTree, Mnemonic, Salt},
+    EncryptionSnafu, KeySnafu, KeystoreError, Ledger,
+};
 use rand_chacha::{
     rand_core::{RngCore, SeedableRng},
     ChaChaRng,
 };
-use reader::Reader;
-use reef::Ledger;
 use serde::{Deserialize, Serialize};
 use snafu::ResultExt;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
+
+pub mod create;
+pub mod interactive;
+pub mod login;
+pub mod recovery;
+
+#[cfg(test)]
+mod tests;
+
+pub use create::CreateLoader;
+pub use interactive::InteractiveLoader;
+pub use login::LoginLoader;
+pub use recovery::RecoveryLoader;
 
 pub trait KeystoreLoader<L: Ledger> {
-    type Meta; // Metadata stored in plaintext and used by the loader to access the keystore.
+    /// Metadata about a keystore which is always stored unencrypted.
+    ///
+    /// This allows loaders and tools to report some basic information about the keystore and handle
+    /// login attempts without decrypting.
+    ///
+    /// DO NOT put secrets in here.
+    type Meta;
+
+    /// The location of the keystore targetted by this loader.
+    ///
+    /// This tells users of the loader, like
+    /// [AtomicKeystoreStorage](crate::persistence::AtomicKeystoreStorage), where to load existing
+    /// metadata from when calling [load](Self::load).
     fn location(&self) -> PathBuf;
+
+    /// Create a new keystore.
+    ///
+    /// The caller must ensure that no keystore currently exists at `self.location()`. The loader
+    /// will create the metadata for a new keystore and return it, along with the key tree to use
+    /// when deriving keys for the new keystore. The caller should persist the new metadata in
+    /// `self.location()`.
     fn create(&mut self) -> Result<(Self::Meta, KeyTree), KeystoreError<L>>;
+
+    /// Load an existing keystore.
+    ///
+    /// The caller must have loaded `meta` from `self.location()`. The loader will use `meta` to
+    /// authenticate the keystore and derive the key tree, which is used to decrypt the rest of the
+    /// keystore files and derive new keys.
+    ///
+    /// The loader may change `meta`. For instance, some loaders allow the owner of a keystore to
+    /// log in using a mnemonic phrase and reset the password. In this case, `meta` would be updated
+    /// with a new password. If the value of `meta` after this call succeeds is not equal to its
+    /// value before the call, the caller is responsible for persisting the new value in
+    /// `self.location()`.
+    ///
+    /// If [load](Self::load) fails, it will not change `meta`.
     fn load(&mut self, meta: &mut Self::Meta) -> Result<KeyTree, KeystoreError<L>>;
 }
 
-// Metadata about a keystore which is always stored unencrypted, so we can report some basic
-// information about the keystore without decrypting. This also aids in the key derivation process.
-//
-// DO NOT put secrets in here.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Default)]
-pub struct LoaderMetadata {
+/// Metadata that supports login with a password and backup/recovery with a mnemonic.
+///
+/// Like all Seahorse keystores, a keystore using [MnemonicPasswordLogin] is ultimately derived from
+/// a mnemonic phrase. This phrase can be used later on to recover the keystore if the owner loses
+/// access to the encrypted keystore files or forgets their password. In addition, keystores that
+/// use [MnemonicPasswordLogin] have a password which can be used to decrypt the keystore files
+/// without having to type in the entire unwieldy mnemonic phrase.
+///
+/// The contents of the [MnemonicPasswordLogin] metadata are:
+/// * a version header
+/// * a 32-byte salt, which is randomly generated when the keystore is created
+/// * the keystore's mnemonic phrase, securely encrypted
+/// * random bytes (sampled when the keystore is created) encrypted and authenticated using a key
+///   derived from the mnemonic
+///
+/// This data is used throughout the keystore lifecycle as follows.
+///
+/// ## Creation
+///
+/// When a new keystore is created, a mnemonic phrase is sampled randomly and the owner provides a
+/// password. The loader then samples 32 bytes of salt which, combined with the password, derives an
+/// encryption key that is used to encrypt the mnemonic. Storing the mnemonic, encrypted under the
+/// password, is how we facilitate convenient login, as we will soon see.
+///
+/// We also store 32 random bytes, encrypted and authenticated using a key derived from the mnemonic
+/// phrase. This allows applications to check whether a mnemonic phrase is the correct one for this
+/// keystore without having access to the password to decrypt the mnemonic: if the random bytes
+/// successfully decrypt using the key derived from the potential mnemonic, then it is the correct
+/// one. This is especially useful when attempting to recover a keystore from a mnemonic.
+///
+/// ## Login
+///
+/// To log in to a keystore, the owner must provide the password. They need not provide the
+/// mnemonic. The loader uses the password and the salt stored in the metadata to derive a
+/// decryption key, and then decrypts the mnemonic phrase, which was stored encrypted in the
+/// metadata. Keys derived from the mnemonic phrase can then be used to decrypt the rest of the
+/// keystore files and access the owner's assets.
+///
+/// ## Recovery
+///
+/// There are two cases of recovery: recovering access to encrypted keystore files after forgetting
+/// the password, or recovering a keystore whose files have been lost. [MnemonicPasswordLogin]
+/// supports both cases. Recovery is slower without the keystore files, but no less effective.
+///
+/// When the keystore files are available, the owner's mnemonic phrase can be used to derive the
+/// keys necessary to decrypt them. In this case, the random bytes encrypted using the mnemonic
+/// phrase and stored in the metadata are used to quickly report an error if the user provides an
+/// incorrect mnemonic phrase. If decryption is successful, the user may provide a new password, and
+/// the loader will sample a new random salt and re-encrypt the mnemonic phrase using the new
+/// password and salt. At this point, the user is able to log into their keystore through the normal
+/// login flow, using only the new password.
+///
+/// When the keystore files are not available, recovery is exactly the same as creating a new
+/// keystore using the owner's original mnemonic phrase and a new password. It is then incumbent
+/// upon the owner of the keystore to regenerate their keys. If they used the correct mnemonic, the
+/// new keys will be the same keys that were generated in the original keystore, and they will be
+/// able to recover access to their on-chain assets. Note, however, that off-chain metadata that was
+/// stored in the lost keystore files cannot be recovered this way. Also note that since the
+/// original metadata is not available in this case, there is no way to report an error if the user
+/// enters the wrong mnemonic. If they do, they will simply be unable to recover their on-chain
+/// assets.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct MnemonicPasswordLogin {
     version: (u8, u8, u8),
     salt: Salt,
     // Encrypted mnemonic phrase. This will only decrypt successfully if we have the correct
@@ -44,240 +152,33 @@ pub struct LoaderMetadata {
     encrypted_mnemonic: CipherText,
     // Encrypted random bytes using a key generated from the mnemonic phrase. This will only decrypt
     // suffessfully if we have the correct mnemonic, so it can be used to check the user's input
-    // when recoverying from a mnemonic.
+    // when recovering from a mnemonic.
     encrypted_bytes: CipherText,
 }
 
-enum LoaderInput {
-    User(Reader),
-    PasswordLiteral(String),
-    RecoveryLiteral(String, String),
-    MnemonicPasswordLiteral(String, String),
-}
+impl MnemonicPasswordLogin {
+    const KEY_CHECK_SUB_TREE: &'static str = "key_check";
 
-impl LoaderInput {
-    fn create_password<L: Ledger>(&mut self) -> Result<String, KeystoreError<L>> {
-        match self {
-            Self::User(reader) => loop {
-                let password = reader.read_password("Create password: ")?;
-                let confirm = reader.read_password("Retype password: ")?;
-                if password == confirm {
-                    return Ok(password);
-                } else {
-                    println!("Passwords do not match.");
-                }
-            },
-
-            Self::PasswordLiteral(password)
-            | Self::MnemonicPasswordLiteral(_, password)
-            | Self::RecoveryLiteral(_, password) => Ok(password.to_string()),
-        }
-    }
-
-    fn read_password<L: Ledger>(&mut self) -> Result<Option<String>, KeystoreError<L>> {
-        match self {
-            Self::User(reader) => loop {
-                println!("Forgot your password? Want to change it? [y/n]");
-                match reader.read_line() {
-                    Some(line) => match line.as_str().trim() {
-                        "n" => break Ok(Some(reader.read_password("Enter password: ")?)),
-                        "y" => break Ok(None),
-                        _ => println!("Please enter 'y' or 'n'."),
-                    },
-                    None => {
-                        return Err(KeystoreError::Failed {
-                            msg: String::from("eof"),
-                        })
-                    }
-                }
-            },
-            Self::PasswordLiteral(password) => Ok(Some(password.to_string())),
-            Self::MnemonicPasswordLiteral(_, password) => Ok(Some(password.to_string())),
-            Self::RecoveryLiteral(_, _) => Ok(None),
-        }
-    }
-
-    fn create_mnemonic<L: Ledger>(
-        &mut self,
+    /// Create new login metadata with a given mnemonic phrase and password.
+    pub fn new<L: Ledger>(
         rng: &mut ChaChaRng,
-    ) -> Result<Mnemonic, KeystoreError<L>> {
-        match self {
-            Self::User(reader) => {
-                println!(
-                    "Your keystore will be identified by a secret mnemonic phrase. This phrase will \
-                     allow you to recover your keystore if you lose access to it. Anyone who has access \
-                     to this phrase will be able to view and spend your assets. Store this phrase in a \
-                     safe, private place."
-                );
-                'outer: loop {
-                    let (_, mnemonic) = KeyTree::random(rng);
-                    println!("Your mnemonic phrase will be:");
-                    println!("{}", mnemonic);
-                    'inner: loop {
-                        println!("1) Accept phrase and create keystore");
-                        println!("2) Generate a new phrase");
-                        println!(
-                            "3) Manually enter a mnemonic (use this to recover a lost keystore)"
-                        );
-                        match reader.read_line() {
-                            Some(line) => match line.as_str().trim() {
-                                "1" => return Ok(mnemonic),
-                                "2" => continue 'outer,
-                                "3" => return Self::read_mnemonic_interactive(reader),
-                                _ => continue 'inner,
-                            },
-                            None => {
-                                return Err(KeystoreError::Failed {
-                                    msg: String::from("eof"),
-                                })
-                            }
-                        }
-                    }
-                }
-            }
-
-            Self::PasswordLiteral(_) => Err(KeystoreError::Failed {
-                msg: String::from("missing mnemonic phrase"),
-            }),
-
-            Self::MnemonicPasswordLiteral(mnemonic, _) | Self::RecoveryLiteral(mnemonic, _) => {
-                Mnemonic::from_phrase(mnemonic.as_str()).context(MnemonicSnafu)
-            }
-        }
-    }
-
-    fn read_mnemonic<L: Ledger>(&mut self) -> Result<Mnemonic, KeystoreError<L>> {
-        match self {
-            Self::User(reader) => Self::read_mnemonic_interactive(reader),
-            Self::PasswordLiteral(_) => Err(KeystoreError::Failed {
-                msg: String::from("missing mnemonic phrase"),
-            }),
-            Self::MnemonicPasswordLiteral(mnemonic, _) | Self::RecoveryLiteral(mnemonic, _) => {
-                Mnemonic::from_phrase(mnemonic.as_str()).context(MnemonicSnafu)
-            }
-        }
-    }
-
-    fn interactive(&self) -> bool {
-        matches!(self, Self::User(..))
-    }
-
-    fn read_mnemonic_interactive<L: Ledger>(
-        reader: &mut Reader,
-    ) -> Result<Mnemonic, KeystoreError<L>> {
-        loop {
-            let phrase = reader.read_password("Enter mnemonic phrase: ")?;
-            match Mnemonic::from_phrase(&phrase) {
-                Ok(mnemonic) => return Ok(mnemonic),
-                Err(err) => {
-                    println!("That's not a valid mnemonic phrase ({})", err);
-                }
-            }
-        }
-    }
-}
-
-pub struct Loader {
-    dir: PathBuf,
-    pub rng: ChaChaRng,
-    input: LoaderInput,
-}
-
-impl Loader {
-    pub fn new(dir: PathBuf, reader: Reader) -> Self {
-        Self {
-            dir,
-            input: LoaderInput::User(reader),
-            rng: ChaChaRng::from_entropy(),
-        }
-    }
-
-    pub fn from_literal(mnemonic: Option<String>, password: String, dir: PathBuf) -> Self {
-        match mnemonic {
-            Some(m) => Self {
-                dir,
-                input: LoaderInput::MnemonicPasswordLiteral(m, password),
-                rng: ChaChaRng::from_entropy(),
-            },
-            None => Self {
-                dir,
-                input: LoaderInput::PasswordLiteral(password),
-                rng: ChaChaRng::from_entropy(),
-            },
-        }
-    }
-
-    pub fn recovery(mnemonic: String, new_password: String, dir: PathBuf) -> Self {
-        Self {
-            dir,
-            input: LoaderInput::RecoveryLiteral(mnemonic, new_password),
-            rng: ChaChaRng::from_entropy(),
-        }
-    }
-
-    pub fn into_reader(self) -> Option<Reader> {
-        match self.input {
-            LoaderInput::User(reader) => Some(reader),
-            _ => None,
-        }
-    }
-
-    pub fn path(&self) -> &Path {
-        &self.dir
-    }
-
-    fn create_from_mnemonic<L: Ledger>(&mut self) -> Result<(Mnemonic, KeyTree), KeystoreError<L>> {
-        let mnemonic = self.input.create_mnemonic(&mut self.rng)?;
-        let key = KeyTree::from_mnemonic(&mnemonic);
-        Ok((mnemonic, key))
-    }
-
-    // Create a password, returning salt and encrypted mnemonic.
-    fn create_password<L: Ledger>(
-        &mut self,
-        mnemonic: Mnemonic,
-    ) -> Result<(Salt, CipherText), KeystoreError<L>> {
-        let password = self.input.create_password()?;
-
-        // Encrypt the mnemonic phrase, which we can decrypt on load to check the derived key.
-        let (encryption_key, salt) =
-            KeyTree::from_password(&mut self.rng, password.as_bytes()).context(KeySnafu)?;
-        let encrypted_mnemonic = Cipher::new(
-            encryption_key.derive_sub_tree(KEY_CHECK_SUB_TREE.as_bytes()),
-            ChaChaRng::from_rng(&mut self.rng).unwrap(),
-        )
-        .encrypt(mnemonic.into_phrase().as_str().as_bytes())
-        .context(EncryptionSnafu)?;
-
-        Ok((salt, encrypted_mnemonic))
-    }
-}
-
-static KEY_CHECK_SUB_TREE: &str = "key_check";
-
-impl<L: Ledger> KeystoreLoader<L> for Loader {
-    type Meta = LoaderMetadata;
-
-    fn location(&self) -> PathBuf {
-        self.dir.clone()
-    }
-
-    fn create(&mut self) -> Result<(LoaderMetadata, KeyTree), KeystoreError<L>> {
-        let (mnemonic, key) = self.create_from_mnemonic()?;
+        mnemonic: &Mnemonic,
+        password: &[u8],
+    ) -> Result<Self, KeystoreError<L>> {
+        let (encrypted_mnemonic, salt) = Self::encrypt_mnemonic(rng, mnemonic, password)?;
 
         // Generate and encrypt some random bytes using the mnemonic, so in the future we can check
         // if the mnemonic is correct.
         let mut bytes = [0u8; 32];
-        self.rng.fill_bytes(&mut bytes);
+        rng.fill_bytes(&mut bytes);
         let encrypted_bytes = Cipher::new(
-            key.derive_sub_tree(KEY_CHECK_SUB_TREE.as_bytes()),
-            ChaChaRng::from_rng(&mut self.rng).unwrap(),
+            KeyTree::from_mnemonic(mnemonic).derive_sub_tree(Self::KEY_CHECK_SUB_TREE.as_bytes()),
+            ChaChaRng::from_rng(rng).unwrap(),
         )
         .encrypt(&bytes)
         .context(EncryptionSnafu)?;
 
-        let (salt, encrypted_mnemonic) = self.create_password(mnemonic)?;
-        let meta = LoaderMetadata {
+        Ok(Self {
             version: (
                 env!("CARGO_PKG_VERSION_MAJOR").parse().unwrap(),
                 env!("CARGO_PKG_VERSION_MINOR").parse().unwrap(),
@@ -286,65 +187,84 @@ impl<L: Ledger> KeystoreLoader<L> for Loader {
             salt,
             encrypted_mnemonic,
             encrypted_bytes,
-        };
-        Ok((meta, key))
+        })
     }
 
-    fn load(&mut self, meta: &mut Self::Meta) -> Result<KeyTree, KeystoreError<L>> {
-        let key = loop {
-            if let Some(password) = self.input.read_password()? {
-                // Generate the decryption key and check that we can use it to decrypt
-                // `encrypted_mnemonic`. If we can't, the key is wrong.
-                let decryption_key =
-                    KeyTree::from_password_and_salt(password.as_bytes(), &meta.salt)
-                        .context(KeySnafu)?;
-                if let Ok(mnemonic_bytes) = Cipher::new(
-                    decryption_key.derive_sub_tree(KEY_CHECK_SUB_TREE.as_bytes()),
-                    ChaChaRng::from_rng(&mut self.rng).unwrap(),
-                )
-                .decrypt(&meta.encrypted_mnemonic)
-                {
-                    // If the data decrypts successfully, then `mnemonic_bytes` is authenticated, so
-                    // we can safely unwrap when deserializing it.
-                    break KeyTree::from_mnemonic(
-                        &Mnemonic::from_phrase(std::str::from_utf8(&mnemonic_bytes).unwrap())
-                            .unwrap(),
-                    );
-                } else if self.input.interactive() {
-                    println!("Sorry, that's incorrect.");
-                } else {
-                    return Err(KeystoreError::Failed {
-                        msg: String::from("incorrect password"),
-                    });
-                }
-            } else {
-                // Reset password using mnemonic.
-                let mnemonic = self.input.read_mnemonic()?;
-                let key = KeyTree::from_mnemonic(&mnemonic);
+    /// Check if a password matches the one associated with this metadata.
+    pub fn check_password(&self, password: &[u8]) -> bool {
+        self.decrypt_mnemonic(password).is_some()
+    }
 
-                // Check if the entered mnemonic is correct by attempting to decrypt the encrypted
-                // random bytes.
-                if Cipher::new(
-                    key.derive_sub_tree(KEY_CHECK_SUB_TREE.as_bytes()),
-                    ChaChaRng::from_rng(&mut self.rng).unwrap(),
-                )
-                .decrypt(&meta.encrypted_bytes)
-                .is_ok()
-                {
-                    let (salt, encrypted_mnemonic) = self.create_password(mnemonic)?;
-                    meta.salt = salt;
-                    meta.encrypted_mnemonic = encrypted_mnemonic;
-                    break key;
-                } else if self.input.interactive() {
-                    println!("Sorry, that's incorrect.");
-                } else {
-                    return Err(KeystoreError::Failed {
-                        msg: String::from("incorrect mnemonic"),
-                    });
-                }
-            }
-        };
+    /// Check if a password phrase matches the one associated with this metadata.
+    pub fn check_mnemonic(&self, mnemonic: &Mnemonic) -> bool {
+        // Check if the mnemonic is correct by attempting to decrypt the random bytes.
+        Decrypter::new(
+            KeyTree::from_mnemonic(mnemonic).derive_sub_tree(Self::KEY_CHECK_SUB_TREE.as_bytes()),
+        )
+        .decrypt(&self.encrypted_bytes)
+        .is_ok()
+    }
 
-        Ok(key)
+    /// Decrypt the mnemonic phrase associated with this metadata.
+    ///
+    /// Returns `Some` mnemonic phrase if `password` is the correct one. Otherwise returns `None`.
+    pub fn decrypt_mnemonic(&self, password: &[u8]) -> Option<Mnemonic> {
+        // Generate the decryption key and check that we can use it to decrypt `encrypted_mnemonic`.
+        // If we can't, the key is wrong.
+        let decryption_key = KeyTree::from_password_and_salt(password, &self.salt).ok()?;
+        if let Ok(mnemonic_bytes) =
+            Decrypter::new(decryption_key.derive_sub_tree(Self::KEY_CHECK_SUB_TREE.as_bytes()))
+                .decrypt(&self.encrypted_mnemonic)
+        {
+            // If the data decrypts successfully, then `mnemonic_bytes` is authenticated, so we can
+            // safely unwrap when deserializing it.
+            Some(Mnemonic::from_phrase(std::str::from_utf8(&mnemonic_bytes).unwrap()).unwrap())
+        } else {
+            None
+        }
+    }
+
+    /// Change the password associated with this metadata.
+    ///
+    /// After this function succeeds, the new password may be used to log into the keystore with
+    /// this metadata, and the old password may no longer be used.
+    ///
+    /// If `mnemonic` is not the mnemonic phrase associated with this metadata, this function fails,
+    /// and the metadata is unchanged.
+    pub fn set_password<L: Ledger>(
+        &mut self,
+        rng: &mut ChaChaRng,
+        mnemonic: &Mnemonic,
+        new_password: &[u8],
+    ) -> Result<(), KeystoreError<L>> {
+        if !self.check_mnemonic(mnemonic) {
+            return Err(KeystoreError::Failed {
+                msg: String::from("incorrect mnemonic"),
+            });
+        }
+
+        // Encrypt the mnemonic phrase, which we can decrypt on load to check the derived key.
+        let (encrypted_mnemonic, salt) = Self::encrypt_mnemonic(rng, mnemonic, new_password)?;
+        self.encrypted_mnemonic = encrypted_mnemonic;
+        self.salt = salt;
+
+        Ok(())
+    }
+
+    fn encrypt_mnemonic<L: Ledger>(
+        rng: &mut ChaChaRng,
+        mnemonic: &Mnemonic,
+        password: &[u8],
+    ) -> Result<(CipherText, Salt), KeystoreError<L>> {
+        // Encrypt the mnemonic phrase, which we can decrypt on load to check the derived key.
+        let (encryption_key, salt) = KeyTree::from_password(rng, password).context(KeySnafu)?;
+        let encrypted_mnemonic = Cipher::new(
+            encryption_key.derive_sub_tree(Self::KEY_CHECK_SUB_TREE.as_bytes()),
+            ChaChaRng::from_rng(rng).unwrap(),
+        )
+        .encrypt(mnemonic.phrase().as_bytes())
+        .context(EncryptionSnafu)?;
+
+        Ok((encrypted_mnemonic, salt))
     }
 }

@@ -19,7 +19,7 @@
 use crate::{
     events::EventIndex,
     io::SharedIO,
-    loader::{Loader, LoaderMetadata},
+    loader::{InteractiveLoader, MnemonicPasswordLogin},
     reader::Reader,
     AssetInfo, BincodeSnafu, IoSnafu, KeystoreBackend, KeystoreError, RecordAmount,
     TransactionReceipt, TransactionStatus,
@@ -98,7 +98,7 @@ pub trait CLIArgs {
 }
 
 pub type Keystore<'a, C> =
-    crate::Keystore<'a, <C as CLI<'a>>::Backend, <C as CLI<'a>>::Ledger, LoaderMetadata>;
+    crate::Keystore<'a, <C as CLI<'a>>::Backend, <C as CLI<'a>>::Ledger, MnemonicPasswordLogin>;
 
 /// A REPL command.
 ///
@@ -1023,7 +1023,7 @@ async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
     );
     cli_writeln!(io, "(c) 2021 Espresso Systems, Inc.");
 
-    let mut loader = Loader::new(storage, reader);
+    let mut loader = InteractiveLoader::new(storage, reader);
 
     let universal_param = Box::leak(Box::new(L::srs()));
     let backend = C::init_backend(universal_param, args).await?;
@@ -1035,7 +1035,7 @@ async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
     cli_writeln!(io, "Type 'help' for a list of commands.");
     let commands = init_commands::<C>();
 
-    let mut input = loader.into_reader().unwrap();
+    let mut input = loader.into_reader();
     'repl: while let Some(line) = input.read_line() {
         let tokens = line.split_whitespace().collect::<Vec<_>>();
         if tokens.is_empty() {
