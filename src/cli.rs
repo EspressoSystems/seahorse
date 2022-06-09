@@ -17,12 +17,8 @@
 //! arguments to the options and flags required by the general CLI implementation. After that,
 //! [cli_main] can be used to run the CLI interactively.
 use crate::{
-    events::EventIndex,
-    io::SharedIO,
-    loader::{Loader, LoaderMetadata, WalletLoader},
-    reader::Reader,
-    AssetInfo, BincodeSnafu, IoSnafu, RecordAmount, TransactionReceipt, TransactionStatus,
-    WalletBackend, WalletError,
+    events::EventIndex, io::SharedIO, reader::Reader, AssetInfo, BincodeSnafu, IoSnafu,
+    RecordAmount, TransactionReceipt, TransactionStatus, WalletBackend, WalletError,
 };
 use async_std::task::block_on;
 use async_trait::async_trait;
@@ -60,7 +56,8 @@ pub trait CLI<'a> {
     fn init_backend(
         universal_param: &'a UniversalParam,
         args: Self::Args,
-        loader: &mut impl WalletLoader<Self::Ledger, Meta = LoaderMetadata>,
+        storage: PathBuf,
+        input: Reader,
     ) -> Result<Self::Backend, WalletError<Self::Ledger>>;
 
     /// Add extra, ledger-specific commands to the generic CLI interface.
@@ -1004,7 +1001,7 @@ async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
         }
     };
 
-    let (mut io, reader) = match args.io() {
+    let (mut io, mut input) = match args.io() {
         Some(io) => (io.clone(), Reader::automated(io)),
         None => (SharedIO::std(), Reader::interactive()),
     };
@@ -1016,10 +1013,8 @@ async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
     );
     cli_writeln!(io, "(c) 2021 Espresso Systems, Inc.");
 
-    let mut loader = Loader::new(storage, reader);
-
     let universal_param = Box::leak(Box::new(L::srs()));
-    let backend = C::init_backend(universal_param, args, &mut loader)?;
+    let backend = C::init_backend(universal_param, args, storage, input.clone())?;
 
     // Loading the wallet takes a while. Let the user know that's expected.
     //todo !jeb.bearer Make it faster
@@ -1028,7 +1023,6 @@ async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
     cli_writeln!(io, "Type 'help' for a list of commands.");
     let commands = init_commands::<C>();
 
-    let mut input = loader.into_reader().unwrap();
     'repl: while let Some(line) = input.read_line() {
         let tokens = line.split_whitespace().collect::<Vec<_>>();
         if tokens.is_empty() {
@@ -1124,7 +1118,8 @@ mod test {
         fn init_backend(
             _universal_param: &'a UniversalParam,
             args: Self::Args,
-            _loader: &mut impl WalletLoader<Self::Ledger, Meta = LoaderMetadata>,
+            _storage: PathBuf,
+            _input: Reader,
         ) -> Result<Self::Backend, WalletError<Self::Ledger>> {
             Ok(MockBackend::new(
                 args.ledger.clone(),
