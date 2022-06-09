@@ -1,1 +1,1 @@
-initSidebarItems({"struct":[["Loader",""],["LoaderMetadata",""]],"trait":[["KeystoreLoader",""]]});
+initSidebarItems({"mod":[["create",""],["interactive",""],["login",""],["recovery",""]],"struct":[["MnemonicPasswordLogin","Metadata that supports login with a password and backup/recovery with a mnemonic."]],"trait":[["KeystoreLoader",""]]});
