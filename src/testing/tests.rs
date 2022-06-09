@@ -2601,6 +2601,22 @@ pub mod generic_wallet_tests {
             )
             .await
             .unwrap();
+        assert!(
+            wallets[0]
+                .0
+                .viewing_account(&viewing_key)
+                .await
+                .unwrap()
+                .used
+        );
+        assert!(
+            !wallets[0]
+                .0
+                .freezing_account(&freezing_key)
+                .await
+                .unwrap()
+                .used
+        );
         let freezable_asset = wallets[0]
             .0
             .define_asset(
@@ -2614,6 +2630,22 @@ pub mod generic_wallet_tests {
             )
             .await
             .unwrap();
+        assert!(
+            wallets[0]
+                .0
+                .viewing_account(&viewing_key)
+                .await
+                .unwrap()
+                .used
+        );
+        assert!(
+            wallets[0]
+                .0
+                .freezing_account(&freezing_key)
+                .await
+                .unwrap()
+                .used
+        );
         // Check that the new assets appear in the proper accounts.
         assert_eq!(
             wallets[0]
@@ -2646,8 +2678,8 @@ pub mod generic_wallet_tests {
             vec![freezable_asset.clone()]
         );
 
-        // Mint some of each asset for the other wallet (`wallets[1]`). Check that both accounts are
-        // marked used and the freezable record is added to both accounts.
+        // Mint some of each asset for the other wallet (`wallets[1]`). Check that the freezable
+        // record is added to both accounts.
         let receiver = wallets[1].1[0].clone();
         let receipt = wallets[0]
             .0
@@ -2661,22 +2693,6 @@ pub mod generic_wallet_tests {
             .await
             .unwrap();
         await_transaction(&receipt, &wallets[0].0, &[&wallets[1].0]).await;
-        assert!(
-            wallets[0]
-                .0
-                .viewing_account(&viewing_key)
-                .await
-                .unwrap()
-                .used
-        );
-        assert!(
-            !wallets[0]
-                .0
-                .freezing_account(&freezing_key)
-                .await
-                .unwrap()
-                .used
-        );
         t.check_storage(&ledger, &wallets).await;
 
         // Mint the freezable asset.
