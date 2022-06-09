@@ -1237,16 +1237,50 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                 .with_name(name)
                 .with_description(mint_info.fmt_description());
 
+            // If the asset is viewable/freezable, mark the appropriate viewing/freezing accounts
+            // `used`. If we do update any accounts, save the old ones in case we have to revert.
+            let mut used_viewing_key = None;
+            let mut used_freezing_key = None;
+            let policy = asset.definition.policy_ref();
+            if policy.is_viewer_pub_key_set() {
+                if let Some(account) = self.viewing_accounts.get_mut(policy.viewer_pub_key()) {
+                    if !account.used {
+                        account.used = true;
+                        used_viewing_key = Some(policy.viewer_pub_key());
+                    }
+                }
+            }
+            if policy.is_freezer_pub_key_set() {
+                if let Some(account) = self.freezing_accounts.get_mut(policy.freezer_pub_key()) {
+                    if !account.used {
+                        account.used = true;
+                        used_freezing_key = Some(policy.freezer_pub_key());
+                    }
+                }
+            }
+
             // Persist the change that we're about to make before updating our in-memory state. We
             // can't report success until we know the new asset has been saved to disk (otherwise we
             // might lose the seed if we crash at the wrong time) and we don't want it in our
             // in-memory state if we're not going to report success.
-            session
+            if let Err(err) = session
                 .store(|mut t| async {
                     t.store_asset(&asset).await?;
+                    t.store_snapshot(self).await?;
                     Ok(t)
                 })
-                .await?;
+                .await
+            {
+                // If we failed to persist the changes, undo the changes we made to our
+                // in-memory accounts.
+                if let Some(viewing_key) = used_viewing_key {
+                    self.viewing_accounts.get_mut(viewing_key).unwrap().used = false;
+                }
+                if let Some(freezing_key) = used_freezing_key {
+                    self.freezing_accounts.get_mut(freezing_key).unwrap().used = false;
+                }
+                return Err(err);
+            }
 
             // Now we can add the asset definition to the in-memory state.
             self.assets.insert(asset.clone());
