@@ -44,7 +44,7 @@ pub struct KeyValueStore<
     K: DeserializeOwned + Eq + Hash + Serialize,
     V: DeserializeOwned + Serialize,
 > {
-    store: AppendLog<EncryptingResourceAdapter<HashMap<K, V>>>,
+    store: AppendLog<EncryptingResourceAdapter<(K, Option<V>)>>,
     index: HashMap<K, V>,
 }
 
@@ -54,11 +54,11 @@ impl<
     > KeyValueStore<K, V>
 {
     /// Create a key-value store.
-    pub fn new(
-        store: AppendLog<EncryptingResourceAdapter<HashMap<K, V>>>,
-    ) -> Result<Self, KeyValueStoreError> {
-        let index = store.load_latest()?;
-        Ok(Self { store, index })
+    pub fn new(store: AppendLog<EncryptingResourceAdapter<(K, Option<V>)>>) -> Self {
+        Self {
+            store,
+            index: HashMap::new(),
+        }
     }
 
     /// Iterate through the index table.
@@ -76,13 +76,11 @@ impl<
 
     /// Commit the store version.
     pub fn commit_version(&mut self) -> Result<(), KeyValueStoreError> {
-        self.store.store_resource(&self.index)?;
         Ok(self.store.commit_version()?)
     }
 
     /// Revert the store version.
     pub fn revert_version(&mut self) -> Result<(), KeyValueStoreError> {
-        self.store.store_resource(&self.index)?;
         Ok(self.store.revert_version()?)
     }
 
