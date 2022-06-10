@@ -87,6 +87,8 @@ impl<
     /// Store a key-value pair to the index table and update the store version.
     pub fn store(&mut self, key: &K, value: &V) -> Result<(), KeyValueStoreError> {
         self.index.insert(key.clone(), value.clone());
+        self.store
+            .store_resource(&(key.clone(), Some(value.clone())))?;
         self.commit_version()?;
         Ok(())
     }
@@ -99,6 +101,7 @@ impl<
             .index
             .remove(key)
             .ok_or(KeyValueStoreError::KeyNotFound);
+        self.store.store_resource(&(key.clone(), None))?;
         self.revert_version()?;
         value
     }
