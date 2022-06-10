@@ -2669,6 +2669,22 @@ pub mod generic_keystore_tests {
             )
             .await
             .unwrap();
+        assert!(
+            keystores[0]
+                .0
+                .viewing_account(&viewing_key)
+                .await
+                .unwrap()
+                .used
+        );
+        assert!(
+            !keystores[0]
+                .0
+                .freezing_account(&freezing_key)
+                .await
+                .unwrap()
+                .used
+        );
         let freezable_asset = keystores[0]
             .0
             .define_asset(
@@ -2682,6 +2698,22 @@ pub mod generic_keystore_tests {
             )
             .await
             .unwrap();
+        assert!(
+            keystores[0]
+                .0
+                .viewing_account(&viewing_key)
+                .await
+                .unwrap()
+                .used
+        );
+        assert!(
+            keystores[0]
+                .0
+                .freezing_account(&freezing_key)
+                .await
+                .unwrap()
+                .used
+        );
         // Check that the new assets appear in the proper accounts.
         assert_eq!(
             keystores[0]
@@ -2714,8 +2746,8 @@ pub mod generic_keystore_tests {
             vec![freezable_asset.clone()]
         );
 
-        // Mint some of each asset for the other keystore (`keystores[1]`). Check that both accounts are
-        // marked used and the freezable record is added to both accounts.
+        // Mint some of each asset for the other keystore (`keystores[1]`). Check that the freezable
+        // record is added to both accounts.
         let receiver = keystores[1].1[0].clone();
         let receipt = keystores[0]
             .0
@@ -2729,22 +2761,6 @@ pub mod generic_keystore_tests {
             .await
             .unwrap();
         await_transaction(&receipt, &keystores[0].0, &[&keystores[1].0]).await;
-        assert!(
-            keystores[0]
-                .0
-                .viewing_account(&viewing_key)
-                .await
-                .unwrap()
-                .used
-        );
-        assert!(
-            !keystores[0]
-                .0
-                .freezing_account(&freezing_key)
-                .await
-                .unwrap()
-                .used
-        );
         t.check_storage(&keystores).await;
 
         // Mint the freezable asset.

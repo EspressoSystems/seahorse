@@ -17,12 +17,9 @@
 //! arguments to the options and flags required by the general CLI implementation. After that,
 //! [cli_main] can be used to run the CLI interactively.
 use crate::{
-    events::EventIndex,
-    io::SharedIO,
-    loader::{InteractiveLoader, MnemonicPasswordLogin},
-    reader::Reader,
-    AssetInfo, BincodeSnafu, IoSnafu, KeystoreBackend, KeystoreError, RecordAmount,
-    TransactionReceipt, TransactionStatus,
+    events::EventIndex, io::SharedIO, loader::KeystoreLoader, reader::Reader, AssetInfo,
+    BincodeSnafu, IoSnafu, KeystoreBackend, KeystoreError, RecordAmount, TransactionReceipt,
+    TransactionStatus,
 };
 use async_std::task::block_on;
 use async_trait::async_trait;
@@ -36,6 +33,7 @@ use jf_cap::{
 use net::{MerklePath, UserAddress, UserPubKey};
 use primitive_types::U256;
 use reef::Ledger;
+use serde::{de::DeserializeOwned, Serialize};
 use snafu::ResultExt;
 use std::any::type_name;
 use std::collections::HashMap;
@@ -54,6 +52,10 @@ pub trait CLI<'a> {
     type Ledger: 'static + Ledger;
     /// The [KeystoreBackend] implementation to use for the keystore.
     type Backend: 'a + KeystoreBackend<'a, Self::Ledger> + Send + Sync;
+    /// The [KeystoreLoader] implementation to use to create or load the keystore.
+    type Loader: KeystoreLoader<Self::Ledger, Meta = Self::Meta>;
+    /// The type of metadata used by [Self::Loader].
+    type Meta: 'a + Send + Serialize + DeserializeOwned + Clone + PartialEq;
     /// The type of command line options for use when configuring the CLI.
     type Args: CLIArgs;
 
@@ -62,6 +64,12 @@ pub trait CLI<'a> {
         universal_param: &'a UniversalParam,
         args: Self::Args,
     ) -> Result<Self::Backend, KeystoreError<Self::Ledger>>;
+
+    /// Create a loader in order to create or load a new keystore for the CLI.
+    async fn init_loader(
+        storage: PathBuf,
+        input: Reader,
+    ) -> Result<Self::Loader, KeystoreError<Self::Ledger>>;
 
     /// Add extra, ledger-specific commands to the generic CLI interface.
     ///
@@ -98,7 +106,7 @@ pub trait CLIArgs {
 }
 
 pub type Keystore<'a, C> =
-    crate::Keystore<'a, <C as CLI<'a>>::Backend, <C as CLI<'a>>::Ledger, MnemonicPasswordLogin>;
+    crate::Keystore<'a, <C as CLI<'a>>::Backend, <C as CLI<'a>>::Ledger, <C as CLI<'a>>::Meta>;
 
 /// A REPL command.
 ///
@@ -1011,7 +1019,7 @@ async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
         }
     };
 
-    let (mut io, reader) = match args.io() {
+    let (mut io, mut input) = match args.io() {
         Some(io) => (io.clone(), Reader::automated(io)),
         None => (SharedIO::std(), Reader::interactive()),
     };
@@ -1023,19 +1031,17 @@ async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
     );
     cli_writeln!(io, "(c) 2021 Espresso Systems, Inc.");
 
-    let mut loader = InteractiveLoader::new(storage, reader);
-
     let universal_param = Box::leak(Box::new(L::srs()));
     let backend = C::init_backend(universal_param, args).await?;
 
     // Loading the keystore takes a while. Let the user know that's expected.
     //todo !jeb.bearer Make it faster
     cli_writeln!(io, "connecting...");
+    let mut loader = C::init_loader(storage, input.clone()).await?;
     let mut keystore = Keystore::<C>::new(backend, &mut loader).await?;
     cli_writeln!(io, "Type 'help' for a list of commands.");
     let commands = init_commands::<C>();
 
-    let mut input = loader.into_reader();
     'repl: while let Some(line) = input.read_line() {
         let tokens = line.split_whitespace().collect::<Vec<_>>();
         if tokens.is_empty() {
@@ -1084,6 +1090,7 @@ mod test {
     use super::*;
     use crate::{
         io::Tee,
+        loader::{InteractiveLoader, MnemonicPasswordLogin},
         testing::{
             cli_match::*,
             mocks::{MockBackend, MockLedger, MockNetwork, MockSystem},
@@ -1135,6 +1142,8 @@ mod test {
     impl<'a> CLI<'a> for MockCLI {
         type Ledger = cap::Ledger;
         type Backend = MockBackend<'a>;
+        type Loader = InteractiveLoader;
+        type Meta = MnemonicPasswordLogin;
         type Args = MockArgs<'a>;
 
         async fn init_backend(
@@ -1142,6 +1151,13 @@ mod test {
             args: Self::Args,
         ) -> Result<Self::Backend, KeystoreError<Self::Ledger>> {
             Ok(MockBackend::new(args.ledger.clone()))
+        }
+
+        async fn init_loader(
+            storage: PathBuf,
+            input: Reader,
+        ) -> Result<Self::Loader, KeystoreError<Self::Ledger>> {
+            Ok(InteractiveLoader::new(storage, input))
         }
     }
     fn write_key_file(path: PathBuf, key: UserKeyPair) -> PathBuf {

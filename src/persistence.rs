@@ -321,6 +321,10 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicKeystoreSto
     pub fn key_stream(&self) -> KeyTree {
         self.keystore_key_tree.clone()
     }
+
+    pub fn meta(&self) -> &Meta {
+        &self.meta
+    }
 }
 
 impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicKeystoreStorage<'a, L, Meta> {
