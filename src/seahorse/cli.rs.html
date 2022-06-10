@@ -1475,6 +1475,22 @@
 <span id="1475">1475</span>
 <span id="1476">1476</span>
 <span id="1477">1477</span>
+<span id="1478">1478</span>
+<span id="1479">1479</span>
+<span id="1480">1480</span>
+<span id="1481">1481</span>
+<span id="1482">1482</span>
+<span id="1483">1483</span>
+<span id="1484">1484</span>
+<span id="1485">1485</span>
+<span id="1486">1486</span>
+<span id="1487">1487</span>
+<span id="1488">1488</span>
+<span id="1489">1489</span>
+<span id="1490">1490</span>
+<span id="1491">1491</span>
+<span id="1492">1492</span>
+<span id="1493">1493</span>
 </pre><pre class="rust"><code><span class="comment">// Copyright (c) 2022 Espresso Systems (espressosys.com)</span>
 <span class="comment">// This file is part of the Seahorse library.</span>
 
@@ -1494,12 +1510,9 @@
 <span class="doccomment">//! arguments to the options and flags required by the general CLI implementation. After that,</span>
 <span class="doccomment">//! [cli_main] can be used to run the CLI interactively.</span>
 <span class="kw">use</span> <span class="kw">crate</span>::{
-    <span class="ident">events::EventIndex</span>,
-    <span class="ident">io::SharedIO</span>,
-    <span class="ident">loader</span>::{<span class="ident">InteractiveLoader</span>, <span class="ident">MnemonicPasswordLogin</span>},
-    <span class="ident">reader::Reader</span>,
-    <span class="ident">AssetInfo</span>, <span class="ident">BincodeSnafu</span>, <span class="ident">IoSnafu</span>, <span class="ident">KeystoreBackend</span>, <span class="ident">KeystoreError</span>, <span class="ident">RecordAmount</span>,
-    <span class="ident">TransactionReceipt</span>, <span class="ident">TransactionStatus</span>,
+    <span class="ident">events::EventIndex</span>, <span class="ident">io::SharedIO</span>, <span class="ident">loader::KeystoreLoader</span>, <span class="ident">reader::Reader</span>, <span class="ident">AssetInfo</span>,
+    <span class="ident">BincodeSnafu</span>, <span class="ident">IoSnafu</span>, <span class="ident">KeystoreBackend</span>, <span class="ident">KeystoreError</span>, <span class="ident">RecordAmount</span>, <span class="ident">TransactionReceipt</span>,
+    <span class="ident">TransactionStatus</span>,
 };
 <span class="kw">use</span> <span class="ident">async_std::task::block_on</span>;
 <span class="kw">use</span> <span class="ident">async_trait::async_trait</span>;
@@ -1513,6 +1526,7 @@
 <span class="kw">use</span> <span class="ident">net</span>::{<span class="ident">MerklePath</span>, <span class="ident">UserAddress</span>, <span class="ident">UserPubKey</span>};
 <span class="kw">use</span> <span class="ident">primitive_types::U256</span>;
 <span class="kw">use</span> <span class="ident">reef::Ledger</span>;
+<span class="kw">use</span> <span class="ident">serde</span>::{<span class="ident">de::DeserializeOwned</span>, <span class="ident">Serialize</span>};
 <span class="kw">use</span> <span class="ident">snafu::ResultExt</span>;
 <span class="kw">use</span> <span class="ident">std::any::type_name</span>;
 <span class="kw">use</span> <span class="ident">std::collections::HashMap</span>;
@@ -1531,6 +1545,10 @@
     <span class="kw">type</span> <span class="ident">Ledger</span>: <span class="lifetime">&#39;static</span> <span class="op">+</span> <span class="ident">Ledger</span>;
     <span class="doccomment">/// The [KeystoreBackend] implementation to use for the keystore.</span>
     <span class="kw">type</span> <span class="ident">Backend</span>: <span class="lifetime">&#39;a</span> <span class="op">+</span> <span class="ident">KeystoreBackend</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident"><span class="self">Self</span>::Ledger</span><span class="op">&gt;</span> <span class="op">+</span> <span class="ident">Send</span> <span class="op">+</span> <span class="ident">Sync</span>;
+    <span class="doccomment">/// The [KeystoreLoader] implementation to use to create or load the keystore.</span>
+    <span class="kw">type</span> <span class="ident">Loader</span>: <span class="ident">KeystoreLoader</span><span class="op">&lt;</span><span class="ident"><span class="self">Self</span>::Ledger</span>, <span class="ident">Meta</span> <span class="op">=</span> <span class="ident"><span class="self">Self</span>::Meta</span><span class="op">&gt;</span>;
+    <span class="doccomment">/// The type of metadata used by [Self::Loader].</span>
+    <span class="kw">type</span> <span class="ident">Meta</span>: <span class="lifetime">&#39;a</span> <span class="op">+</span> <span class="ident">Send</span> <span class="op">+</span> <span class="ident">Serialize</span> <span class="op">+</span> <span class="ident">DeserializeOwned</span> <span class="op">+</span> <span class="ident">Clone</span> <span class="op">+</span> <span class="ident">PartialEq</span>;
     <span class="doccomment">/// The type of command line options for use when configuring the CLI.</span>
     <span class="kw">type</span> <span class="ident">Args</span>: <span class="ident">CLIArgs</span>;
 
@@ -1539,6 +1557,12 @@
         <span class="ident">universal_param</span>: <span class="kw-2">&amp;</span><span class="lifetime">&#39;a</span> <span class="ident">UniversalParam</span>,
         <span class="ident">args</span>: <span class="ident"><span class="self">Self</span>::Args</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident"><span class="self">Self</span>::Backend</span>, <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident"><span class="self">Self</span>::Ledger</span><span class="op">&gt;</span><span class="op">&gt;</span>;
+
+    <span class="doccomment">/// Create a loader in order to create or load a new keystore for the CLI.</span>
+    <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">init_loader</span>(
+        <span class="ident">storage</span>: <span class="ident">PathBuf</span>,
+        <span class="ident">input</span>: <span class="ident">Reader</span>,
+    ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident"><span class="self">Self</span>::Loader</span>, <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident"><span class="self">Self</span>::Ledger</span><span class="op">&gt;</span><span class="op">&gt;</span>;
 
     <span class="doccomment">/// Add extra, ledger-specific commands to the generic CLI interface.</span>
     <span class="doccomment">///</span>
@@ -1575,7 +1599,7 @@
 }
 
 <span class="kw">pub</span> <span class="kw">type</span> <span class="ident">Keystore</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">C</span><span class="op">&gt;</span> <span class="op">=</span>
-    <span class="ident"><span class="kw">crate</span>::Keystore</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="op">&lt;</span><span class="ident">C</span> <span class="kw">as</span> <span class="ident">CLI</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span><span class="op">&gt;</span><span class="op">&gt;</span><span class="ident">::Backend</span>, <span class="op">&lt;</span><span class="ident">C</span> <span class="kw">as</span> <span class="ident">CLI</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span><span class="op">&gt;</span><span class="op">&gt;</span><span class="ident">::Ledger</span>, <span class="ident">MnemonicPasswordLogin</span><span class="op">&gt;</span>;
+    <span class="ident"><span class="kw">crate</span>::Keystore</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="op">&lt;</span><span class="ident">C</span> <span class="kw">as</span> <span class="ident">CLI</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span><span class="op">&gt;</span><span class="op">&gt;</span><span class="ident">::Backend</span>, <span class="op">&lt;</span><span class="ident">C</span> <span class="kw">as</span> <span class="ident">CLI</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span><span class="op">&gt;</span><span class="op">&gt;</span><span class="ident">::Ledger</span>, <span class="op">&lt;</span><span class="ident">C</span> <span class="kw">as</span> <span class="ident">CLI</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span><span class="op">&gt;</span><span class="op">&gt;</span><span class="ident">::Meta</span><span class="op">&gt;</span>;
 
 <span class="doccomment">/// A REPL command.</span>
 <span class="doccomment">///</span>
@@ -2488,7 +2512,7 @@
         }
     };
 
-    <span class="kw">let</span> (<span class="kw-2">mut</span> <span class="ident">io</span>, <span class="ident">reader</span>) <span class="op">=</span> <span class="kw">match</span> <span class="ident">args</span>.<span class="ident">io</span>() {
+    <span class="kw">let</span> (<span class="kw-2">mut</span> <span class="ident">io</span>, <span class="kw-2">mut</span> <span class="ident">input</span>) <span class="op">=</span> <span class="kw">match</span> <span class="ident">args</span>.<span class="ident">io</span>() {
         <span class="prelude-val">Some</span>(<span class="ident">io</span>) <span class="op">=</span><span class="op">&gt;</span> (<span class="ident">io</span>.<span class="ident">clone</span>(), <span class="ident">Reader::automated</span>(<span class="ident">io</span>)),
         <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> (<span class="ident">SharedIO::std</span>(), <span class="ident">Reader::interactive</span>()),
     };
@@ -2500,19 +2524,17 @@
     );
     <span class="macro">cli_writeln!</span>(<span class="ident">io</span>, <span class="string">&quot;(c) 2021 Espresso Systems, Inc.&quot;</span>);
 
-    <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">loader</span> <span class="op">=</span> <span class="ident">InteractiveLoader::new</span>(<span class="ident">storage</span>, <span class="ident">reader</span>);
-
     <span class="kw">let</span> <span class="ident">universal_param</span> <span class="op">=</span> <span class="ident">Box::leak</span>(<span class="ident">Box::new</span>(<span class="ident">L::srs</span>()));
     <span class="kw">let</span> <span class="ident">backend</span> <span class="op">=</span> <span class="ident">C::init_backend</span>(<span class="ident">universal_param</span>, <span class="ident">args</span>).<span class="kw">await</span><span class="question-mark">?</span>;
 
     <span class="comment">// Loading the keystore takes a while. Let the user know that&#39;s expected.</span>
     <span class="comment">//todo !jeb.bearer Make it faster</span>
     <span class="macro">cli_writeln!</span>(<span class="ident">io</span>, <span class="string">&quot;connecting...&quot;</span>);
+    <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">loader</span> <span class="op">=</span> <span class="ident">C::init_loader</span>(<span class="ident">storage</span>, <span class="ident">input</span>.<span class="ident">clone</span>()).<span class="kw">await</span><span class="question-mark">?</span>;
     <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">keystore</span> <span class="op">=</span> <span class="ident">Keystore</span>::<span class="op">&lt;</span><span class="ident">C</span><span class="op">&gt;</span><span class="ident">::new</span>(<span class="ident">backend</span>, <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">loader</span>).<span class="kw">await</span><span class="question-mark">?</span>;
     <span class="macro">cli_writeln!</span>(<span class="ident">io</span>, <span class="string">&quot;Type &#39;help&#39; for a list of commands.&quot;</span>);
     <span class="kw">let</span> <span class="ident">commands</span> <span class="op">=</span> <span class="ident">init_commands</span>::<span class="op">&lt;</span><span class="ident">C</span><span class="op">&gt;</span>();
 
-    <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">input</span> <span class="op">=</span> <span class="ident">loader</span>.<span class="ident">into_reader</span>();
     <span class="lifetime">&#39;repl</span>: <span class="kw">while</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">line</span>) <span class="op">=</span> <span class="ident">input</span>.<span class="ident">read_line</span>() {
         <span class="kw">let</span> <span class="ident">tokens</span> <span class="op">=</span> <span class="ident">line</span>.<span class="ident">split_whitespace</span>().<span class="ident">collect</span>::<span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="kw">_</span><span class="op">&gt;</span><span class="op">&gt;</span>();
         <span class="kw">if</span> <span class="ident">tokens</span>.<span class="ident">is_empty</span>() {
@@ -2561,6 +2583,7 @@
     <span class="kw">use</span> <span class="kw">super</span>::<span class="kw-2">*</span>;
     <span class="kw">use</span> <span class="kw">crate</span>::{
         <span class="ident">io::Tee</span>,
+        <span class="ident">loader</span>::{<span class="ident">InteractiveLoader</span>, <span class="ident">MnemonicPasswordLogin</span>},
         <span class="ident">testing</span>::{
             <span class="ident">cli_match</span>::<span class="kw-2">*</span>,
             <span class="ident">mocks</span>::{<span class="ident">MockBackend</span>, <span class="ident">MockLedger</span>, <span class="ident">MockNetwork</span>, <span class="ident">MockSystem</span>},
@@ -2612,6 +2635,8 @@
     <span class="kw">impl</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span><span class="op">&gt;</span> <span class="ident">CLI</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">MockCLI</span> {
         <span class="kw">type</span> <span class="ident">Ledger</span> <span class="op">=</span> <span class="ident">cap::Ledger</span>;
         <span class="kw">type</span> <span class="ident">Backend</span> <span class="op">=</span> <span class="ident">MockBackend</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span><span class="op">&gt;</span>;
+        <span class="kw">type</span> <span class="ident">Loader</span> <span class="op">=</span> <span class="ident">InteractiveLoader</span>;
+        <span class="kw">type</span> <span class="ident">Meta</span> <span class="op">=</span> <span class="ident">MnemonicPasswordLogin</span>;
         <span class="kw">type</span> <span class="ident">Args</span> <span class="op">=</span> <span class="ident">MockArgs</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span><span class="op">&gt;</span>;
 
         <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">init_backend</span>(
@@ -2619,6 +2644,13 @@
             <span class="ident">args</span>: <span class="ident"><span class="self">Self</span>::Args</span>,
         ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident"><span class="self">Self</span>::Backend</span>, <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident"><span class="self">Self</span>::Ledger</span><span class="op">&gt;</span><span class="op">&gt;</span> {
             <span class="prelude-val">Ok</span>(<span class="ident">MockBackend::new</span>(<span class="ident">args</span>.<span class="ident">ledger</span>.<span class="ident">clone</span>()))
+        }
+
+        <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">init_loader</span>(
+            <span class="ident">storage</span>: <span class="ident">PathBuf</span>,
+            <span class="ident">input</span>: <span class="ident">Reader</span>,
+        ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident"><span class="self">Self</span>::Loader</span>, <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident"><span class="self">Self</span>::Ledger</span><span class="op">&gt;</span><span class="op">&gt;</span> {
+            <span class="prelude-val">Ok</span>(<span class="ident">InteractiveLoader::new</span>(<span class="ident">storage</span>, <span class="ident">input</span>))
         }
     }
     <span class="kw">fn</span> <span class="ident">write_key_file</span>(<span class="ident">path</span>: <span class="ident">PathBuf</span>, <span class="ident">key</span>: <span class="ident">UserKeyPair</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">PathBuf</span> {
