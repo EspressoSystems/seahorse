@@ -171,7 +171,17 @@ impl<L: Ledger> BackgroundKeyScan<L> {
             let records = self
                 .records
                 .into_values()
-                .map(|(ro, uid)| (ro, uid, mt.get_leaf(uid).expect_ok().unwrap().1.path))
+                .map(|(ro, uid)| {
+                    (
+                        ro,
+                        uid,
+                        mt.get_leaf(uid)
+                            .expect_ok()
+                            .unwrap_or_else(|_| panic!("uid {}/{}", uid, mt.num_leaves()))
+                            .1
+                            .path,
+                    )
+                })
                 .collect();
             Ok((
                 self.key,
@@ -308,7 +318,7 @@ impl<L: Ledger> BackgroundKeyScan<L> {
                         *uid,
                         &RecordCommitment::from(ro),
                     );
-                    self.records_mt.remember(*uid, proof).unwrap();
+                    self.remember_uid(*uid, proof);
                     self.records.insert(nullifier, (ro.clone(), *uid));
                 }
 
@@ -384,6 +394,18 @@ impl<L: Ledger> BackgroundKeyScan<L> {
         if let Some(uid) = self.leaf_to_forget.take() {
             assert!(uid < self.records_mt.num_leaves() - 1);
             self.records_mt.forget(uid);
+        }
+    }
+
+    fn remember_uid(&mut self, leaf: u64, proof: &MerkleLeafProof) {
+        // If we were planning to forget this leaf once a new leaf is appended, stop planning that.
+        if self.leaf_to_forget == Some(leaf) {
+            self.leaf_to_forget = None;
+            // `leaf_to_forget` is always represented in the tree, so we don't have to call
+            // `remember` in this case.
+            assert!(self.records_mt.get_leaf(leaf).expect_ok().is_ok());
+        } else if self.records_mt.remember(leaf, proof).is_err() {
+            tracing::error!("Got bad Merkle proof. Unable to save record {}", leaf);
         }
     }
 
