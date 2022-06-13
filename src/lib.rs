@@ -30,10 +30,12 @@ pub mod loader;
 pub mod persistence;
 pub mod reader;
 mod secret;
+pub mod sparse_merkle_tree;
 #[cfg(any(test, bench, feature = "testing"))]
 pub mod testing;
 pub mod txn_builder;
 
+use crate::sparse_merkle_tree::SparseMerkleTree;
 pub use crate::{
     asset_library::{AssetInfo, MintInfo},
     txn_builder::RecordAmount,
@@ -1384,7 +1386,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                 next_event,
                 scan_from,
                 self.txn_state.now,
-                frontier,
+                SparseMerkleTree::sparse(frontier),
             );
             (Some(scan), Some(events))
         } else {
