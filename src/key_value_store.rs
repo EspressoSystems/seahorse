@@ -54,11 +54,18 @@ impl<
     > KeyValueStore<K, V>
 {
     /// Create a key-value store.
-    pub fn new(store: AppendLog<EncryptingResourceAdapter<(K, Option<V>)>>) -> Self {
-        Self {
-            store,
-            index: HashMap::new(),
+    pub fn new(
+        store: AppendLog<EncryptingResourceAdapter<(K, Option<V>)>>,
+    ) -> Result<Self, KeyValueStoreError> {
+        let mut index = HashMap::new();
+        for key_value in store.iter() {
+            let (key, value) = key_value?;
+            match value {
+                Some(val) => index.insert(key, val),
+                None => index.remove(&key),
+            };
         }
+        Ok(Self { store, index })
     }
 
     /// Iterate through the index table.

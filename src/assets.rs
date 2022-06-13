@@ -174,13 +174,8 @@ impl<'a> AssetEditor<'a> {
 
     /// Save the asset to the store if it's nontemporary.
     ///
-    /// If the store has an asset with the same code, merges with it.
-    ///
     /// Returns the stored asset.
     pub fn save<L: Ledger>(&mut self) -> Result<Asset, KeystoreError<L>> {
-        if let Ok(store_asset) = self.store.load(&self.asset.definition.code) {
-            self.update(store_asset);
-        }
         if !self.asset.temporary {
             self.store.store(&self.asset.definition.code, &self.asset)?;
         }
@@ -188,32 +183,30 @@ impl<'a> AssetEditor<'a> {
     }
 
     /// Updates the asset by merging in the given asset with the same definition.
-    /// * Keeps the asset name, description or icon if
-    ///   * the existing asset is verified and the other asset is not, and
-    ///   * the corresponding attribute exists.
-    /// * Keeps the mint information, if present.
+    /// * Updates the asset name, description or icon if
+    ///   * the given asset is verified or the existing asset is not, and
+    ///   * the given asset has the corresponding field.
+    /// * Updates the mint information, if present in the given asset.
     /// * Sets as verified if either asset if verified.
     /// * Sets as temporary if both assets are temporary.
     pub fn update(&mut self, other: Asset) {
         assert_eq!(self.asset.definition, other.definition);
-        let mut asset = other;
-        if self.asset.verified || !asset.verified {
-            if let Some(name) = self.asset.name.clone() {
-                asset.name = Some(name);
+        if other.verified || !self.asset.verified {
+            if let Some(name) = other.name.clone() {
+                self.asset.name = Some(name);
             }
-            if let Some(description) = self.asset.description.clone() {
-                asset.description = Some(description);
+            if let Some(description) = other.description.clone() {
+                self.asset.description = Some(description);
             }
-            if let Some(icon) = self.asset.icon.clone() {
-                asset.icon = Some(icon);
+            if let Some(icon) = other.icon.clone() {
+                self.asset.icon = Some(icon);
             }
         }
-        if let Some(mint_info) = self.asset.mint_info.clone() {
-            asset.mint_info = Some(mint_info);
+        if let Some(mint_info) = other.mint_info.clone() {
+            self.asset.mint_info = Some(mint_info);
         }
-        asset.verified |= self.asset.verified;
-        asset.temporary &= self.asset.temporary;
-        self.asset = asset;
+        self.asset.verified |= other.verified;
+        self.asset.temporary &= other.temporary;
     }
 }
 
@@ -287,7 +280,7 @@ impl Assets {
         mint_info: Option<MintInfo>,
     ) -> Result<AssetEditor<'_>, KeystoreError<L>> {
         let asset = Asset {
-            definition: definition.clone(),
+            definition,
             name: None,
             description: None,
             icon: None,
@@ -295,12 +288,13 @@ impl Assets {
             verified: false,
             temporary: false,
         };
-        if let Ok(store_asset) = self.store.load(&asset.definition.code) {
-            let mut editor = AssetEditor::new(&mut self.store, asset.clone());
+        let store_asset = self.store.load(&asset.definition.code);
+        let mut editor = AssetEditor::new(&mut self.store, asset);
+        if let Ok(store_asset) = store_asset {
             editor.update(store_asset);
         }
-        self.store.store(&definition.code, &asset)?;
-        Ok(AssetEditor::new(&mut self.store, asset))
+        editor.save::<L>()?;
+        Ok(editor)
     }
 
     /// Create a verified and temporary asset without mint information.
@@ -316,7 +310,7 @@ impl Assets {
         definition: AssetDefinition,
     ) -> Result<AssetEditor<'_>, KeystoreError<L>> {
         let asset = Asset {
-            definition: definition.clone(),
+            definition,
             name: None,
             description: None,
             icon: None,
@@ -324,28 +318,27 @@ impl Assets {
             verified: true,
             temporary: true,
         };
-        if let Ok(store_asset) = self.store.load(&asset.definition.code) {
-            let mut editor = AssetEditor::new(&mut self.store, asset.clone());
+        let store_asset = self.store.load(&asset.definition.code);
+        let mut editor = AssetEditor::new(&mut self.store, asset);
+        if let Ok(store_asset) = store_asset {
             editor.update(store_asset);
         }
-        self.store.store(&definition.code, &asset)?;
-        Ok(AssetEditor::new(&mut self.store, asset))
+        editor.save::<L>()?;
+        Ok(editor)
     }
 
     /// Create a native asset.
     ///
     /// Returns the editor for the created asset.
-    fn create_native<L: Ledger>(
-        &mut self,
-        definition: AssetDefinition,
-    ) -> Result<AssetEditor<'_>, KeystoreError<L>> {
+    fn create_native<L: Ledger>(&mut self) -> Result<AssetEditor<'_>, KeystoreError<L>> {
         let asset = Asset::native::<L>();
-        if let Ok(store_asset) = self.store.load(&asset.definition.code) {
-            let mut editor = AssetEditor::new(&mut self.store, asset.clone());
+        let store_asset = self.store.load(&asset.definition.code);
+        let mut editor = AssetEditor::new(&mut self.store, asset);
+        if let Ok(store_asset) = store_asset {
             editor.update(store_asset);
         }
-        self.store.store(&definition.code, &asset)?;
-        Ok(AssetEditor::new(&mut self.store, asset))
+        editor.save::<L>()?;
+        Ok(editor)
     }
 
     /// Deletes an asset from the store.
