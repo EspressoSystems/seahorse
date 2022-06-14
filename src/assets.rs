@@ -10,9 +10,15 @@
 //! This module defines [Asset], [AssetEditor], and [Assets], which provide CURD (create, read,
 //! update, and delete) operations, with the use of [KeyValueStore] to control the assets resource.
 
-use crate::{asset_library::Icon, key_value_store::*, KeystoreError, Ledger, MintInfo};
-use jf_cap::structs::{AssetCode, AssetDefinition, AssetPolicy};
+use crate::{
+    asset_library::Icon, key_value_store::*, KeystoreError, Ledger, MintInfo, VerifiedAssetLibrary,
+};
+use jf_cap::{
+    structs::{AssetCode, AssetDefinition, AssetPolicy},
+    VerKey,
+};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::ops::{Deref, DerefMut};
 
 /// An asset with its code as the primary key.
@@ -26,8 +32,9 @@ pub struct Asset {
     /// Optional asset icon.
     pub icon: Option<Icon>,
     mint_info: Option<MintInfo>,
+    // Skip this field when serializing to ensure it's `false` upon deserialization.
+    #[serde(skip)]
     verified: bool,
-    temporary: bool,
 }
 
 impl Asset {
@@ -44,7 +51,6 @@ impl Asset {
             icon: None,
             mint_info: None,
             verified: false,
-            temporary: false,
         }
     }
 
@@ -88,18 +94,12 @@ impl Asset {
         self.verified
     }
 
-    /// Check if the asset is temporary.
-    pub fn temporary(&self) -> bool {
-        self.temporary
-    }
-
-    /// Changes the asset to be verified and temporary without mint information.
+    /// Changes the asset to be verified without mint information.
     ///
     /// Returns the verified asset.
     fn export_verified(mut self) -> Self {
         self.mint_info = None;
         self.verified = true;
-        self.temporary = true;
         self
     }
 }
@@ -172,13 +172,11 @@ impl<'a> AssetEditor<'a> {
         self
     }
 
-    /// Save the asset to the store if it's nontemporary.
+    /// Save the asset to the store.
     ///
     /// Returns the stored asset.
     pub fn save<L: Ledger>(&mut self) -> Result<Asset, KeystoreError<L>> {
-        if !self.asset.temporary {
-            self.store.store(&self.asset.definition.code, &self.asset)?;
-        }
+        self.store.store(&self.asset.definition.code, &self.asset)?;
         Ok(self.asset.clone())
     }
 
@@ -188,7 +186,6 @@ impl<'a> AssetEditor<'a> {
     ///   * the given asset has the corresponding field.
     /// * Updates the mint information, if present in the given asset.
     /// * Sets as verified if either asset if verified.
-    /// * Sets as temporary if both assets are temporary.
     pub fn update(&mut self, other: Asset) {
         assert_eq!(self.asset.definition, other.definition);
         if other.verified || !self.asset.verified {
@@ -206,7 +203,6 @@ impl<'a> AssetEditor<'a> {
             self.asset.mint_info = Some(mint_info);
         }
         self.asset.verified |= other.verified;
-        self.asset.temporary &= other.temporary;
     }
 }
 
@@ -226,15 +222,24 @@ impl<'a> DerefMut for AssetEditor<'a> {
 
 /// Assets stored in an assets store.
 pub struct Assets {
+    /// A key-value store for assets.
     pub store: AssetsStore,
+
+    /// A set of asset codes loaded from verified asset libraries.
+    pub verified_assets: HashSet<AssetCode>,
 }
 
 impl Assets {
     #![allow(dead_code)]
 
-    /// Create assets.
+    /// Create unverified assets.
+    ///
+    /// To load verified assets afterwards, use `verify_asset`.
     pub fn new<L: Ledger>(store: AssetsStore) -> Result<Self, KeystoreError<L>> {
-        Ok(Self { store })
+        Ok(Self {
+            store,
+            verified_assets: HashSet::new(),
+        })
     }
 
     /// Iterate through the assets.
@@ -242,17 +247,46 @@ impl Assets {
         self.store.iter().cloned()
     }
 
-    /// Get the asset by the code.
-    pub fn get<L: Ledger>(&self, code: &AssetCode) -> Result<Asset, KeystoreError<L>> {
-        Ok(self.store.load(code)?)
+    /// Load a verified asset library with its trusted signer.
+    ///
+    /// Call this function at least once after assets resource is created.
+    pub async fn verify_assets<L: Ledger>(
+        &mut self,
+        trusted_signer: &VerKey,
+        library: VerifiedAssetLibrary,
+    ) -> Result<(), KeystoreError<L>> {
+        if let Some(assets) = library.open(trusted_signer) {
+            for asset in &assets {
+                self.verified_assets.insert(asset.definition.code);
+            }
+            Ok(())
+        } else {
+            Err(KeystoreError::AssetVerificationError)
+        }
     }
 
-    /// Get a mutable asset editor by the code.
+    /// Get the asset by the code from the store.
+    ///
+    /// Sets the asset as verified if it's in the verified set.
+    pub fn get<L: Ledger>(&self, code: &AssetCode) -> Result<Asset, KeystoreError<L>> {
+        let mut asset = self.store.load(code)?;
+        if self.verified_assets.contains(code) {
+            asset = asset.export_verified();
+        }
+        Ok(asset)
+    }
+
+    /// Get a mutable asset editor by the code from the store.
+    ///
+    /// Sets the asset as verified if it's in the verified set.
     pub fn get_mut<L: Ledger>(
         &mut self,
         code: &AssetCode,
     ) -> Result<AssetEditor<'_>, KeystoreError<L>> {
-        let asset = self.get(code)?;
+        let mut asset = self.get(code)?;
+        if self.verified_assets.contains(code) {
+            asset = asset.export_verified();
+        }
         Ok(AssetEditor::new(&mut self.store, asset))
     }
 
@@ -266,58 +300,32 @@ impl Assets {
         Ok(self.store.revert_version()?)
     }
 
-    /// Create an unverified and nontemporary asset.
+    /// Create an unverified asset.
+    ///
+    /// Sets the asset as verified if it's in the verified set.
     ///
     /// If the store doesn't have an asset with the same code, adds the created asset to the store.
     /// Otherwise, updates the exisiting asset.
     ///
     /// Returns the editor for the created asset.
     ///
-    /// To create a verified and temporary asset, use `create_verified` instead.
+    /// To create a verified asset, use `create_verified` instead.
     pub fn create<L: Ledger>(
         &mut self,
         definition: AssetDefinition,
         mint_info: Option<MintInfo>,
     ) -> Result<AssetEditor<'_>, KeystoreError<L>> {
-        let asset = Asset {
+        let mut asset = Asset {
             definition,
             name: None,
             description: None,
             icon: None,
             mint_info,
             verified: false,
-            temporary: false,
         };
-        let store_asset = self.store.load(&asset.definition.code);
-        let mut editor = AssetEditor::new(&mut self.store, asset);
-        if let Ok(store_asset) = store_asset {
-            editor.update(store_asset);
+        if self.verified_assets.contains(&asset.definition.code) {
+            asset = asset.export_verified();
         }
-        editor.save::<L>()?;
-        Ok(editor)
-    }
-
-    /// Create a verified and temporary asset without mint information.
-    ///
-    /// If the store doesn't have an asset with the same code, adds the created asset to the store.
-    /// Otherwise, updates the exisiting asset.
-    ///
-    /// Returns the editor for the created asset.
-    ///
-    /// To create an unverified and nontemporary asset, use `create` instead.
-    fn create_verified<L: Ledger>(
-        &mut self,
-        definition: AssetDefinition,
-    ) -> Result<AssetEditor<'_>, KeystoreError<L>> {
-        let asset = Asset {
-            definition,
-            name: None,
-            description: None,
-            icon: None,
-            mint_info: None,
-            verified: true,
-            temporary: true,
-        };
         let store_asset = self.store.load(&asset.definition.code);
         let mut editor = AssetEditor::new(&mut self.store, asset);
         if let Ok(store_asset) = store_asset {
@@ -329,9 +337,14 @@ impl Assets {
 
     /// Create a native asset.
     ///
+    /// Sets the asset as verified if it's in the verified set.
+    ///
     /// Returns the editor for the created asset.
     fn create_native<L: Ledger>(&mut self) -> Result<AssetEditor<'_>, KeystoreError<L>> {
-        let asset = Asset::native::<L>();
+        let mut asset = Asset::native::<L>();
+        if self.verified_assets.contains(&asset.definition.code) {
+            asset = asset.export_verified();
+        }
         let store_asset = self.store.load(&asset.definition.code);
         let mut editor = AssetEditor::new(&mut self.store, asset);
         if let Ok(store_asset) = store_asset {
