@@ -903,7 +903,7 @@
     }
 }
 
-<span class="kw">struct</span> <span class="ident">EncryptingResourceAdapter</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> {
+<span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">EncryptingResourceAdapter</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> {
     <span class="ident">cipher</span>: <span class="ident">Cipher</span><span class="op">&lt;</span><span class="ident">ChaChaRng</span><span class="op">&gt;</span>,
     <span class="ident">_phantom</span>: <span class="ident">std::marker::PhantomData</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span>,
 }

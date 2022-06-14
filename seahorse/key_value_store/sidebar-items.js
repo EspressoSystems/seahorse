@@ -1,0 +1,1 @@
+initSidebarItems({"enum":[["KeyValueStoreError","Errors happening during key-value store operations."]],"struct":[["KeyNotFoundSnafu","SNAFU context selector for the `KeyValueStoreError::KeyNotFound` variant"],["KeyValueStore","A storage for key-value pairs."],["PersistenceSnafu","SNAFU context selector for the `KeyValueStoreError::PersistenceError` variant"]]});

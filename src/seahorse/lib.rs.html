@@ -2783,6 +2783,11 @@
 <span id="2783">2783</span>
 <span id="2784">2784</span>
 <span id="2785">2785</span>
+<span id="2786">2786</span>
+<span id="2787">2787</span>
+<span id="2788">2788</span>
+<span id="2789">2789</span>
+<span id="2790">2790</span>
 </pre><pre class="rust"><code><span class="comment">// Copyright (c) 2022 Espresso Systems (espressosys.com)</span>
 <span class="comment">// This file is part of the Seahorse library.</span>
 
@@ -2805,12 +2810,14 @@
 <span class="doccomment">//! ledger to the ledger-agnostic interfaces defined here.</span>
 <span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">accounts</span>;
 <span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">asset_library</span>;
+<span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">assets</span>;
 <span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">cli</span>;
 <span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">encryption</span>;
 <span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">events</span>;
 <span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">hd</span>;
 <span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">io</span>;
 <span class="kw">mod</span> <span class="ident">key_scan</span>;
+<span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">key_value_store</span>;
 <span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">loader</span>;
 <span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">persistence</span>;
 <span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">reader</span>;
@@ -2931,6 +2938,9 @@
     },
     <span class="ident">KeyError</span> {
         <span class="ident">source</span>: <span class="ident">argon2::Error</span>,
+    },
+    <span class="ident">KeyValueStoreError</span> {
+        <span class="ident">source</span>: <span class="ident"><span class="kw">crate</span>::key_value_store::KeyValueStoreError</span>,
     },
     <span class="ident">NoSuchAccount</span> {
         <span class="ident">address</span>: <span class="ident">UserAddress</span>,

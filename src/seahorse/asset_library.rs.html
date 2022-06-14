@@ -656,6 +656,7 @@
 <span id="656">656</span>
 <span id="657">657</span>
 <span id="658">658</span>
+<span id="659">659</span>
 </pre><pre class="rust"><code><span class="comment">// Copyright (c) 2022 Espresso Systems (espressosys.com)</span>
 <span class="comment">// This file is part of the Seahorse library.</span>
 
@@ -933,8 +934,9 @@
     <span class="doccomment">/// equal `info.definition`.</span>
     <span class="doccomment">///</span>
     <span class="doccomment">/// * `self.definition` is replaced with `info.definition`</span>
-    <span class="doccomment">/// * `self.name` and `self.description` are updated with `info.name` and `info.description`, if</span>
-    <span class="doccomment">///   present, _unless_ `self` is verified and `info` is not.</span>
+    <span class="doccomment">/// * `self.name`, `self.description` and `self.icon` are updated with `info.name`,</span>
+    <span class="doccomment">/// `info.description` and `info.icon`, if present, _unless_ `self` is verified and `info` is</span>
+    <span class="doccomment">/// not.</span>
     <span class="doccomment">/// * If `info.mint_info` exists, it replaces `self.mint_info`</span>
     <span class="doccomment">/// * `self.temporary` is `true` only if both `self` and `info` are temporary</span>
     <span class="doccomment">/// * `self.verified` is `true` if either `self` or `info` is verified</span>

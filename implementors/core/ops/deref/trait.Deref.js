@@ -1,0 +1,3 @@
+(function() {var implementors = {};
+implementors["seahorse"] = [{"text":"impl&lt;'a&gt; <a class=\"trait\" href=\"https://doc.rust-lang.org/1.56.1/core/ops/deref/trait.Deref.html\" title=\"trait core::ops::deref::Deref\">Deref</a> for <a class=\"struct\" href=\"seahorse/assets/struct.AssetEditor.html\" title=\"struct seahorse::assets::AssetEditor\">AssetEditor</a>&lt;'a&gt;","synthetic":false,"types":["seahorse::assets::AssetEditor"]}];
+if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()
