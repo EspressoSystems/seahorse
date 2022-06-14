@@ -20,12 +20,14 @@
 //! ledger to the ledger-agnostic interfaces defined here.
 pub mod accounts;
 pub mod asset_library;
+pub mod assets;
 pub mod cli;
 pub mod encryption;
 pub mod events;
 pub mod hd;
 pub mod io;
 mod key_scan;
+pub mod key_value_store;
 pub mod loader;
 pub mod persistence;
 pub mod reader;
@@ -146,6 +148,9 @@ pub enum KeystoreError<L: Ledger> {
     },
     KeyError {
         source: argon2::Error,
+    },
+    KeyValueStoreError {
+        source: crate::key_value_store::KeyValueStoreError,
     },
     NoSuchAccount {
         address: UserAddress,
