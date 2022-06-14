@@ -396,51 +396,6 @@
 <span id="396">396</span>
 <span id="397">397</span>
 <span id="398">398</span>
-<span id="399">399</span>
-<span id="400">400</span>
-<span id="401">401</span>
-<span id="402">402</span>
-<span id="403">403</span>
-<span id="404">404</span>
-<span id="405">405</span>
-<span id="406">406</span>
-<span id="407">407</span>
-<span id="408">408</span>
-<span id="409">409</span>
-<span id="410">410</span>
-<span id="411">411</span>
-<span id="412">412</span>
-<span id="413">413</span>
-<span id="414">414</span>
-<span id="415">415</span>
-<span id="416">416</span>
-<span id="417">417</span>
-<span id="418">418</span>
-<span id="419">419</span>
-<span id="420">420</span>
-<span id="421">421</span>
-<span id="422">422</span>
-<span id="423">423</span>
-<span id="424">424</span>
-<span id="425">425</span>
-<span id="426">426</span>
-<span id="427">427</span>
-<span id="428">428</span>
-<span id="429">429</span>
-<span id="430">430</span>
-<span id="431">431</span>
-<span id="432">432</span>
-<span id="433">433</span>
-<span id="434">434</span>
-<span id="435">435</span>
-<span id="436">436</span>
-<span id="437">437</span>
-<span id="438">438</span>
-<span id="439">439</span>
-<span id="440">440</span>
-<span id="441">441</span>
-<span id="442">442</span>
-<span id="443">443</span>
 </pre><pre class="rust"><code><span class="doccomment">/// Ledger scanning utilities.</span>
 <span class="doccomment">///</span>
 <span class="doccomment">/// This module provides an interface for searching a ledger for records belonging to a particular</span>
@@ -450,18 +405,18 @@
 <span class="doccomment">/// synchronizes with the main ledger follower.</span>
 <span class="kw">use</span> <span class="kw">crate</span>::{
     <span class="ident">events</span>::{<span class="ident">EventIndex</span>, <span class="ident">EventSource</span>, <span class="ident">LedgerEvent</span>},
+    <span class="ident">sparse_merkle_tree::SparseMerkleTree</span>,
     <span class="ident">txn_builder::TransactionHistoryEntry</span>,
 };
 <span class="kw">use</span> <span class="ident">arbitrary</span>::{<span class="ident">Arbitrary</span>, <span class="ident">Unstructured</span>};
-<span class="kw">use</span> <span class="ident">arbitrary_wrappers</span>::{<span class="ident">ArbitraryMerkleTree</span>, <span class="ident">ArbitraryUserKeyPair</span>};
+<span class="kw">use</span> <span class="ident">arbitrary_wrappers::ArbitraryUserKeyPair</span>;
 <span class="kw">use</span> <span class="ident">chrono::Local</span>;
 <span class="kw">use</span> <span class="ident">espresso_macros::ser_test</span>;
 <span class="kw">use</span> <span class="ident">jf_cap</span>::{
     <span class="ident">keys</span>::{<span class="ident">UserAddress</span>, <span class="ident">UserKeyPair</span>},
     <span class="ident">structs</span>::{<span class="ident">FreezeFlag</span>, <span class="ident">Nullifier</span>, <span class="ident">RecordCommitment</span>, <span class="ident">RecordOpening</span>},
-    <span class="ident">MerkleCommitment</span>, <span class="ident">MerkleLeafProof</span>, <span class="ident">MerklePath</span>, <span class="ident">MerkleTree</span>,
+    <span class="ident">MerkleCommitment</span>, <span class="ident">MerkleLeafProof</span>, <span class="ident">MerklePath</span>,
 };
-<span class="kw">use</span> <span class="ident">jf_primitives::merkle_tree::FilledMTBuilder</span>;
 <span class="kw">use</span> <span class="ident">reef</span>::{
     <span class="ident">traits</span>::{<span class="ident">Block</span> <span class="kw">as</span> <span class="kw">_</span>, <span class="ident">Transaction</span> <span class="kw">as</span> <span class="kw">_</span>, <span class="ident">TransactionKind</span> <span class="kw">as</span> <span class="kw">_</span>},
     <span class="ident">Ledger</span>, <span class="ident">TransactionHash</span>, <span class="ident">TransactionKind</span>,
@@ -537,8 +492,7 @@
     <span class="comment">// Sparse Merkle tree containing paths for the commitments of each record in `records`. This</span>
     <span class="comment">// allows us to update the paths as we scan so that at the end of the scan, we have a path for</span>
     <span class="comment">// each record relative to the current Merkle root.</span>
-    <span class="ident">records_mt</span>: <span class="ident">MerkleTree</span>,
-    <span class="ident">leaf_to_forget</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">u64</span><span class="op">&gt;</span>,
+    <span class="ident">records_mt</span>: <span class="ident">SparseMerkleTree</span>,
 }
 
 <span class="kw">impl</span><span class="op">&lt;</span><span class="ident">L</span>: <span class="ident">Ledger</span><span class="op">&gt;</span> <span class="ident">PartialEq</span><span class="op">&lt;</span><span class="self">Self</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">BackgroundKeyScan</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span> {
@@ -549,7 +503,6 @@
             <span class="op">&amp;&amp;</span> <span class="self">self</span>.<span class="ident">records</span> <span class="op">=</span><span class="op">=</span> <span class="ident">other</span>.<span class="ident">records</span>
             <span class="op">&amp;&amp;</span> <span class="self">self</span>.<span class="ident">history</span> <span class="op">=</span><span class="op">=</span> <span class="ident">other</span>.<span class="ident">history</span>
             <span class="op">&amp;&amp;</span> <span class="self">self</span>.<span class="ident">records_mt</span> <span class="op">=</span><span class="op">=</span> <span class="ident">other</span>.<span class="ident">records_mt</span>
-            <span class="op">&amp;&amp;</span> <span class="self">self</span>.<span class="ident">leaf_to_forget</span> <span class="op">=</span><span class="op">=</span> <span class="ident">other</span>.<span class="ident">leaf_to_forget</span>
     }
 }
 
@@ -565,8 +518,7 @@
             <span class="ident">to_event</span>: <span class="ident">u</span>.<span class="ident">arbitrary</span>()<span class="question-mark">?</span>,
             <span class="ident">records</span>: <span class="ident">Default::default</span>(),
             <span class="ident">history</span>: <span class="ident">u</span>.<span class="ident">arbitrary</span>()<span class="question-mark">?</span>,
-            <span class="ident">records_mt</span>: <span class="ident">u</span>.<span class="ident">arbitrary</span>::<span class="op">&lt;</span><span class="ident">ArbitraryMerkleTree</span><span class="op">&gt;</span>()<span class="question-mark">?</span>.<span class="number">0</span>,
-            <span class="ident">leaf_to_forget</span>: <span class="prelude-val">None</span>,
+            <span class="ident">records_mt</span>: <span class="ident">u</span>.<span class="ident">arbitrary</span>()<span class="question-mark">?</span>,
         })
     }
 }
@@ -577,13 +529,8 @@
         <span class="ident">next_event</span>: <span class="ident">EventIndex</span>,
         <span class="ident">from</span>: <span class="ident">EventIndex</span>,
         <span class="ident">to</span>: <span class="ident">EventIndex</span>,
-        <span class="ident">records_mt</span>: <span class="ident">MerkleTree</span>,
+        <span class="ident">records_mt</span>: <span class="ident">SparseMerkleTree</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span> {
-        <span class="kw">let</span> <span class="ident">leaf_to_forget</span> <span class="op">=</span> <span class="kw">if</span> <span class="ident">records_mt</span>.<span class="ident">num_leaves</span>() <span class="op">&gt;</span> <span class="number">0</span> {
-            <span class="prelude-val">Some</span>(<span class="ident">records_mt</span>.<span class="ident">num_leaves</span>() <span class="op">-</span> <span class="number">1</span>)
-        } <span class="kw">else</span> {
-            <span class="prelude-val">None</span>
-        };
         <span class="self">Self</span> {
             <span class="ident">key</span>,
             <span class="ident">next_event</span>,
@@ -592,7 +539,6 @@
             <span class="ident">records</span>: <span class="ident">Default::default</span>(),
             <span class="ident">history</span>: <span class="ident">Default::default</span>(),
             <span class="ident">records_mt</span>,
-            <span class="ident">leaf_to_forget</span>,
         }
     }
 
@@ -667,7 +613,7 @@
                 <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">uid</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">records_mt</span>.<span class="ident">num_leaves</span>();
 
                 <span class="comment">// Add the record commitments from this block.</span>
-                <span class="self">self</span>.<span class="ident">add_commitments</span>(
+                <span class="self">self</span>.<span class="ident">records_mt</span>.<span class="ident">extend</span>(
                     <span class="ident">block</span>
                         .<span class="ident">txns</span>()
                         .<span class="ident">into_iter</span>()
@@ -680,7 +626,7 @@
                         <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>((<span class="kw">_</span>, <span class="ident">uid</span>)) <span class="op">=</span> <span class="self">self</span>.<span class="ident">records</span>.<span class="ident">remove</span>(<span class="kw-2">&amp;</span><span class="ident">n</span>) {
                             <span class="comment">// If we removed a record that we had already discovered, prune it&#39;s</span>
                             <span class="comment">// path from the Merkle tree.</span>
-                            <span class="self">self</span>.<span class="ident">forget</span>(<span class="ident">uid</span>);
+                            <span class="self">self</span>.<span class="ident">records_mt</span>.<span class="ident">forget</span>(<span class="ident">uid</span>);
                         }
                     }
 
@@ -700,7 +646,7 @@
                                 <span class="comment">// If the record belongs to us, add it to our records.</span>
                                 <span class="self">self</span>.<span class="ident">records</span>.<span class="ident">insert</span>(<span class="ident">nullifier</span>, (<span class="ident">record</span>, <span class="ident">uid</span>));
                             } <span class="kw">else</span> {
-                                <span class="self">self</span>.<span class="ident">forget</span>(<span class="ident">uid</span>);
+                                <span class="self">self</span>.<span class="ident">records_mt</span>.<span class="ident">forget</span>(<span class="ident">uid</span>);
                             }
 
                             <span class="ident">uid</span> <span class="op">+</span><span class="op">=</span> <span class="number">1</span>;
@@ -717,7 +663,7 @@
                         <span class="comment">// paths we added for it. If we are a receiver of this transaction, we will</span>
                         <span class="comment">// remember the relevant paths later on when we get the owner memos.</span>
                         <span class="kw">for</span> <span class="kw">_</span> <span class="kw">in</span> <span class="ident">txn</span>.<span class="ident">output_commitments</span>() {
-                            <span class="self">self</span>.<span class="ident">forget</span>(<span class="ident">uid</span>);
+                            <span class="self">self</span>.<span class="ident">records_mt</span>.<span class="ident">forget</span>(<span class="ident">uid</span>);
                             <span class="ident">uid</span> <span class="op">+</span><span class="op">=</span> <span class="number">1</span>;
                         }
                     }
@@ -751,8 +697,11 @@
                         <span class="kw-2">*</span><span class="ident">uid</span>,
                         <span class="kw-2">&amp;</span><span class="ident">RecordCommitment::from</span>(<span class="ident">ro</span>),
                     );
-                    <span class="self">self</span>.<span class="ident">records_mt</span>.<span class="ident">remember</span>(<span class="kw-2">*</span><span class="ident">uid</span>, <span class="ident">proof</span>).<span class="ident">unwrap</span>();
-                    <span class="self">self</span>.<span class="ident">records</span>.<span class="ident">insert</span>(<span class="ident">nullifier</span>, (<span class="ident">ro</span>.<span class="ident">clone</span>(), <span class="kw-2">*</span><span class="ident">uid</span>));
+                    <span class="kw">if</span> <span class="self">self</span>.<span class="ident">records_mt</span>.<span class="ident">remember</span>(<span class="kw-2">*</span><span class="ident">uid</span>, <span class="ident">proof</span>).<span class="ident">is_ok</span>() {
+                        <span class="self">self</span>.<span class="ident">records</span>.<span class="ident">insert</span>(<span class="ident">nullifier</span>, (<span class="ident">ro</span>.<span class="ident">clone</span>(), <span class="kw-2">*</span><span class="ident">uid</span>));
+                    } <span class="kw">else</span> {
+                        <span class="macro">tracing::error!</span>(<span class="string">&quot;Got bad Merkle proof. Unable to add record {}&quot;</span>, <span class="ident">uid</span>);
+                    }
                 }
 
                 <span class="kw">if</span> <span class="op">!</span><span class="ident">records</span>.<span class="ident">is_empty</span>() {
@@ -782,61 +731,22 @@
                 <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>((<span class="kw">_</span>, <span class="ident">uid</span>)) <span class="op">=</span> <span class="self">self</span>.<span class="ident">records</span>.<span class="ident">remove</span>(<span class="kw-2">&amp;</span><span class="ident">n</span>) {
                     <span class="comment">// If we removed a record that we had already discovered, prune it&#39;s path from</span>
                     <span class="comment">// the Merkle tree.</span>
-                    <span class="self">self</span>.<span class="ident">forget</span>(<span class="ident">uid</span>);
+                    <span class="self">self</span>.<span class="ident">records_mt</span>.<span class="ident">forget</span>(<span class="ident">uid</span>);
                 }
             }
 
             <span class="comment">// Add new commitments to the Merkle tree in order to update the root, then forget the</span>
             <span class="comment">// new Merkle paths since we don&#39;t care about records in this range.</span>
             <span class="kw">let</span> <span class="ident">first_uid</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">records_mt</span>.<span class="ident">num_leaves</span>();
-            <span class="self">self</span>.<span class="ident">add_commitments</span>(
+            <span class="self">self</span>.<span class="ident">records_mt</span>.<span class="ident">extend</span>(
                 <span class="ident">block</span>
                     .<span class="ident">txns</span>()
                     .<span class="ident">into_iter</span>()
                     .<span class="ident">flat_map</span>(<span class="op">|</span><span class="ident">txn</span><span class="op">|</span> <span class="ident">txn</span>.<span class="ident">output_commitments</span>()),
             );
             <span class="kw">for</span> <span class="ident">uid</span> <span class="kw">in</span> <span class="ident">first_uid</span>..<span class="self">self</span>.<span class="ident">records_mt</span>.<span class="ident">num_leaves</span>() {
-                <span class="self">self</span>.<span class="ident">forget</span>(<span class="ident">uid</span>);
+                <span class="self">self</span>.<span class="ident">records_mt</span>.<span class="ident">forget</span>(<span class="ident">uid</span>);
             }
-        }
-    }
-
-    <span class="kw">fn</span> <span class="ident">add_commitments</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">comms</span>: <span class="kw">impl</span> <span class="ident">IntoIterator</span><span class="op">&lt;</span><span class="ident">Item</span> <span class="op">=</span> <span class="ident">RecordCommitment</span><span class="op">&gt;</span>) {
-        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">comms</span> <span class="op">=</span> <span class="ident">comms</span>.<span class="ident">into_iter</span>().<span class="ident">peekable</span>();
-        <span class="kw">if</span> <span class="ident">comms</span>.<span class="ident">peek</span>().<span class="ident">is_none</span>() {
-            <span class="comment">// If there are no records to insert, just return. This is both an optimization and a</span>
-            <span class="comment">// precondition of the following code -- in particular the logic involving</span>
-            <span class="comment">// `leaf_to_forget` -- which assumes the iterator is non-empty.</span>
-            <span class="kw">return</span>;
-        }
-
-        <span class="comment">// FilledMTBuilder takes ownership of the MerkleTree, so we need to temporarily replace</span>
-        <span class="comment">// `self.records_mt` with a dummy value (since we can&#39;t move out of a mutable reference). We</span>
-        <span class="comment">// use a MerkleTree of height 0 as the dummy value, since its construction always succeeds</span>
-        <span class="comment">// and the computation of 3^0 is cheap.</span>
-        <span class="kw">let</span> <span class="ident">records_mt</span> <span class="op">=</span> <span class="ident">std::mem::replace</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>.<span class="ident">records_mt</span>, <span class="ident">MerkleTree::new</span>(<span class="number">0</span>).<span class="ident">unwrap</span>());
-        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">builder</span> <span class="op">=</span> <span class="ident">FilledMTBuilder::from_existing</span>(<span class="ident">records_mt</span>)
-            .<span class="ident">expect</span>(<span class="string">&quot;failed to convert MerkleTree to FilledMTBuilder&quot;</span>);
-        <span class="kw">for</span> <span class="ident">comm</span> <span class="kw">in</span> <span class="ident">comms</span> {
-            <span class="ident">builder</span>.<span class="ident">push</span>(<span class="ident">comm</span>.<span class="ident">to_field_element</span>());
-        }
-        <span class="self">self</span>.<span class="ident">records_mt</span> <span class="op">=</span> <span class="ident">builder</span>.<span class="ident">build</span>();
-
-        <span class="comment">// Now that we have appended new leaves to the Merkle tree, we can forget the old last leaf,</span>
-        <span class="comment">// if needed.</span>
-        <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">uid</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">leaf_to_forget</span>.<span class="ident">take</span>() {
-            <span class="macro">assert!</span>(<span class="ident">uid</span> <span class="op">&lt;</span> <span class="self">self</span>.<span class="ident">records_mt</span>.<span class="ident">num_leaves</span>() <span class="op">-</span> <span class="number">1</span>);
-            <span class="self">self</span>.<span class="ident">records_mt</span>.<span class="ident">forget</span>(<span class="ident">uid</span>);
-        }
-    }
-
-    <span class="kw">fn</span> <span class="ident">forget</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">uid</span>: <span class="ident">u64</span>) {
-        <span class="kw">if</span> <span class="ident">uid</span> <span class="op">=</span><span class="op">=</span> <span class="self">self</span>.<span class="ident">records_mt</span>.<span class="ident">num_leaves</span>() <span class="op">-</span> <span class="number">1</span> {
-            <span class="comment">// If the leaf we&#39;re trying to forget is on the frontier, we can&#39;t forget it</span>
-            <span class="comment">// now. Make a note to forget it when the frontier changes.</span>
-            <span class="self">self</span>.<span class="ident">leaf_to_forget</span> <span class="op">=</span> <span class="prelude-val">Some</span>(<span class="ident">uid</span>);
-        } <span class="kw">else</span> {
-            <span class="self">self</span>.<span class="ident">records_mt</span>.<span class="ident">forget</span>(<span class="ident">uid</span>);
         }
     }
 }

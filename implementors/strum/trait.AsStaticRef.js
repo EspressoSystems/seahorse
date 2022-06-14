@@ -1,3 +1,0 @@
-(function() {var implementors = {};
-implementors["seahorse"] = [{"text":"impl&lt;L:&nbsp;Ledger&gt; AsStaticRef&lt;<a class=\"primitive\" href=\"https://doc.rust-lang.org/1.56.1/std/primitive.str.html\">str</a>&gt; for <a class=\"enum\" href=\"seahorse/events/enum.LedgerEvent.html\" title=\"enum seahorse::events::LedgerEvent\">LedgerEvent</a>&lt;L&gt;","synthetic":false,"types":["seahorse::events::LedgerEvent"]}];
-if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

@@ -2781,6 +2781,8 @@
 <span id="2781">2781</span>
 <span id="2782">2782</span>
 <span id="2783">2783</span>
+<span id="2784">2784</span>
+<span id="2785">2785</span>
 </pre><pre class="rust"><code><span class="comment">// Copyright (c) 2022 Espresso Systems (espressosys.com)</span>
 <span class="comment">// This file is part of the Seahorse library.</span>
 
@@ -2813,10 +2815,12 @@
 <span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">persistence</span>;
 <span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">reader</span>;
 <span class="kw">mod</span> <span class="ident">secret</span>;
+<span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">sparse_merkle_tree</span>;
 <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">any</span>(<span class="ident">test</span>, <span class="ident">bench</span>, <span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;testing&quot;</span>))]</span>
 <span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">testing</span>;
 <span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">txn_builder</span>;
 
+<span class="kw">use</span> <span class="ident"><span class="kw">crate</span>::sparse_merkle_tree::SparseMerkleTree</span>;
 <span class="kw">pub</span> <span class="kw">use</span> <span class="kw">crate</span>::{
     <span class="ident">asset_library</span>::{<span class="ident">AssetInfo</span>, <span class="ident">MintInfo</span>},
     <span class="ident">txn_builder::RecordAmount</span>,
@@ -4167,7 +4171,7 @@
                 <span class="ident">next_event</span>,
                 <span class="ident">scan_from</span>,
                 <span class="self">self</span>.<span class="ident">txn_state</span>.<span class="ident">now</span>,
-                <span class="ident">frontier</span>,
+                <span class="ident">SparseMerkleTree::sparse</span>(<span class="ident">frontier</span>),
             );
             (<span class="prelude-val">Some</span>(<span class="ident">scan</span>), <span class="prelude-val">Some</span>(<span class="ident">events</span>))
         } <span class="kw">else</span> {

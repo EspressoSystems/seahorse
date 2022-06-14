@@ -2066,56 +2066,6 @@
 <span id="2066">2066</span>
 <span id="2067">2067</span>
 <span id="2068">2068</span>
-<span id="2069">2069</span>
-<span id="2070">2070</span>
-<span id="2071">2071</span>
-<span id="2072">2072</span>
-<span id="2073">2073</span>
-<span id="2074">2074</span>
-<span id="2075">2075</span>
-<span id="2076">2076</span>
-<span id="2077">2077</span>
-<span id="2078">2078</span>
-<span id="2079">2079</span>
-<span id="2080">2080</span>
-<span id="2081">2081</span>
-<span id="2082">2082</span>
-<span id="2083">2083</span>
-<span id="2084">2084</span>
-<span id="2085">2085</span>
-<span id="2086">2086</span>
-<span id="2087">2087</span>
-<span id="2088">2088</span>
-<span id="2089">2089</span>
-<span id="2090">2090</span>
-<span id="2091">2091</span>
-<span id="2092">2092</span>
-<span id="2093">2093</span>
-<span id="2094">2094</span>
-<span id="2095">2095</span>
-<span id="2096">2096</span>
-<span id="2097">2097</span>
-<span id="2098">2098</span>
-<span id="2099">2099</span>
-<span id="2100">2100</span>
-<span id="2101">2101</span>
-<span id="2102">2102</span>
-<span id="2103">2103</span>
-<span id="2104">2104</span>
-<span id="2105">2105</span>
-<span id="2106">2106</span>
-<span id="2107">2107</span>
-<span id="2108">2108</span>
-<span id="2109">2109</span>
-<span id="2110">2110</span>
-<span id="2111">2111</span>
-<span id="2112">2112</span>
-<span id="2113">2113</span>
-<span id="2114">2114</span>
-<span id="2115">2115</span>
-<span id="2116">2116</span>
-<span id="2117">2117</span>
-<span id="2118">2118</span>
 </pre><pre class="rust"><code><span class="comment">// Copyright (c) 2022 Espresso Systems (espressosys.com)</span>
 <span class="comment">// This file is part of the Seahorse library.</span>
 
@@ -2127,7 +2077,7 @@
 <span class="doccomment">//!</span>
 <span class="doccomment">//! This module defines the subset of ledger state required by a keystore to build transactions, and</span>
 <span class="doccomment">//! provides an interface for building them.</span>
-<span class="kw">use</span> <span class="ident"><span class="kw">crate</span>::events::EventIndex</span>;
+<span class="kw">use</span> <span class="kw">crate</span>::{<span class="ident">events::EventIndex</span>, <span class="ident">sparse_merkle_tree::SparseMerkleTree</span>};
 <span class="kw">use</span> <span class="ident">arbitrary</span>::{<span class="ident">Arbitrary</span>, <span class="ident">Unstructured</span>};
 <span class="kw">use</span> <span class="ident">arbitrary_wrappers</span>::<span class="kw-2">*</span>;
 <span class="kw">use</span> <span class="ident">ark_serialize</span>::<span class="kw-2">*</span>;
@@ -2148,9 +2098,8 @@
         <span class="ident">Nullifier</span>, <span class="ident">ReceiverMemo</span>, <span class="ident">RecordCommitment</span>, <span class="ident">RecordOpening</span>, <span class="ident">TxnFeeInfo</span>,
     },
     <span class="ident">transfer</span>::{<span class="ident">TransferNote</span>, <span class="ident">TransferNoteInput</span>},
-    <span class="ident">AccMemberWitness</span>, <span class="ident">KeyPair</span>, <span class="ident">MerkleLeafProof</span>, <span class="ident">MerkleTree</span>, <span class="ident">Signature</span>,
+    <span class="ident">AccMemberWitness</span>, <span class="ident">KeyPair</span>, <span class="ident">MerkleLeafProof</span>, <span class="ident">Signature</span>,
 };
-<span class="kw">use</span> <span class="ident">jf_primitives::merkle_tree::FilledMTBuilder</span>;
 <span class="kw">use</span> <span class="ident">jf_utils::tagged_blob</span>;
 <span class="kw">use</span> <span class="ident">key_set::KeySet</span>;
 <span class="kw">use</span> <span class="ident">num_bigint</span>::{<span class="ident">BigInt</span>, <span class="ident">Sign</span>};
@@ -3150,10 +3099,7 @@
     <span class="comment">// sparse nullifier set Merkle tree mirrored from validators</span>
     <span class="kw">pub</span> <span class="ident">nullifiers</span>: <span class="ident">NullifierSet</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span>,
     <span class="comment">// sparse record Merkle tree mirrored from validators</span>
-    <span class="kw">pub</span> <span class="ident">record_mt</span>: <span class="ident">MerkleTree</span>,
-    <span class="comment">// when forgetting the last leaf in the tree, the forget operation will be deferred until a new</span>
-    <span class="comment">// leaf is appended, using this field, because MerkleTree doesn&#39;t allow forgetting the last leaf.</span>
-    <span class="kw">pub</span> <span class="ident">merkle_leaf_to_forget</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">u64</span><span class="op">&gt;</span>,
+    <span class="kw">pub</span> <span class="ident">record_mt</span>: <span class="ident">SparseMerkleTree</span>,
     <span class="comment">// set of pending transactions</span>
     <span class="kw">pub</span> <span class="ident">transactions</span>: <span class="ident">TransactionDatabase</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span>,
 }
@@ -3165,7 +3111,6 @@
             <span class="op">&amp;&amp;</span> <span class="self">self</span>.<span class="ident">records</span> <span class="op">=</span><span class="op">=</span> <span class="ident">other</span>.<span class="ident">records</span>
             <span class="op">&amp;&amp;</span> <span class="self">self</span>.<span class="ident">nullifiers</span> <span class="op">=</span><span class="op">=</span> <span class="ident">other</span>.<span class="ident">nullifiers</span>
             <span class="op">&amp;&amp;</span> <span class="self">self</span>.<span class="ident">record_mt</span> <span class="op">=</span><span class="op">=</span> <span class="ident">other</span>.<span class="ident">record_mt</span>
-            <span class="op">&amp;&amp;</span> <span class="self">self</span>.<span class="ident">merkle_leaf_to_forget</span> <span class="op">=</span><span class="op">=</span> <span class="ident">other</span>.<span class="ident">merkle_leaf_to_forget</span>
             <span class="op">&amp;&amp;</span> <span class="self">self</span>.<span class="ident">transactions</span> <span class="op">=</span><span class="op">=</span> <span class="ident">other</span>.<span class="ident">transactions</span>
     }
 }
@@ -3182,8 +3127,7 @@
             <span class="ident">validator</span>: <span class="ident">u</span>.<span class="ident">arbitrary</span>()<span class="question-mark">?</span>,
             <span class="ident">records</span>: <span class="ident">u</span>.<span class="ident">arbitrary</span>()<span class="question-mark">?</span>,
             <span class="ident">nullifiers</span>: <span class="ident">u</span>.<span class="ident">arbitrary</span>()<span class="question-mark">?</span>,
-            <span class="ident">record_mt</span>: <span class="ident">u</span>.<span class="ident">arbitrary</span>::<span class="op">&lt;</span><span class="ident">ArbitraryMerkleTree</span><span class="op">&gt;</span>()<span class="question-mark">?</span>.<span class="number">0</span>,
-            <span class="ident">merkle_leaf_to_forget</span>: <span class="prelude-val">None</span>,
+            <span class="ident">record_mt</span>: <span class="ident">u</span>.<span class="ident">arbitrary</span>()<span class="question-mark">?</span>,
             <span class="ident">transactions</span>: <span class="ident">u</span>.<span class="ident">arbitrary</span>()<span class="question-mark">?</span>,
         })
     }
@@ -3781,61 +3725,16 @@
     }
 
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">forget_merkle_leaf</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">leaf</span>: <span class="ident">u64</span>) {
-        <span class="kw">if</span> <span class="ident">leaf</span> <span class="op">&lt;</span> <span class="self">self</span>.<span class="ident">record_mt</span>.<span class="ident">num_leaves</span>() <span class="op">-</span> <span class="number">1</span> {
-            <span class="self">self</span>.<span class="ident">record_mt</span>.<span class="ident">forget</span>(<span class="ident">leaf</span>);
-        } <span class="kw">else</span> {
-            <span class="macro">assert_eq!</span>(<span class="ident">leaf</span>, <span class="self">self</span>.<span class="ident">record_mt</span>.<span class="ident">num_leaves</span>() <span class="op">-</span> <span class="number">1</span>);
-            <span class="comment">// We can&#39;t forget the last leaf in a Merkle tree. Instead, we just note that we want to</span>
-            <span class="comment">// forget this leaf, and we&#39;ll forget it when we append a new last leaf.</span>
-            <span class="comment">//</span>
-            <span class="comment">// There can only be one `merkle_leaf_to_forget` at a time, because we will forget the</span>
-            <span class="comment">// leaf and clear this field as soon as we append a new leaf.</span>
-            <span class="macro">assert!</span>(<span class="self">self</span>.<span class="ident">merkle_leaf_to_forget</span>.<span class="ident">is_none</span>());
-            <span class="self">self</span>.<span class="ident">merkle_leaf_to_forget</span> <span class="op">=</span> <span class="prelude-val">Some</span>(<span class="ident">leaf</span>);
-        }
+        <span class="self">self</span>.<span class="ident">record_mt</span>.<span class="ident">forget</span>(<span class="ident">leaf</span>);
     }
 
     <span class="attribute">#[<span class="ident">must_use</span>]</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">remember_merkle_leaf</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">leaf</span>: <span class="ident">u64</span>, <span class="ident">proof</span>: <span class="kw-2">&amp;</span><span class="ident">MerkleLeafProof</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">bool</span> {
-        <span class="comment">// If we were planning to forget this leaf once a new leaf is appended, stop planning that.</span>
-        <span class="kw">if</span> <span class="self">self</span>.<span class="ident">merkle_leaf_to_forget</span> <span class="op">=</span><span class="op">=</span> <span class="prelude-val">Some</span>(<span class="ident">leaf</span>) {
-            <span class="self">self</span>.<span class="ident">merkle_leaf_to_forget</span> <span class="op">=</span> <span class="prelude-val">None</span>;
-            <span class="comment">// `merkle_leaf_to_forget` is always represented in the tree, so we don&#39;t have to call</span>
-            <span class="comment">// `remember` in this case.</span>
-            <span class="macro">assert!</span>(<span class="self">self</span>.<span class="ident">record_mt</span>.<span class="ident">get_leaf</span>(<span class="ident">leaf</span>).<span class="ident">expect_ok</span>().<span class="ident">is_ok</span>());
-            <span class="bool-val">true</span>
-        } <span class="kw">else</span> {
-            <span class="self">self</span>.<span class="ident">record_mt</span>.<span class="ident">remember</span>(<span class="ident">leaf</span>, <span class="ident">proof</span>).<span class="ident">is_ok</span>()
-        }
+        <span class="self">self</span>.<span class="ident">record_mt</span>.<span class="ident">remember</span>(<span class="ident">leaf</span>, <span class="ident">proof</span>).<span class="ident">is_ok</span>()
     }
 
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">append_merkle_leaves</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">comms</span>: <span class="kw">impl</span> <span class="ident">IntoIterator</span><span class="op">&lt;</span><span class="ident">Item</span> <span class="op">=</span> <span class="ident">RecordCommitment</span><span class="op">&gt;</span>) {
-        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">comms</span> <span class="op">=</span> <span class="ident">comms</span>.<span class="ident">into_iter</span>().<span class="ident">peekable</span>();
-        <span class="kw">if</span> <span class="ident">comms</span>.<span class="ident">peek</span>().<span class="ident">is_none</span>() {
-            <span class="comment">// If there are no records to insert, just return. This is both an optimization and a</span>
-            <span class="comment">// precondition of the following code -- in particular the logic involving</span>
-            <span class="comment">// `merkle_leaf_to_forget` -- which assumes the iterator is non-empty.</span>
-            <span class="kw">return</span>;
-        }
-
-        <span class="comment">// FilledMTBuilder takes ownership of the MerkleTree, so we need to temporarily replace</span>
-        <span class="comment">// `self.record_mt` with a dummy value (since we can&#39;t move out of a mutable reference). We</span>
-        <span class="comment">// use a MerkleTree of height 0 as the dummy value, since its construction always succeeds</span>
-        <span class="comment">// and the computation of 3^0 is cheap.</span>
-        <span class="kw">let</span> <span class="ident">record_mt</span> <span class="op">=</span> <span class="ident">std::mem::replace</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>.<span class="ident">record_mt</span>, <span class="ident">MerkleTree::new</span>(<span class="number">0</span>).<span class="ident">unwrap</span>());
-        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">builder</span> <span class="op">=</span> <span class="ident">FilledMTBuilder::from_existing</span>(<span class="ident">record_mt</span>)
-            .<span class="ident">expect</span>(<span class="string">&quot;failed to convert MerkleTree to FilledMTBuilder&quot;</span>);
-        <span class="kw">for</span> <span class="ident">comm</span> <span class="kw">in</span> <span class="ident">comms</span> {
-            <span class="ident">builder</span>.<span class="ident">push</span>(<span class="ident">comm</span>.<span class="ident">to_field_element</span>());
-        }
-        <span class="self">self</span>.<span class="ident">record_mt</span> <span class="op">=</span> <span class="ident">builder</span>.<span class="ident">build</span>();
-
-        <span class="comment">// Now that we have appended new leaves to the Merkle tree, we can forget the old last leaf,</span>
-        <span class="comment">// if needed.</span>
-        <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">uid</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">merkle_leaf_to_forget</span>.<span class="ident">take</span>() {
-            <span class="macro">assert!</span>(<span class="ident">uid</span> <span class="op">&lt;</span> <span class="self">self</span>.<span class="ident">record_mt</span>.<span class="ident">num_leaves</span>() <span class="op">-</span> <span class="number">1</span>);
-            <span class="self">self</span>.<span class="ident">record_mt</span>.<span class="ident">forget</span>(<span class="ident">uid</span>);
-        }
+        <span class="self">self</span>.<span class="ident">record_mt</span>.<span class="ident">extend</span>(<span class="ident">comms</span>)
     }
 
     <span class="doccomment">/// Returns a list of record openings and UIDs, and the change amount.</span>
@@ -4052,7 +3951,8 @@
     <span class="kw">fn</span> <span class="ident">get_merkle_proof</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">leaf</span>: <span class="ident">u64</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">AccMemberWitness</span> {
         <span class="comment">// The transaction builder never needs a Merkle proof that isn&#39;t guaranteed to already be in the Merkle</span>
         <span class="comment">// tree, so this unwrap() should never fail.</span>
-        <span class="ident">AccMemberWitness::lookup_from_tree</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">record_mt</span>, <span class="ident">leaf</span>)
+        <span class="self">self</span>.<span class="ident">record_mt</span>
+            .<span class="ident">acc_member_witness</span>(<span class="ident">leaf</span>)
             .<span class="ident">expect_ok</span>()
             .<span class="ident">unwrap</span>()
             .<span class="number">1</span>

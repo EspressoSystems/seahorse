@@ -1261,6 +1261,7 @@
     <span class="kw">use</span> <span class="kw">super</span>::<span class="kw-2">*</span>;
     <span class="kw">use</span> <span class="kw">crate</span>::{
         <span class="ident">events</span>::{<span class="ident">EventIndex</span>, <span class="ident">EventSource</span>},
+        <span class="ident">sparse_merkle_tree::SparseMerkleTree</span>,
         <span class="ident">testing::assert_keystore_states_eq</span>,
         <span class="ident">txn_builder</span>::{<span class="ident">PendingTransaction</span>, <span class="ident">TransactionInfo</span>, <span class="ident">TransactionUID</span>},
     };
@@ -1272,7 +1273,7 @@
         <span class="ident">structs</span>::{
             <span class="ident">AssetCode</span>, <span class="ident">AssetDefinition</span>, <span class="ident">FreezeFlag</span>, <span class="ident">ReceiverMemo</span>, <span class="ident">RecordCommitment</span>, <span class="ident">RecordOpening</span>,
         },
-        <span class="ident">KeyPair</span>, <span class="ident">MerkleTree</span>, <span class="ident">Signature</span>, <span class="ident">TransactionVerifyingKey</span>,
+        <span class="ident">KeyPair</span>, <span class="ident">Signature</span>, <span class="ident">TransactionVerifyingKey</span>,
     };
     <span class="kw">use</span> <span class="ident">key_set::KeySet</span>;
     <span class="kw">use</span> <span class="ident">rand_chacha</span>::{
@@ -1373,7 +1374,7 @@
             <span class="ident">jf_cap::proof::mint::preprocess</span>(<span class="kw-2">&amp;</span><span class="kw-2">*</span><span class="ident">srs</span>, <span class="ident">cap::Ledger::merkle_height</span>()).<span class="ident">unwrap</span>();
         <span class="kw">let</span> (<span class="ident">freeze_prove_key</span>, <span class="kw">_</span>, <span class="kw">_</span>) <span class="op">=</span>
             <span class="ident">jf_cap::proof::freeze::preprocess</span>(<span class="kw-2">&amp;</span><span class="kw-2">*</span><span class="ident">srs</span>, <span class="number">2</span>, <span class="ident">cap::Ledger::merkle_height</span>()).<span class="ident">unwrap</span>();
-        <span class="kw">let</span> <span class="ident">record_merkle_tree</span> <span class="op">=</span> <span class="ident">MerkleTree::new</span>(<span class="ident">cap::Ledger::merkle_height</span>()).<span class="ident">unwrap</span>();
+        <span class="kw">let</span> <span class="ident">record_merkle_tree</span> <span class="op">=</span> <span class="ident">SparseMerkleTree::new</span>(<span class="ident">cap::Ledger::merkle_height</span>()).<span class="ident">unwrap</span>();
         <span class="kw">let</span> <span class="ident">validator</span> <span class="op">=</span> <span class="ident">cap::Validator::default</span>();
 
         <span class="kw">let</span> <span class="ident">state</span> <span class="op">=</span> <span class="ident">KeystoreState</span> {
@@ -1388,7 +1389,6 @@
                 <span class="ident">records</span>: <span class="ident">Default::default</span>(),
                 <span class="ident">nullifiers</span>: <span class="ident">Default::default</span>(),
                 <span class="ident">record_mt</span>: <span class="ident">record_merkle_tree</span>,
-                <span class="ident">merkle_leaf_to_forget</span>: <span class="prelude-val">None</span>,
                 <span class="ident">transactions</span>: <span class="ident">Default::default</span>(),
             },
             <span class="ident">key_state</span>: <span class="ident">Default::default</span>(),
