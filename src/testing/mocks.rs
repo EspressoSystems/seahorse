@@ -9,6 +9,7 @@ pub use crate::testing::MockLedger;
 
 use crate::{
     events::{EventIndex, EventSource, LedgerEvent},
+    sparse_merkle_tree::SparseMerkleTree,
     testing::{MockEventSource, MockNetwork as _},
     txn_builder::{PendingTransaction, TransactionInfo, TransactionState},
     CryptoSnafu, KeystoreBackend, KeystoreError, KeystoreState,
@@ -232,17 +233,6 @@ impl<'a, const H: u8> KeystoreBackend<'a, cap::LedgerWithHeight<H>>
             let mut ledger = self.ledger.lock().await;
             let network = ledger.network();
 
-            // `records` should be _almost_ completely sparse. However, even a fully pruned Merkle
-            // tree contains the last leaf appended, but as a new keystore, we don't care about _any_
-            // of the leaves, so make a note to forget the last one once more leaves have been
-            // appended.
-            let record_mt = network.records.clone();
-            let merkle_leaf_to_forget = if record_mt.num_leaves() > 0 {
-                Some(record_mt.num_leaves() - 1)
-            } else {
-                None
-            };
-
             KeystoreState {
                 proving_keys: network.proving_keys.clone(),
                 txn_state: TransactionState {
@@ -250,8 +240,7 @@ impl<'a, const H: u8> KeystoreBackend<'a, cap::LedgerWithHeight<H>>
 
                     records: Default::default(),
                     nullifiers: Default::default(),
-                    record_mt,
-                    merkle_leaf_to_forget,
+                    record_mt: SparseMerkleTree::sparse(network.records.clone()),
 
                     now: network.now(),
                     transactions: Default::default(),

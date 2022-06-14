@@ -478,6 +478,7 @@ mod tests {
     use super::*;
     use crate::{
         events::{EventIndex, EventSource},
+        sparse_merkle_tree::SparseMerkleTree,
         testing::assert_keystore_states_eq,
         txn_builder::{PendingTransaction, TransactionInfo, TransactionUID},
     };
@@ -489,7 +490,7 @@ mod tests {
         structs::{
             AssetCode, AssetDefinition, FreezeFlag, ReceiverMemo, RecordCommitment, RecordOpening,
         },
-        KeyPair, MerkleTree, Signature, TransactionVerifyingKey,
+        KeyPair, Signature, TransactionVerifyingKey,
     };
     use key_set::KeySet;
     use rand_chacha::{
@@ -590,7 +591,7 @@ mod tests {
             jf_cap::proof::mint::preprocess(&*srs, cap::Ledger::merkle_height()).unwrap();
         let (freeze_prove_key, _, _) =
             jf_cap::proof::freeze::preprocess(&*srs, 2, cap::Ledger::merkle_height()).unwrap();
-        let record_merkle_tree = MerkleTree::new(cap::Ledger::merkle_height()).unwrap();
+        let record_merkle_tree = SparseMerkleTree::new(cap::Ledger::merkle_height()).unwrap();
         let validator = cap::Validator::default();
 
         let state = KeystoreState {
@@ -605,7 +606,6 @@ mod tests {
                 records: Default::default(),
                 nullifiers: Default::default(),
                 record_mt: record_merkle_tree,
-                merkle_leaf_to_forget: None,
                 transactions: Default::default(),
             },
             key_state: Default::default(),
