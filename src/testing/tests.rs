@@ -330,7 +330,7 @@ pub mod generic_keystore_tests {
         // which is longer than we want to borrow `keystores` for).
         async fn check_balance<'b, L: 'static + Ledger>(
             keystore: &(
-                Keystore<'b, impl KeystoreBackend<'b, L> + Sync + 'b, L, ChaChaRng>,
+                Keystore<'b, impl KeystoreBackend<'b, L> + Sync + 'b, L, ()>,
                 Vec<UserPubKey>,
                 TempDir,
             ),
@@ -1267,7 +1267,7 @@ pub mod generic_keystore_tests {
         // for).
         async fn check_balances<'b, L: Ledger + 'static>(
             keystores: &[(
-                Keystore<'b, impl KeystoreBackend<'b, L> + Sync + 'b, L, ChaChaRng>,
+                Keystore<'b, impl KeystoreBackend<'b, L> + Sync + 'b, L, ()>,
                 Vec<UserPubKey>,
                 TempDir,
             )],
@@ -1298,7 +1298,7 @@ pub mod generic_keystore_tests {
 
         async fn check_histories<'b, L: Ledger + 'static>(
             keystores: &[(
-                Keystore<'b, impl KeystoreBackend<'b, L> + Sync + 'b, L, ChaChaRng>,
+                Keystore<'b, impl KeystoreBackend<'b, L> + Sync + 'b, L, ()>,
                 Vec<UserPubKey>,
                 TempDir,
             )],
@@ -1846,7 +1846,9 @@ pub mod generic_keystore_tests {
         let key = {
             let KeystoreSharedState { state, session, .. } = &mut *keystores[0].0.lock().await;
             let key = session
-                .backend
+                .storage
+                .lock()
+                .await
                 .key_stream()
                 .derive_sub_tree("user".as_bytes())
                 .derive_user_key_pair(&state.key_state.user.to_le_bytes());
@@ -1998,7 +2000,9 @@ pub mod generic_keystore_tests {
         );
 
         // A new keystore joins the system after there are already some transactions on the ledger.
-        let (mut keystore2, _tmp_dir2) = t.create_keystore(&mut rng, &ledger).await;
+        let (mut keystore2, _tmp_dir2) = t
+            .create_keystore(KeyTree::random(&mut rng).0, &ledger)
+            .await;
         keystore2.sync(ledger.lock().await.now()).await.unwrap();
         let pub_key2 = keystore2
             .generate_user_key("sending_key".into(), None)
@@ -2665,6 +2669,22 @@ pub mod generic_keystore_tests {
             )
             .await
             .unwrap();
+        assert!(
+            keystores[0]
+                .0
+                .viewing_account(&viewing_key)
+                .await
+                .unwrap()
+                .used
+        );
+        assert!(
+            !keystores[0]
+                .0
+                .freezing_account(&freezing_key)
+                .await
+                .unwrap()
+                .used
+        );
         let freezable_asset = keystores[0]
             .0
             .define_asset(
@@ -2678,6 +2698,22 @@ pub mod generic_keystore_tests {
             )
             .await
             .unwrap();
+        assert!(
+            keystores[0]
+                .0
+                .viewing_account(&viewing_key)
+                .await
+                .unwrap()
+                .used
+        );
+        assert!(
+            keystores[0]
+                .0
+                .freezing_account(&freezing_key)
+                .await
+                .unwrap()
+                .used
+        );
         // Check that the new assets appear in the proper accounts.
         assert_eq!(
             keystores[0]
@@ -2710,8 +2746,8 @@ pub mod generic_keystore_tests {
             vec![freezable_asset.clone()]
         );
 
-        // Mint some of each asset for the other keystore (`keystores[1]`). Check that both accounts are
-        // marked used and the freezable record is added to both accounts.
+        // Mint some of each asset for the other keystore (`keystores[1]`). Check that the freezable
+        // record is added to both accounts.
         let receiver = keystores[1].1[0].clone();
         let receipt = keystores[0]
             .0
@@ -2725,22 +2761,6 @@ pub mod generic_keystore_tests {
             .await
             .unwrap();
         await_transaction(&receipt, &keystores[0].0, &[&keystores[1].0]).await;
-        assert!(
-            keystores[0]
-                .0
-                .viewing_account(&viewing_key)
-                .await
-                .unwrap()
-                .used
-        );
-        assert!(
-            !keystores[0]
-                .0
-                .freezing_account(&freezing_key)
-                .await
-                .unwrap()
-                .used
-        );
         t.check_storage(&keystores).await;
 
         // Mint the freezable asset.
@@ -3203,7 +3223,9 @@ pub mod generic_keystore_tests {
         // the fee, but it doesn't actually have any records. This was once a bug that caused a
         // panic. To test with these conditions, we will create a fresh keystore with two accounts,
         // and fund only the second one.
-        let (mut sender, _tmp_dir) = t.create_keystore(&mut rng, &ledger).await;
+        let (mut sender, _tmp_dir) = t
+            .create_keystore(KeyTree::random(&mut rng).0, &ledger)
+            .await;
         sender
             .generate_user_key("account0".into(), None)
             .await
