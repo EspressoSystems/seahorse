@@ -605,12 +605,11 @@ checksum = "065374052e7df7ee4047b1160cca5e1467a12351a40b3da123c870ba0b8eda2a"
 
 [[package]]
 name = "atomic_store"
-version = "0.1.1"
-source = "git+https://github.com/EspressoSystems/atomicstore.git?tag=0.1.1#e116cea2de934fd315f690d07d45b3bb7a213654"
+version = "0.1.2"
+source = "git+https://github.com/EspressoSystems/atomicstore.git?tag=0.1.2#55d9753e1fcb35c61566b8e056426e85e9e7eeeb"
 dependencies = [
  "ark-serialize",
  "bincode",
- "chrono",
  "glob",
  "serde",
  "snafu",
