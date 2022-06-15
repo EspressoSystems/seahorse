@@ -32,7 +32,13 @@ pub struct Asset {
     /// Optional asset icon.
     pub icon: Option<Icon>,
     mint_info: Option<MintInfo>,
-    // Skip this field when serializing to ensure it's `false` upon deserialization.
+    // Skip this field when serializing to ensure it's `false` upon deserialization. Thus, an asset
+    // loaded from disk will never have `verified = true`.
+    //
+    // We keep an in-memory set of verified asset codes loaded from asset library in `Assets`.
+    // Whenever we load an asset with `get` or `get_mut`, or create one with `create`, we set
+    // `verified = true` if its code is in that set. Therefore, `verified` is essentially a transient
+    // in-memory only field which is `true` if and only if it's in the verified set.
     #[serde(skip)]
     verified: bool,
 }
@@ -97,6 +103,9 @@ impl Asset {
     /// Changes the asset to be verified without mint information.
     ///
     /// Returns the verified asset.
+    ///
+    /// Mint information isn't included since it's a secret, and we don't want to export secret
+    /// information.
     fn export_verified(mut self) -> Self {
         self.mint_info = None;
         self.verified = true;
@@ -223,18 +232,18 @@ impl<'a> DerefMut for AssetEditor<'a> {
 /// Assets stored in an assets store.
 pub struct Assets {
     /// A key-value store for assets.
-    pub store: AssetsStore,
+    store: AssetsStore,
 
     /// A set of asset codes loaded from verified asset libraries.
-    pub verified_assets: HashSet<AssetCode>,
+    verified_assets: HashSet<AssetCode>,
 }
 
 impl Assets {
     #![allow(dead_code)]
 
-    /// Create unverified assets.
+    /// Load an assets store.
     ///
-    /// To load verified assets afterwards, use `verify_asset`.
+    /// None of the loaded assets will be verified until `verify_assets` is called.
     pub fn new<L: Ledger>(store: AssetsStore) -> Result<Self, KeystoreError<L>> {
         Ok(Self {
             store,
@@ -249,7 +258,13 @@ impl Assets {
 
     /// Load a verified asset library with its trusted signer.
     ///
-    /// Call this function at least once after assets resource is created.
+    /// Note that the `verified` status of assets is not persisted in order to preserve the
+    /// verified asset library as the single source of truth about which assets are verified.
+    /// Therefore, this function must be called each time an `Assets` store is created in order to
+    /// ensure that the verified assets show up in `verified_assets`.
+    ///
+    /// This function will not affect assets that have already been loaded into memory. If there's
+    /// a previously-loaded asset, we need to reload it after its `verified` flag is updated.
     pub async fn verify_assets<L: Ledger>(
         &mut self,
         trusted_signer: &VerKey,
@@ -266,26 +281,24 @@ impl Assets {
     }
 
     /// Get the asset by the code from the store.
-    ///
-    /// Sets the asset as verified if it's in the verified set.
     pub fn get<L: Ledger>(&self, code: &AssetCode) -> Result<Asset, KeystoreError<L>> {
         let mut asset = self.store.load(code)?;
+        // The asset is verified if it's in the verified set.
         if self.verified_assets.contains(code) {
-            asset = asset.export_verified();
+            asset.verified = true
         }
         Ok(asset)
     }
 
     /// Get a mutable asset editor by the code from the store.
-    ///
-    /// Sets the asset as verified if it's in the verified set.
     pub fn get_mut<L: Ledger>(
         &mut self,
         code: &AssetCode,
     ) -> Result<AssetEditor<'_>, KeystoreError<L>> {
         let mut asset = self.get(code)?;
+        // The asset is verified if it's in the verified set.
         if self.verified_assets.contains(code) {
-            asset = asset.export_verified();
+            asset.verified = true
         }
         Ok(AssetEditor::new(&mut self.store, asset))
     }
@@ -302,14 +315,10 @@ impl Assets {
 
     /// Create an unverified asset.
     ///
-    /// Sets the asset as verified if it's in the verified set.
-    ///
     /// If the store doesn't have an asset with the same code, adds the created asset to the store.
     /// Otherwise, updates the exisiting asset.
     ///
     /// Returns the editor for the created asset.
-    ///
-    /// To create a verified asset, use `create_verified` instead.
     pub fn create<L: Ledger>(
         &mut self,
         definition: AssetDefinition,
@@ -323,8 +332,9 @@ impl Assets {
             mint_info,
             verified: false,
         };
+        // The asset is verified if it's in the verified set.
         if self.verified_assets.contains(&asset.definition.code) {
-            asset = asset.export_verified();
+            asset.verified = true
         }
         let store_asset = self.store.load(&asset.definition.code);
         let mut editor = AssetEditor::new(&mut self.store, asset);
@@ -337,13 +347,12 @@ impl Assets {
 
     /// Create a native asset.
     ///
-    /// Sets the asset as verified if it's in the verified set.
-    ///
     /// Returns the editor for the created asset.
     fn create_native<L: Ledger>(&mut self) -> Result<AssetEditor<'_>, KeystoreError<L>> {
         let mut asset = Asset::native::<L>();
+        // The asset is verified if it's in the verified set.
         if self.verified_assets.contains(&asset.definition.code) {
-            asset = asset.export_verified();
+            asset.verified = true
         }
         let store_asset = self.store.load(&asset.definition.code);
         let mut editor = AssetEditor::new(&mut self.store, asset);
