@@ -1,9 +1,9 @@
 /// Keys and associated data.
 use crate::{
+    assets::Asset,
     events::{EventIndex, EventSource, LedgerEvent},
     key_scan::{BackgroundKeyScan, ScanOutputs},
     txn_builder::RecordInfo,
-    AssetInfo,
 };
 use arbitrary::{Arbitrary, Unstructured};
 use arbitrary_wrappers::{ArbitraryFreezerKeyPair, ArbitraryUserKeyPair, ArbitraryViewerKeyPair};
@@ -128,7 +128,7 @@ pub struct AccountInfo<Key: KeyPair> {
     pub address: Key::PubKey,
     pub description: String,
     pub used: bool,
-    pub assets: Vec<AssetInfo>,
+    pub assets: Vec<Asset>,
     pub records: Vec<RecordInfo>,
     /// The table of balances with corresponding asset code.
     pub balances: HashMap<AssetCode, U256>,
@@ -145,7 +145,7 @@ pub struct AccountInfo<Key: KeyPair> {
 impl<Key: KeyPair> AccountInfo<Key> {
     pub fn new<L: Ledger>(
         account: Account<L, Key>,
-        assets: Vec<AssetInfo>,
+        assets: Vec<Asset>,
         records: Vec<RecordInfo>,
     ) -> Self {
         let mut balances = HashMap::new();

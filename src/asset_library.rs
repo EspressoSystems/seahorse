@@ -268,39 +268,6 @@ impl AssetInfo {
             .with_name(L::name().to_uppercase())
             .with_description(format!("The {} native asset type", L::name()))
     }
-
-    /// Update this info by merging in information from `info`.
-    ///
-    /// Both `self` and `info` must refer to the same CAP asset; that is, `self.definition` must
-    /// equal `info.definition`.
-    ///
-    /// * `self.definition` is replaced with `info.definition`
-    /// * `self.name`, `self.description` and `self.icon` are updated with `info.name`,
-    /// `info.description` and `info.icon`, if present, _unless_ `self` is verified and `info` is
-    /// not.
-    /// * If `info.mint_info` exists, it replaces `self.mint_info`
-    /// * `self.temporary` is `true` only if both `self` and `info` are temporary
-    /// * `self.verified` is `true` if either `self` or `info` is verified
-    pub fn update(&mut self, info: AssetInfo) {
-        assert_eq!(self.definition, info.definition);
-        if let Some(mint_info) = info.mint_info {
-            self.mint_info = Some(mint_info);
-        }
-        if info.verified || !self.verified {
-            // Update UI metadata as long as `info` is at least as verified as `self`.
-            if let Some(name) = info.name {
-                self.name = Some(name);
-            }
-            if let Some(description) = info.description {
-                self.description = Some(description);
-            }
-            if let Some(icon) = info.icon {
-                self.icon = Some(icon);
-            }
-        }
-        self.temporary &= info.temporary;
-        self.verified |= info.verified;
-    }
 }
 
 impl From<AssetDefinition> for AssetInfo {
@@ -465,43 +432,6 @@ pub struct AssetLibrary {
 }
 
 impl AssetLibrary {
-    /// Create an [AssetLibrary] with the given assets and viewing keys.
-    pub fn new(assets: Vec<AssetInfo>, viewing_keys: HashSet<ViewerPubKey>) -> Self {
-        // Create the library empty so that we can use `insert` to add the assets, which will ensure
-        // that all of the data structures (assets, index, and viewable) are populated consistently.
-        let mut lib = Self {
-            assets: Default::default(),
-            index: Default::default(),
-            viewable: Default::default(),
-            viewing_keys,
-        };
-
-        for asset in assets {
-            lib.insert(asset);
-        }
-        lib
-    }
-
-    /// Insert an asset.
-    ///
-    /// If `asset` is already in the library it is updated (by `AssetInfo::update`). Otherwise, it
-    /// is inserted at the end of the library.
-    pub fn insert(&mut self, asset: AssetInfo) {
-        if let Some(i) = self.index.get(&asset.definition.code) {
-            self.assets[*i].update(asset);
-        } else {
-            self.index.insert(asset.definition.code, self.assets.len());
-            if self
-                .viewing_keys
-                .contains(asset.definition.policy_ref().viewer_pub_key())
-            {
-                self.viewable
-                    .insert(asset.definition.code, asset.definition.clone());
-            }
-            self.assets.push(asset);
-        }
-    }
-
     /// Add a viewing key.
     ///
     /// Any assets which were already in the library and can be viewed using this key will be marked

@@ -22,7 +22,7 @@ use std::collections::HashSet;
 use std::ops::{Deref, DerefMut};
 
 /// An asset with its code as the primary key.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct Asset {
     definition: AssetDefinition,
     /// Optional asset name.
@@ -258,6 +258,8 @@ impl Assets {
 
     /// Load a verified asset library with its trusted signer.
     ///
+    /// Returns the list of verified asset codes that are added to the verified set.
+    ///
     /// Note that the `verified` status of assets is not persisted in order to preserve the
     /// verified asset library as the single source of truth about which assets are verified.
     /// Therefore, this function must be called each time an `Assets` store is created in order to
@@ -265,16 +267,18 @@ impl Assets {
     ///
     /// This function will not affect assets that have already been loaded into memory. If there's
     /// a previously-loaded asset, we need to reload it after its `verified` flag is updated.
-    pub async fn verify_assets<L: Ledger>(
+    pub fn verify_assets<L: Ledger>(
         &mut self,
         trusted_signer: &VerKey,
         library: VerifiedAssetLibrary,
-    ) -> Result<(), KeystoreError<L>> {
+    ) -> Result<Vec<AssetCode>, KeystoreError<L>> {
         if let Some(assets) = library.open(trusted_signer) {
+            let mut codes = Vec::new();
             for asset in &assets {
                 self.verified_assets.insert(asset.definition.code);
+                codes.push(asset.definition.code);
             }
-            Ok(())
+            Ok(codes)
         } else {
             Err(KeystoreError::AssetVerificationError)
         }
@@ -348,7 +352,7 @@ impl Assets {
     /// Create a native asset.
     ///
     /// Returns the editor for the created asset.
-    fn create_native<L: Ledger>(&mut self) -> Result<AssetEditor<'_>, KeystoreError<L>> {
+    pub fn create_native<L: Ledger>(&mut self) -> Result<AssetEditor<'_>, KeystoreError<L>> {
         let mut asset = Asset::native::<L>();
         // The asset is verified if it's in the verified set.
         if self.verified_assets.contains(&asset.definition.code) {

@@ -2309,9 +2309,7 @@ pub mod generic_keystore_tests {
             .unwrap();
         t.sync(&ledger, &keystores).await;
 
-        // Import an asset (we'll use `keystores[1]` to define it). As an added check, we will
-        // "maliciously" mark the imported `AssetInfo` as `verified`, to check that the keystore does
-        // not actually consider this a verified asset without a signature check.
+        // Import an asset (we'll use `keystores[1]` to define it).
         let imported_asset = keystores[1]
             .0
             .define_asset(
@@ -2321,9 +2319,11 @@ pub mod generic_keystore_tests {
             )
             .await
             .unwrap();
-        let mut import_info = AssetInfo::from(imported_asset.clone());
-        import_info.verified = true;
-        keystores[0].0.import_asset(import_info).await.unwrap();
+        keystores[0]
+            .0
+            .create_asset(imported_asset, None)
+            .await
+            .unwrap();
 
         // Now check that all expected asset types appear in keystores[0]'s asset library.
         let get_asset = |code| {
@@ -2493,7 +2493,7 @@ pub mod generic_keystore_tests {
         // Now import `asset2`, updating the existing verified asset with persistence and mint info.
         keystores[0]
             .0
-            .import_asset(AssetInfo::new(asset2.clone(), mint_info2.clone()))
+            .create_asset(asset2.clone(), mint_info2.clone())
             .await
             .unwrap();
         assert_eq!(
@@ -2822,12 +2822,9 @@ pub mod generic_keystore_tests {
             .unwrap();
         keystores[0]
             .0
-            .import_asset(
-                AssetInfo::from(asset1.clone())
-                    .with_name("asset1".into())
-                    .with_description("asset1 description".into()),
-            )
-            .await
+            .create_asset(asset1.clone())?
+            .with_name("asset1".into())
+            .with_description("asset1 description".into())
             .unwrap();
         let info = keystores[0].0.asset(asset1.code).await.unwrap();
         assert_eq!(info.name, Some("asset1".into()));
@@ -2863,12 +2860,9 @@ pub mod generic_keystore_tests {
         // Case 3: update verified asset with user-defined asset.
         keystores[0]
             .0
-            .import_asset(
-                AssetInfo::from(asset2.clone())
-                    .with_name("asset2_fake".into())
-                    .with_description("asset2_fake".into()),
-            )
-            .await
+            .create_asset(asset2.clone(), None)
+            .with_name("asset2_fake".into())
+            .with_description("asset2_fake".into())
             .unwrap();
         let info = keystores[0].0.asset(asset2.code).await.unwrap();
         assert_eq!(info.name, Some("asset2_verified".into()));
@@ -2909,8 +2903,8 @@ pub mod generic_keystore_tests {
 
         keystores[0]
             .0
-            .import_asset(AssetInfo::native::<T::Ledger>().with_icon(icon))
-            .await
+            .create_native_asset()?
+            .with_icon(icon)
             .unwrap();
         let icon = keystores[0]
             .0
