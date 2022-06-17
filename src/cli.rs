@@ -628,18 +628,21 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                             // Try to get a readable name for the asset.
                             let asset = if txn.asset == AssetCode::native() {
                                 String::from("Native")
-                            } else if let Some(mint_info) = keystore
+                            } else if let Some(asset) = keystore
                                 .asset(txn.asset)
-                                .await?
-                                .mint_info()
+                                .await
                             {
-                                // If the description looks like it came from a string, interpret as
-                                // a string. Otherwise, encode the binary blob as tagged base64.
-                                match std::str::from_utf8(&mint_info.description) {
-                                    Ok(s) => String::from(s),
-                                    Err(_) => TaggedBase64::new("DESC", &mint_info.description)
-                                        .unwrap()
-                                        .to_string(),
+                                if let Some(mint_info) = asset.mint_info() {
+                                    // If the description looks like it came from a string, interpret as
+                                    // a string. Otherwise, encode the binary blob as tagged base64.
+                                    match std::str::from_utf8(&mint_info.description) {
+                                        Ok(s) => String::from(s),
+                                        Err(_) => TaggedBase64::new("DESC", &mint_info.description)
+                                            .unwrap()
+                                            .to_string(),
+                                    }
+                                } else {
+                                    txn.asset.to_string()
                                 }
                             } else {
                                 txn.asset.to_string()

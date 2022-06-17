@@ -39,7 +39,7 @@ pub mod txn_builder;
 
 use crate::sparse_merkle_tree::SparseMerkleTree;
 pub use crate::{
-    asset_library::{AssetInfo, MintInfo},
+    asset_library::{AssetInfo, Icon, MintInfo},
     assets::{Asset, AssetEditor, Assets},
     txn_builder::RecordAmount,
 };
@@ -967,7 +967,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                 // entry.
                 *remember = true;
                 // Add the asset type if it is not already in the asset library.
-                self.create_asset(ro.asset_def.clone(), None)?;
+                self.create_asset(ro.asset_def.clone(), None, None, None, None)?;
                 // Mark the account receiving the records used.
                 self.sending_accounts
                     .get_mut(&account.key.address())
@@ -988,7 +988,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                 // records, but do not include it in the history entry.
                 *remember = true;
                 // Add the asset type if it is not already in the asset library.
-                self.create_asset(ro.asset_def.clone(), None)?;
+                self.create_asset(ro.asset_def.clone(), None, None, None, None)?;
                 // Mark the freezing account which is tracking the record used.
                 self.freezing_accounts
                     .get_mut(&account.key.pub_key())
@@ -1060,7 +1060,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
             }
 
             // Add the asset type if it is not already in the asset library.
-            self.create_asset(record.asset_def.clone(), None)?;
+            self.create_asset(record.asset_def.clone(), None, None, None, None)?;
 
             // Mark the account receiving the record as used.
             self.sending_accounts
@@ -1135,8 +1135,17 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         uids: &mut [(u64, bool)],
     ) {
         // Try to decrypt viewer memos.
+        let mut viewable_assets = HashMap::new();
+        for asset in self.assets.iter() {
+            if self
+                .viewing_accounts
+                .contains_key(&asset.definition().policy_ref().viewer_pub_key())
+            {
+                viewable_assets.insert(asset.definition().code, asset.definition().clone());
+            }
+        }
         if let Ok(memo) = txn.open_viewing_memo(
-            self.assets.viewable(),
+            &viewable_assets,
             &self
                 .viewing_accounts
                 .iter()
@@ -1219,13 +1228,22 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
     fn create_asset(
         &mut self,
         definition: AssetDefinition,
+        name: Option<String>,
+        description: Option<String>,
+        icon: Option<Icon>,
         mint_info: Option<MintInfo>,
-    ) -> Result<AssetEditor<'_>, KeystoreError<L>> {
-        self.assets.create(definition, mint_info)
+    ) -> Result<(), KeystoreError<L>> {
+        self.assets
+            .create(definition, mint_info)?
+            .set_name(name)
+            .set_description(description)
+            .set_icon(icon);
+        Ok(())
     }
 
-    fn create_native_asset(&mut self) -> Result<AssetEditor<'_>, KeystoreError<L>> {
-        self.assets.create_native()
+    fn create_native_asset(&mut self, icon: Option<Icon>) -> Result<(), KeystoreError<L>> {
+        self.assets.create_native()?.set_icon(icon);
+        Ok(())
     }
 
     // This function ran into the same mystifying compiler behavior as
@@ -1274,19 +1292,26 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
             }
 
             // Now we can add the asset to the in-memory state.
-            self.create_asset(definition.clone(), Some(mint_info.clone()))?
-                .with_name(name)
-                .with_description(mint_info.fmt_description());
+            self.create_asset(
+                definition.clone(),
+                Some(name),
+                Some(mint_info.fmt_description()),
+                None,
+                Some(mint_info),
+            )?;
 
             Ok(definition)
         }
     }
 
     fn import_asset(&mut self, asset: Asset) -> Result<(), KeystoreError<L>> {
-        self.create_asset(asset.definition().clone(), asset.mint_info())?
-            .set_name(asset.name())
-            .set_description(asset.description())
-            .set_icon(asset.icon());
+        self.create_asset(
+            asset.definition().clone(),
+            asset.name(),
+            asset.description(),
+            asset.icon(),
+            asset.mint_info(),
+        )?;
         Ok(())
     }
 
@@ -1414,7 +1439,6 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
             return Ok(());
         }
 
-        self.assets.add_viewing_key(viewing_key.pub_key());
         self.viewing_accounts.insert(
             viewing_key.pub_key(),
             Account::new(viewing_key.clone(), description),
@@ -1788,7 +1812,7 @@ impl<
         };
 
         // Ensure the native asset type is always recognized.
-        state.create_native_asset()?;
+        state.create_native_asset(None)?;
 
         let sync_handles = Vec::new();
         let txn_subscribers = HashMap::new();
@@ -2247,16 +2271,22 @@ impl<
     pub async fn create_asset(
         &mut self,
         definition: AssetDefinition,
+        name: Option<String>,
+        description: Option<String>,
+        icon: Option<Icon>,
         mint_info: Option<MintInfo>,
-    ) -> Result<AssetEditor<'_>, KeystoreError<L>> {
-        let KeystoreSharedState { state, .. } = &mut *self.mutex.lock().await;
-        state.create_asset(definition, mint_info)
+    ) -> Result<(), KeystoreError<L>> {
+        let KeystoreSharedState { state, .. } = &mut *self.lock().await;
+        state.create_asset(definition, name, description, icon, mint_info)
     }
 
     /// Create a native asset.
-    pub async fn create_native_asset(&mut self) -> Result<AssetEditor<'_>, KeystoreError<L>> {
-        let KeystoreSharedState { state, .. } = &mut *self.mutex.lock().await;
-        state.create_native_asset()
+    pub async fn create_native_asset(
+        &mut self,
+        icon: Option<Icon>,
+    ) -> Result<(), KeystoreError<L>> {
+        let KeystoreSharedState { state, .. } = &mut *self.lock().await;
+        state.create_native_asset(icon)
     }
 
     /// Define a new asset and store secret info for minting.

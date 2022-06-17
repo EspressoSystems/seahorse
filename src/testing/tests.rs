@@ -2321,7 +2321,7 @@ pub mod generic_keystore_tests {
             .unwrap();
         keystores[0]
             .0
-            .create_asset(imported_asset, None)
+            .create_asset(imported_asset, None, None, None, None)
             .await
             .unwrap();
 
@@ -2493,7 +2493,7 @@ pub mod generic_keystore_tests {
         // Now import `asset2`, updating the existing verified asset with persistence and mint info.
         keystores[0]
             .0
-            .create_asset(asset2.clone(), mint_info2.clone())
+            .create_asset(asset2.clone(), None, None, None, mint_info2.clone())
             .await
             .unwrap();
         assert_eq!(
@@ -2822,9 +2822,13 @@ pub mod generic_keystore_tests {
             .unwrap();
         keystores[0]
             .0
-            .create_asset(asset1.clone())?
-            .with_name("asset1".into())
-            .with_description("asset1 description".into())
+            .create_asset(
+                asset1.clone(),
+                Some("asset1".into()),
+                Some("asset1 description".into()),
+                None,
+                None,
+            )
             .unwrap();
         let info = keystores[0].0.asset(asset1.code).await.unwrap();
         assert_eq!(info.name, Some("asset1".into()));
@@ -2860,9 +2864,13 @@ pub mod generic_keystore_tests {
         // Case 3: update verified asset with user-defined asset.
         keystores[0]
             .0
-            .create_asset(asset2.clone(), None)
-            .with_name("asset2_fake".into())
-            .with_description("asset2_fake".into())
+            .create_asset(
+                asset2.clone(),
+                Some("asset2_fake".into()),
+                Some("asset2_fake".into()),
+                None,
+                None,
+            )
             .unwrap();
         let info = keystores[0].0.asset(asset2.code).await.unwrap();
         assert_eq!(info.name, Some("asset2_verified".into()));
