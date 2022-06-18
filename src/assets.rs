@@ -20,6 +20,7 @@ use jf_cap::{
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::ops::{Deref, DerefMut};
+use std::str::FromStr;
 
 /// An asset with its code as the primary key.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -113,7 +114,78 @@ impl Asset {
     }
 }
 
-type AssetsStore = KeyValueStore<AssetCode, Asset>;
+impl FromStr for Asset {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        // This parse method is meant for a friendly, discoverable CLI interface. It parses a comma-
+        // separated list of key-value pairs, like `description:my_asset`. This allows the fields to
+        // be specified in any order, or not at all.
+        //
+        // Recognized fields are "definition", "name", "description", "mint_description", and
+        // "seed". Note that the `verified` field cannot be set this way. There is only one way to
+        // create verified `Asset`: using [Assets::verify_assets], which performs a signature check
+        // before marking assets verified.
+        let mut definition = None;
+        let mut name = None;
+        let mut description = None;
+        let mut mint_description = None;
+        let mut seed = None;
+        for kv in s.split(',') {
+            let (key, value) = match kv.split_once(':') {
+                Some(split) => split,
+                None => return Err(format!("expected key:value pair, got {}", kv)),
+            };
+            match key {
+                "definition" => {
+                    definition = Some(
+                        value
+                            .parse()
+                            .map_err(|_| format!("expected AssetDefinition, got {}", value))?,
+                    )
+                }
+                "name" => {
+                    name = Some(value.into());
+                }
+                "description" => {
+                    description = Some(value.into());
+                }
+                "seed" => {
+                    seed = Some(
+                        value
+                            .parse()
+                            .map_err(|_| format!("expected AssetCodeSeed, got {}", value))?,
+                    )
+                }
+                "mint_description" => mint_description = Some(MintInfo::parse_description(value)),
+                _ => return Err(format!("unrecognized key {}", key)),
+            }
+        }
+        let definition = match definition {
+            Some(definition) => definition,
+            None => return Err(String::from("must specify definition")),
+        };
+        let mint_info = match (seed, mint_description) {
+            (Some(seed), Some(description)) => Some(MintInfo { seed, description }),
+            (None, None) => None,
+            _ => {
+                return Err(String::from(
+                    "seed and description must be specified together or not at all",
+                ))
+            }
+        };
+        Ok(Asset {
+            definition,
+            name,
+            description,
+            icon: None,
+            mint_info,
+            verified: false,
+        })
+    }
+}
+
+pub type AssetsStore = KeyValueStore<AssetCode, Asset>;
 
 /// An editor to create or update the asset or assets store.
 pub struct AssetEditor<'a> {

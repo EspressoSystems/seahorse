@@ -8,7 +8,7 @@
 //! Ledger-agnostic implementation of [KeystoreStorage].
 use crate::{
     accounts::Account,
-    asset_library::{AssetInfo, AssetLibrary},
+    assets::{Asset, Assets, AssetsStore},
     encryption::Cipher,
     hd::KeyTree,
     loader::KeystoreLoader,
@@ -184,7 +184,7 @@ pub struct AtomicKeystoreStorage<'a, L: Ledger, Meta: Serialize + DeserializeOwn
     static_dirty: bool,
     dynamic_state: RollingLog<EncryptingResourceAdapter<KeystoreSnapshot<L>>>,
     dynamic_state_dirty: bool,
-    assets: AppendLog<EncryptingResourceAdapter<AssetInfo>>,
+    assets: AssetsStore,
     assets_dirty: bool,
     txn_history: AppendLog<EncryptingResourceAdapter<TransactionHistoryEntry<L>>>,
     txn_history_dirty: bool,
@@ -249,13 +249,15 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned + Clone + PartialE
             file_fill_size,
         )
         .context(crate::PersistenceSnafu)?;
-        let assets = AppendLog::load(
-            &mut atomic_loader,
-            adaptor.cast(),
-            "keystore_assets",
-            file_fill_size,
-        )
-        .context(crate::PersistenceSnafu)?;
+        let assets = AssetsStore::new(
+            AppendLog::load(
+                &mut atomic_loader,
+                adaptor.cast(),
+                "keystore_assets",
+                file_fill_size,
+            )
+            .context(crate::PersistenceSnafu)?,
+        )?;
         let txn_history = AppendLog::load(
             &mut atomic_loader,
             adaptor.cast(),
@@ -346,7 +348,6 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicKeystoreSto
             .dynamic_state
             .load_latest()
             .context(crate::PersistenceSnafu)?;
-        let assets = self.assets.iter().filter_map(|res| res.ok()).collect();
 
         Ok(KeystoreState {
             // Static state
@@ -357,14 +358,7 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicKeystoreSto
             key_state: dynamic_state.key_state,
 
             // Monotonic state
-            assets: AssetLibrary::new(
-                assets,
-                dynamic_state
-                    .viewing_accounts
-                    .iter()
-                    .map(|account| account.key.pub_key())
-                    .collect(),
-            ),
+            assets: Assets::new(self.assets)?,
             viewing_accounts: dynamic_state
                 .viewing_accounts
                 .into_iter()
@@ -394,10 +388,8 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicKeystoreSto
         Ok(())
     }
 
-    pub async fn store_asset(&mut self, asset: &AssetInfo) -> Result<(), KeystoreError<L>> {
-        self.assets
-            .store_resource(asset)
-            .context(crate::PersistenceSnafu)?;
+    pub async fn store_asset(&mut self, asset: &Asset) -> Result<(), KeystoreError<L>> {
+        self.assets.store(&asset.code(), asset)?;
         self.assets_dirty = true;
         Ok(())
     }

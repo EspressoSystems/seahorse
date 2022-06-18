@@ -35,7 +35,6 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fmt::{self, Display, Formatter};
 use std::io::{BufRead, Seek};
-use std::iter::FromIterator;
 use std::ops::Index;
 use std::str::FromStr;
 use tagged_base64::TaggedBase64;
@@ -479,12 +478,6 @@ impl AssetLibrary {
     }
 }
 
-impl From<Vec<AssetInfo>> for AssetLibrary {
-    fn from(assets: Vec<AssetInfo>) -> Self {
-        Self::new(assets, Default::default())
-    }
-}
-
 impl From<AssetLibrary> for Vec<AssetInfo> {
     fn from(lib: AssetLibrary) -> Self {
         lib.assets
@@ -496,12 +489,6 @@ impl IntoIterator for AssetLibrary {
     type IntoIter = <Vec<AssetInfo> as IntoIterator>::IntoIter;
     fn into_iter(self) -> Self::IntoIter {
         self.assets.into_iter()
-    }
-}
-
-impl FromIterator<AssetInfo> for AssetLibrary {
-    fn from_iter<T: IntoIterator<Item = AssetInfo>>(iter: T) -> Self {
-        iter.into_iter().collect::<Vec<_>>().into()
     }
 }
 

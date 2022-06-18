@@ -329,11 +329,11 @@ impl<
         }
     }
 
-    async fn store_asset(&mut self, asset: &AssetInfo) -> Result<(), KeystoreError<L>> {
+    async fn store_asset(&mut self, asset: &Asset) -> Result<(), KeystoreError<L>> {
         // We should never mark assets as verified in persistent storage. The single source of truth
         // for verified assets is a verified asset library loaded independently from our own
         // persistent storage.
-        assert!(!asset.verified);
+        assert!(!asset.verified());
 
         if !self.cancelled {
             let res = self.storage().await.store_asset(asset).await;
@@ -1141,7 +1141,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                 .viewing_accounts
                 .contains_key(&asset.definition().policy_ref().viewer_pub_key())
             {
-                viewable_assets.insert(asset.definition().code, asset.definition().clone());
+                viewable_assets.insert(asset.code(), asset.definition().clone());
             }
         }
         if let Ok(memo) = txn.open_viewing_memo(
@@ -2069,7 +2069,7 @@ impl<
                 }
             }))
             // Deduplicate
-            .map(|asset| (asset.definition().code, asset))
+            .map(|asset| (asset.code(), asset))
             .collect::<HashMap<_, _>>()
             .into_values()
             .collect();
@@ -2117,7 +2117,7 @@ impl<
                 }
             }))
             // Deduplicate
-            .map(|asset| (asset.definition().code, asset))
+            .map(|asset| (asset.code(), asset))
             .collect::<HashMap<_, _>>()
             .into_values()
             .collect();
