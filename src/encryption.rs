@@ -94,33 +94,35 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 pub type Nonce = [u8; 32];
 
-/// An authenticating stream cipher.
+/// The state required by the cipher for encryption and decryption.
 ///
-/// This implementation uses the encrypt-then-MAC strategy, with ChaCha20 as the stream cipher and
-/// SHA3-256 as an HMAC.
-///
-/// It requires an entire sub-tree of the HD key structure, as it generates separate keys for
-/// encryption and authentication for each message it encrypts.
+/// This private type supports both encryption and decryption, but it does not store its own source
+/// of randomness; therefore randomness must be provided each time [CipherState::encrypt] is called.
+/// This is used as the base of both [Decrypter], which has no randomness and only supports
+/// decryption, and [Cipher], which has its own source of randomness and supports encryption without
+/// an extra input for randmoness.
 #[derive(Clone)]
-pub struct Cipher<Rng: CryptoRng = ChaChaRng> {
+struct CipherState {
     hmac_key: hd::Key,
     cipher_keyspace: hd::KeyTree,
-    rng: Rng,
 }
 
-impl<Rng: RngCore + CryptoRng> Cipher<Rng> {
-    pub fn new(keys: hd::KeyTree, rng: Rng) -> Self {
+impl CipherState {
+    pub fn new(keys: hd::KeyTree) -> Self {
         Self {
             hmac_key: keys.derive_key("hmac".as_bytes()),
             cipher_keyspace: keys.derive_sub_tree("cipher".as_bytes()),
-            rng,
         }
     }
 
-    pub fn encrypt(&mut self, plaintext: &[u8]) -> Result<CipherText> {
+    pub fn encrypt(
+        &mut self,
+        rng: &mut (impl CryptoRng + RngCore),
+        plaintext: &[u8],
+    ) -> Result<CipherText> {
         // Generate a random nonce unique to this message and use it to derive the encryption key.
         let mut nonce = Nonce::default();
-        self.rng.fill_bytes(&mut nonce);
+        rng.fill_bytes(&mut nonce);
         let cipher_key = self.cipher_key(&nonce);
 
         // Encrypt the plaintext by applying the keystream.
@@ -176,6 +178,85 @@ impl<Rng: RngCore + CryptoRng> Cipher<Rng> {
     fn cipher_key(&self, nonce: &[u8]) -> hd::Key {
         self.cipher_keyspace.derive_key(nonce)
     }
+}
+
+/// An authenticating stream cipher.
+///
+/// This implementation uses the encrypt-then-MAC strategy, with ChaCha20 as the stream cipher and
+/// SHA3-256 as an HMAC.
+///
+/// It requires an entire sub-tree of the HD key structure, as it generates separate keys for
+/// encryption and authentication for each message it encrypts.
+#[derive(Clone)]
+pub struct Cipher<Rng: CryptoRng = ChaChaRng> {
+    state: CipherState,
+    rng: Rng,
+}
+
+impl<Rng: RngCore + CryptoRng> Cipher<Rng> {
+    pub fn new(keys: hd::KeyTree, rng: Rng) -> Self {
+        Self {
+            state: CipherState::new(keys),
+            rng,
+        }
+    }
+
+    pub fn encrypt(&mut self, plaintext: &[u8]) -> Result<CipherText> {
+        self.state.encrypt(&mut self.rng, plaintext)
+    }
+
+    pub fn decrypt(&self, ciphertext: &CipherText) -> Result<Vec<u8>> {
+        self.state.decrypt(ciphertext)
+    }
+}
+
+/// Encrypt a message using a given key.
+///
+/// This function is shorthand for creating a new [Cipher] and invoking it, a la
+/// `Cipher::new(key, rng).encrypt(plaintext)`.
+pub fn encrypt(
+    plaintext: &[u8],
+    rng: &mut (impl CryptoRng + RngCore),
+    key: hd::KeyTree,
+) -> Result<CipherText> {
+    Cipher::new(key, rng).encrypt(plaintext)
+}
+
+/// A decrypter for an authenticated stream cipher.
+///
+/// [Decrypter] is a decrypter for the exact same encryption algorithm used by [Cipher].
+/// [Decrypter::decrypt] and [Cipher::decrypt] are exactly equivalent. The difference between these
+/// types is that [Decrypter] does not support encryption, and thus does not require entropy to
+/// construct.
+///
+/// This implementation uses the encrypt-then-MAC strategy, with ChaCha20 as the stream cipher and
+/// SHA3-256 as an HMAC.
+///
+/// It requires an entire sub-tree of the HD key structure, as it generates separate keys for
+/// encryption and authentication for each message it encrypts.
+#[derive(Clone)]
+pub struct Decrypter {
+    state: CipherState,
+}
+
+impl Decrypter {
+    pub fn new(keys: hd::KeyTree) -> Self {
+        Self {
+            state: CipherState::new(keys),
+        }
+    }
+
+    pub fn decrypt(&self, ciphertext: &CipherText) -> Result<Vec<u8>> {
+        self.state.decrypt(ciphertext)
+    }
+}
+
+/// Decrypt an encrypted message using a given key.
+///
+/// This function is shorthand for creating a new [Decrypter] and invoking it, a la
+/// `Decrypter::new(key).decrypt(ciphertext)`.
+pub fn decrypt(ciphertext: &CipherText, key: hd::KeyTree) -> Result<Vec<u8>> {
+    Decrypter::new(key).decrypt(ciphertext)
 }
 
 /// Encrypted and authenticated data.

@@ -17,12 +17,9 @@
 //! arguments to the options and flags required by the general CLI implementation. After that,
 //! [cli_main] can be used to run the CLI interactively.
 use crate::{
-    events::EventIndex,
-    io::SharedIO,
-    loader::{Loader, LoaderMetadata},
-    reader::Reader,
-    AssetInfo, BincodeSnafu, IoSnafu, KeystoreBackend, KeystoreError, RecordAmount,
-    TransactionReceipt, TransactionStatus,
+    events::EventIndex, io::SharedIO, loader::KeystoreLoader, reader::Reader, AssetInfo,
+    BincodeSnafu, IoSnafu, KeystoreBackend, KeystoreError, RecordAmount, TransactionReceipt,
+    TransactionStatus,
 };
 use async_std::task::block_on;
 use async_trait::async_trait;
@@ -36,6 +33,7 @@ use jf_cap::{
 use net::{MerklePath, UserAddress, UserPubKey};
 use primitive_types::U256;
 use reef::Ledger;
+use serde::{de::DeserializeOwned, Serialize};
 use snafu::ResultExt;
 use std::any::type_name;
 use std::collections::HashMap;
@@ -54,6 +52,10 @@ pub trait CLI<'a> {
     type Ledger: 'static + Ledger;
     /// The [KeystoreBackend] implementation to use for the keystore.
     type Backend: 'a + KeystoreBackend<'a, Self::Ledger> + Send + Sync;
+    /// The [KeystoreLoader] implementation to use to create or load the keystore.
+    type Loader: KeystoreLoader<Self::Ledger, Meta = Self::Meta>;
+    /// The type of metadata used by [Self::Loader].
+    type Meta: 'a + Send + Serialize + DeserializeOwned + Clone + PartialEq;
     /// The type of command line options for use when configuring the CLI.
     type Args: CLIArgs;
 
@@ -62,6 +64,12 @@ pub trait CLI<'a> {
         universal_param: &'a UniversalParam,
         args: Self::Args,
     ) -> Result<Self::Backend, KeystoreError<Self::Ledger>>;
+
+    /// Create a loader in order to create or load a new keystore for the CLI.
+    async fn init_loader(
+        storage: PathBuf,
+        input: Reader,
+    ) -> Result<Self::Loader, KeystoreError<Self::Ledger>>;
 
     /// Add extra, ledger-specific commands to the generic CLI interface.
     ///
@@ -98,7 +106,7 @@ pub trait CLIArgs {
 }
 
 pub type Keystore<'a, C> =
-    crate::Keystore<'a, <C as CLI<'a>>::Backend, <C as CLI<'a>>::Ledger, LoaderMetadata>;
+    crate::Keystore<'a, <C as CLI<'a>>::Backend, <C as CLI<'a>>::Ledger, <C as CLI<'a>>::Meta>;
 
 /// A REPL command.
 ///
@@ -773,18 +781,19 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                                 if wait == Some(true) {
                                     if let Err(err) = keystore.await_key_scan(&key.address()).await {
                                         cli_writeln!(io, "Error waiting for key scan: {}", err);
+                                        return
                                     }
-                                } else {
+                                } else{
                                     cli_writeln!(io,
                                         "Note: assets belonging to this key will become available
                                         after a scan of the ledger. This may take a long time. If
-                                        you have the owner memo for a record you want to use
+                                        you have the owner memo for a record you want to uses
                                         immediately, use import_memo.");
-                                    // Output both the public key and the address when loading a
-                                    // sending key.
-                                    cli_writeln!(io, "{}", key.pub_key());
-                                    cli_writeln!(io, "{}", UserAddress(key.address()));
                                 }
+                                // Output both the public key and the address when loading a
+                                // sending key.
+                                cli_writeln!(io, "{}", key.pub_key());
+                                cli_writeln!(io, "{}", UserAddress(key.address()));
                             }
                             Err(err) => cli_writeln!(io, "Error saving sending key: {}", err),
                         },
@@ -1010,7 +1019,7 @@ async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
         }
     };
 
-    let (mut io, reader) = match args.io() {
+    let (mut io, mut input) = match args.io() {
         Some(io) => (io.clone(), Reader::automated(io)),
         None => (SharedIO::std(), Reader::interactive()),
     };
@@ -1022,19 +1031,17 @@ async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
     );
     cli_writeln!(io, "(c) 2021 Espresso Systems, Inc.");
 
-    let mut loader = Loader::new(storage, reader);
-
     let universal_param = Box::leak(Box::new(L::srs()));
     let backend = C::init_backend(universal_param, args).await?;
 
     // Loading the keystore takes a while. Let the user know that's expected.
     //todo !jeb.bearer Make it faster
     cli_writeln!(io, "connecting...");
+    let mut loader = C::init_loader(storage, input.clone()).await?;
     let mut keystore = Keystore::<C>::new(backend, &mut loader).await?;
     cli_writeln!(io, "Type 'help' for a list of commands.");
     let commands = init_commands::<C>();
 
-    let mut input = loader.into_reader().unwrap();
     'repl: while let Some(line) = input.read_line() {
         let tokens = line.split_whitespace().collect::<Vec<_>>();
         if tokens.is_empty() {
@@ -1082,8 +1089,8 @@ async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
 mod test {
     use super::*;
     use crate::{
-        hd,
         io::Tee,
+        loader::{InteractiveLoader, MnemonicPasswordLogin},
         testing::{
             cli_match::*,
             mocks::{MockBackend, MockLedger, MockNetwork, MockSystem},
@@ -1107,7 +1114,6 @@ mod test {
 
     struct MockArgs<'a> {
         io: SharedIO,
-        key_stream: hd::KeyTree,
         ledger: MockCapLedger<'a>,
         path: Option<PathBuf>,
     }
@@ -1136,20 +1142,35 @@ mod test {
     impl<'a> CLI<'a> for MockCLI {
         type Ledger = cap::Ledger;
         type Backend = MockBackend<'a>;
+        type Loader = InteractiveLoader;
+        type Meta = MnemonicPasswordLogin;
         type Args = MockArgs<'a>;
 
         async fn init_backend(
             _universal_param: &'a UniversalParam,
             args: Self::Args,
         ) -> Result<Self::Backend, KeystoreError<Self::Ledger>> {
-            Ok(MockBackend::new(args.ledger.clone(), args.key_stream))
+            Ok(MockBackend::new(args.ledger.clone()))
+        }
+
+        async fn init_loader(
+            storage: PathBuf,
+            input: Reader,
+        ) -> Result<Self::Loader, KeystoreError<Self::Ledger>> {
+            Ok(InteractiveLoader::new(storage, input))
         }
     }
-
+    fn write_key_file(path: PathBuf, key: UserKeyPair) -> PathBuf {
+        let full_path = path.clone().join("keys");
+        let mut file = File::create(full_path.clone()).unwrap();
+        let bytes = bincode::serialize(&key).unwrap();
+        file.write_all(&bytes).unwrap();
+        full_path
+    }
     async fn create_network<'a>(
         t: &mut MockSystem,
         initial_grants: &[u64],
-    ) -> (MockCapLedger<'a>, Vec<hd::KeyTree>) {
+    ) -> (MockCapLedger<'a>, Vec<Vec<UserKeyPair>>) {
         // Use `create_test_network` to create a ledger with some initial records.
         let (ledger, keystores) = t
             .create_test_network(&[(3, 3)], initial_grants.to_vec(), &mut Instant::now())
@@ -1162,7 +1183,19 @@ mod test {
         // the keystores we create through the CLI can deterministically generate the keys that own
         // the initial records.
         let key_streams = iter(keystores)
-            .then(|(keystore, _, _)| async move { keystore.lock().await.backend().key_stream() })
+            .then(|(keystore, _, _)| async move {
+                let mut keys = vec![];
+                let pub_keys = keystore.pub_keys().await;
+                for pub_key in pub_keys {
+                    keys.push(
+                        keystore
+                            .get_user_private_key(&pub_key.address())
+                            .await
+                            .unwrap(),
+                    );
+                }
+                keys
+            })
             .collect::<Vec<_>>()
             .await;
         (ledger, key_streams)
@@ -1170,7 +1203,6 @@ mod test {
 
     fn create_keystore(
         ledger: MockCapLedger<'static>,
-        key_stream: hd::KeyTree,
         path: PathBuf,
     ) -> (Tee<PipeWriter>, Tee<PipeReader>) {
         let (io, input, output) = SharedIO::pipe();
@@ -1179,7 +1211,6 @@ mod test {
         spawn(async move {
             let args = MockArgs {
                 io,
-                key_stream,
                 ledger,
                 path: Some(path),
             };
@@ -1199,13 +1230,38 @@ mod test {
         output.read_line(&mut line).unwrap();
         writeln!(input, "password").unwrap();
         wait_for_prompt(&mut output);
+
         (input, output)
+    }
+
+    fn add_funded_keys(
+        input: &mut impl Write,
+        output: &mut impl BufRead,
+        private_keys: &Vec<UserKeyPair>,
+        path: PathBuf,
+    ) -> Vec<(String, String)> {
+        let mut keys = vec![];
+        for pk in private_keys {
+            let file_name = write_key_file(path.clone(), pk.clone());
+            writeln!(
+                input,
+                "load_key sending {} scan_from=start wait=true",
+                file_name.to_str().unwrap()
+            )
+            .unwrap();
+            let matches =
+                match_output(output, &["(?P<pub_key>USERPUBKEY~.*)", "(?P<addr>ADDR~.*)"]);
+            let pub_key = matches.get("pub_key");
+            let address = matches.get("addr");
+            keys.push((address, pub_key));
+        }
+        keys
     }
 
     #[async_std::test]
     async fn test_view_freeze() {
         let mut t = MockSystem::default();
-        let (ledger, key_streams) = create_network(&mut t, &[2000, 2000, 0]).await;
+        let (ledger, private_keys) = create_network(&mut t, &[2000, 2000, 0]).await;
         let tmp_dir1 = TempDir::new("keystore").unwrap();
         let tmp_dir2 = TempDir::new("keystore").unwrap();
         let tmp_dir3 = TempDir::new("keystore").unwrap();
@@ -1213,45 +1269,30 @@ mod test {
         // Create three keystore clients: one to mint and view an asset, one to make an anonymous
         // transfer, and one to receive an anonymous transfer. We will see if the viewer can
         // discover the output record of the anonymous transfer, in which it is not a participant.
-        let (mut viewer_input, mut viewer_output) = create_keystore(
-            ledger.clone(),
-            key_streams[0].clone(),
-            PathBuf::from(tmp_dir1.path()),
-        );
-        let (mut sender_input, mut sender_output) = create_keystore(
-            ledger.clone(),
-            key_streams[1].clone(),
-            PathBuf::from(tmp_dir2.path()),
-        );
-        let (mut receiver_input, mut receiver_output) = create_keystore(
-            ledger,
-            key_streams[2].clone(),
-            PathBuf::from(tmp_dir3.path()),
-        );
+        let (mut viewer_input, mut viewer_output) =
+            create_keystore(ledger.clone(), PathBuf::from(tmp_dir1.path()));
+        let (mut sender_input, mut sender_output) =
+            create_keystore(ledger.clone(), PathBuf::from(tmp_dir2.path()));
+        let (mut receiver_input, mut receiver_output) =
+            create_keystore(ledger, PathBuf::from(tmp_dir3.path()));
 
-        // Get the viewer's funded address.
-        writeln!(viewer_input, "gen_key sending scan_from=start wait=true").unwrap();
-        let matches = match_output(&mut viewer_output, &["(?P<addr>ADDR~.*)"]);
-        let viewer_address = matches.get("addr");
-        writeln!(viewer_input, "balance 0").unwrap();
-        match_output(
+        // Get the viewer's address.
+        let (viewer_address, _) = add_funded_keys(
+            &mut viewer_input,
             &mut viewer_output,
-            &[format!("{} {}", viewer_address, 1000)],
-        );
+            &private_keys[0],
+            PathBuf::from(tmp_dir1.path()),
+        )[0]
+        .clone();
 
         // Get the sender's funded public key and address.
-        writeln!(sender_input, "gen_key sending scan_from=start wait=true").unwrap();
-        let matches = match_output(
+        let (sender_address, sender_pub_key) = add_funded_keys(
+            &mut sender_input,
             &mut sender_output,
-            &["(?P<pub_key>USERPUBKEY~.*)", "(?P<addr>ADDR~.*)"],
-        );
-        let sender_pub_key = matches.get("pub_key");
-        let sender_address = matches.get("addr");
-        writeln!(sender_input, "balance 0").unwrap();
-        match_output(
-            &mut sender_output,
-            &[format!("{} {}", sender_address, 1000)],
-        );
+            &private_keys[1],
+            PathBuf::from(tmp_dir1.path()),
+        )[0]
+        .clone();
 
         // Get the receiver's (unfunded) public key and address.
         writeln!(receiver_input, "gen_key sending").unwrap();
@@ -1411,12 +1452,9 @@ mod test {
         let tmp_dir = TempDir::new("keystore").unwrap();
 
         let mut t = MockSystem::default();
-        let (ledger, key_streams) = create_network(&mut t, &[0]).await;
-        let (mut input, mut output) = create_keystore(
-            ledger.clone(),
-            key_streams[0].clone(),
-            PathBuf::from(tmp_dir.path()),
-        );
+        let (ledger, _keys) = create_network(&mut t, &[0]).await;
+        let (mut input, mut output) =
+            create_keystore(ledger.clone(), PathBuf::from(tmp_dir.path()));
 
         // Load without mint info.
         writeln!(input, "import_asset definition:{}", definition).unwrap();

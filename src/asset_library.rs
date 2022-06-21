@@ -275,8 +275,9 @@ impl AssetInfo {
     /// equal `info.definition`.
     ///
     /// * `self.definition` is replaced with `info.definition`
-    /// * `self.name` and `self.description` are updated with `info.name` and `info.description`, if
-    ///   present, _unless_ `self` is verified and `info` is not.
+    /// * `self.name`, `self.description` and `self.icon` are updated with `info.name`,
+    /// `info.description` and `info.icon`, if present, _unless_ `self` is verified and `info` is
+    /// not.
     /// * If `info.mint_info` exists, it replaces `self.mint_info`
     /// * `self.temporary` is `true` only if both `self` and `info` are temporary
     /// * `self.verified` is `true` if either `self` or `info` is verified

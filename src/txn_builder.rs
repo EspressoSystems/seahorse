@@ -9,7 +9,7 @@
 //!
 //! This module defines the subset of ledger state required by a keystore to build transactions, and
 //! provides an interface for building them.
-use crate::events::EventIndex;
+use crate::{events::EventIndex, sparse_merkle_tree::SparseMerkleTree};
 use arbitrary::{Arbitrary, Unstructured};
 use arbitrary_wrappers::*;
 use ark_serialize::*;
@@ -30,9 +30,8 @@ use jf_cap::{
         Nullifier, ReceiverMemo, RecordCommitment, RecordOpening, TxnFeeInfo,
     },
     transfer::{TransferNote, TransferNoteInput},
-    AccMemberWitness, KeyPair, MerkleLeafProof, MerkleTree, Signature,
+    AccMemberWitness, KeyPair, MerkleLeafProof, Signature,
 };
-use jf_primitives::merkle_tree::FilledMTBuilder;
 use jf_utils::tagged_blob;
 use key_set::KeySet;
 use num_bigint::{BigInt, Sign};
@@ -311,8 +310,8 @@ impl RecordDatabase {
             .rev()
             .filter_map(move |(_, uid)| {
                 let record = &self.record_info[uid];
-                if record.amount().is_zero() || record.on_hold(now) {
-                    // Skip useless dummy records and records that are on hold
+                if record.on_hold(now) {
+                    // Skip records that are on hold
                     None
                 } else {
                     Some(record)
@@ -1032,10 +1031,7 @@ pub struct TransactionState<L: Ledger> {
     // sparse nullifier set Merkle tree mirrored from validators
     pub nullifiers: NullifierSet<L>,
     // sparse record Merkle tree mirrored from validators
-    pub record_mt: MerkleTree,
-    // when forgetting the last leaf in the tree, the forget operation will be deferred until a new
-    // leaf is appended, using this field, because MerkleTree doesn't allow forgetting the last leaf.
-    pub merkle_leaf_to_forget: Option<u64>,
+    pub record_mt: SparseMerkleTree,
     // set of pending transactions
     pub transactions: TransactionDatabase<L>,
 }
@@ -1047,7 +1043,6 @@ impl<L: Ledger> PartialEq<Self> for TransactionState<L> {
             && self.records == other.records
             && self.nullifiers == other.nullifiers
             && self.record_mt == other.record_mt
-            && self.merkle_leaf_to_forget == other.merkle_leaf_to_forget
             && self.transactions == other.transactions
     }
 }
@@ -1064,8 +1059,7 @@ where
             validator: u.arbitrary()?,
             records: u.arbitrary()?,
             nullifiers: u.arbitrary()?,
-            record_mt: u.arbitrary::<ArbitraryMerkleTree>()?.0,
-            merkle_leaf_to_forget: None,
+            record_mt: u.arbitrary()?,
             transactions: u.arbitrary()?,
         })
     }
@@ -1663,61 +1657,16 @@ impl<L: Ledger> TransactionState<L> {
     }
 
     pub fn forget_merkle_leaf(&mut self, leaf: u64) {
-        if leaf < self.record_mt.num_leaves() - 1 {
-            self.record_mt.forget(leaf);
-        } else {
-            assert_eq!(leaf, self.record_mt.num_leaves() - 1);
-            // We can't forget the last leaf in a Merkle tree. Instead, we just note that we want to
-            // forget this leaf, and we'll forget it when we append a new last leaf.
-            //
-            // There can only be one `merkle_leaf_to_forget` at a time, because we will forget the
-            // leaf and clear this field as soon as we append a new leaf.
-            assert!(self.merkle_leaf_to_forget.is_none());
-            self.merkle_leaf_to_forget = Some(leaf);
-        }
+        self.record_mt.forget(leaf);
     }
 
     #[must_use]
     pub fn remember_merkle_leaf(&mut self, leaf: u64, proof: &MerkleLeafProof) -> bool {
-        // If we were planning to forget this leaf once a new leaf is appended, stop planning that.
-        if self.merkle_leaf_to_forget == Some(leaf) {
-            self.merkle_leaf_to_forget = None;
-            // `merkle_leaf_to_forget` is always represented in the tree, so we don't have to call
-            // `remember` in this case.
-            assert!(self.record_mt.get_leaf(leaf).expect_ok().is_ok());
-            true
-        } else {
-            self.record_mt.remember(leaf, proof).is_ok()
-        }
+        self.record_mt.remember(leaf, proof).is_ok()
     }
 
     pub fn append_merkle_leaves(&mut self, comms: impl IntoIterator<Item = RecordCommitment>) {
-        let mut comms = comms.into_iter().peekable();
-        if comms.peek().is_none() {
-            // If there are no records to insert, just return. This is both an optimization and a
-            // precondition of the following code -- in particular the logic involving
-            // `merkle_leaf_to_forget` -- which assumes the iterator is non-empty.
-            return;
-        }
-
-        // FilledMTBuilder takes ownership of the MerkleTree, so we need to temporarily replace
-        // `self.record_mt` with a dummy value (since we can't move out of a mutable reference). We
-        // use a MerkleTree of height 0 as the dummy value, since its construction always succeeds
-        // and the computation of 3^0 is cheap.
-        let record_mt = std::mem::replace(&mut self.record_mt, MerkleTree::new(0).unwrap());
-        let mut builder = FilledMTBuilder::from_existing(record_mt)
-            .expect("failed to convert MerkleTree to FilledMTBuilder");
-        for comm in comms {
-            builder.push(comm.to_field_element());
-        }
-        self.record_mt = builder.build();
-
-        // Now that we have appended new leaves to the Merkle tree, we can forget the old last leaf,
-        // if needed.
-        if let Some(uid) = self.merkle_leaf_to_forget.take() {
-            assert!(uid < self.record_mt.num_leaves() - 1);
-            self.record_mt.forget(uid);
-        }
+        self.record_mt.extend(comms)
     }
 
     /// Returns a list of record openings and UIDs, and the change amount.
@@ -1764,6 +1713,12 @@ impl<L: Ledger> TransactionState<L> {
         let mut result = vec![];
         let mut current_amount = U256::zero();
         for record in self.records.input_records(asset, owner, frozen, now) {
+            // Skip 0-amount records; they take up slots in the transaction inputs without
+            // contributing to the total amount we're trying to consume.
+            if record.amount().is_zero() {
+                continue;
+            }
+
             if let Some(max_records) = max_records {
                 if result.len() >= max_records {
                     // Too much fragmentation: we can't make the required amount using few enough
@@ -1860,17 +1815,63 @@ impl<L: Ledger> TransactionState<L> {
         key_pairs: &'l [UserKeyPair],
         fee: RecordAmount,
     ) -> Result<FeeInput<'l>, TransactionError> {
-        let mut records = self.find_records(
-            &AssetCode::native(),
-            key_pairs,
-            FreezeFlag::Unfrozen,
-            fee.into(),
-            Some(1),
-        )?;
-        assert_eq!(records.len(), 1);
-        let (owner_keypair, mut records, _) = records.remove(0);
-        assert_eq!(records.len(), 1);
-        let (ro, uid) = records.remove(0);
+        let (ro, uid, owner_keypair) = if fee.is_zero() {
+            // For 0 fees, the allocation scheme is different than for other kinds of allocations.
+            // For one thing, CAP requires one fee input record even if the amount of the record is
+            // zero. This differs from other kinds of input records. For transfer inputs, for
+            // example, the only thing that matters is the total input amount.
+            //
+            // Also, when the fee is 0, we know we are going to get the entirety of the fee back as
+            // change when the transaction finalizes, so we don't have to worry about avoiding
+            // fragmentation due to records being broken up into change. Therefore it is better to
+            // use the _smallest_ available record, so the least amount of native balance is on hold
+            // while the transaction is pending, rather than the largest available record to try and
+            // avoid fragmentation.
+            //
+            // We can handle both of these constraints by simply finding the smallest native record
+            // in any of the available accounts.
+            let now = self.validator.now();
+            key_pairs
+                .iter()
+                .flat_map(|key| {
+                    // List the spendable native records for this key, and tag them with `key` so
+                    // that when we collect records from multiple keys, we remember which key owns
+                    // each record.
+                    self.records
+                        .input_records(
+                            &AssetCode::native(),
+                            &key.address(),
+                            FreezeFlag::Unfrozen,
+                            now,
+                        )
+                        .map(move |record| (record.ro.clone(), record.uid, key))
+                })
+                // Find the smallest record among all the records from all the keys.
+                .min_by_key(|(ro, _, _)| ro.amount)
+                // If there weren't any records at all, we simply cannot pay the fee -- even though
+                // the fee amount is 0!
+                .ok_or(TransactionError::InsufficientBalance {
+                    asset: AssetCode::native(),
+                    required: fee.into(),
+                    actual: U256::zero(),
+                })?
+        } else {
+            // When the fee is nonzero, fee allocation is just like allocation of any other input,
+            // and we can call out to the regular record allocation algorithm (using
+            // `max_records == Some(1)`, since we cannot break fees into multiple records).
+            let mut records = self.find_records(
+                &AssetCode::native(),
+                key_pairs,
+                FreezeFlag::Unfrozen,
+                fee.into(),
+                Some(1),
+            )?;
+            assert_eq!(records.len(), 1);
+            let (owner_keypair, mut records, _) = records.remove(0);
+            assert_eq!(records.len(), 1);
+            let (ro, uid) = records.remove(0);
+            (ro, uid, owner_keypair)
+        };
 
         Ok(FeeInput {
             ro,
@@ -1882,7 +1883,8 @@ impl<L: Ledger> TransactionState<L> {
     fn get_merkle_proof(&self, leaf: u64) -> AccMemberWitness {
         // The transaction builder never needs a Merkle proof that isn't guaranteed to already be in the Merkle
         // tree, so this unwrap() should never fail.
-        AccMemberWitness::lookup_from_tree(&self.record_mt, leaf)
+        self.record_mt
+            .acc_member_witness(leaf)
             .expect_ok()
             .unwrap()
             .1
