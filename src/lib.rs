@@ -329,23 +329,6 @@ impl<
         }
     }
 
-    async fn store_asset(&mut self, asset: &Asset) -> Result<(), KeystoreError<L>> {
-        // We should never mark assets as verified in persistent storage. The single source of truth
-        // for verified assets is a verified asset library loaded independently from our own
-        // persistent storage.
-        assert!(!asset.verified());
-
-        if !self.cancelled {
-            let res = self.storage().await.store_asset(asset).await;
-            if res.is_err() {
-                self.cancel().await;
-            }
-            res
-        } else {
-            Ok(())
-        }
-    }
-
     async fn store_transaction(
         &mut self,
         transaction: TransactionHistoryEntry<L>,
@@ -498,8 +481,6 @@ impl<'a, L: Ledger, Backend: KeystoreBackend<'a, L>, Meta: Serialize + Deseriali
     /// ```ignore
     /// session.store(key_pair, |mut t| async move {
     ///     t.store_snapshot(keystore_state).await?;
-    ///     // If this store fails, the effects of the previous store will be reverted.
-    ///     t.store_asset(keystore_state, asset).await?;
     ///     // Use `t.backend` to access other backend functions during the transaction. Any
     ///     // failures here will revert all previous stores.
     ///     t.backend.do_something().await?;

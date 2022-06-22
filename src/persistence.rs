@@ -23,7 +23,10 @@ use atomic_store::{
     AppendLog, AtomicStore, AtomicStoreLoader, RollingLog,
 };
 use espresso_macros::ser_test;
-use jf_cap::keys::{FreezerKeyPair, UserKeyPair, ViewerKeyPair};
+use jf_cap::{
+    keys::{FreezerKeyPair, UserKeyPair, ViewerKeyPair},
+    structs::AssetCode,
+};
 use key_set::{OrderByOutputs, ProverKeySet};
 use rand_chacha::{rand_core::SeedableRng, ChaChaRng};
 use reef::*;
@@ -184,7 +187,7 @@ pub struct AtomicKeystoreStorage<'a, L: Ledger, Meta: Serialize + DeserializeOwn
     static_dirty: bool,
     dynamic_state: RollingLog<EncryptingResourceAdapter<KeystoreSnapshot<L>>>,
     dynamic_state_dirty: bool,
-    assets: AssetsStore,
+    assets: Assets,
     assets_dirty: bool,
     txn_history: AppendLog<EncryptingResourceAdapter<TransactionHistoryEntry<L>>>,
     txn_history_dirty: bool,
@@ -249,7 +252,7 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned + Clone + PartialE
             file_fill_size,
         )
         .context(crate::PersistenceSnafu)?;
-        let assets = AssetsStore::new(
+        let assets = Assets::new(AssetsStore::new(
             AppendLog::load(
                 &mut atomic_loader,
                 adaptor.cast(),
@@ -257,7 +260,7 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned + Clone + PartialE
                 file_fill_size,
             )
             .context(crate::PersistenceSnafu)?,
-        )?;
+        )?)?;
         let txn_history = AppendLog::load(
             &mut atomic_loader,
             adaptor.cast(),
@@ -358,7 +361,7 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicKeystoreSto
             key_state: dynamic_state.key_state,
 
             // Monotonic state
-            assets: Assets::new(self.assets)?,
+            assets: self.assets,
             viewing_accounts: dynamic_state
                 .viewing_accounts
                 .into_iter()
@@ -385,12 +388,6 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicKeystoreSto
             .store_resource(&KeystoreSnapshot::from(w))
             .context(crate::PersistenceSnafu)?;
         self.dynamic_state_dirty = true;
-        Ok(())
-    }
-
-    pub async fn store_asset(&mut self, asset: &Asset) -> Result<(), KeystoreError<L>> {
-        self.assets.store(&asset.code(), asset)?;
-        self.assets_dirty = true;
         Ok(())
     }
 
@@ -434,12 +431,6 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicKeystoreSto
                 self.dynamic_state.skip_version().unwrap();
             }
 
-            if self.assets_dirty {
-                self.assets.commit_version().unwrap();
-            } else {
-                self.assets.skip_version().unwrap();
-            }
-
             if self.txn_history_dirty {
                 self.txn_history.commit_version().unwrap();
             } else {
@@ -452,7 +443,6 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicKeystoreSto
         self.meta_dirty = false;
         self.static_dirty = false;
         self.dynamic_state_dirty = false;
-        self.assets_dirty = false;
         self.txn_history_dirty = false;
     }
 
@@ -460,7 +450,6 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicKeystoreSto
         self.persisted_meta.revert_version().unwrap();
         self.static_data.revert_version().unwrap();
         self.dynamic_state.revert_version().unwrap();
-        self.assets.revert_version().unwrap();
         self.txn_history.revert_version().unwrap();
     }
 }
@@ -677,12 +666,7 @@ mod tests {
         assert_keystore_states_eq(&stored, &loaded);
 
         // Append to monotonic state and then reload.
-        let definition =
-            AssetDefinition::new(AssetCode::random(&mut rng).0, Default::default()).unwrap();
-        let asset = AssetInfo::from(definition);
         let viewing_key = ViewerKeyPair::generate(&mut rng);
-        stored.assets.insert(asset.clone());
-        stored.assets.add_viewing_key(viewing_key.pub_key());
         // viewing keys for the asset library get persisted with the viewing accounts.
         stored.viewing_accounts.insert(
             viewing_key.pub_key(),
@@ -692,7 +676,6 @@ mod tests {
             let mut storage =
                 AtomicKeystoreStorage::<cap::Ledger, _>::new(&mut loader, 1024).unwrap();
             storage.store_snapshot(&stored).await.unwrap();
-            storage.store_asset(&asset).await.unwrap();
             storage.commit().await;
         }
         let loaded = {
@@ -707,20 +690,6 @@ mod tests {
     #[async_std::test]
     async fn test_revert() -> std::io::Result<()> {
         let (mut stored, mut loader, mut rng) = get_test_state("test_revert").await;
-
-        // Make a change to one of the data structures, but revert it.
-        let loaded = {
-            let mut storage = AtomicKeystoreStorage::new(&mut loader, 1024).unwrap();
-            storage
-                .store_asset(&AssetInfo::native::<cap::Ledger>())
-                .await
-                .unwrap();
-            storage.revert().await;
-            // Make sure committing after a revert does not commit the reverted changes.
-            storage.commit().await;
-            storage.load().await.unwrap()
-        };
-        assert_keystore_states_eq(&stored, &loaded);
 
         // Change multiple data structures and revert.
         let loaded = {
@@ -737,10 +706,6 @@ mod tests {
             // Store some data.
             stored.txn_state.records.insert(ro, 0, &user_key);
             storage.store_snapshot(&stored).await.unwrap();
-            storage
-                .store_asset(&AssetInfo::native::<cap::Ledger>())
-                .await
-                .unwrap();
             storage
                 .store_transaction(TransactionHistoryEntry {
                     time: Local::now(),
