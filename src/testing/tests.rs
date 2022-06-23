@@ -2482,7 +2482,8 @@ pub mod generic_keystore_tests {
         // verified.
         {
             let storage = &keystores[0].0.lock().await.session.storage;
-            let loaded = storage.lock().await.load().await.unwrap();
+            let atomic_store = &mut keystores[0].0.lock().await.session.atomic_store;
+            let loaded = storage.lock().await.load(atomic_store).await.unwrap();
             assert!(loaded.assets.iter().all(|asset| !asset.verified));
             assert!(loaded.assets.contains(AssetCode::native()));
             assert!(loaded.assets.contains(asset1.code));
@@ -2512,7 +2513,8 @@ pub mod generic_keystore_tests {
         // Check that `asset2` is now persisted, but still no assets in storage are verified.
         {
             let storage = &keystores[0].0.mutex.lock().await.session.storage;
-            let loaded = storage.lock().await.load().await.unwrap();
+            let atomic_store = &mut keystores[0].0.lock().await.session.atomic_store;
+            let loaded = storage.lock().await.load(atomic_store).await.unwrap();
             assert!(loaded.assets.iter().all(|asset| !asset.verified));
             assert!(loaded.assets.contains(AssetCode::native()));
             assert!(loaded.assets.contains(asset1.code));
@@ -2525,7 +2527,14 @@ pub mod generic_keystore_tests {
         // generated in a different order).
         let loaded = {
             let storage = &keystores[0].0.mutex.lock().await.session.storage;
-            let mut assets = storage.lock().await.load().await.unwrap().assets;
+            let atomic_store = &mut keystores[0].0.lock().await.session.atomic_store;
+            let mut assets = storage
+                .lock()
+                .await
+                .load(atomic_store)
+                .await
+                .unwrap()
+                .assets;
             for asset in &imported {
                 assets.insert(asset.clone());
             }

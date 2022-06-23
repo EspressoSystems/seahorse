@@ -170,7 +170,6 @@ impl<T: Serialize + DeserializeOwned> LoadStore for EncryptingResourceAdapter<T>
 }
 
 pub struct AtomicKeystoreStorage<'a, L: Ledger, Meta: Serialize + DeserializeOwned> {
-    store: AtomicStore,
     // Metadata given at initialization time that may not have been written to disk yet.
     meta: Meta,
     // Persisted metadata, if the keystore has already been committed to disk. This is a snapshot log
@@ -197,7 +196,7 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned + Clone + PartialE
     pub fn new(
         loader: &mut impl KeystoreLoader<L, Meta = Meta>,
         file_fill_size: u64,
-    ) -> Result<Self, KeystoreError<L>> {
+    ) -> Result<(Self, AtomicStore), KeystoreError<L>> {
         let directory = loader.location();
         let mut atomic_loader =
             AtomicStoreLoader::load(&directory, "keystore").context(crate::PersistenceSnafu)?;
@@ -265,21 +264,23 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned + Clone + PartialE
         .context(crate::PersistenceSnafu)?;
         let store = AtomicStore::open(atomic_loader).context(crate::PersistenceSnafu)?;
 
-        Ok(Self {
-            meta,
-            persisted_meta,
-            meta_dirty,
-            static_data,
-            static_dirty: false,
+        Ok((
+            Self {
+                meta,
+                persisted_meta,
+                meta_dirty,
+                static_data,
+                static_dirty: false,
+                dynamic_state,
+                dynamic_state_dirty: false,
+                assets,
+                assets_dirty: false,
+                txn_history,
+                txn_history_dirty: false,
+                keystore_key_tree: key.derive_sub_tree("keystore".as_bytes()),
+            },
             store,
-            dynamic_state,
-            dynamic_state_dirty: false,
-            assets,
-            assets_dirty: false,
-            txn_history,
-            txn_history_dirty: false,
-            keystore_key_tree: key.derive_sub_tree("keystore".as_bytes()),
-        })
+        ))
     }
 }
 
@@ -287,6 +288,7 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicKeystoreSto
     pub async fn create(
         mut self: &mut Self,
         w: &KeystoreState<'a, L>,
+        atomic_store: &mut AtomicStore,
     ) -> Result<(), KeystoreError<L>> {
         // Store the initial static and dynamic state, and the metadata. We do this in a closure so
         // that if any operation fails, it will exit the closure but not this function, and we can
@@ -309,6 +311,7 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicKeystoreSto
         {
             Ok(()) => {
                 self.commit().await;
+                atomic_store.commit_version().unwrap();
                 Ok(())
             }
             Err(err) => {
@@ -332,10 +335,14 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicKeystoreSto
         self.persisted_meta.load_latest().is_ok()
     }
 
-    pub async fn load(&mut self) -> Result<KeystoreState<'a, L>, KeystoreError<L>> {
+    pub async fn load(
+        &mut self,
+        atomic_store: &mut AtomicStore,
+    ) -> Result<KeystoreState<'a, L>, KeystoreError<L>> {
         // This function is called once, when the keystore is loaded. It is a good place to persist
         // changes to the metadata that happened during loading.
         self.commit().await;
+        atomic_store.commit_version().unwrap();
 
         let static_state = self
             .static_data
@@ -454,8 +461,6 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicKeystoreSto
                 self.txn_history.skip_version().unwrap();
             }
         }
-
-        self.store.commit_version().unwrap();
 
         self.meta_dirty = false;
         self.static_dirty = false;
@@ -620,9 +625,10 @@ mod tests {
             key: KeyTree::random(&mut rng).0,
         };
         {
-            let mut storage = AtomicKeystoreStorage::new(&mut loader, 1024).unwrap();
+            let (mut storage, mut atomic_store) =
+                AtomicKeystoreStorage::new(&mut loader, 1024).unwrap();
             assert!(!storage.exists());
-            storage.create(&state).await.unwrap();
+            storage.create(&state, &mut atomic_store).await.unwrap();
             assert!(storage.exists());
         }
 
@@ -637,8 +643,9 @@ mod tests {
         // load comes only from persistent storage and not from any in-memory state of the first
         // instance.
         let loaded = {
-            let mut storage = AtomicKeystoreStorage::new(&mut loader, 1024).unwrap();
-            storage.load().await.unwrap()
+            let (mut storage, mut atomic_store) =
+                AtomicKeystoreStorage::new(&mut loader, 1024).unwrap();
+            storage.load(&mut atomic_store).await.unwrap()
         };
         assert_keystore_states_eq(&stored, &loaded);
 
@@ -674,13 +681,14 @@ mod tests {
 
         // Snapshot the modified dynamic state and then reload.
         {
-            let mut storage = AtomicKeystoreStorage::new(&mut loader, 1024).unwrap();
+            let (mut storage, _) = AtomicKeystoreStorage::new(&mut loader, 1024).unwrap();
             storage.store_snapshot(&stored).await.unwrap();
             storage.commit().await;
         }
         let loaded = {
-            let mut storage = AtomicKeystoreStorage::new(&mut loader, 1024).unwrap();
-            storage.load().await.unwrap()
+            let (mut storage, mut atomic_store) =
+                AtomicKeystoreStorage::new(&mut loader, 1024).unwrap();
+            storage.load(&mut atomic_store).await.unwrap()
         };
         assert_keystore_states_eq(&stored, &loaded);
 
@@ -697,15 +705,16 @@ mod tests {
             Account::new(viewing_key, "viewing_account".into()),
         );
         {
-            let mut storage =
+            let (mut storage, _) =
                 AtomicKeystoreStorage::<cap::Ledger, _>::new(&mut loader, 1024).unwrap();
             storage.store_snapshot(&stored).await.unwrap();
             storage.store_asset(&asset).await.unwrap();
             storage.commit().await;
         }
         let loaded = {
-            let mut storage = AtomicKeystoreStorage::new(&mut loader, 1024).unwrap();
-            storage.load().await.unwrap()
+            let (mut storage, mut atomic_store) =
+                AtomicKeystoreStorage::new(&mut loader, 1024).unwrap();
+            storage.load(&mut atomic_store).await.unwrap()
         };
         assert_keystore_states_eq(&stored, &loaded);
 
@@ -718,7 +727,8 @@ mod tests {
 
         // Make a change to one of the data structures, but revert it.
         let loaded = {
-            let mut storage = AtomicKeystoreStorage::new(&mut loader, 1024).unwrap();
+            let (mut storage, mut atomic_store) =
+                AtomicKeystoreStorage::new(&mut loader, 1024).unwrap();
             storage
                 .store_asset(&AssetInfo::native::<cap::Ledger>())
                 .await
@@ -726,13 +736,14 @@ mod tests {
             storage.revert().await;
             // Make sure committing after a revert does not commit the reverted changes.
             storage.commit().await;
-            storage.load().await.unwrap()
+            storage.load(&mut atomic_store).await.unwrap()
         };
         assert_keystore_states_eq(&stored, &loaded);
 
         // Change multiple data structures and revert.
         let loaded = {
-            let mut storage = AtomicKeystoreStorage::new(&mut loader, 1024).unwrap();
+            let (mut storage, mut atomic_store) =
+                AtomicKeystoreStorage::new(&mut loader, 1024).unwrap();
 
             let user_key = UserKeyPair::generate(&mut rng);
             let ro = random_ro(&mut rng, &user_key);
@@ -774,7 +785,7 @@ mod tests {
 
             // Commit after revert should be a no-op.
             storage.commit().await;
-            storage.load().await.unwrap()
+            storage.load(&mut atomic_store).await.unwrap()
         };
         assert_keystore_states_eq(&stored, &loaded);
 
