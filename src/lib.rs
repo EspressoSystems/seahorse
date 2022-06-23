@@ -59,7 +59,7 @@ use async_scoped::AsyncScope;
 use async_std::sync::{Mutex, MutexGuard};
 use async_std::task::block_on;
 use async_trait::async_trait;
-use atomic_store::AtomicStore;
+use atomic_store::{AtomicStore, AtomicStoreLoader};
 use core::fmt::Debug;
 use espresso_macros::ser_test;
 use futures::{channel::oneshot, prelude::*, stream::Stream};
@@ -1775,17 +1775,19 @@ impl<
         mut backend: Backend,
         loader: &mut impl KeystoreLoader<L, Meta = Meta>,
     ) -> BoxFuture<'a, Result<Keystore<'a, Backend, L, Meta>, KeystoreError<L>>> {
-        let (mut storage, mut atomic_store) = AtomicKeystoreStorage::new(loader, 1024).unwrap();
+        let mut atomic_loader = AtomicStoreLoader::load(&loader.location(), "keystore").unwrap();
+        let mut storage = AtomicKeystoreStorage::new(loader, &mut atomic_loader, 1024).unwrap();
+        let mut atomic_store = AtomicStore::open(atomic_loader).unwrap();
         Box::pin(async move {
             let state = if storage.exists() {
-                let state = storage.load(&mut atomic_store).await?;
+                let state = storage.load().await?;
                 state
             } else {
                 let state = backend.create().await?;
-                storage.create(&state, &mut atomic_store).await?;
-                atomic_store.commit_version().unwrap();
+                storage.create(&state).await?;
                 state
             };
+            atomic_store.commit_version()?;
             Self::new_impl(backend, atomic_store, storage, state).await
         })
     }
@@ -1796,7 +1798,9 @@ impl<
         loader: &mut impl KeystoreLoader<L, Meta = Meta>,
         state: KeystoreState<'a, L>,
     ) -> BoxFuture<'a, Result<Keystore<'a, Backend, L, Meta>, KeystoreError<L>>> {
-        let (storage, atomic_store) = AtomicKeystoreStorage::new(loader, 1024).unwrap();
+        let mut atomic_loader = AtomicStoreLoader::load(&loader.location(), "keystore").unwrap();
+        let storage = AtomicKeystoreStorage::new(loader, &mut atomic_loader, 1024).unwrap();
+        let atomic_store = AtomicStore::open(atomic_loader).unwrap();
         Box::pin(async move { Self::new_impl(backend, atomic_store, storage, state).await })
     }
 

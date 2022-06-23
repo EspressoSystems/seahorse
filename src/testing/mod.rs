@@ -525,10 +525,11 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
     ) {
         for (keystore, _, _) in keystores {
             let KeystoreSharedState { state, session, .. } = &mut *keystore.mutex.lock().await;
-            let mut atomic_store = &mut session.atomic_store;
+            let atomic_store = &mut session.atomic_store;
             let storage = &session.storage;
             let mut state = state.clone();
-            let mut loaded = storage.lock().await.load(&mut atomic_store).await.unwrap();
+            let mut loaded = storage.lock().await.load().await.unwrap();
+            atomic_store.commit_version().unwrap();
 
             // The persisted state should not include any temporary assets.
             state.assets = AssetLibrary::new(

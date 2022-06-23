@@ -2483,12 +2483,13 @@ pub mod generic_keystore_tests {
         {
             let storage = &keystores[0].0.lock().await.session.storage;
             let atomic_store = &mut keystores[0].0.lock().await.session.atomic_store;
-            let loaded = storage.lock().await.load(atomic_store).await.unwrap();
+            let loaded = storage.lock().await.load().await.unwrap();
             assert!(loaded.assets.iter().all(|asset| !asset.verified));
             assert!(loaded.assets.contains(AssetCode::native()));
             assert!(loaded.assets.contains(asset1.code));
             assert!(!loaded.assets.contains(asset2.code));
             assert_eq!(loaded.assets.len(), 2);
+            atomic_store.commit_version().unwrap();
         }
 
         // Now import `asset2`, updating the existing verified asset with persistence and mint info.
@@ -2514,12 +2515,13 @@ pub mod generic_keystore_tests {
         {
             let storage = &keystores[0].0.mutex.lock().await.session.storage;
             let atomic_store = &mut keystores[0].0.lock().await.session.atomic_store;
-            let loaded = storage.lock().await.load(atomic_store).await.unwrap();
+            let loaded = storage.lock().await.load().await.unwrap();
             assert!(loaded.assets.iter().all(|asset| !asset.verified));
             assert!(loaded.assets.contains(AssetCode::native()));
             assert!(loaded.assets.contains(asset1.code));
             assert!(loaded.assets.contains(asset2.code));
             assert_eq!(loaded.assets.len(), 3);
+            atomic_store.commit_version().unwrap();
         }
 
         // Finally, check that by loading the persisted, unverified information, and combining it
@@ -2528,13 +2530,8 @@ pub mod generic_keystore_tests {
         let loaded = {
             let storage = &keystores[0].0.mutex.lock().await.session.storage;
             let atomic_store = &mut keystores[0].0.lock().await.session.atomic_store;
-            let mut assets = storage
-                .lock()
-                .await
-                .load(atomic_store)
-                .await
-                .unwrap()
-                .assets;
+            let mut assets = storage.lock().await.load().await.unwrap().assets;
+            atomic_store.commit_version().unwrap();
             for asset in &imported {
                 assets.insert(asset.clone());
             }
