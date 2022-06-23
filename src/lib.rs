@@ -1780,8 +1780,7 @@ impl<
         let mut atomic_store = AtomicStore::open(atomic_loader).unwrap();
         Box::pin(async move {
             let state = if storage.exists() {
-                let state = storage.load().await?;
-                state
+                storage.load().await?
             } else {
                 let state = backend.create().await?;
                 storage.create(&state).await?;
