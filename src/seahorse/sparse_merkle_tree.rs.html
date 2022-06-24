@@ -378,6 +378,9 @@
 <span id="378">378</span>
 <span id="379">379</span>
 <span id="380">380</span>
+<span id="381">381</span>
+<span id="382">382</span>
+<span id="383">383</span>
 </pre><pre class="rust"><code><span class="comment">// Copyright (c) 2022 Espresso Systems (espressosys.com)</span>
 <span class="comment">// This file is part of the Seahorse library.</span>
 
@@ -654,8 +657,10 @@
     <span class="kw">use</span> <span class="kw">super</span>::<span class="kw-2">*</span>;
     <span class="kw">use</span> <span class="ident">ark_std::UniformRand</span>;
     <span class="kw">use</span> <span class="ident">quickcheck::Gen</span>;
+    <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;slow-tests&quot;</span>)]</span>
     <span class="kw">use</span> <span class="ident">quickcheck_macros::quickcheck</span>;
     <span class="kw">use</span> <span class="ident">rand_chacha</span>::{<span class="ident">rand_core::SeedableRng</span>, <span class="ident">ChaChaRng</span>};
+    <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;slow-tests&quot;</span>)]</span>
     <span class="kw">use</span> <span class="ident">std::collections::HashSet</span>;
 
     <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Clone</span>, <span class="ident">Debug</span>)]</span>
@@ -681,6 +686,7 @@
         }
     }
 
+    <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;slow-tests&quot;</span>)]</span>
     <span class="attribute">#[<span class="ident">quickcheck</span>]</span>
     <span class="kw">fn</span> <span class="ident">quickcheck_sparse_merkle_tree</span>(<span class="ident">ops</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">MerkleOp</span><span class="op">&gt;</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">bool</span> {
         <span class="comment">// We will do the same pushes to both `sparse_tree` and `full_tree`, but only forget/</span>
