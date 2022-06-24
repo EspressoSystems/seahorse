@@ -1085,7 +1085,7 @@ async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
     Ok(())
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "slow-tests"))]
 mod test {
     use super::*;
     use crate::{
