@@ -27,16 +27,16 @@ use std::ops::{Deref, DerefMut};
 /// A Transaction<L>with its UID as the primary key.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Transaction<L: Ledger> {
+    /// Identifier for the Transaction, also the primary key in storage
     uid: TransactionUID<L>,
-    // PendingTransaction
+    /// Time when this transaction will expire if it's not completed
     timeout: u64,
-    pub hash: Option<TransactionHash<L>>,
+    /// Hash which appears in the commited block for this transaction
+    hash: Option<TransactionHash<L>>,
 
-    // TransactionAwaitingMemo
     // The uids of the outputs of this transaction for which memos have not yet been posted.
-    pub pending_uids: HashSet<u64>,
+    pending_uids: HashSet<u64>,
 
-    // TransactionInfo
     /// The accounts sending the transaction.
     accounts: Vec<UserAddress>,
     /// A receiver memo for each output, except for burned outputs.
@@ -47,9 +47,11 @@ pub struct Transaction<L: Ledger> {
     inputs: Vec<RecordOpening>,
     outputs: Vec<RecordOpening>,
 
-    // TransactionHistoryEntry
+    /// Time when this transaction was created in the transaction builder
     time: DateTime<Local>,
+    /// The asset we are transacting
     asset: AssetCode,
+    /// Describes the operation this transaction is performing (e.g Mint, Freeze, or Send)
     kind: TransactionKind<L>,
     /// Addresses used to build this transaction.
     ///
@@ -69,7 +71,7 @@ pub struct Transaction<L: Ledger> {
     /// change, which would be indicated by `Some(0)`. The amount of change may be unknown if, for
     /// example, this is a transaction we received from someone else, in which case we may not know
     /// how much of a fee they paid and how much change they expect to get.
-    pub fee_change: Option<RecordAmount>,
+    fee_change: Option<RecordAmount>,
     /// Amount of change included in the transaction in the asset being transferred.
     ///
     /// For non-native transfers, the amount of the asset being transferred which is consumed by the
@@ -87,9 +89,9 @@ pub struct Transaction<L: Ledger> {
     /// change, which would be indicated by `Some(0)`. The amount of change may be unknown if, for
     /// example, this is a transaction we received from someone else, and we do not hold the
     /// necessary viewing keys to inspect the change outputs of the transaction.
-    pub asset_change: Option<RecordAmount>,
+    asset_change: Option<RecordAmount>,
     /// If we sent this transaction, a receipt to track its progress.
-    pub receipt: Option<TransactionReceipt<L>>,
+    receipt: Option<TransactionReceipt<L>>,
 }
 
 impl<L: Ledger> Transaction<L> {
@@ -100,7 +102,6 @@ impl<L: Ledger> Transaction<L> {
     pub fn timeout(&self) -> u64 {
         self.timeout
     }
-    /// Get the reciever memos.
     pub fn memos(&self) -> &Vec<Option<ReceiverMemo>> {
         &self.memos
     }
@@ -159,32 +160,38 @@ impl<'a, L: Ledger + Serialize + DeserializeOwned> TransactionEditor<'a, L> {
         Self { transaction, store }
     }
 
+    /// Add fee change record to the transaction once it is certain
     pub fn with_fee_change(mut self, amount: RecordAmount) -> Self {
         self.transaction.fee_change = Some(amount);
         self
     }
 
+    /// Add asset change record to the transaction once it is certain
     pub fn with_asset_change(mut self, amount: RecordAmount) -> Self {
         self.transaction.asset_change = Some(amount);
         self
     }
 
+    /// Add the transaction receipt when it is recieved
     pub fn with_receipt(mut self, receipt: TransactionReceipt<L>) -> Self {
         self.transaction.receipt = Some(receipt);
         self
     }
 
+    /// Add the transaction hash, should be called after this transaction is committed
     pub fn with_hash(mut self, hash: TransactionHash<L>) -> Self {
         self.transaction.hash = Some(hash);
         self
     }
 
-    pub fn add_pending_uids(mut self, uids: &Vec<u64>) -> Self {
+    /// Add the UIDs of memos we are waiting on to complete the transaction
+    pub fn add_pending_uids(mut self, uids: &[u64]) -> Self {
         for uid in uids {
             self.transaction.pending_uids.insert(*uid);
         }
         self
     }
+    /// remove a UID of a memo we were waiting because it was received
     pub fn remove_pending_uid(mut self, uid: u64) -> Self {
         self.transaction.pending_uids.remove(&uid);
         self
@@ -226,9 +233,7 @@ pub struct Transactions<L: Ledger + Serialize + DeserializeOwned> {
 impl<L: Ledger + Serialize + DeserializeOwned> Transactions<L> {
     #![allow(dead_code)]
 
-    /// Load an assets store.
-    ///
-    /// None of the loaded assets will be verified until `verify_assets` is called.
+    /// Load a transactions store.
     pub fn new(store: TransactionsStore<L>) -> Result<Self, KeystoreError<L>> {
         let txn_by_hash = store
             .iter()
@@ -273,6 +278,7 @@ impl<L: Ledger + Serialize + DeserializeOwned> Transactions<L> {
         Ok(TransactionEditor::new(&mut self.store, txn))
     }
 
+    /// Get a Transaction with the id of a memo, will return the transaction which is awaiting the memo
     pub fn with_memo_id(&self, id: u64) -> Result<Transaction<L>, KeystoreError<L>> {
         let uid = self
             .uids_awaiting_memos
@@ -281,6 +287,7 @@ impl<L: Ledger + Serialize + DeserializeOwned> Transactions<L> {
         Ok(self.get(uid).unwrap())
     }
 
+    /// Same as with_memo_id but return a TransactionEditor
     pub fn with_memo_id_mut(
         &mut self,
         id: u64,
@@ -289,14 +296,16 @@ impl<L: Ledger + Serialize + DeserializeOwned> Transactions<L> {
         Ok(TransactionEditor::new(&mut self.store, txn))
     }
 
+    /// Get a Transaction for a given TransactionHash
     pub fn with_hash(&self, hash: &TransactionHash<L>) -> Result<Transaction<L>, KeystoreError<L>> {
         let uid = self
             .txn_by_hash
-            .get(&hash)
+            .get(hash)
             .ok_or(KeyValueStoreError::KeyNotFound)?;
         Ok(self.get(uid).unwrap())
     }
 
+    /// Get a TransactionEditor for a given TransactionHash
     pub fn with_hash_mut(
         &mut self,
         hash: &TransactionHash<L>,
@@ -326,6 +335,7 @@ impl<L: Ledger + Serialize + DeserializeOwned> Transactions<L> {
         Ok(self.store.revert_version()?)
     }
 
+    /// Add a transaction has to the index and update the stored transaction with this has
     pub fn insert_hash(
         &mut self,
         hash: TransactionHash<L>,
@@ -336,6 +346,8 @@ impl<L: Ledger + Serialize + DeserializeOwned> Transactions<L> {
         self.txn_by_hash.insert(hash, uid.clone());
         Ok(())
     }
+
+    /// Add a list of Memo ids a transaction is waiting for.  We update the index and the stored transaction
     pub fn add_pending_uids(
         &mut self,
         txn_uid: &TransactionUID<L>,
@@ -349,6 +361,8 @@ impl<L: Ledger + Serialize + DeserializeOwned> Transactions<L> {
 
         Ok(())
     }
+
+    /// Remove pending memo ids from the index and the stored transactions which were awaiting those ids
     pub async fn remove_pending_uids(
         &mut self,
         pending_uids: Vec<u64>,
@@ -363,6 +377,7 @@ impl<L: Ledger + Serialize + DeserializeOwned> Transactions<L> {
         Ok(())
     }
 
+    /// Remove a transaction from the pending index when it
     pub async fn remove_pending(
         &mut self,
         timeout: u64,
@@ -377,12 +392,15 @@ impl<L: Ledger + Serialize + DeserializeOwned> Transactions<L> {
         Ok(())
     }
 
-    /// Create an unverified asset.
+    /// Create an Transaction.
     ///
-    /// If the store doesn't have an asset with the same code, adds the created asset to the store.
-    /// Otherwise, updates the exisiting asset.
+    /// When we first create a transaction it won't know all of it's values until
+    /// specific events happen on chain.  When the block for this transaction commited
+    /// We will learn it's Hash, Recept, and PendingUIDs as well as be certain of the
+    /// Fee and Asset Change records.
     ///
     /// Returns the editor for the created asset.
+    #[allow(clippy::too_many_arguments)]
     pub fn create(
         &mut self,
         uid: TransactionUID<L>,
