@@ -5,10 +5,10 @@
 // This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 // You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-//! The assets module.
+//! The trasaction module.
 //!
 //! This module defines [Transaction], [TransactionEditor], and [Transactions], which provide CURD (create, read,
-//! update, and delete) operations, with the use of [KeyValueStore] to control the assets resource.
+//! update, and delete) operations, with the use of [KeyValueStore] to control the transactions resource.
 
 use crate::{
     key_value_store::*, AssetCode, KeystoreError, Ledger, RecordAmount, TransactionHash,
@@ -49,8 +49,8 @@ pub struct Transaction<L: Ledger> {
 
     /// Time when this transaction was created in the transaction builder
     time: DateTime<Local>,
-    /// The asset we are transacting
-    asset: AssetCode,
+    /// The transaction we are transacting
+    transaction: AssetCode,
     /// Describes the operation this transaction is performing (e.g Mint, Freeze, or Send)
     kind: TransactionKind<L>,
     /// Addresses used to build this transaction.
@@ -72,9 +72,9 @@ pub struct Transaction<L: Ledger> {
     /// example, this is a transaction we received from someone else, in which case we may not know
     /// how much of a fee they paid and how much change they expect to get.
     fee_change: Option<RecordAmount>,
-    /// Amount of change included in the transaction in the asset being transferred.
+    /// Amount of change included in the transaction in the transaction being transferred.
     ///
-    /// For non-native transfers, the amount of the asset being transferred which is consumed by the
+    /// For non-native transfers, the amount of the transaction being transferred which is consumed by the
     /// transaction may exceed the amount that the sender wants to transfer, due to the way discrete
     /// record amounts break down. In this case, one of the outputs of the transaction will contain
     /// change from the fee, which the transaction sender receives when the transaction is
@@ -82,14 +82,14 @@ pub struct Transaction<L: Ledger> {
     ///
     /// For native transfers, the transfer inputs and the fee input get mixed together, so there is
     /// only one change output, which accounts for both the fee change and the transfer change. In
-    /// this case, the total amount of change will be reflected in `fee_change` and `asset_change`
+    /// this case, the total amount of change will be reflected in `fee_change` and `transaction_change`
     /// will be `Some(0)`.
     ///
     /// Note that `None` indicates that the amount of change is unknown, not that there is no
     /// change, which would be indicated by `Some(0)`. The amount of change may be unknown if, for
     /// example, this is a transaction we received from someone else, and we do not hold the
     /// necessary viewing keys to inspect the change outputs of the transaction.
-    asset_change: Option<RecordAmount>,
+    transaction_change: Option<RecordAmount>,
     /// If we sent this transaction, a receipt to track its progress.
     receipt: Option<TransactionReceipt<L>>,
 }
@@ -123,8 +123,8 @@ impl<L: Ledger> Transaction<L> {
     pub fn time(&self) -> &DateTime<Local> {
         &self.time
     }
-    pub fn asset(&self) -> &AssetCode {
-        &self.asset
+    pub fn transaction(&self) -> &AssetCode {
+        &self.transaction
     }
     pub fn kind(&self) -> &TransactionKind<L> {
         &self.kind
@@ -138,8 +138,8 @@ impl<L: Ledger> Transaction<L> {
     pub fn fee_change(&self) -> &Option<RecordAmount> {
         &self.fee_change
     }
-    pub fn asset_change(&self) -> &Option<RecordAmount> {
-        &self.asset_change
+    pub fn transaction_change(&self) -> &Option<RecordAmount> {
+        &self.transaction_change
     }
     pub fn receipt(&self) -> &Option<TransactionReceipt<L>> {
         &self.receipt
@@ -166,9 +166,9 @@ impl<'a, L: Ledger + Serialize + DeserializeOwned> TransactionEditor<'a, L> {
         self
     }
 
-    /// Add asset change record to the transaction once it is certain
-    pub fn with_asset_change(mut self, amount: RecordAmount) -> Self {
-        self.transaction.asset_change = Some(amount);
+    /// Add transaction change record to the transaction once it is certain
+    pub fn with_transaction_change(mut self, amount: RecordAmount) -> Self {
+        self.transaction.transaction_change = Some(amount);
         self
     }
 
@@ -226,7 +226,7 @@ pub struct Transactions<L: Ledger + Serialize + DeserializeOwned> {
     store: TransactionsStore<L>,
     txn_by_hash: HashMap<TransactionHash<L>, TransactionUID<L>>,
     expiring_txns: BTreeMap<u64, HashSet<TransactionUID<L>>>,
-    /// Maps pending UIDs to the Transaction<L>they come from
+    /// Maps pending memo UIDs to the Transaction<L>they come from
     uids_awaiting_memos: HashMap<u64, TransactionUID<L>>,
 }
 
@@ -259,17 +259,17 @@ impl<L: Ledger + Serialize + DeserializeOwned> Transactions<L> {
         })
     }
 
-    /// Iterate through the assets.
+    /// Iterate through the transactions.
     pub fn iter(&self) -> impl Iterator<Item = Transaction<L>> + '_ {
         self.store.iter().cloned()
     }
 
-    /// Get the asset by the code from the store.
+    /// Get the transaction by the uid from the store.
     pub fn get(&self, uid: &TransactionUID<L>) -> Result<Transaction<L>, KeystoreError<L>> {
         Ok(self.store.load(uid)?)
     }
 
-    /// Get a mutable asset editor by the code from the store.
+    /// Get a mutable transaction editor by the code from the store.
     pub fn get_mut(
         &mut self,
         uid: &TransactionUID<L>,
@@ -315,7 +315,7 @@ impl<L: Ledger + Serialize + DeserializeOwned> Transactions<L> {
     }
 
     /// Get all the transactions timing out at the provided time.  There is no mutable way to get this
-    /// Collection because we should only be edditing one thing at a time
+    /// Collection because we should only be editting one thing at a time
     pub fn with_timeout(&self, timeout: u64) -> Result<Vec<Transaction<L>>, KeystoreError<L>> {
         let uids = self
             .expiring_txns
@@ -335,7 +335,7 @@ impl<L: Ledger + Serialize + DeserializeOwned> Transactions<L> {
         Ok(self.store.revert_version()?)
     }
 
-    /// Add a transaction has to the index and update the stored transaction with this has
+    /// Add a transaction hash to the index and update the stored transaction with this has
     pub fn insert_hash(
         &mut self,
         hash: TransactionHash<L>,
@@ -363,7 +363,7 @@ impl<L: Ledger + Serialize + DeserializeOwned> Transactions<L> {
     }
 
     /// Remove pending memo ids from the index and the stored transactions which were awaiting those ids
-    pub async fn remove_pending_uids(
+    pub async fn remove_pending_memo_uids(
         &mut self,
         pending_uids: Vec<u64>,
     ) -> Result<(), KeystoreError<L>> {
@@ -377,19 +377,14 @@ impl<L: Ledger + Serialize + DeserializeOwned> Transactions<L> {
         Ok(())
     }
 
-    /// Remove a transaction from the pending index when it
-    pub async fn remove_pending(
-        &mut self,
-        timeout: u64,
-        uid: &TransactionUID<L>,
-    ) -> Result<(), KeystoreError<L>> {
+    /// Remove a transaction from the pending index when it is known to have timed out
+    pub async fn remove_pending_txn(&mut self, timeout: u64, uid: &TransactionUID<L>) {
         if let Some(expiring) = self.expiring_txns.get_mut(&timeout) {
             expiring.remove(uid);
             if expiring.is_empty() {
                 self.expiring_txns.remove(&timeout);
             }
         }
-        Ok(())
     }
 
     /// Create an Transaction.
@@ -399,7 +394,7 @@ impl<L: Ledger + Serialize + DeserializeOwned> Transactions<L> {
     /// We will learn it's Hash, Recept, and PendingUIDs as well as be certain of the
     /// Fee and Asset Change records.
     ///
-    /// Returns the editor for the created asset.
+    /// Returns the editor for the created transaction.
     #[allow(clippy::too_many_arguments)]
     pub fn create(
         &mut self,
@@ -412,7 +407,7 @@ impl<L: Ledger + Serialize + DeserializeOwned> Transactions<L> {
         inputs: Vec<RecordOpening>,
         outputs: Vec<RecordOpening>,
         time: DateTime<Local>,
-        asset: AssetCode,
+        transaction: AssetCode,
         kind: TransactionKind<L>,
         senders: Vec<UserAddress>,
         receivers: Vec<(UserAddress, RecordAmount)>,
@@ -430,13 +425,13 @@ impl<L: Ledger + Serialize + DeserializeOwned> Transactions<L> {
             inputs,
             outputs,
             time,
-            asset,
+            transaction,
             kind,
             senders,
             receivers,
-            fee_change: None,   // fee_change
-            asset_change: None, // asset_change
-            receipt: None,      // receipt
+            fee_change: None,         // fee_change
+            transaction_change: None, // transaction_change
+            receipt: None,            // receipt
         };
         self.expiring_txns
             .entry(timeout)
