@@ -35,6 +35,7 @@ mod secret;
 pub mod sparse_merkle_tree;
 #[cfg(any(test, bench, feature = "testing"))]
 pub mod testing;
+pub mod transactions;
 pub mod txn_builder;
 
 use crate::sparse_merkle_tree::SparseMerkleTree;
