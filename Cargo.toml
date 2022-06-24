@@ -69,6 +69,7 @@ rand = "0.8.5"
 reef = { git = "https://github.com/EspressoSystems/reef.git", features = ["testing"] }
 
 [features]
+slow-tests = []
 testing = ["proptest", "criterion", "reef/testing"]
 
 [[bench]]
