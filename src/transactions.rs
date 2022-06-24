@@ -97,6 +97,9 @@ impl<L: Ledger> Transaction<L> {
     pub fn uid(&self) -> &TransactionUID<L> {
         &self.uid
     }
+    pub fn timeout(&self) -> u64 {
+        self.timeout
+    }
     /// Get the reciever memos.
     pub fn memos(&self) -> &Vec<Option<ReceiverMemo>> {
         &self.memos
@@ -176,16 +179,14 @@ impl<'a, L: Ledger + Serialize + DeserializeOwned> TransactionEditor<'a, L> {
         self
     }
 
-    pub fn add_pending_uids(mut self, uids: impl Iterator<Item = u64>) -> Self {
+    pub fn add_pending_uids(mut self, uids: &Vec<u64>) -> Self {
         for uid in uids {
-            self.transaction.pending_uids.insert(uid);
+            self.transaction.pending_uids.insert(*uid);
         }
         self
     }
-    pub fn remove_pending_uids(mut self, uids: impl Iterator<Item = u64>) -> Self {
-        for uid in uids {
-            self.transaction.pending_uids.remove(&uid);
-        }
+    pub fn remove_pending_uid(mut self, uid: u64) -> Self {
+        self.transaction.pending_uids.remove(&uid);
         self
     }
 
@@ -229,11 +230,27 @@ impl<L: Ledger + Serialize + DeserializeOwned> Transactions<L> {
     ///
     /// None of the loaded assets will be verified until `verify_assets` is called.
     pub fn new(store: TransactionsStore<L>) -> Result<Self, KeystoreError<L>> {
+        let txn_by_hash = store
+            .iter()
+            .filter(|txn| txn.hash.is_some())
+            .map(|txn| (txn.hash.as_ref().unwrap().clone(), txn.uid().clone()))
+            .collect();
+        let mut expiring_txns = BTreeMap::new();
+        let mut uids_awaiting_memos = HashMap::new();
+        for txn in store.iter() {
+            expiring_txns
+                .entry(txn.timeout())
+                .or_insert_with(HashSet::default)
+                .insert(txn.uid().clone());
+            for pending in &txn.pending_uids {
+                uids_awaiting_memos.insert(*pending, txn.uid().clone());
+            }
+        }
         Ok(Self {
             store,
-            txn_by_hash: HashMap::new(),
-            expiring_txns: BTreeMap::new(),
-            uids_awaiting_memos: HashMap::new(),
+            txn_by_hash,
+            expiring_txns,
+            uids_awaiting_memos,
         })
     }
 
@@ -256,6 +273,49 @@ impl<L: Ledger + Serialize + DeserializeOwned> Transactions<L> {
         Ok(TransactionEditor::new(&mut self.store, txn))
     }
 
+    pub fn with_memo_id(&self, id: u64) -> Result<Transaction<L>, KeystoreError<L>> {
+        let uid = self
+            .uids_awaiting_memos
+            .get(&id)
+            .ok_or(KeyValueStoreError::KeyNotFound)?;
+        Ok(self.get(uid).unwrap())
+    }
+
+    pub fn with_memo_id_mut(
+        &mut self,
+        id: u64,
+    ) -> Result<TransactionEditor<'_, L>, KeystoreError<L>> {
+        let txn = self.with_memo_id(id)?;
+        Ok(TransactionEditor::new(&mut self.store, txn))
+    }
+
+    pub fn with_hash(&self, hash: &TransactionHash<L>) -> Result<Transaction<L>, KeystoreError<L>> {
+        let uid = self
+            .txn_by_hash
+            .get(&hash)
+            .ok_or(KeyValueStoreError::KeyNotFound)?;
+        Ok(self.get(uid).unwrap())
+    }
+
+    pub fn with_hash_mut(
+        &mut self,
+        hash: &TransactionHash<L>,
+    ) -> Result<TransactionEditor<'_, L>, KeystoreError<L>> {
+        let txn = self.with_hash(hash)?;
+        Ok(TransactionEditor::new(&mut self.store, txn))
+    }
+
+    /// Get all the transactions timing out at the provided time.  There is no mutable way to get this
+    /// Collection because we should only be edditing one thing at a time
+    pub fn with_timeout(&self, timeout: u64) -> Result<Vec<Transaction<L>>, KeystoreError<L>> {
+        let uids = self
+            .expiring_txns
+            .get(&timeout)
+            .ok_or(KeyValueStoreError::KeyNotFound)?;
+
+        Ok(uids.iter().map(|uid| self.get(uid).unwrap()).collect())
+    }
+
     /// Commit the store version.
     pub fn commit(&mut self) -> Result<(), KeystoreError<L>> {
         Ok(self.store.commit_version()?)
@@ -266,23 +326,55 @@ impl<L: Ledger + Serialize + DeserializeOwned> Transactions<L> {
         Ok(self.store.revert_version()?)
     }
 
-    pub fn insert_hash(&mut self, hash: TransactionHash<L>, uid: TransactionUID<L>) {
-        self.txn_by_hash.insert(hash, uid);
+    pub fn insert_hash(
+        &mut self,
+        hash: TransactionHash<L>,
+        uid: &TransactionUID<L>,
+    ) -> Result<(), KeystoreError<L>> {
+        let editor = self.get_mut(uid)?;
+        editor.with_hash(hash.clone()).save()?;
+        self.txn_by_hash.insert(hash, uid.clone());
+        Ok(())
     }
-    pub fn add_pending_uids(&mut self, pending_uid: u64, txn_uid: TransactionUID<L>) {
-        self.uids_awaiting_memos.insert(pending_uid, txn_uid);
+    pub fn add_pending_uids(
+        &mut self,
+        txn_uid: &TransactionUID<L>,
+        pending_uids: Vec<u64>,
+    ) -> Result<(), KeystoreError<L>> {
+        let txn_editor = self.get_mut(txn_uid)?;
+        txn_editor.add_pending_uids(&pending_uids).save()?;
+        for uid in pending_uids {
+            self.uids_awaiting_memos.insert(uid, txn_uid.clone());
+        }
+
+        Ok(())
     }
-    pub fn remove_pending_uids(&mut self, pending_uid: u64) {
-        self.uids_awaiting_memos.remove(&pending_uid);
+    pub async fn remove_pending_uids(
+        &mut self,
+        pending_uids: Vec<u64>,
+    ) -> Result<(), KeystoreError<L>> {
+        for uid in pending_uids {
+            if let Some(txn_uid) = self.uids_awaiting_memos.remove(&uid) {
+                let txn_editor = self.get_mut(&txn_uid)?;
+                txn_editor.remove_pending_uid(uid).save()?;
+            }
+        }
+
+        Ok(())
     }
 
-    pub fn remove_pending(&mut self, timeout: u64, uid: &TransactionUID<L>) {
+    pub async fn remove_pending(
+        &mut self,
+        timeout: u64,
+        uid: &TransactionUID<L>,
+    ) -> Result<(), KeystoreError<L>> {
         if let Some(expiring) = self.expiring_txns.get_mut(&timeout) {
             expiring.remove(uid);
             if expiring.is_empty() {
                 self.expiring_txns.remove(&timeout);
             }
         }
+        Ok(())
     }
 
     /// Create an unverified asset.
