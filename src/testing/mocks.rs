@@ -363,7 +363,7 @@ pub type MockBackend<'a> = MockBackendWithHeight<'a, 5>;
 pub type MockNetwork<'a> = MockNetworkWithHeight<'a, 5>;
 pub type MockSystem = MockSystemWithHeight<5>;
 
-#[cfg(all(test, feature = "slow-tests"))]
+#[cfg(test)]
 mod tests {
     use super::super::generic_keystore_tests;
     instantiate_generic_keystore_tests!(super::MockSystem);
