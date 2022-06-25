@@ -4,7 +4,7 @@
 // This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
 // This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 // You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
-#![deny(warnings)]
+// #![deny(warnings)]
 
 use super::*;
 use chrono::Duration;
@@ -2481,8 +2481,9 @@ pub mod generic_keystore_tests {
         // Check that temporary assets are not persisted, and that persisted assets are never
         // verified.
         {
-            let storage = &keystores[0].0.lock().await.session.storage;
-            let atomic_store = &mut keystores[0].0.lock().await.session.atomic_store;
+            let session = &mut keystores[0].0.lock().await.session;
+            let storage = &session.storage;
+            let atomic_store = &mut session.atomic_store;
             let loaded = storage.lock().await.load().await.unwrap();
             assert!(loaded.assets.iter().all(|asset| !asset.verified));
             assert!(loaded.assets.contains(AssetCode::native()));
@@ -2513,8 +2514,9 @@ pub mod generic_keystore_tests {
 
         // Check that `asset2` is now persisted, but still no assets in storage are verified.
         {
-            let storage = &keystores[0].0.mutex.lock().await.session.storage;
-            let atomic_store = &mut keystores[0].0.lock().await.session.atomic_store;
+            let session = &mut keystores[0].0.lock().await.session;
+            let storage = &session.storage;
+            let atomic_store = &mut session.atomic_store;
             let loaded = storage.lock().await.load().await.unwrap();
             assert!(loaded.assets.iter().all(|asset| !asset.verified));
             assert!(loaded.assets.contains(AssetCode::native()));
@@ -2528,8 +2530,9 @@ pub mod generic_keystore_tests {
         // with the verified information, we get back the current in-memory information (which was
         // generated in a different order).
         let loaded = {
-            let storage = &keystores[0].0.mutex.lock().await.session.storage;
-            let atomic_store = &mut keystores[0].0.lock().await.session.atomic_store;
+            let session = &mut keystores[0].0.lock().await.session;
+            let storage = &session.storage;
+            let atomic_store = &mut session.atomic_store;
             let mut assets = storage.lock().await.load().await.unwrap().assets;
             atomic_store.commit_version().unwrap();
             for asset in &imported {
