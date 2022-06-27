@@ -20,7 +20,7 @@ jobs:
       image: registry.gitlab.com/asuran-rs/containers/rust-sccache-docker:1.56
     steps:
       - name: Cancel Outdated Builds
-        uses: styfle/cancel-workflow-action@0.9.1
+        uses: styfle/cancel-workflow-action@0.10.0
         with:
           all_but_latest: true
           access_token: ${{ github.token }}
