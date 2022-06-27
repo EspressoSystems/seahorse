@@ -274,8 +274,10 @@ mod test {
     use super::*;
     use ark_std::UniformRand;
     use quickcheck::Gen;
+    #[cfg(feature = "slow-tests")]
     use quickcheck_macros::quickcheck;
     use rand_chacha::{rand_core::SeedableRng, ChaChaRng};
+    #[cfg(feature = "slow-tests")]
     use std::collections::HashSet;
 
     #[derive(Clone, Debug)]
@@ -301,6 +303,7 @@ mod test {
         }
     }
 
+    #[cfg(feature = "slow-tests")]
     #[quickcheck]
     fn quickcheck_sparse_merkle_tree(ops: Vec<MerkleOp>) -> bool {
         // We will do the same pushes to both `sparse_tree` and `full_tree`, but only forget/
