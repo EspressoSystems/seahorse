@@ -60,6 +60,7 @@ use async_scoped::AsyncScope;
 use async_std::sync::{Mutex, MutexGuard};
 use async_std::task::block_on;
 use async_trait::async_trait;
+use atomic_store::{AtomicStore, AtomicStoreLoader};
 use core::fmt::Debug;
 use espresso_macros::ser_test;
 use futures::{channel::oneshot, prelude::*, stream::Stream};
@@ -175,6 +176,12 @@ pub enum KeystoreError<L: Ledger> {
     InvalidViewerKey {
         key: ViewerPubKey,
     },
+}
+
+impl<L: Ledger> From<atomic_store::error::PersistenceError> for KeystoreError<L> {
+    fn from(source: atomic_store::error::PersistenceError) -> Self {
+        Self::PersistenceError { source }
+    }
 }
 
 impl<L: Ledger> From<crate::txn_builder::TransactionError> for KeystoreError<L> {
@@ -462,6 +469,7 @@ pub struct KeystoreSession<
     Meta: Serialize + DeserializeOwned + Send,
 > {
     backend: Backend,
+    atomic_store: AtomicStore,
     storage: Arc<Mutex<AtomicKeystoreStorage<'a, L, Meta>>>,
     rng: ChaChaRng,
     viewer_key_stream: hd::KeyTree,
@@ -501,7 +509,9 @@ impl<'a, L: Ledger, Backend: KeystoreBackend<'a, L>, Meta: Serialize + Deseriali
             txn.storage().await.commit().await;
             Ok(())
         });
-        fut.await
+        fut.await?;
+        self.atomic_store.commit_version()?;
+        Ok(())
     }
 
     /// Access the persistent storage layer
@@ -1742,7 +1752,9 @@ impl<
         mut backend: Backend,
         loader: &mut impl KeystoreLoader<L, Meta = Meta>,
     ) -> BoxFuture<'a, Result<Keystore<'a, Backend, L, Meta>, KeystoreError<L>>> {
-        let mut storage = AtomicKeystoreStorage::new(loader, 1024).unwrap();
+        let mut atomic_loader = AtomicStoreLoader::load(&loader.location(), "keystore").unwrap();
+        let mut storage = AtomicKeystoreStorage::new(loader, &mut atomic_loader, 1024).unwrap();
+        let mut atomic_store = AtomicStore::open(atomic_loader).unwrap();
         Box::pin(async move {
             let state = if storage.exists() {
                 storage.load().await?
@@ -1751,7 +1763,8 @@ impl<
                 storage.create(&state).await?;
                 state
             };
-            Self::new_impl(backend, storage, state).await
+            atomic_store.commit_version()?;
+            Self::new_impl(backend, atomic_store, storage, state).await
         })
     }
 
@@ -1761,12 +1774,15 @@ impl<
         loader: &mut impl KeystoreLoader<L, Meta = Meta>,
         state: KeystoreState<'a, L>,
     ) -> BoxFuture<'a, Result<Keystore<'a, Backend, L, Meta>, KeystoreError<L>>> {
-        let storage = AtomicKeystoreStorage::new(loader, 1024).unwrap();
-        Box::pin(async move { Self::new_impl(backend, storage, state).await })
+        let mut atomic_loader = AtomicStoreLoader::load(&loader.location(), "keystore").unwrap();
+        let storage = AtomicKeystoreStorage::new(loader, &mut atomic_loader, 1024).unwrap();
+        let atomic_store = AtomicStore::open(atomic_loader).unwrap();
+        Box::pin(async move { Self::new_impl(backend, atomic_store, storage, state).await })
     }
 
     async fn new_impl(
         backend: Backend,
+        atomic_store: AtomicStore,
         storage: AtomicKeystoreStorage<'a, L, Meta>,
         mut state: KeystoreState<'a, L>,
     ) -> Result<Keystore<'a, Backend, L, Meta>, KeystoreError<L>> {
@@ -1783,6 +1799,7 @@ impl<
         let key_tree = storage.key_stream();
         let session = KeystoreSession {
             backend,
+            atomic_store,
             storage: Arc::new(Mutex::new(storage)),
             rng: ChaChaRng::from_entropy(),
             viewer_key_stream: key_tree.derive_sub_tree("viewer".as_bytes()),
