@@ -7,31 +7,89 @@
 
 //! Ledger-agnostic implementation of [KeystoreStorage].
 use crate::{
-    accounts::Account,
-    assets::{Asset, Assets, AssetsStore},
-    encryption::Cipher,
-    hd::KeyTree,
-    loader::KeystoreLoader,
-    txn_builder::TransactionState,
+    accounts::Account, hd::KeyTree, txn_builder::TransactionState, EncryptingResourceAdapter,
     KeyStreamState, KeystoreError, KeystoreState, TransactionHistoryEntry,
 };
 use arbitrary::{Arbitrary, Unstructured};
 use async_std::sync::Arc;
-use atomic_store::{
-    error::PersistenceError,
-    load_store::{BincodeLoadStore, LoadStore},
-    AppendLog, AtomicStoreLoader, RollingLog,
-};
+use atomic_store::{load_store::BincodeLoadStore, AppendLog, AtomicStoreLoader, RollingLog};
 use espresso_macros::ser_test;
-use jf_cap::{
-    keys::{FreezerKeyPair, UserKeyPair, ViewerKeyPair},
-    structs::AssetCode,
+use jf_cap::keys::{
+    FreezerKeyPair, FreezerPubKey, UserAddress, UserKeyPair, ViewerKeyPair, ViewerPubKey,
 };
 use key_set::{OrderByOutputs, ProverKeySet};
-use rand_chacha::{rand_core::SeedableRng, ChaChaRng};
 use reef::*;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use snafu::ResultExt;
+use std::collections::HashMap;
+
+/// The persistence data that determines the static and dynamic states of a keystore.
+pub struct PersistenceState<'a, L: Ledger> {
+    // For persistence, the fields in this struct are grouped into two categories based on how they
+    // can be efficiently saved to disk:
+    // 1. Static data, which never changes once a keystore is created, and so can be written to a
+    //    single, static file.
+    // 2. Dynamic data, which changes frequently and requires some kind of persistent snapshotting.
+    //
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    // Static data
+    //
+    // proving key set. The proving keys are ordered by number of outputs first and number of inputs
+    // second, because the keystore is less flexible with respect to number of outputs. If we are
+    // building a transaction and find we have too many inputs we can always generate a merge
+    // transaction to defragment, but if the user requests a transaction with N independent outputs,
+    // there is nothing we can do to decrease that number. So when searching for an appropriate
+    // proving key, we will want to find a key with enough outputs first, and then worry about the
+    // number of inputs.
+    //
+    // We keep the prover keys in an Arc because they are large, constant, and depend only on the
+    // universal parameters of the system. This allows sharing them, which drastically decreases the
+    // memory requirements of applications that create multiple keystores. This is not very realistic
+    // for real applications, but it is very important for tests and costs little.
+    //
+    /// Proving keys.
+    ///
+    /// These are the keys used to generate Plonk proofs. There is one key for each transaction
+    /// type (mint, freezes with varying numbers of input records, and transfers with varying
+    /// numbers of input and output records). The supported transaction types must match the
+    /// transaction types supported by the verifying keys maintained by validators.
+    ///
+    /// These keys are constructed when the keystore is created, and they never change afterwards.
+    pub proving_keys: Arc<ProverKeySet<'a, key_set::OrderByOutputs>>,
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    // Dynamic state
+    //
+    /// Transaction building state.
+    ///
+    /// Everything we need to know about the state of the ledger in order to build transactions.
+    pub txn_state: TransactionState<L>,
+    /// HD key generation state.
+    pub key_state: KeyStreamState,
+    /// Viewing keys.
+    pub viewing_accounts: HashMap<ViewerPubKey, Account<L, ViewerKeyPair>>,
+    /// Freezing keys.
+    pub freezing_accounts: HashMap<FreezerPubKey, Account<L, FreezerKeyPair>>,
+    /// Sending keys, for spending owned records and receiving new records.
+    ///
+    /// Each public key in this set also includes a [UserAddress], which can be used to sign
+    /// outgoing transactions, as well as an encryption public key used by other users to encrypt
+    /// owner memos when sending records to this keystore.
+    pub sending_accounts: HashMap<UserAddress, Account<L, UserKeyPair>>,
+}
+
+impl<'a, L: Ledger> From<&KeystoreState<'a, L>> for PersistenceState<'a, L> {
+    fn from(w: &KeystoreState<'a, L>) -> Self {
+        Self {
+            proving_keys: w.proving_keys.clone(),
+            txn_state: w.txn_state.clone(),
+            key_state: w.key_state.clone(),
+            viewing_accounts: w.viewing_accounts.clone(),
+            freezing_accounts: w.freezing_accounts.clone(),
+            sending_accounts: w.sending_accounts.clone(),
+        }
+    }
+}
 
 // Serialization intermediate for the static part of a KeystoreState.
 #[derive(Deserialize, Serialize, Debug)]
@@ -40,8 +98,8 @@ struct KeystoreStaticState<'a> {
     proving_keys: Arc<ProverKeySet<'a, OrderByOutputs>>,
 }
 
-impl<'a, L: Ledger> From<&KeystoreState<'a, L>> for KeystoreStaticState<'a> {
-    fn from(w: &KeystoreState<'a, L>) -> Self {
+impl<'a, L: Ledger> From<&PersistenceState<'a, L>> for KeystoreStaticState<'a> {
+    fn from(w: &PersistenceState<'a, L>) -> Self {
         Self {
             proving_keys: w.proving_keys.clone(),
         }
@@ -95,8 +153,8 @@ impl<L: Ledger> PartialEq<Self> for KeystoreSnapshot<L> {
     }
 }
 
-impl<'a, L: Ledger> From<&KeystoreState<'a, L>> for KeystoreSnapshot<L> {
-    fn from(w: &KeystoreState<'a, L>) -> Self {
+impl<'a, L: Ledger> From<&PersistenceState<'a, L>> for KeystoreSnapshot<L> {
+    fn from(w: &PersistenceState<'a, L>) -> Self {
         Self {
             txn_state: w.txn_state.clone(),
             key_state: w.key_state.clone(),
@@ -123,55 +181,6 @@ where
     }
 }
 
-pub struct EncryptingResourceAdapter<T> {
-    cipher: Cipher<ChaChaRng>,
-    _phantom: std::marker::PhantomData<T>,
-}
-
-impl<T> EncryptingResourceAdapter<T> {
-    fn new(key: KeyTree) -> Self {
-        Self {
-            cipher: Cipher::new(key, ChaChaRng::from_entropy()),
-            _phantom: Default::default(),
-        }
-    }
-
-    fn cast<S>(&self) -> EncryptingResourceAdapter<S> {
-        EncryptingResourceAdapter {
-            cipher: self.cipher.clone(),
-            _phantom: Default::default(),
-        }
-    }
-}
-
-impl<T: Serialize + DeserializeOwned> LoadStore for EncryptingResourceAdapter<T> {
-    type ParamType = T;
-
-    fn load(&self, stream: &[u8]) -> Result<Self::ParamType, PersistenceError> {
-        let ciphertext = bincode::deserialize(stream)
-            .map_err(|source| PersistenceError::BincodeDe { source })?;
-        let plaintext =
-            self.cipher
-                .decrypt(&ciphertext)
-                .map_err(|err| PersistenceError::OtherLoad {
-                    inner: Box::new(err),
-                })?;
-        bincode::deserialize(&plaintext).map_err(|source| PersistenceError::BincodeDe { source })
-    }
-
-    fn store(&mut self, param: &Self::ParamType) -> Result<Vec<u8>, PersistenceError> {
-        let plaintext =
-            bincode::serialize(param).map_err(|source| PersistenceError::BincodeSer { source })?;
-        let ciphertext =
-            self.cipher
-                .encrypt(&plaintext)
-                .map_err(|err| PersistenceError::OtherStore {
-                    inner: Box::new(err),
-                })?;
-        bincode::serialize(&ciphertext).map_err(|source| PersistenceError::BincodeSer { source })
-    }
-}
-
 pub struct AtomicKeystoreStorage<'a, L: Ledger, Meta: Serialize + DeserializeOwned> {
     // Metadata given at initialization time that may not have been written to disk yet.
     meta: Meta,
@@ -186,7 +195,6 @@ pub struct AtomicKeystoreStorage<'a, L: Ledger, Meta: Serialize + DeserializeOwn
     static_dirty: bool,
     dynamic_state: RollingLog<EncryptingResourceAdapter<KeystoreSnapshot<L>>>,
     dynamic_state_dirty: bool,
-    assets: Assets,
     assets_dirty: bool,
     txn_history: AppendLog<EncryptingResourceAdapter<TransactionHistoryEntry<L>>>,
     txn_history_dirty: bool,
@@ -196,69 +204,32 @@ pub struct AtomicKeystoreStorage<'a, L: Ledger, Meta: Serialize + DeserializeOwn
 impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned + Clone + PartialEq>
     AtomicKeystoreStorage<'a, L, Meta>
 {
-    pub fn new(
-        loader: &mut impl KeystoreLoader<L, Meta = Meta>,
+    pub fn new<T>(
+        adapter: EncryptingResourceAdapter<T>,
         atomic_loader: &mut AtomicStoreLoader,
         file_fill_size: u64,
+        meta: Meta,
+        persisted_meta: RollingLog<BincodeLoadStore<Meta>>,
+        meta_dirty: bool,
+        key: KeyTree,
     ) -> Result<Self, KeystoreError<L>> {
-        // Load the metadata first so the loader can use it to generate the encryption key needed to
-        // read the rest of the data.
-        let mut persisted_meta = RollingLog::load(
-            atomic_loader,
-            BincodeLoadStore::<Meta>::default(),
-            "keystore_meta",
-            1024,
-        )
-        .context(crate::PersistenceSnafu)?;
-        let (meta, key, meta_dirty) = match persisted_meta.load_latest() {
-            Ok(mut meta) => {
-                let old_meta = meta.clone();
-                let key = loader.load(&mut meta)?;
-
-                // Store the new metadata if the loader changed it
-                if meta != old_meta {
-                    persisted_meta
-                        .store_resource(&meta)
-                        .context(crate::PersistenceSnafu)?;
-                    (meta, key, true)
-                } else {
-                    (meta, key, false)
-                }
-            }
-            Err(_) => {
-                // If there is no persisted metadata, ask the loader to generate a new keystore.
-                let (meta, key) = loader.create()?;
-                (meta, key, false)
-            }
-        };
-
-        let adaptor = EncryptingResourceAdapter::<()>::new(key.derive_sub_tree("enc".as_bytes()));
         let static_data = RollingLog::load(
             atomic_loader,
-            adaptor.cast(),
+            adapter.cast(),
             "keystore_static",
             file_fill_size,
         )
         .context(crate::PersistenceSnafu)?;
         let dynamic_state = RollingLog::load(
             atomic_loader,
-            adaptor.cast(),
+            adapter.cast(),
             "keystore_dyn",
             file_fill_size,
         )
         .context(crate::PersistenceSnafu)?;
-        let assets = Assets::new(AssetsStore::new(
-            AppendLog::load(
-                atomic_loader,
-                adaptor.cast(),
-                "keystore_assets",
-                file_fill_size,
-            )
-            .context(crate::PersistenceSnafu)?,
-        )?)?;
         let txn_history = AppendLog::load(
             atomic_loader,
-            adaptor.cast(),
+            adapter.cast(),
             "keystore_txns",
             file_fill_size,
         )
@@ -272,7 +243,6 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned + Clone + PartialE
             static_dirty: false,
             dynamic_state,
             dynamic_state_dirty: false,
-            assets,
             assets_dirty: false,
             txn_history,
             txn_history_dirty: false,
@@ -284,7 +254,7 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned + Clone + PartialE
 impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicKeystoreStorage<'a, L, Meta> {
     pub async fn create(
         mut self: &mut Self,
-        w: &KeystoreState<'a, L>,
+        w: &PersistenceState<'a, L>,
     ) -> Result<(), KeystoreError<L>> {
         // Store the initial static and dynamic state, and the metadata. We do this in a closure so
         // that if any operation fails, it will exit the closure but not this function, and we can
@@ -330,7 +300,7 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicKeystoreSto
         self.persisted_meta.load_latest().is_ok()
     }
 
-    pub async fn load(&mut self) -> Result<KeystoreState<'a, L>, KeystoreError<L>> {
+    pub async fn load(&mut self) -> Result<PersistenceState<'a, L>, KeystoreError<L>> {
         // This function is called once, when the keystore is loaded. It is a good place to persist
         // changes to the metadata that happened during loading.
         self.commit().await;
@@ -345,16 +315,13 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicKeystoreSto
             .load_latest()
             .context(crate::PersistenceSnafu)?;
 
-        Ok(KeystoreState {
+        Ok(PersistenceState {
             // Static state
             proving_keys: static_state.proving_keys,
 
             // Dynamic state
             txn_state: dynamic_state.txn_state,
             key_state: dynamic_state.key_state,
-
-            // Monotonic state
-            assets: self.assets,
             viewing_accounts: dynamic_state
                 .viewing_accounts
                 .into_iter()
@@ -375,7 +342,7 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicKeystoreSto
 
     pub async fn store_snapshot(
         &mut self,
-        w: &KeystoreState<'a, L>,
+        w: &PersistenceState<'a, L>,
     ) -> Result<(), KeystoreError<L>> {
         self.dynamic_state
             .store_resource(&KeystoreSnapshot::from(w))
@@ -450,6 +417,7 @@ mod tests {
     use super::*;
     use crate::{
         events::{EventIndex, EventSource},
+        loader::KeystoreLoader,
         sparse_merkle_tree::SparseMerkleTree,
         testing::assert_keystore_states_eq,
         txn_builder::{PendingTransaction, TransactionInfo, TransactionUID},
@@ -536,7 +504,7 @@ mod tests {
     async fn get_test_state(
         name: &str,
     ) -> (
-        KeystoreState<'static, cap::Ledger>,
+        PersistenceState<'static, cap::Ledger>,
         MockKeystoreLoader,
         ChaChaRng,
     ) {
@@ -567,7 +535,7 @@ mod tests {
         let record_merkle_tree = SparseMerkleTree::new(cap::Ledger::merkle_height()).unwrap();
         let validator = cap::Validator::default();
 
-        let state = KeystoreState {
+        let state = PersistenceState {
             proving_keys: Arc::new(ProverKeySet {
                 xfr: KeySet::new(xfr_prove_keys.into_iter()).unwrap(),
                 freeze: KeySet::new(vec![freeze_prove_key].into_iter()).unwrap(),
@@ -582,7 +550,6 @@ mod tests {
                 transactions: Default::default(),
             },
             key_state: Default::default(),
-            assets: Default::default(),
             viewing_accounts: Default::default(),
             freezing_accounts: Default::default(),
             sending_accounts: Default::default(),

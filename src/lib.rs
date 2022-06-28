@@ -49,10 +49,13 @@ pub use reef;
 use crate::{
     accounts::{Account, AccountInfo},
     asset_library::VerifiedAssetLibrary,
+    assets::AssetsStore,
+    encryption::Cipher,
     events::{EventIndex, EventSource, LedgerEvent},
+    hd::KeyTree,
     key_scan::{receive_history_entry, BackgroundKeyScan, ScanOutputs},
     loader::KeystoreLoader,
-    persistence::AtomicKeystoreStorage,
+    persistence::{AtomicKeystoreStorage, PersistenceState},
     txn_builder::*,
 };
 use arbitrary::Arbitrary;
@@ -60,7 +63,11 @@ use async_scoped::AsyncScope;
 use async_std::sync::{Mutex, MutexGuard};
 use async_std::task::block_on;
 use async_trait::async_trait;
-use atomic_store::{AtomicStore, AtomicStoreLoader};
+use atomic_store::{
+    error::PersistenceError as ASPersistenceError,
+    load_store::{BincodeLoadStore, LoadStore},
+    AppendLog, AtomicStore, AtomicStoreLoader, RollingLog,
+};
 use core::fmt::Debug;
 use espresso_macros::ser_test;
 use futures::{channel::oneshot, prelude::*, stream::Stream};
@@ -82,8 +89,7 @@ use jf_cap::{
 use jf_primitives::aead;
 use key_set::ProverKeySet;
 use primitive_types::U256;
-use rand_chacha::rand_core::SeedableRng;
-use rand_chacha::ChaChaRng;
+use rand_chacha::{rand_core::SeedableRng, ChaChaRng};
 use reef::{
     traits::{
         Block as _, NullifierSet as _, Transaction as _, ValidationError as _, Validator as _,
@@ -178,8 +184,8 @@ pub enum KeystoreError<L: Ledger> {
     },
 }
 
-impl<L: Ledger> From<atomic_store::error::PersistenceError> for KeystoreError<L> {
-    fn from(source: atomic_store::error::PersistenceError) -> Self {
+impl<L: Ledger> From<ASPersistenceError> for KeystoreError<L> {
+    fn from(source: ASPersistenceError) -> Self {
         Self::PersistenceError { source }
     }
 }
@@ -219,6 +225,7 @@ pub struct KeystoreState<'a, L: Ledger> {
     // 2. Dynamic data, which changes frequently and requires some kind of persistent snapshotting.
     // 3. Monotonic data, which consists of sets of objects which only grow over the lifetime of the
     //    keystore, and so can be persisted in an append-only log.
+    // Static and dynamic data can be constructed by a persistence state.
     //
     ////////////////////////////////////////////////////////////////////////////////////////////////
     // Static data
@@ -277,6 +284,20 @@ pub struct KeystoreState<'a, L: Ledger> {
     pub assets: Assets,
 }
 
+impl<'a, L: Ledger> KeystoreState<'a, L> {
+    fn new(persistence_state: PersistenceState<'a, L>, assets: Assets) -> Self {
+        Self {
+            proving_keys: persistence_state.proving_keys.clone(),
+            txn_state: persistence_state.txn_state.clone(),
+            key_state: persistence_state.key_state.clone(),
+            viewing_accounts: persistence_state.viewing_accounts.clone(),
+            freezing_accounts: persistence_state.freezing_accounts.clone(),
+            sending_accounts: persistence_state.sending_accounts.clone(),
+            assets,
+        }
+    }
+}
+
 /// Interface for atomic storage transactions.
 ///
 /// Any changes made to the persistent storage state through this struct will be part of a single
@@ -326,7 +347,11 @@ impl<
         state: &KeystoreState<'a, L>,
     ) -> Result<(), KeystoreError<L>> {
         if !self.cancelled {
-            let res = self.storage().await.store_snapshot(state).await;
+            let res = self
+                .storage()
+                .await
+                .store_snapshot(&PersistenceState::from(state))
+                .await;
             if res.is_err() {
                 self.cancel().await;
             }
@@ -378,7 +403,7 @@ impl<
 
 /// The interface required by the keystore from a specific network/ledger implementation.
 ///
-/// This trait is the adaptor for ledger-specific plugins into the ledger-agnostic [Keystore]
+/// This trait is the adapter for ledger-specific plugins into the ledger-agnostic [Keystore]
 /// implementation. It provides an interface for the ledger-agnostic keystore to communicate with
 /// remote network participants for a particular ledger. Implementing this trait for your specific
 /// ledger enables the use of the full generic [Keystore] interface with your ledger.
@@ -1673,6 +1698,55 @@ pub struct Keystore<
     task_scope: AsyncScope<'a, ()>,
 }
 
+pub struct EncryptingResourceAdapter<T> {
+    cipher: Cipher<ChaChaRng>,
+    _phantom: std::marker::PhantomData<T>,
+}
+
+impl<T> EncryptingResourceAdapter<T> {
+    fn new(key: KeyTree) -> Self {
+        Self {
+            cipher: Cipher::new(key, ChaChaRng::from_entropy()),
+            _phantom: Default::default(),
+        }
+    }
+
+    fn cast<S>(&self) -> EncryptingResourceAdapter<S> {
+        EncryptingResourceAdapter {
+            cipher: self.cipher.clone(),
+            _phantom: Default::default(),
+        }
+    }
+}
+
+impl<T: Serialize + DeserializeOwned> LoadStore for EncryptingResourceAdapter<T> {
+    type ParamType = T;
+
+    fn load(&self, stream: &[u8]) -> Result<Self::ParamType, ASPersistenceError> {
+        let ciphertext = bincode::deserialize(stream)
+            .map_err(|source| ASPersistenceError::BincodeDe { source })?;
+        let plaintext =
+            self.cipher
+                .decrypt(&ciphertext)
+                .map_err(|err| ASPersistenceError::OtherLoad {
+                    inner: Box::new(err),
+                })?;
+        bincode::deserialize(&plaintext).map_err(|source| ASPersistenceError::BincodeDe { source })
+    }
+
+    fn store(&mut self, param: &Self::ParamType) -> Result<Vec<u8>, ASPersistenceError> {
+        let plaintext = bincode::serialize(param)
+            .map_err(|source| ASPersistenceError::BincodeSer { source })?;
+        let ciphertext =
+            self.cipher
+                .encrypt(&plaintext)
+                .map_err(|err| ASPersistenceError::OtherStore {
+                    inner: Box::new(err),
+                })?;
+        bincode::serialize(&ciphertext).map_err(|source| ASPersistenceError::BincodeSer { source })
+    }
+}
+
 /// Keystore state which is shared with event handling threads.
 pub struct KeystoreSharedState<
     'a,
@@ -1753,17 +1827,72 @@ impl<
         loader: &mut impl KeystoreLoader<L, Meta = Meta>,
     ) -> BoxFuture<'a, Result<Keystore<'a, Backend, L, Meta>, KeystoreError<L>>> {
         let mut atomic_loader = AtomicStoreLoader::load(&loader.location(), "keystore").unwrap();
-        let mut storage = AtomicKeystoreStorage::new(loader, &mut atomic_loader, 1024).unwrap();
+        // Load the metadata first so the loader can use it to generate the encryption key needed to
+        // read the rest of the data.
+        let mut persisted_meta = RollingLog::load(
+            &mut atomic_loader,
+            BincodeLoadStore::<Meta>::default(),
+            "keystore_meta",
+            1024,
+        )
+        .unwrap();
+        let (meta, key, meta_dirty) = match persisted_meta.load_latest() {
+            Ok(mut meta) => {
+                let old_meta = meta.clone();
+                let key = loader.load(&mut meta).unwrap();
+
+                // Store the new metadata if the loader changed it
+                if meta != old_meta {
+                    persisted_meta.store_resource(&meta).unwrap();
+                    (meta, key, true)
+                } else {
+                    (meta, key, false)
+                }
+            }
+            Err(_) => {
+                // If there is no persisted metadata, ask the loader to generate a new keystore.
+                let (meta, key) = loader.create().unwrap();
+                (meta, key, false)
+            }
+        };
+        let adapter = EncryptingResourceAdapter::<()>::new(key.derive_sub_tree("enc".as_bytes()));
+        let file_fill_size = 1024;
+        let mut storage = AtomicKeystoreStorage::new(
+            adapter,
+            &mut atomic_loader,
+            file_fill_size,
+            meta,
+            persisted_meta,
+            meta_dirty,
+            key,
+        )
+        .unwrap();
+        let mut assets = Assets::new::<L>(
+            AssetsStore::new(
+                AppendLog::load(
+                    &mut atomic_loader,
+                    adapter.cast(),
+                    "keystore_assets",
+                    file_fill_size,
+                )
+                .unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut atomic_store = AtomicStore::open(atomic_loader).unwrap();
         Box::pin(async move {
-            let state = if storage.exists() {
+            let persistence_state = if storage.exists() {
                 storage.load().await?
             } else {
-                let state = backend.create().await?;
-                storage.create(&state).await?;
-                state
+                let state: KeystoreState<'a, L> = backend.create().await?.into();
+                let persistence_state = PersistenceState::<'a, L>::from(&state);
+                storage.create(&persistence_state).await?;
+                persistence_state
             };
+            assets.commit()?;
             atomic_store.commit_version()?;
+            let state = KeystoreState::<L>::new(persistence_state, assets);
             Self::new_impl(backend, atomic_store, storage, state).await
         })
     }
