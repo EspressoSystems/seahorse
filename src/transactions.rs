@@ -70,7 +70,7 @@ pub struct Transaction<L: Ledger> {
     fee_change: Option<RecordAmount>,
     /// Amount of change included in the transaction in the asset being transferred.
     ///
-    /// For non-native transfers, the amount of the transaction being transferred which is consumed by the
+    /// For non-native transfers, the amount of the asset being transferred which is consumed by the
     /// transaction may exceed the amount that the sender wants to transfer, due to the way discrete
     /// record amounts break down. In this case, one of the outputs of the transaction will contain
     /// change from the fee, which the transaction sender receives when the transaction is
@@ -152,6 +152,11 @@ impl<'a, L: Ledger + Serialize + DeserializeOwned> TransactionEditor<'a, L> {
 
     pub fn set_status(mut self, status: TransactionStatus) -> Self {
         self.transaction.status = status;
+        self
+    }
+
+    pub fn clear_timeout(mut self) -> Self {
+        self.transaction.timeout = None;
         self
     }
 
@@ -363,8 +368,18 @@ impl<L: Ledger + Serialize + DeserializeOwned> Transactions<L> {
     }
 
     /// Remove a transaction from the pending index when it is known to have timed out
-    pub async fn remove_expired(&mut self, timeout: u64) {
+    pub async fn remove_expired(&mut self, timeout: u64) -> Result<(), KeystoreError<L>> {
+        if let Some(expiring_uids) = self.expiring_txns.get_mut(&timeout).cloned() {
+            for uid in expiring_uids.iter() {
+                let editor = self.get_mut(uid)?;
+                editor
+                    .set_status(TransactionStatus::Rejected)
+                    .clear_timeout()
+                    .save()?;
+            }
+        }
         self.expiring_txns.remove(&timeout);
+        Ok(())
     }
 
     /// Commit the store version.
