@@ -5,7 +5,7 @@
 // This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 // You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-//! The trasaction module.
+//! The transaction module.
 //!
 //! This module defines [Transaction], [TransactionEditor], and [Transactions], which provide CURD (create, read,
 //! update, and delete) operations, with the use of [KeyValueStore] to control the transactions resource.
@@ -43,7 +43,7 @@ pub struct Transaction<L: Ledger> {
     sig: Signature,
     inputs: Vec<RecordOpening>,
     outputs: Vec<RecordOpening>,
-    /// Time when this transaction was created in the transaction builder or time when it was
+    /// Time when this transaction was created in the transaction builder or time when it was received
     time: DateTime<Local>,
     /// The asset we are transacting
     asset: AssetCode,
@@ -68,7 +68,7 @@ pub struct Transaction<L: Ledger> {
     /// example, this is a transaction we received from someone else, in which case we may not know
     /// how much of a fee they paid and how much change they expect to get.
     fee_change: Option<RecordAmount>,
-    /// Amount of change included in the transaction in the transaction being transferred.
+    /// Amount of change included in the transaction in the asset being transferred.
     ///
     /// For non-native transfers, the amount of the transaction being transferred which is consumed by the
     /// transaction may exceed the amount that the sender wants to transfer, due to the way discrete
@@ -77,15 +77,15 @@ pub struct Transaction<L: Ledger> {
     /// finalized.
     ///
     /// For native transfers, the transfer inputs and the fee input get mixed together, so there is
-    /// only one change output, which accounts for both the fee change and the transfer change. In
-    /// this case, the total amount of change will be reflected in `fee_change` and `transaction_change`
+    /// only one change output, which accounts for both the fee change and the asset change. In
+    /// this case, the total amount of change will be reflected in `fee_change` and `asset_change`
     /// will be `Some(0)`.
     ///
     /// Note that `None` indicates that the amount of change is unknown, not that there is no
     /// change, which would be indicated by `Some(0)`. The amount of change may be unknown if, for
     /// example, this is a transaction we received from someone else, and we do not hold the
     /// necessary viewing keys to inspect the change outputs of the transaction.
-    transaction_change: Option<RecordAmount>,
+    asset_change: Option<RecordAmount>,
     /// If we sent this transaction, a receipt to track its progress.
     receipt: Option<TransactionReceipt<L>>,
 }
@@ -128,8 +128,8 @@ impl<L: Ledger> Transaction<L> {
     pub fn fee_change(&self) -> &Option<RecordAmount> {
         &self.fee_change
     }
-    pub fn transaction_change(&self) -> &Option<RecordAmount> {
-        &self.transaction_change
+    pub fn asset_change(&self) -> &Option<RecordAmount> {
+        &self.asset_change
     }
     pub fn receipt(&self) -> &Option<TransactionReceipt<L>> {
         &self.receipt
@@ -161,9 +161,9 @@ impl<'a, L: Ledger + Serialize + DeserializeOwned> TransactionEditor<'a, L> {
         self
     }
 
-    /// Add transaction change record to the transaction once it is certain
-    pub fn with_transaction_change(mut self, amount: RecordAmount) -> Self {
-        self.transaction.transaction_change = Some(amount);
+    /// Add asset change record to the transaction once it is certain
+    pub fn with_asset_change(mut self, amount: RecordAmount) -> Self {
+        self.transaction.asset_change = Some(amount);
         self
     }
 
@@ -197,7 +197,6 @@ impl<'a, L: Ledger + Serialize + DeserializeOwned> TransactionEditor<'a, L> {
     /// Returns the stored transaction.
     pub fn save(&mut self) -> Result<Transaction<L>, KeystoreError<L>> {
         self.store.store(&self.transaction.uid, &self.transaction)?;
-        self.store.reload();
         Ok(self.transaction.clone())
     }
 }
@@ -252,31 +251,14 @@ impl<L: Ledger + Serialize + DeserializeOwned> Transactions<L> {
     ) -> Result<Self, KeystoreError<L>> {
         let log = AppendLog::load(loader, adaptor, "keystore_transactions", fill_size)?;
         let store = TransactionsStore::<L>::new(log)?;
-        let txn_by_hash = store
-            .iter()
-            .filter(|txn| txn.hash.is_some())
-            .map(|txn| (txn.hash.as_ref().unwrap().clone(), txn.uid().clone()))
-            .collect();
-        let mut expiring_txns = BTreeMap::new();
-        let mut uids_awaiting_memos = HashMap::new();
-        for txn in store.iter() {
-            if let Some(timeout) = txn.timeout() {
-                expiring_txns
-                    .entry(timeout)
-                    .or_insert_with(HashSet::default)
-                    .insert(txn.uid().clone());
-            }
-
-            for pending in &txn.pending_uids {
-                uids_awaiting_memos.insert(*pending, txn.uid().clone());
-            }
-        }
-        Ok(Self {
+        let mut transactions = Self {
             store,
-            txn_by_hash,
-            expiring_txns,
-            uids_awaiting_memos,
-        })
+            txn_by_hash: Default::default(),
+            expiring_txns: Default::default(),
+            uids_awaiting_memos: Default::default(),
+        };
+        transactions.reload();
+        Ok(transactions)
     }
 
     /// Reload from disc to, rebuilds the indices
@@ -302,12 +284,14 @@ impl<L: Ledger + Serialize + DeserializeOwned> Transactions<L> {
         }
     }
 
-    pub fn store(
+    fn store(
         &mut self,
         uid: &TransactionUID<L>,
         txn: &Transaction<L>,
     ) -> Result<(), KeystoreError<L>> {
-        Ok(self.store.store(uid, txn)?)
+        self.store.store(uid, txn)?;
+        self.reload();
+        Ok(())
     }
 
     /// Iterate through the transactions.
@@ -320,7 +304,7 @@ impl<L: Ledger + Serialize + DeserializeOwned> Transactions<L> {
         Ok(self.store.load(uid)?)
     }
 
-    /// Get a mutable transaction editor by the code from the store.
+    /// Get a mutable transaction editor by the uid from the store.
     pub fn get_mut(
         &mut self,
         uid: &TransactionUID<L>,
@@ -379,7 +363,7 @@ impl<L: Ledger + Serialize + DeserializeOwned> Transactions<L> {
     }
 
     /// Remove a transaction from the pending index when it is known to have timed out
-    pub async fn remove_pending_txns(&mut self, timeout: u64) {
+    pub async fn remove_expired(&mut self, timeout: u64) {
         self.expiring_txns.remove(&timeout);
     }
 
@@ -411,7 +395,7 @@ impl<L: Ledger + Serialize + DeserializeOwned> Transactions<L> {
             timeout: params.timeout,
             hash: None,
             status: params.status,
-            pending_uids: HashSet::new(), //pending_uids
+            pending_uids: HashSet::new(),
             memos: params.memos,
             sig: params.sig,
             inputs: params.inputs,
@@ -421,9 +405,9 @@ impl<L: Ledger + Serialize + DeserializeOwned> Transactions<L> {
             kind: params.kind,
             senders: params.senders,
             receivers: params.receivers,
-            fee_change: None,         // fee_change
-            transaction_change: None, // transaction_change
-            receipt: None,            // receipt
+            fee_change: None,
+            asset_change: None,
+            receipt: None,
         };
         if let Some(timeout) = params.timeout {
             self.expiring_txns
@@ -440,8 +424,8 @@ impl<L: Ledger + Serialize + DeserializeOwned> Transactions<L> {
     /// Deletes an transaction from the store.
     ///
     /// Returns the deleted transaction.
-    pub fn delete(&mut self, code: &TransactionUID<L>) -> Result<Transaction<L>, KeystoreError<L>> {
-        let txn = self.store.delete(code)?;
+    pub fn delete(&mut self, uid: &TransactionUID<L>) -> Result<Transaction<L>, KeystoreError<L>> {
+        let txn = self.store.delete(uid)?;
         // Rebuild the indices
         self.reload();
         Ok(txn)
