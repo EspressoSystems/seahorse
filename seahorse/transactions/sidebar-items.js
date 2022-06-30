@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["Transaction","A Transactionwith its UID as the primary key."],["TransactionEditor","An editor to create or update the transaction or transactions store."],["TransactionParams",""],["Transactions","Transactions stored in an transactions store."]]});
