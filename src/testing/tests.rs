@@ -2321,7 +2321,7 @@ pub mod generic_keystore_tests {
             .unwrap();
         keystores[0]
             .0
-            .create_asset(imported_asset, None, None, None, None)
+            .create_asset(imported_asset.clone(), None, None, None, None)
             .await
             .unwrap();
 
@@ -2335,14 +2335,10 @@ pub mod generic_keystore_tests {
             }
         };
         assert_eq!(
-            get_asset(AssetCode::native()).await,
-            AssetInfo::native::<T::Ledger>()
+            get_asset(defined_asset.code).await.definition(),
+            &defined_asset
         );
-        assert_eq!(
-            get_asset(defined_asset.code).await.definition,
-            defined_asset
-        );
-        assert!(get_asset(defined_asset.code).await.mint_info.is_some());
+        assert!(get_asset(defined_asset.code).await.mint_info().is_some());
         assert_eq!(
             get_asset(defined_asset.code).await.name.unwrap(),
             "defined_asset"
@@ -2351,21 +2347,13 @@ pub mod generic_keystore_tests {
             get_asset(defined_asset.code).await.description.unwrap(),
             "defined_asset description"
         );
-        assert!(!get_asset(defined_asset.code).await.verified);
-        assert_eq!(
-            get_asset(minted_asset.code).await,
-            AssetInfo::from(minted_asset.clone())
-        );
+        assert!(!get_asset(defined_asset.code).await.verified());
         assert_eq!(get_asset(minted_asset.code).await.name, None);
         assert_eq!(get_asset(minted_asset.code).await.description, None);
-        assert!(!get_asset(minted_asset.code).await.verified);
-        assert_eq!(
-            get_asset(imported_asset.code).await,
-            AssetInfo::from(imported_asset.clone())
-        );
+        assert!(!get_asset(minted_asset.code).await.verified());
         assert_eq!(get_asset(imported_asset.code).await.name, None);
         assert_eq!(get_asset(imported_asset.code).await.description, None);
-        assert!(!get_asset(imported_asset.code).await.verified);
+        assert!(!get_asset(imported_asset.code).await.verified());
     }
 
     #[async_std::test]
@@ -2386,8 +2374,7 @@ pub mod generic_keystore_tests {
             .unwrap();
         {
             let asset1_info = keystores[0].0.asset(asset1.code).await.unwrap();
-            assert!(!asset1_info.verified);
-            assert!(!asset1_info.temporary);
+            assert!(!asset1_info.verified());
         }
 
         // Now created a verified asset library with 2 assets:
@@ -2419,32 +2406,7 @@ pub mod generic_keystore_tests {
             .verify_assets(key_pair.ver_key_ref(), verified_assets)
             .await
             .unwrap();
-        assert_eq!(imported.len(), 2);
-        assert_eq!(
-            imported[0],
-            AssetInfo {
-                definition: asset1.clone(),
-                name: None,
-                description: None,
-                icon: None,
-                mint_info: None,
-                verified: true,
-                temporary: true,
-            }
-        );
-
-        assert_eq!(
-            imported[1],
-            AssetInfo {
-                definition: asset2.clone(),
-                name: None,
-                description: None,
-                icon: None,
-                mint_info: None,
-                verified: true,
-                temporary: true,
-            }
-        );
+        assert_eq!(imported, vec![asset1.clone(), asset2.clone()]);
 
         // Check that importing an asset library signed by an imposter fails.
         assert!(matches!(
@@ -2459,96 +2421,67 @@ pub mod generic_keystore_tests {
         // verified status.
         {
             let asset1_info = keystores[0].0.asset(asset1.code).await.unwrap();
-            assert!(asset1_info.verified);
-            assert!(!asset1_info.temporary);
-            assert_eq!(asset1_info.definition, asset1);
-            assert!(asset1_info.mint_info.is_some());
+            assert!(asset1_info.verified());
+            assert_eq!(asset1_info.definition(), &asset1);
+            assert!(asset1_info.mint_info().is_some());
         }
         // Check that `asset2`, which was not present before, got imported as-is.
-        assert_eq!(
-            keystores[0].0.asset(asset2.code).await.unwrap(),
-            AssetInfo {
-                definition: asset2.clone(),
-                name: None,
-                description: None,
-                icon: None,
-                mint_info: None,
-                verified: true,
-                temporary: true,
-            }
-        );
+        {
+            let asset2_info = keystores[0].0.asset(asset2.code).await.unwrap();
+            assert!(asset2_info.verified());
+            assert_eq!(asset2_info.definition(), &asset2);
+            assert!(asset2_info.mint_info().is_none());
+        }
 
         // Check that temporary assets are not persisted, and that persisted assets are never
         // verified.
         {
             let session = &mut keystores[0].0.lock().await.session;
-            let storage = &session.storage;
+            let assets = &mut session.assets;
             let atomic_store = &mut session.atomic_store;
-            let loaded = storage.lock().await.load().await.unwrap();
-            assert!(loaded.assets.iter().all(|asset| !asset.verified));
-            assert!(loaded.assets.contains(AssetCode::native()));
-            assert!(loaded.assets.contains(asset1.code));
-            assert!(!loaded.assets.contains(asset2.code));
-            assert_eq!(loaded.assets.len(), 2);
+            assert!(assets.iter().all(|asset| !asset.verified()));
+            assert!(assets.get::<T::Ledger>(&AssetCode::native()).is_ok());
+            assert!(assets.get::<T::Ledger>(&asset1.code).is_ok());
+            assert!(assets.get::<T::Ledger>(&asset2.code).is_err());
+            assets.commit::<T::Ledger>().unwrap();
             atomic_store.commit_version().unwrap();
         }
 
         // Now import `asset2`, updating the existing verified asset with persistence and mint info.
         keystores[0]
             .0
-            .create_asset(asset2.clone(), None, None, None, mint_info2.clone())
+            .create_asset(asset2.clone(), None, None, None, Some(mint_info2.clone()))
             .await
             .unwrap();
-        assert_eq!(
-            keystores[0].0.asset(asset2.code).await.unwrap(),
-            AssetInfo {
-                definition: asset2.clone(),
-                name: None,
-                description: None,
-                icon: None,
-                mint_info: Some(mint_info2),
-                verified: true,
-                temporary: false,
-            }
-        );
+        let asset = keystores[0].0.asset(asset2.code).await.unwrap();
+        assert_eq!(asset.definition(), &asset2.clone());
+        assert_eq!(asset.name(), None);
+        assert_eq!(asset.description(), None);
+        assert_eq!(asset.icon(), None);
+        assert_eq!(asset.mint_info(), Some(mint_info2));
+        assert!(asset.verified());
 
         // Check that `asset2` is now persisted, but still no assets in storage are verified.
         {
             let session = &mut keystores[0].0.lock().await.session;
-            let storage = &session.storage;
+            let assets = &mut session.assets;
             let atomic_store = &mut session.atomic_store;
-            let loaded = storage.lock().await.load().await.unwrap();
-            assert!(loaded.assets.iter().all(|asset| !asset.verified));
-            assert!(loaded.assets.contains(AssetCode::native()));
-            assert!(loaded.assets.contains(asset1.code));
-            assert!(loaded.assets.contains(asset2.code));
-            assert_eq!(loaded.assets.len(), 3);
+            assert!(assets.iter().all(|asset| !asset.verified()));
+            assert!(assets.get::<T::Ledger>(&AssetCode::native()).is_ok());
+            assert!(assets.get::<T::Ledger>(&asset1.code).is_ok());
+            assert!(assets.get::<T::Ledger>(&asset2.code).is_ok());
+            assets.commit::<T::Ledger>().unwrap();
             atomic_store.commit_version().unwrap();
         }
 
-        // Finally, check that by loading the persisted, unverified information, and combining it
-        // with the verified information, we get back the current in-memory information (which was
-        // generated in a different order).
-        let loaded = {
-            let session = &mut keystores[0].0.lock().await.session;
-            let storage = &session.storage;
-            let atomic_store = &mut session.atomic_store;
-            let mut assets = storage.lock().await.load().await.unwrap().assets;
-            atomic_store.commit_version().unwrap();
-            for asset in &imported {
-                assets.insert(asset.clone());
-            }
-            assets
-        };
-        assert_eq!(loaded, keystores[0].0.lock().await.state.assets);
-
         // Check that the verified assets are marked verified once again.
-        for asset in loaded {
+        let assets = &mut keystores[0].0.lock().await.session.assets;
+        for asset in assets.iter() {
             assert_eq!(
-                asset.verified,
+                asset.verified(),
                 imported
                     .iter()
-                    .find(|verified| verified.definition == asset.definition)
+                    .find(|verified| verified == &asset.definition())
                     .is_some()
             );
         }
@@ -2575,9 +2508,10 @@ pub mod generic_keystore_tests {
                 account.balances,
                 HashMap::from([(AssetCode::native(), 5u64.into())])
             );
-            assert_eq!(account.assets, vec![AssetInfo::native::<T::Ledger>()]);
+            assert_eq!(account.assets.len(), 1);
+            assert_eq!(account.assets[0].definition(), &AssetDefinition::native());
             assert_eq!(account.records.len(), 1);
-            assert_eq!(account.records[0].amount(), 5.into());
+            assert_eq!(account.records[0].amount(), 5i32.into());
             assert_eq!(account.records[0].ro.asset_def, AssetDefinition::native());
         }
 
@@ -2606,7 +2540,7 @@ pub mod generic_keystore_tests {
         // records, and assets.
         let receipt = keystores[0]
             .0
-            .transfer(None, &AssetCode::native(), &[(pub_key.clone(), 2)], 1)
+            .transfer(None, &AssetCode::native(), &[(pub_key.clone(), 2i32)], 1i32)
             .await
             .unwrap();
         await_transaction(&receipt, &keystores[0].0, &[]).await;
@@ -2617,9 +2551,10 @@ pub mod generic_keystore_tests {
                 account.balances,
                 HashMap::from([(AssetCode::native(), 2u64.into())])
             );
-            assert_eq!(account.assets, vec![AssetInfo::native::<T::Ledger>()]);
+            assert_eq!(account.assets.len(), 1);
+            assert_eq!(account.assets[0].definition(), &AssetDefinition::native());
             assert_eq!(account.records.len(), 1);
-            assert_eq!(account.records[0].amount(), 2.into());
+            assert_eq!(account.records[0].amount(), 2i32.into());
             assert_eq!(account.records[0].ro.asset_def, AssetDefinition::native());
         }
         t.check_storage(&keystores).await;
@@ -2733,7 +2668,7 @@ pub mod generic_keystore_tests {
                 .assets
                 .into_iter()
                 // Convert to HashMap for order-independent comparison.
-                .map(|asset| (asset.definition.code, asset.definition))
+                .map(|asset| (asset.code().clone(), asset.definition().clone()))
                 .collect::<HashMap<_, _>>(),
             vec![
                 (viewable_asset.code, viewable_asset.clone()),
@@ -2750,7 +2685,7 @@ pub mod generic_keystore_tests {
                 .unwrap()
                 .assets
                 .into_iter()
-                .map(|asset| asset.definition)
+                .map(|asset| asset.definition().clone())
                 .collect::<Vec<_>>(),
             vec![freezable_asset.clone()]
         );
@@ -2762,9 +2697,9 @@ pub mod generic_keystore_tests {
             .0
             .mint(
                 Some(&address),
-                1,
+                1i32,
                 &viewable_asset.code,
-                100,
+                100i32,
                 receiver.clone(),
             )
             .await
@@ -2775,7 +2710,13 @@ pub mod generic_keystore_tests {
         // Mint the freezable asset.
         let receipt = keystores[0]
             .0
-            .mint(Some(&address), 1, &freezable_asset.code, 200, receiver)
+            .mint(
+                Some(&address),
+                1i32,
+                &freezable_asset.code,
+                200i32,
+                receiver,
+            )
             .await
             .unwrap();
         await_transaction(&receipt, &keystores[0].0, &[&keystores[1].0]).await;
@@ -2838,6 +2779,7 @@ pub mod generic_keystore_tests {
                 None,
                 None,
             )
+            .await
             .unwrap();
         let info = keystores[0].0.asset(asset1.code).await.unwrap();
         assert_eq!(info.name, Some("asset1".into()));
@@ -2880,6 +2822,7 @@ pub mod generic_keystore_tests {
                 None,
                 None,
             )
+            .await
             .unwrap();
         let info = keystores[0].0.asset(asset2.code).await.unwrap();
         assert_eq!(info.name, Some("asset2_verified".into()));
@@ -2920,8 +2863,8 @@ pub mod generic_keystore_tests {
 
         keystores[0]
             .0
-            .create_native_asset()?
-            .with_icon(icon)
+            .create_native_asset(Some(icon))
+            .await
             .unwrap();
         let icon = keystores[0]
             .0

@@ -55,7 +55,7 @@ use crate::{
     hd::KeyTree,
     key_scan::{receive_history_entry, BackgroundKeyScan, ScanOutputs},
     loader::KeystoreLoader,
-    persistence::{AtomicKeystoreStorage, PersistenceState},
+    persistence::AtomicKeystoreStorage,
     txn_builder::*,
 };
 use arbitrary::Arbitrary;
@@ -217,15 +217,13 @@ pub struct KeyStreamState {
 ///
 /// This struct is where the keystore keeps its keys, assets, and records, as well as any information
 /// about the current ledger state needed to build transactions.
+#[derive(Debug, Clone)]
 pub struct KeystoreState<'a, L: Ledger> {
     // For persistence, the fields in this struct are grouped into three categories based on how
     // they can be efficiently saved to disk:
     // 1. Static data, which never changes once a keystore is created, and so can be written to a
     //    single, static file.
     // 2. Dynamic data, which changes frequently and requires some kind of persistent snapshotting.
-    // 3. Monotonic data, which consists of sets of objects which only grow over the lifetime of the
-    //    keystore, and so can be persisted in an append-only log.
-    // Static and dynamic data can be constructed by a persistence state.
     //
     ////////////////////////////////////////////////////////////////////////////////////////////////
     // Static data
@@ -272,30 +270,6 @@ pub struct KeystoreState<'a, L: Ledger> {
     /// outgoing transactions, as well as an encryption public key used by other users to encrypt
     /// owner memos when sending records to this keystore.
     pub sending_accounts: HashMap<UserAddress, Account<L, UserKeyPair>>,
-
-    ////////////////////////////////////////////////////////////////////////////////////////////////
-    // Monotonic data
-    //
-    /// Assets store.
-    ///
-    /// This contains information about all of the assets imported or discovered by this keystore,
-    /// and a set of verified asset codes. For assets created by this keystores, in includes
-    /// information needed to mint the assets.
-    pub assets: Assets,
-}
-
-impl<'a, L: Ledger> KeystoreState<'a, L> {
-    fn new(persistence_state: PersistenceState<'a, L>, assets: Assets) -> Self {
-        Self {
-            proving_keys: persistence_state.proving_keys.clone(),
-            txn_state: persistence_state.txn_state.clone(),
-            key_state: persistence_state.key_state.clone(),
-            viewing_accounts: persistence_state.viewing_accounts.clone(),
-            freezing_accounts: persistence_state.freezing_accounts.clone(),
-            sending_accounts: persistence_state.sending_accounts.clone(),
-            assets,
-        }
-    }
 }
 
 /// Interface for atomic storage transactions.
@@ -347,11 +321,7 @@ impl<
         state: &KeystoreState<'a, L>,
     ) -> Result<(), KeystoreError<L>> {
         if !self.cancelled {
-            let res = self
-                .storage()
-                .await
-                .store_snapshot(&PersistenceState::from(state))
-                .await;
+            let res = self.storage().await.store_snapshot(state).await;
             if res.is_err() {
                 self.cancel().await;
             }
@@ -496,6 +466,7 @@ pub struct KeystoreSession<
     backend: Backend,
     atomic_store: AtomicStore,
     storage: Arc<Mutex<AtomicKeystoreStorage<'a, L, Meta>>>,
+    assets: Assets,
     rng: ChaChaRng,
     viewer_key_stream: hd::KeyTree,
     user_key_stream: hd::KeyTree,
@@ -535,6 +506,7 @@ impl<'a, L: Ledger, Backend: KeystoreBackend<'a, L>, Meta: Serialize + Deseriali
             Ok(())
         });
         fut.await?;
+        self.assets.commit()?;
         self.atomic_store.commit_version()?;
         Ok(())
     }
@@ -543,6 +515,82 @@ impl<'a, L: Ledger, Backend: KeystoreBackend<'a, L>, Meta: Serialize + Deseriali
     pub async fn storage(&mut self) -> MutexGuard<'_, AtomicKeystoreStorage<'a, L, Meta>> {
         self.storage.lock().await
     }
+
+    /// Get all assets
+    pub fn assets(&self) -> Vec<Asset> {
+        self.assets.iter().collect()
+    }
+
+    /// Get an asset
+    pub fn asset(&self, code: &AssetCode) -> Result<Asset, KeystoreError<L>> {
+        self.assets.get(code)
+    }
+
+    /// Create an unverified asset.
+    pub fn create_asset(
+        &mut self,
+        definition: AssetDefinition,
+        name: Option<String>,
+        description: Option<String>,
+        icon: Option<Icon>,
+        mint_info: Option<MintInfo>,
+    ) -> Result<(), KeystoreError<L>> {
+        self.assets
+            .create(definition, mint_info)?
+            .set_name(name)
+            .set_description(description)
+            .set_icon(icon);
+        Ok(())
+    }
+
+    // Create a native asset.
+    pub fn create_native_asset(&mut self, icon: Option<Icon>) -> Result<(), KeystoreError<L>> {
+        self.assets.create_native()?.set_icon(icon);
+        Ok(())
+    }
+
+    pub fn import_asset(&mut self, asset: Asset) -> Result<(), KeystoreError<L>> {
+        self.create_asset(
+            asset.definition().clone(),
+            asset.name(),
+            asset.description(),
+            asset.icon(),
+            asset.mint_info(),
+        )?;
+        Ok(())
+    }
+
+    /// Load a verified asset library with its trusted signer.
+    pub fn verify_assets(
+        &mut self,
+        trusted_signer: &VerKey,
+        library: VerifiedAssetLibrary,
+    ) -> Result<Vec<AssetDefinition>, KeystoreError<L>> {
+        self.assets.verify_assets(trusted_signer, library)
+    }
+}
+
+pub fn import_asset<'a, L: Ledger, Meta: Serialize + DeserializeOwned + Send>(
+    session: &mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>, Meta>,
+    asset: Asset,
+) -> Result<(), KeystoreError<L>> {
+    session.create_asset(
+        asset.definition().clone(),
+        asset.name(),
+        asset.description(),
+        asset.icon(),
+        asset.mint_info(),
+    )?;
+    Ok(())
+}
+
+/// Load a verified asset library with its trusted signer.
+pub fn verify_assets<'a, L: Ledger, Meta: Serialize + DeserializeOwned + Send>(
+    session: &mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>, Meta>,
+    trusted_signer: &VerKey,
+    library: VerifiedAssetLibrary,
+) -> Result<Vec<AssetDefinition>, KeystoreError<L>> {
+    session.verify_assets(trusted_signer, library)
 }
 
 // Trait used to indicate that an abstract return type captures a reference with the lifetime 'a.
@@ -983,7 +1031,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                 // entry.
                 *remember = true;
                 // Add the asset type if it is not already in the asset library.
-                self.create_asset(ro.asset_def.clone(), None, None, None, None)?;
+                session.create_asset(ro.asset_def.clone(), None, None, None, None)?;
                 // Mark the account receiving the records used.
                 self.sending_accounts
                     .get_mut(&account.key.address())
@@ -1004,7 +1052,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                 // records, but do not include it in the history entry.
                 *remember = true;
                 // Add the asset type if it is not already in the asset library.
-                self.create_asset(ro.asset_def.clone(), None, None, None, None)?;
+                session.create_asset(ro.asset_def.clone(), None, None, None, None)?;
                 // Mark the freezing account which is tracking the record used.
                 self.freezing_accounts
                     .get_mut(&account.key.pub_key())
@@ -1076,7 +1124,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
             }
 
             // Add the asset type if it is not already in the asset library.
-            self.create_asset(record.asset_def.clone(), None, None, None, None)?;
+            session.create_asset(record.asset_def.clone(), None, None, None, None)?;
 
             // Mark the account receiving the record as used.
             self.sending_accounts
@@ -1152,7 +1200,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
     ) {
         // Try to decrypt viewer memos.
         let mut viewable_assets = HashMap::new();
-        for asset in self.assets.iter() {
+        for asset in session.assets.iter() {
             if self
                 .viewing_accounts
                 .contains_key(&asset.definition().policy_ref().viewer_pub_key())
@@ -1241,27 +1289,6 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         Ok(())
     }
 
-    fn create_asset(
-        &mut self,
-        definition: AssetDefinition,
-        name: Option<String>,
-        description: Option<String>,
-        icon: Option<Icon>,
-        mint_info: Option<MintInfo>,
-    ) -> Result<(), KeystoreError<L>> {
-        self.assets
-            .create(definition, mint_info)?
-            .set_name(name)
-            .set_description(description)
-            .set_icon(icon);
-        Ok(())
-    }
-
-    fn create_native_asset(&mut self, icon: Option<Icon>) -> Result<(), KeystoreError<L>> {
-        self.assets.create_native()?.set_icon(icon);
-        Ok(())
-    }
-
     // This function ran into the same mystifying compiler behavior as
     // `submit_elaborated_transaction`, where the default async desugaring loses track of the `Send`
     // impl for the result type. As with the other function, this can be fixed by manually
@@ -1285,58 +1312,114 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                 description: description.to_vec(),
             };
 
-            // If the asset is viewable/freezable, mark the appropriate viewing/freezing accounts
-            // `used`. If we do update any accounts, save the old ones in case we have to revert.
-            let mut used_viewing_key = None;
-            let mut used_freezing_key = None;
-            let policy = definition.policy_ref();
-            if policy.is_viewer_pub_key_set() {
-                if let Some(account) = self.viewing_accounts.get_mut(policy.viewer_pub_key()) {
-                    if !account.used {
-                        account.used = true;
-                        used_viewing_key = Some(policy.viewer_pub_key());
-                    }
-                }
-            }
-            if policy.is_freezer_pub_key_set() {
-                if let Some(account) = self.freezing_accounts.get_mut(policy.freezer_pub_key()) {
-                    if !account.used {
-                        account.used = true;
-                        used_freezing_key = Some(policy.freezer_pub_key());
-                    }
-                }
-            }
-
-            // Now we can add the asset to the in-memory state.
-            self.create_asset(
+            match session.create_asset(
                 definition.clone(),
                 Some(name),
                 Some(mint_info.fmt_description()),
                 None,
                 Some(mint_info),
-            )?;
+            ) {
+                Ok(_) => {
+                    match session
+                        .store(|mut t| async {
+                            t.store_snapshot(self).await?;
+                            Ok(t)
+                        })
+                        .await
+                    {
+                        Ok(()) => {
+                            // If the asset is viewable/freezable, mark the appropriate viewing/freezing accounts
+                            // `used`.
+                            let policy = definition.policy_ref();
+                            if policy.is_viewer_pub_key_set() {
+                                if let Some(account) =
+                                    self.viewing_accounts.get_mut(policy.viewer_pub_key())
+                                {
+                                    if !account.used {
+                                        account.used = true;
+                                    }
+                                }
+                            }
+                            if policy.is_freezer_pub_key_set() {
+                                if let Some(account) =
+                                    self.freezing_accounts.get_mut(policy.freezer_pub_key())
+                                {
+                                    if !account.used {
+                                        account.used = true;
+                                    }
+                                }
+                            }
+                            Ok(definition)
+                        }
+                        Err(e) => Err(e),
+                    }
+                }
+                Err(e) => Err(e),
+            }
 
-            Ok(definition)
+            // // If the asset is viewable/freezable, mark the appropriate viewing/freezing accounts
+            // // `used`. If we do update any accounts, save the old ones in case we have to revert.
+            // let mut used_viewing_key = None;
+            // let mut used_freezing_key = None;
+            // let policy = definition.policy_ref();
+            // if policy.is_viewer_pub_key_set() {
+            //     if let Some(account) = self.viewing_accounts.get_mut(policy.viewer_pub_key()) {
+            //         if !account.used {
+            //             account.used = true;
+            //             used_viewing_key = Some(policy.viewer_pub_key());
+            //         }
+            //     }
+            // }
+            // if policy.is_freezer_pub_key_set() {
+            //     if let Some(account) = self.freezing_accounts.get_mut(policy.freezer_pub_key()) {
+            //         if !account.used {
+            //             account.used = true;
+            //             used_freezing_key = Some(policy.freezer_pub_key());
+            //         }
+            //     }
+            // }
+
+            // // Persist the change that we're about to make before updating our in-memory state. We
+            // // can't report success until we know the new asset has been saved to disk (otherwise we
+            // // might lose the seed if we crash at the wrong time) and we don't want it in our
+            // // in-memory state if we're not going to report success.
+            // if let Err(err) = session
+            //     .store(|mut t| async {
+            //         t.store_asset(
+            //             definition,
+            //             Some(name),
+            //             Some(mint_info.fmt_description()),
+            //             None,
+            //             Some(mint_info),
+            //         )
+            //         .await?;
+            //         t.store_snapshot(self).await?;
+            //         Ok(t)
+            //     })
+            //     .await
+            // {
+            //     // If we failed to persist the changes, undo the changes we made to our
+            //     // in-memory accounts.
+            //     if let Some(viewing_key) = used_viewing_key {
+            //         self.viewing_accounts.get_mut(viewing_key).unwrap().used = false;
+            //     }
+            //     if let Some(freezing_key) = used_freezing_key {
+            //         self.freezing_accounts.get_mut(freezing_key).unwrap().used = false;
+            //     }
+            //     return Err(err);
+            // }
+
+            // // Now we can add the asset to the in-memory state.
+            // self.create_asset(
+            //     definition.clone(),
+            //     Some(name),
+            //     Some(mint_info.fmt_description()),
+            //     None,
+            //     Some(mint_info),
+            // )?;
+
+            // Ok(definition)
         }
-    }
-
-    fn import_asset(&mut self, asset: Asset) -> Result<(), KeystoreError<L>> {
-        self.create_asset(
-            asset.definition().clone(),
-            asset.name(),
-            asset.description(),
-            asset.icon(),
-            asset.mint_info(),
-        )?;
-        Ok(())
-    }
-
-    pub fn verify_assets(
-        &mut self,
-        trusted_signer: &VerKey,
-        library: VerifiedAssetLibrary,
-    ) -> Result<Vec<AssetCode>, KeystoreError<L>> {
-        self.assets.verify_assets(trusted_signer, library)
     }
 
     // Add a new user key and set up a scan of the ledger to import records belonging to this key.
@@ -1510,7 +1593,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         amount: RecordAmount,
         receiver: UserPubKey,
     ) -> Result<(MintNote, TransactionInfo<L>), KeystoreError<L>> {
-        let asset = self.assets.get(asset_code)?;
+        let asset = session.assets.get(asset_code)?;
         let MintInfo { seed, description } =
             asset
                 .mint_info()
@@ -1546,7 +1629,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         owner: UserAddress,
         outputs_frozen: FreezeFlag,
     ) -> Result<(FreezeNote, TransactionInfo<L>), KeystoreError<L>> {
-        let asset = self.assets.get(asset)?.definition().clone();
+        let asset = session.assets.get(asset)?.definition().clone();
         let freeze_key = match self
             .freezing_accounts
             .get(asset.policy_ref().freezer_pub_key())
@@ -1698,6 +1781,7 @@ pub struct Keystore<
     task_scope: AsyncScope<'a, ()>,
 }
 
+#[derive(Clone)]
 pub struct EncryptingResourceAdapter<T> {
     cipher: Cipher<ChaChaRng>,
     _phantom: std::marker::PhantomData<T>,
@@ -1811,6 +1895,58 @@ impl<
         Meta: 'a + Serialize + DeserializeOwned + Send + Clone + PartialEq,
     > Keystore<'a, Backend, L, Meta>
 {
+    pub fn create_stores(
+        loader: &mut impl KeystoreLoader<L, Meta = Meta>,
+    ) -> Result<(AtomicStore, AtomicKeystoreStorage<'a, L, Meta>, Assets), KeystoreError<L>> {
+        let mut atomic_loader = AtomicStoreLoader::load(&loader.location(), "keystore").unwrap();
+        // Load the metadata first so the loader can use it to generate the encryption key needed to
+        // read the rest of the data.
+        let mut persisted_meta = RollingLog::load(
+            &mut atomic_loader,
+            BincodeLoadStore::<Meta>::default(),
+            "keystore_meta",
+            1024,
+        )?;
+        let (meta, key, meta_dirty) = match persisted_meta.load_latest() {
+            Ok(mut meta) => {
+                let old_meta = meta.clone();
+                let key = loader.load(&mut meta)?;
+
+                // Store the new metadata if the loader changed it
+                if meta != old_meta {
+                    persisted_meta.store_resource(&meta)?;
+                    (meta, key, true)
+                } else {
+                    (meta, key, false)
+                }
+            }
+            Err(_) => {
+                // If there is no persisted metadata, ask the loader to generate a new keystore.
+                let (meta, key) = loader.create()?;
+                (meta, key, false)
+            }
+        };
+        let adapter = EncryptingResourceAdapter::<()>::new(key.derive_sub_tree("enc".as_bytes()));
+        let file_fill_size = 1024;
+        let storage = AtomicKeystoreStorage::new(
+            adapter.clone(),
+            &mut atomic_loader,
+            file_fill_size,
+            meta,
+            persisted_meta,
+            meta_dirty,
+            key,
+        )?;
+        let assets = Assets::new::<L>(AssetsStore::new(AppendLog::load(
+            &mut atomic_loader,
+            adapter.cast(),
+            "keystore_assets",
+            file_fill_size,
+        )?)?)?;
+        let atomic_store = AtomicStore::open(atomic_loader)?;
+        Ok((atomic_store, storage, assets))
+    }
+
     // This function suffers from github.com/rust-lang/rust/issues/89657, in which, if we define it
     // as an async function, the compiler loses track of the fact that the resulting opaque Future
     // implements Send, even though it does. Unfortunately, the workaround used for some other
@@ -1826,74 +1962,18 @@ impl<
         mut backend: Backend,
         loader: &mut impl KeystoreLoader<L, Meta = Meta>,
     ) -> BoxFuture<'a, Result<Keystore<'a, Backend, L, Meta>, KeystoreError<L>>> {
-        let mut atomic_loader = AtomicStoreLoader::load(&loader.location(), "keystore").unwrap();
-        // Load the metadata first so the loader can use it to generate the encryption key needed to
-        // read the rest of the data.
-        let mut persisted_meta = RollingLog::load(
-            &mut atomic_loader,
-            BincodeLoadStore::<Meta>::default(),
-            "keystore_meta",
-            1024,
-        )
-        .unwrap();
-        let (meta, key, meta_dirty) = match persisted_meta.load_latest() {
-            Ok(mut meta) => {
-                let old_meta = meta.clone();
-                let key = loader.load(&mut meta).unwrap();
-
-                // Store the new metadata if the loader changed it
-                if meta != old_meta {
-                    persisted_meta.store_resource(&meta).unwrap();
-                    (meta, key, true)
-                } else {
-                    (meta, key, false)
-                }
-            }
-            Err(_) => {
-                // If there is no persisted metadata, ask the loader to generate a new keystore.
-                let (meta, key) = loader.create().unwrap();
-                (meta, key, false)
-            }
-        };
-        let adapter = EncryptingResourceAdapter::<()>::new(key.derive_sub_tree("enc".as_bytes()));
-        let file_fill_size = 1024;
-        let mut storage = AtomicKeystoreStorage::new(
-            adapter,
-            &mut atomic_loader,
-            file_fill_size,
-            meta,
-            persisted_meta,
-            meta_dirty,
-            key,
-        )
-        .unwrap();
-        let mut assets = Assets::new::<L>(
-            AssetsStore::new(
-                AppendLog::load(
-                    &mut atomic_loader,
-                    adapter.cast(),
-                    "keystore_assets",
-                    file_fill_size,
-                )
-                .unwrap(),
-            )
-            .unwrap(),
-        )
-        .unwrap();
-        let mut atomic_store = AtomicStore::open(atomic_loader).unwrap();
+        let (mut atomic_store, mut storage, mut assets) = Self::create_stores(loader).unwrap();
         Box::pin(async move {
-            let persistence_state = if storage.exists() {
+            let state = if storage.exists() {
                 storage.load().await?
             } else {
                 let state: KeystoreState<'a, L> = backend.create().await?.into();
-                let persistence_state = PersistenceState::<'a, L>::from(&state);
-                storage.create(&persistence_state).await?;
-                persistence_state
+                storage.create(&state).await?;
+                state
             };
             assets.commit()?;
             atomic_store.commit_version()?;
-            let state = KeystoreState::<L>::new(persistence_state, assets);
-            Self::new_impl(backend, atomic_store, storage, state).await
+            Self::new_impl(backend, atomic_store, storage, assets, state).await
         })
     }
 
@@ -1903,17 +1983,16 @@ impl<
         loader: &mut impl KeystoreLoader<L, Meta = Meta>,
         state: KeystoreState<'a, L>,
     ) -> BoxFuture<'a, Result<Keystore<'a, Backend, L, Meta>, KeystoreError<L>>> {
-        let mut atomic_loader = AtomicStoreLoader::load(&loader.location(), "keystore").unwrap();
-        let storage = AtomicKeystoreStorage::new(loader, &mut atomic_loader, 1024).unwrap();
-        let atomic_store = AtomicStore::open(atomic_loader).unwrap();
-        Box::pin(async move { Self::new_impl(backend, atomic_store, storage, state).await })
+        let (atomic_store, storage, assets) = Self::create_stores(loader).unwrap();
+        Box::pin(async move { Self::new_impl(backend, atomic_store, storage, assets, state).await })
     }
 
     async fn new_impl(
         backend: Backend,
         atomic_store: AtomicStore,
         storage: AtomicKeystoreStorage<'a, L, Meta>,
-        mut state: KeystoreState<'a, L>,
+        assets: Assets,
+        state: KeystoreState<'a, L>,
     ) -> Result<Keystore<'a, Backend, L, Meta>, KeystoreError<L>> {
         let mut events = backend.subscribe(state.txn_state.now, None).await;
         let mut key_scans = vec![];
@@ -1926,10 +2005,11 @@ impl<
             }
         }
         let key_tree = storage.key_stream();
-        let session = KeystoreSession {
+        let mut session = KeystoreSession {
             backend,
             atomic_store,
             storage: Arc::new(Mutex::new(storage)),
+            assets,
             rng: ChaChaRng::from_entropy(),
             viewer_key_stream: key_tree.derive_sub_tree("viewer".as_bytes()),
             freezer_key_stream: key_tree.derive_sub_tree("freezer".as_bytes()),
@@ -1939,7 +2019,7 @@ impl<
         };
 
         // Ensure the native asset type is always recognized.
-        state.create_native_asset(None)?;
+        session.create_native_asset(None)?;
 
         let sync_handles = Vec::new();
         let txn_subscribers = HashMap::new();
@@ -2130,7 +2210,7 @@ impl<
         &self,
         address: &UserAddress,
     ) -> Result<AccountInfo<UserKeyPair>, KeystoreError<L>> {
-        let KeystoreSharedState { state, .. } = &*self.mutex.lock().await;
+        let KeystoreSharedState { state, session, .. } = &mut *self.mutex.lock().await;
         let account = state.sending_accounts.get(address).cloned().ok_or(
             KeystoreError::<L>::InvalidAddress {
                 address: address.clone(),
@@ -2146,7 +2226,7 @@ impl<
         let assets = records
             .iter()
             .map(|rec| {
-                state
+                session
                     .assets
                     .get::<L>(&rec.ro.asset_def.code)
                     .unwrap()
@@ -2161,7 +2241,7 @@ impl<
         &self,
         address: &ViewerPubKey,
     ) -> Result<AccountInfo<ViewerKeyPair>, KeystoreError<L>> {
-        let KeystoreSharedState { state, .. } = &*self.mutex.lock().await;
+        let KeystoreSharedState { state, session, .. } = &mut *self.mutex.lock().await;
         let account = state.viewing_accounts.get(address).cloned().ok_or(
             KeystoreError::<L>::InvalidViewerKey {
                 key: address.clone(),
@@ -2181,14 +2261,14 @@ impl<
             .iter()
             // Get assets which are currently viewable.
             .map(|rec| {
-                state
+                session
                     .assets
                     .get::<L>(&rec.ro.asset_def.code)
                     .unwrap()
                     .clone()
             })
             // Get known assets which list this key as a viewer.
-            .chain(state.assets.iter().filter_map(|asset| {
+            .chain(session.assets.iter().filter_map(|asset| {
                 if asset.definition().policy_ref().viewer_pub_key() == address {
                     Some(asset.clone())
                 } else {
@@ -2208,7 +2288,7 @@ impl<
         &self,
         address: &FreezerPubKey,
     ) -> Result<AccountInfo<FreezerKeyPair>, KeystoreError<L>> {
-        let KeystoreSharedState { state, .. } = &*self.mutex.lock().await;
+        let KeystoreSharedState { state, session, .. } = &mut *self.mutex.lock().await;
         let account = state.freezing_accounts.get(address).cloned().ok_or(
             KeystoreError::<L>::InvalidFreezerKey {
                 key: address.clone(),
@@ -2229,14 +2309,14 @@ impl<
             .iter()
             // Get assets which are currently freezable.
             .map(|rec| {
-                state
+                session
                     .assets
                     .get::<L>(&rec.ro.asset_def.code)
                     .unwrap()
                     .clone()
             })
             // Get known assets which list this key as a freezer.
-            .chain(state.assets.iter().filter_map(|asset| {
+            .chain(session.assets.iter().filter_map(|asset| {
                 if asset.definition().policy_ref().freezer_pub_key() == address {
                     Some(asset.clone())
                 } else {
@@ -2283,14 +2363,14 @@ impl<
 
     /// List assets discovered or imported by this keystore.
     pub async fn assets(&self) -> Vec<Asset> {
-        let KeystoreSharedState { state, .. } = &*self.mutex.lock().await;
-        state.assets.iter().collect()
+        let KeystoreSharedState { session, .. } = &mut *self.mutex.lock().await;
+        session.assets.iter().collect()
     }
 
     /// Get details about an asset type using its code.
     pub async fn asset(&self, code: AssetCode) -> Option<Asset> {
-        let KeystoreSharedState { state, .. } = &*self.mutex.lock().await;
-        state.assets.get::<L>(&code).ok()
+        let KeystoreSharedState { session, .. } = &mut *self.mutex.lock().await;
+        session.assets.get::<L>(&code).ok()
     }
 
     /// List past transactions involving this keystore.
@@ -2403,8 +2483,8 @@ impl<
         icon: Option<Icon>,
         mint_info: Option<MintInfo>,
     ) -> Result<(), KeystoreError<L>> {
-        let KeystoreSharedState { state, .. } = &mut *self.lock().await;
-        state.create_asset(definition, name, description, icon, mint_info)
+        let KeystoreSharedState { session, .. } = &mut *self.lock().await;
+        session.create_asset(definition, name, description, icon, mint_info)
     }
 
     /// Create a native asset.
@@ -2412,8 +2492,8 @@ impl<
         &mut self,
         icon: Option<Icon>,
     ) -> Result<(), KeystoreError<L>> {
-        let KeystoreSharedState { state, .. } = &mut *self.lock().await;
-        state.create_native_asset(icon)
+        let KeystoreSharedState { session, .. } = &mut *self.lock().await;
+        session.create_native_asset(icon)
     }
 
     /// Define a new asset and store secret info for minting.
@@ -2433,8 +2513,8 @@ impl<
     /// set on `asset`, it will simply be ignored. Verified assets can only be imported using
     /// [Keystore::verify_assets], conditional on a signature check.
     pub async fn import_asset(&mut self, asset: Asset) -> Result<(), KeystoreError<L>> {
-        let KeystoreSharedState { state, .. } = &mut *self.mutex.lock().await;
-        state.import_asset(asset)
+        let KeystoreSharedState { session, .. } = &mut *self.mutex.lock().await;
+        import_asset(session, asset)
     }
 
     /// Load a verified asset library from a file or byte stream.
@@ -2442,9 +2522,9 @@ impl<
     /// `trusted_signer` must be the public key of an entity trusted by this application to verify
     /// assets. It must also be the public key which was used to sign `library`.
     ///
-    /// If successful, the asset codes loaded from `library` are returned as well as being added to
-    /// this keystore's set of verified asset codes. Note that assets loaded from a verified
-    /// library are not persisted (unless the same assets are imported as unverified using
+    /// If successful, the asset definitions loaded from `library` are returned and their codes are
+    /// added to this keystore's set of verified asset codes. Note that assets loaded from a
+    /// verified library are not persisted (unless the same assets are imported as unverified using
     /// [Keystore::import_asset]) in order to preserve the verified library as the single source of
     /// truth about verified assets. Therefore, this function must be called each time a keystore
     /// is created or opened in order to ensure that the verified assets show up in the keystore's
@@ -2453,9 +2533,9 @@ impl<
         &mut self,
         trusted_signer: &VerKey,
         library: VerifiedAssetLibrary,
-    ) -> Result<Vec<AssetCode>, KeystoreError<L>> {
-        let KeystoreSharedState { state, .. } = &mut *self.lock().await;
-        state.verify_assets(trusted_signer, library)
+    ) -> Result<Vec<AssetDefinition>, KeystoreError<L>> {
+        let KeystoreSharedState { session, .. } = &mut *self.lock().await;
+        verify_assets(session, trusted_signer, library)
     }
 
     /// Add a viewing key to the keystore's key set.

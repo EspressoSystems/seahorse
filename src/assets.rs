@@ -330,7 +330,7 @@ impl Assets {
 
     /// Load a verified asset library with its trusted signer.
     ///
-    /// Returns the list of verified asset codes that are added to the verified set.
+    /// Returns the list of asset definitions, codes of which are added to the verified set.
     ///
     /// Note that the `verified` status of assets is not persisted in order to preserve the
     /// verified asset library as the single source of truth about which assets are verified.
@@ -343,14 +343,14 @@ impl Assets {
         &mut self,
         trusted_signer: &VerKey,
         library: VerifiedAssetLibrary,
-    ) -> Result<Vec<AssetCode>, KeystoreError<L>> {
+    ) -> Result<Vec<AssetDefinition>, KeystoreError<L>> {
         if let Some(assets) = library.open(trusted_signer) {
-            let mut codes = Vec::new();
+            let mut definitions = Vec::new();
             for asset in &assets {
                 self.verified_assets.insert(asset.definition.code);
-                codes.push(asset.definition.code);
+                definitions.push(asset.definition.clone());
             }
-            Ok(codes)
+            Ok(definitions)
         } else {
             Err(KeystoreError::AssetVerificationError)
         }

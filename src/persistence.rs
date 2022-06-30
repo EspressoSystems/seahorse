@@ -14,82 +14,11 @@ use arbitrary::{Arbitrary, Unstructured};
 use async_std::sync::Arc;
 use atomic_store::{load_store::BincodeLoadStore, AppendLog, AtomicStoreLoader, RollingLog};
 use espresso_macros::ser_test;
-use jf_cap::keys::{
-    FreezerKeyPair, FreezerPubKey, UserAddress, UserKeyPair, ViewerKeyPair, ViewerPubKey,
-};
+use jf_cap::keys::{FreezerKeyPair, UserKeyPair, ViewerKeyPair};
 use key_set::{OrderByOutputs, ProverKeySet};
 use reef::*;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use snafu::ResultExt;
-use std::collections::HashMap;
-
-/// The persistence data that determines the static and dynamic states of a keystore.
-pub struct PersistenceState<'a, L: Ledger> {
-    // For persistence, the fields in this struct are grouped into two categories based on how they
-    // can be efficiently saved to disk:
-    // 1. Static data, which never changes once a keystore is created, and so can be written to a
-    //    single, static file.
-    // 2. Dynamic data, which changes frequently and requires some kind of persistent snapshotting.
-    //
-    ////////////////////////////////////////////////////////////////////////////////////////////////
-    // Static data
-    //
-    // proving key set. The proving keys are ordered by number of outputs first and number of inputs
-    // second, because the keystore is less flexible with respect to number of outputs. If we are
-    // building a transaction and find we have too many inputs we can always generate a merge
-    // transaction to defragment, but if the user requests a transaction with N independent outputs,
-    // there is nothing we can do to decrease that number. So when searching for an appropriate
-    // proving key, we will want to find a key with enough outputs first, and then worry about the
-    // number of inputs.
-    //
-    // We keep the prover keys in an Arc because they are large, constant, and depend only on the
-    // universal parameters of the system. This allows sharing them, which drastically decreases the
-    // memory requirements of applications that create multiple keystores. This is not very realistic
-    // for real applications, but it is very important for tests and costs little.
-    //
-    /// Proving keys.
-    ///
-    /// These are the keys used to generate Plonk proofs. There is one key for each transaction
-    /// type (mint, freezes with varying numbers of input records, and transfers with varying
-    /// numbers of input and output records). The supported transaction types must match the
-    /// transaction types supported by the verifying keys maintained by validators.
-    ///
-    /// These keys are constructed when the keystore is created, and they never change afterwards.
-    pub proving_keys: Arc<ProverKeySet<'a, key_set::OrderByOutputs>>,
-
-    ////////////////////////////////////////////////////////////////////////////////////////////////
-    // Dynamic state
-    //
-    /// Transaction building state.
-    ///
-    /// Everything we need to know about the state of the ledger in order to build transactions.
-    pub txn_state: TransactionState<L>,
-    /// HD key generation state.
-    pub key_state: KeyStreamState,
-    /// Viewing keys.
-    pub viewing_accounts: HashMap<ViewerPubKey, Account<L, ViewerKeyPair>>,
-    /// Freezing keys.
-    pub freezing_accounts: HashMap<FreezerPubKey, Account<L, FreezerKeyPair>>,
-    /// Sending keys, for spending owned records and receiving new records.
-    ///
-    /// Each public key in this set also includes a [UserAddress], which can be used to sign
-    /// outgoing transactions, as well as an encryption public key used by other users to encrypt
-    /// owner memos when sending records to this keystore.
-    pub sending_accounts: HashMap<UserAddress, Account<L, UserKeyPair>>,
-}
-
-impl<'a, L: Ledger> From<&KeystoreState<'a, L>> for PersistenceState<'a, L> {
-    fn from(w: &KeystoreState<'a, L>) -> Self {
-        Self {
-            proving_keys: w.proving_keys.clone(),
-            txn_state: w.txn_state.clone(),
-            key_state: w.key_state.clone(),
-            viewing_accounts: w.viewing_accounts.clone(),
-            freezing_accounts: w.freezing_accounts.clone(),
-            sending_accounts: w.sending_accounts.clone(),
-        }
-    }
-}
 
 // Serialization intermediate for the static part of a KeystoreState.
 #[derive(Deserialize, Serialize, Debug)]
@@ -98,8 +27,8 @@ struct KeystoreStaticState<'a> {
     proving_keys: Arc<ProverKeySet<'a, OrderByOutputs>>,
 }
 
-impl<'a, L: Ledger> From<&PersistenceState<'a, L>> for KeystoreStaticState<'a> {
-    fn from(w: &PersistenceState<'a, L>) -> Self {
+impl<'a, L: Ledger> From<&KeystoreState<'a, L>> for KeystoreStaticState<'a> {
+    fn from(w: &KeystoreState<'a, L>) -> Self {
         Self {
             proving_keys: w.proving_keys.clone(),
         }
@@ -153,8 +82,8 @@ impl<L: Ledger> PartialEq<Self> for KeystoreSnapshot<L> {
     }
 }
 
-impl<'a, L: Ledger> From<&PersistenceState<'a, L>> for KeystoreSnapshot<L> {
-    fn from(w: &PersistenceState<'a, L>) -> Self {
+impl<'a, L: Ledger> From<&KeystoreState<'a, L>> for KeystoreSnapshot<L> {
+    fn from(w: &KeystoreState<'a, L>) -> Self {
         Self {
             txn_state: w.txn_state.clone(),
             key_state: w.key_state.clone(),
@@ -195,7 +124,6 @@ pub struct AtomicKeystoreStorage<'a, L: Ledger, Meta: Serialize + DeserializeOwn
     static_dirty: bool,
     dynamic_state: RollingLog<EncryptingResourceAdapter<KeystoreSnapshot<L>>>,
     dynamic_state_dirty: bool,
-    assets_dirty: bool,
     txn_history: AppendLog<EncryptingResourceAdapter<TransactionHistoryEntry<L>>>,
     txn_history_dirty: bool,
     keystore_key_tree: KeyTree,
@@ -243,7 +171,6 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned + Clone + PartialE
             static_dirty: false,
             dynamic_state,
             dynamic_state_dirty: false,
-            assets_dirty: false,
             txn_history,
             txn_history_dirty: false,
             keystore_key_tree: key.derive_sub_tree("keystore".as_bytes()),
@@ -254,7 +181,7 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned + Clone + PartialE
 impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicKeystoreStorage<'a, L, Meta> {
     pub async fn create(
         mut self: &mut Self,
-        w: &PersistenceState<'a, L>,
+        w: &KeystoreState<'a, L>,
     ) -> Result<(), KeystoreError<L>> {
         // Store the initial static and dynamic state, and the metadata. We do this in a closure so
         // that if any operation fails, it will exit the closure but not this function, and we can
@@ -300,7 +227,7 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicKeystoreSto
         self.persisted_meta.load_latest().is_ok()
     }
 
-    pub async fn load(&mut self) -> Result<PersistenceState<'a, L>, KeystoreError<L>> {
+    pub async fn load(&mut self) -> Result<KeystoreState<'a, L>, KeystoreError<L>> {
         // This function is called once, when the keystore is loaded. It is a good place to persist
         // changes to the metadata that happened during loading.
         self.commit().await;
@@ -315,7 +242,7 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicKeystoreSto
             .load_latest()
             .context(crate::PersistenceSnafu)?;
 
-        Ok(PersistenceState {
+        Ok(KeystoreState {
             // Static state
             proving_keys: static_state.proving_keys,
 
@@ -342,7 +269,7 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicKeystoreSto
 
     pub async fn store_snapshot(
         &mut self,
-        w: &PersistenceState<'a, L>,
+        w: &KeystoreState<'a, L>,
     ) -> Result<(), KeystoreError<L>> {
         self.dynamic_state
             .store_resource(&KeystoreSnapshot::from(w))
@@ -419,10 +346,10 @@ mod tests {
         events::{EventIndex, EventSource},
         loader::KeystoreLoader,
         sparse_merkle_tree::SparseMerkleTree,
-        testing::assert_keystore_states_eq,
+        testing::{assert_keystore_states_eq, mocks::MockBackend},
         txn_builder::{PendingTransaction, TransactionInfo, TransactionUID},
+        Keystore,
     };
-    use atomic_store::AtomicStore;
     use chrono::Local;
     use commit::Commitment;
     use jf_cap::{
@@ -504,7 +431,7 @@ mod tests {
     async fn get_test_state(
         name: &str,
     ) -> (
-        PersistenceState<'static, cap::Ledger>,
+        KeystoreState<'static, cap::Ledger>,
         MockKeystoreLoader,
         ChaChaRng,
     ) {
@@ -535,7 +462,7 @@ mod tests {
         let record_merkle_tree = SparseMerkleTree::new(cap::Ledger::merkle_height()).unwrap();
         let validator = cap::Validator::default();
 
-        let state = PersistenceState {
+        let state = KeystoreState {
             proving_keys: Arc::new(ProverKeySet {
                 xfr: KeySet::new(xfr_prove_keys.into_iter()).unwrap(),
                 freeze: KeySet::new(vec![freeze_prove_key].into_iter()).unwrap(),
@@ -560,17 +487,11 @@ mod tests {
             key: KeyTree::random(&mut rng).0,
         };
         {
-            let mut atomic_loader = AtomicStoreLoader::load(
-                &KeystoreLoader::<cap::Ledger>::location(&loader),
-                "keystore",
-            )
-            .unwrap();
-            let mut storage =
-                AtomicKeystoreStorage::new(&mut loader, &mut atomic_loader, 1024).unwrap();
-            assert!(!storage.exists());
-            let mut atomic_store = AtomicStore::open(atomic_loader).unwrap();
+            let (mut atomic_store, mut storage, mut assets) =
+                Keystore::<MockBackend, cap::Ledger, ()>::create_stores(&mut loader).unwrap();
             storage.create(&state).await.unwrap();
             assert!(storage.exists());
+            assets.commit::<cap::Ledger>().unwrap();
             atomic_store.commit_version().unwrap();
         }
 
@@ -585,15 +506,10 @@ mod tests {
         // load comes only from persistent storage and not from any in-memory state of the first
         // instance.
         let loaded = {
-            let mut atomic_loader = AtomicStoreLoader::load(
-                &KeystoreLoader::<cap::Ledger>::location(&loader),
-                "keystore",
-            )
-            .unwrap();
-            let mut storage =
-                AtomicKeystoreStorage::new(&mut loader, &mut atomic_loader, 1024).unwrap();
-            let mut atomic_store = AtomicStore::open(atomic_loader).unwrap();
+            let (mut atomic_store, mut storage, mut assets) =
+                Keystore::<MockBackend, cap::Ledger, ()>::create_stores(&mut loader).unwrap();
             let state = storage.load().await.unwrap();
+            assets.commit::<cap::Ledger>().unwrap();
             atomic_store.commit_version().unwrap();
             state
         };
@@ -631,28 +547,18 @@ mod tests {
 
         // Snapshot the modified dynamic state and then reload.
         {
-            let mut atomic_loader = AtomicStoreLoader::load(
-                &KeystoreLoader::<cap::Ledger>::location(&loader),
-                "keystore",
-            )
-            .unwrap();
-            let mut storage =
-                AtomicKeystoreStorage::new(&mut loader, &mut atomic_loader, 1024).unwrap();
-            let mut atomic_store = AtomicStore::open(atomic_loader).unwrap();
+            let (mut atomic_store, mut storage, mut assets) =
+                Keystore::<MockBackend, cap::Ledger, ()>::create_stores(&mut loader).unwrap();
             storage.store_snapshot(&stored).await.unwrap();
             storage.commit().await;
+            assets.commit::<cap::Ledger>().unwrap();
             atomic_store.commit_version().unwrap();
         }
         let loaded = {
-            let mut atomic_loader = AtomicStoreLoader::load(
-                &KeystoreLoader::<cap::Ledger>::location(&loader),
-                "keystore",
-            )
-            .unwrap();
-            let mut storage =
-                AtomicKeystoreStorage::new(&mut loader, &mut atomic_loader, 1024).unwrap();
-            let mut atomic_store = AtomicStore::open(atomic_loader).unwrap();
+            let (mut atomic_store, mut storage, mut assets) =
+                Keystore::<MockBackend, cap::Ledger, ()>::create_stores(&mut loader).unwrap();
             let state = storage.load().await.unwrap();
+            assets.commit::<cap::Ledger>().unwrap();
             atomic_store.commit_version().unwrap();
             state
         };
@@ -666,28 +572,18 @@ mod tests {
             Account::new(viewing_key, "viewing_account".into()),
         );
         {
-            let mut atomic_loader = AtomicStoreLoader::load(
-                &KeystoreLoader::<cap::Ledger>::location(&loader),
-                "keystore",
-            )
-            .unwrap();
-            let mut storage =
-                AtomicKeystoreStorage::new(&mut loader, &mut atomic_loader, 1024).unwrap();
-            let mut atomic_store = AtomicStore::open(atomic_loader).unwrap();
+            let (mut atomic_store, mut storage, mut assets) =
+                Keystore::<MockBackend, cap::Ledger, ()>::create_stores(&mut loader).unwrap();
             storage.store_snapshot(&stored).await.unwrap();
             storage.commit().await;
+            assets.commit::<cap::Ledger>().unwrap();
             atomic_store.commit_version().unwrap();
         }
         let loaded = {
-            let mut atomic_loader = AtomicStoreLoader::load(
-                &KeystoreLoader::<cap::Ledger>::location(&loader),
-                "keystore",
-            )
-            .unwrap();
-            let mut storage =
-                AtomicKeystoreStorage::new(&mut loader, &mut atomic_loader, 1024).unwrap();
-            let mut atomic_store = AtomicStore::open(atomic_loader).unwrap();
+            let (mut atomic_store, mut storage, mut assets) =
+                Keystore::<MockBackend, cap::Ledger, ()>::create_stores(&mut loader).unwrap();
             let state = storage.load().await.unwrap();
+            assets.commit::<cap::Ledger>().unwrap();
             atomic_store.commit_version().unwrap();
             state
         };
@@ -700,38 +596,10 @@ mod tests {
     async fn test_revert() -> std::io::Result<()> {
         let (mut stored, mut loader, mut rng) = get_test_state("test_revert").await;
 
-        // Make a change to one of the data structures, but revert it.
-        let loaded = {
-            let mut atomic_loader = AtomicStoreLoader::load(
-                &KeystoreLoader::<cap::Ledger>::location(&loader),
-                "keystore",
-            )
-            .unwrap();
-            let mut storage =
-                AtomicKeystoreStorage::new(&mut loader, &mut atomic_loader, 1024).unwrap();
-            let mut atomic_store = AtomicStore::open(atomic_loader).unwrap();
-            storage
-                .store_asset(&AssetInfo::native::<cap::Ledger>())
-                .await
-                .unwrap();
-            storage.revert().await;
-            // Make sure loading after a revert does not commit the reverted changes.
-            let state = storage.load().await.unwrap();
-            atomic_store.commit_version().unwrap();
-            state
-        };
-        assert_keystore_states_eq(&stored, &loaded);
-
         // Change multiple data structures and revert.
         let loaded = {
-            let mut atomic_loader = AtomicStoreLoader::load(
-                &KeystoreLoader::<cap::Ledger>::location(&loader),
-                "keystore",
-            )
-            .unwrap();
-            let mut storage =
-                AtomicKeystoreStorage::new(&mut loader, &mut atomic_loader, 1024).unwrap();
-            let mut atomic_store = AtomicStore::open(atomic_loader).unwrap();
+            let (mut atomic_store, mut storage, mut assets) =
+                Keystore::<MockBackend, cap::Ledger, ()>::create_stores(&mut loader).unwrap();
 
             let user_key = UserKeyPair::generate(&mut rng);
             let ro = random_ro(&mut rng, &user_key);
@@ -769,6 +637,7 @@ mod tests {
 
             // Loading after revert should be a no-op.
             let state = storage.load().await.unwrap();
+            assets.commit::<cap::Ledger>().unwrap();
             atomic_store.commit_version().unwrap();
             state
         };
