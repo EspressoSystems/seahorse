@@ -839,6 +839,12 @@
 <span id="839">839</span>
 <span id="840">840</span>
 <span id="841">841</span>
+<span id="842">842</span>
+<span id="843">843</span>
+<span id="844">844</span>
+<span id="845">845</span>
+<span id="846">846</span>
+<span id="847">847</span>
 </pre><pre class="rust"><code><span class="comment">// Copyright (c) 2022 Espresso Systems (espressosys.com)</span>
 <span class="comment">// This file is part of the Seahorse library.</span>
 
@@ -870,6 +876,8 @@
 <span class="kw">use</span> <span class="ident">reef</span>::<span class="kw-2">*</span>;
 <span class="kw">use</span> <span class="ident">serde</span>::{<span class="ident">de::DeserializeOwned</span>, <span class="ident">Deserialize</span>, <span class="ident">Serialize</span>};
 <span class="kw">use</span> <span class="ident">snafu::ResultExt</span>;
+
+<span class="kw">const</span> <span class="ident">ATOMIC_STORE_RETAINED_ENTRIES</span>: <span class="ident">u32</span> <span class="op">=</span> <span class="number">5</span>;
 
 <span class="comment">// Serialization intermediate for the static part of a KeystoreState.</span>
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Deserialize</span>, <span class="ident">Serialize</span>, <span class="ident">Debug</span>)]</span>
@@ -1078,13 +1086,16 @@
             <span class="ident">file_fill_size</span>,
         )
         .<span class="ident">context</span>(<span class="ident"><span class="kw">crate</span>::PersistenceSnafu</span>)<span class="question-mark">?</span>;
-        <span class="kw">let</span> <span class="ident">dynamic_state</span> <span class="op">=</span> <span class="ident">RollingLog::load</span>(
+
+        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">dynamic_state</span> <span class="op">=</span> <span class="ident">RollingLog::load</span>(
             <span class="ident">atomic_loader</span>,
             <span class="ident">adaptor</span>.<span class="ident">cast</span>(),
             <span class="string">&quot;keystore_dyn&quot;</span>,
             <span class="ident">file_fill_size</span>,
         )
         .<span class="ident">context</span>(<span class="ident"><span class="kw">crate</span>::PersistenceSnafu</span>)<span class="question-mark">?</span>;
+        <span class="ident">dynamic_state</span>.<span class="ident">set_retained_entries</span>(<span class="ident">ATOMIC_STORE_RETAINED_ENTRIES</span>);
+
         <span class="kw">let</span> <span class="ident">assets</span> <span class="op">=</span> <span class="ident">AppendLog::load</span>(
             <span class="ident">atomic_loader</span>,
             <span class="ident">adaptor</span>.<span class="ident">cast</span>(),
@@ -1272,6 +1283,7 @@
 
             <span class="kw">if</span> <span class="self">self</span>.<span class="ident">dynamic_state_dirty</span> {
                 <span class="self">self</span>.<span class="ident">dynamic_state</span>.<span class="ident">commit_version</span>().<span class="ident">unwrap</span>();
+                <span class="self">self</span>.<span class="ident">dynamic_state</span>.<span class="ident">prune_file_entries</span>().<span class="ident">unwrap</span>();
             } <span class="kw">else</span> {
                 <span class="self">self</span>.<span class="ident">dynamic_state</span>.<span class="ident">skip_version</span>().<span class="ident">unwrap</span>();
             }
