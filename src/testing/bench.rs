@@ -237,7 +237,7 @@ async fn bench_ledger_scanner_setup<
     // keystores so we can easily parallelize the transfers, which speeds things up and allows
     // them all to be included in the same block.
     let start_time = ledger.lock().await.now();
-    let initial_state = keystores[0].0.lock().await.state().clone();
+    let initial_state = keystores[0].0.read().await.state().clone();
     for i in 0..blocks {
         join_all(
             keystores

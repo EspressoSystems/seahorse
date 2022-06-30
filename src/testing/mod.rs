@@ -524,7 +524,7 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         )],
     ) {
         for (keystore, _, _) in keystores {
-            let KeystoreSharedState { state, session, .. } = &mut *keystore.mutex.lock().await;
+            let KeystoreSharedState { state, session, .. } = &mut *keystore.mutex.write().await;
             let atomic_store = &mut session.atomic_store;
             let storage = &session.storage;
             let mut state = state.clone();

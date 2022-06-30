@@ -1844,7 +1844,7 @@ pub mod generic_keystore_tests {
         // the key through the keystore's public interface, triggering a background ledger scan which
         // should identify the existing record belonging to the key.
         let key = {
-            let KeystoreSharedState { state, session, .. } = &mut *keystores[0].0.lock().await;
+            let KeystoreSharedState { state, session, .. } = &mut *keystores[0].0.write().await;
             let key = session
                 .storage
                 .lock()
@@ -2481,7 +2481,7 @@ pub mod generic_keystore_tests {
         // Check that temporary assets are not persisted, and that persisted assets are never
         // verified.
         {
-            let session = &mut keystores[0].0.lock().await.session;
+            let session = &mut keystores[0].0.write().await.session;
             let storage = &session.storage;
             let atomic_store = &mut session.atomic_store;
             let loaded = storage.lock().await.load().await.unwrap();
@@ -2514,7 +2514,7 @@ pub mod generic_keystore_tests {
 
         // Check that `asset2` is now persisted, but still no assets in storage are verified.
         {
-            let session = &mut keystores[0].0.lock().await.session;
+            let session = &mut keystores[0].0.write().await.session;
             let storage = &session.storage;
             let atomic_store = &mut session.atomic_store;
             let loaded = storage.lock().await.load().await.unwrap();
@@ -2530,7 +2530,7 @@ pub mod generic_keystore_tests {
         // with the verified information, we get back the current in-memory information (which was
         // generated in a different order).
         let loaded = {
-            let session = &mut keystores[0].0.lock().await.session;
+            let session = &mut keystores[0].0.write().await.session;
             let storage = &session.storage;
             let atomic_store = &mut session.atomic_store;
             let mut assets = storage.lock().await.load().await.unwrap().assets;
@@ -2540,7 +2540,7 @@ pub mod generic_keystore_tests {
             }
             assets
         };
-        assert_eq!(loaded, keystores[0].0.lock().await.state.assets);
+        assert_eq!(loaded, keystores[0].0.read().await.state.assets);
 
         // Check that the verified assets are marked verified once again.
         for asset in loaded {
