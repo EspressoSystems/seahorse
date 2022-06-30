@@ -31,6 +31,8 @@ use reef::*;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use snafu::ResultExt;
 
+const ATOMIC_STORE_RETAINED_ENTRIES: u32 = 5;
+
 // Serialization intermediate for the static part of a WalletState.
 #[derive(Deserialize, Serialize)]
 struct WalletStaticState<'a> {
@@ -242,13 +244,16 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned + Clone + PartialE
             file_fill_size,
         )
         .context(crate::PersistenceSnafu)?;
-        let dynamic_state = RollingLog::load(
+        let mut dynamic_state = RollingLog::load(
             &mut atomic_loader,
             adaptor.cast(),
             "wallet_dyn",
             file_fill_size,
         )
         .context(crate::PersistenceSnafu)?;
+
+        dynamic_state.set_retained_entries(ATOMIC_STORE_RETAINED_ENTRIES);
+
         let assets = AppendLog::load(
             &mut atomic_loader,
             adaptor.cast(),
@@ -452,6 +457,7 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> WalletStorage<'a,
         }
 
         self.store.commit_version().unwrap();
+        self.dynamic_state.prune_file_entries().unwrap();
 
         self.meta_dirty = false;
         self.static_dirty = false;
