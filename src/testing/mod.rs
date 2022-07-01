@@ -524,12 +524,10 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         )],
     ) {
         for (keystore, _, _) in keystores {
-            let KeystoreSharedState { state, session, .. } = &mut *keystore.mutex.write().await;
-            let atomic_store = &mut session.atomic_store;
+            let KeystoreSharedState { state, session, .. } = &*keystore.mutex.read().await;
             let storage = &session.storage;
             let mut state = state.clone();
-            let mut loaded = storage.lock().await.load().await.unwrap();
-            atomic_store.commit_version().unwrap();
+            let mut loaded = storage.load().await.unwrap();
 
             // The persisted state should not include any temporary assets.
             state.assets = AssetLibrary::new(
@@ -702,7 +700,7 @@ pub async fn await_transaction<
     'a,
     L: Ledger + 'static,
     Backend: KeystoreBackend<'a, L> + Sync + 'a,
-    Meta: 'a + Serialize + DeserializeOwned + Send + Clone + PartialEq,
+    Meta: 'a + Serialize + DeserializeOwned + Send + Sync + Clone + PartialEq,
 >(
     receipt: &TransactionReceipt<L>,
     sender: &Keystore<'a, Backend, L, Meta>,

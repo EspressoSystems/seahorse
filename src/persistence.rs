@@ -305,10 +305,7 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicKeystoreSto
         })()
         .await
         {
-            Ok(()) => {
-                self.commit().await;
-                Ok(())
-            }
+            Ok(()) => Ok(()),
             Err(err) => {
                 self.revert().await;
                 Err(err)
@@ -330,11 +327,7 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicKeystoreSto
         self.persisted_meta.load_latest().is_ok()
     }
 
-    pub async fn load(&mut self) -> Result<KeystoreState<'a, L>, KeystoreError<L>> {
-        // This function is called once, when the keystore is loaded. It is a good place to persist
-        // changes to the metadata that happened during loading.
-        self.commit().await;
-
+    pub async fn load(&self) -> Result<KeystoreState<'a, L>, KeystoreError<L>> {
         let static_state = self
             .static_data
             .load_latest()
@@ -412,7 +405,7 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicKeystoreSto
     }
 
     pub async fn transaction_history(
-        &mut self,
+        &self,
     ) -> Result<Vec<TransactionHistoryEntry<L>>, KeystoreError<L>> {
         self.txn_history
             .iter()
@@ -625,11 +618,16 @@ mod tests {
             .unwrap();
             let mut storage =
                 AtomicKeystoreStorage::new(&mut loader, &mut atomic_loader, 1024).unwrap();
-            assert!(!storage.exists());
             let mut atomic_store = AtomicStore::open(atomic_loader).unwrap();
-            storage.create(&state).await.unwrap();
-            assert!(storage.exists());
+
+            storage.commit().await;
             atomic_store.commit_version().unwrap();
+            assert!(!storage.exists());
+
+            storage.create(&state).await.unwrap();
+            storage.commit().await;
+            atomic_store.commit_version().unwrap();
+            assert!(storage.exists());
         }
 
         (state, loader, rng)
@@ -652,6 +650,7 @@ mod tests {
                 AtomicKeystoreStorage::new(&mut loader, &mut atomic_loader, 1024).unwrap();
             let mut atomic_store = AtomicStore::open(atomic_loader).unwrap();
             let state = storage.load().await.unwrap();
+            storage.commit().await;
             atomic_store.commit_version().unwrap();
             state
         };
@@ -711,6 +710,7 @@ mod tests {
                 AtomicKeystoreStorage::new(&mut loader, &mut atomic_loader, 1024).unwrap();
             let mut atomic_store = AtomicStore::open(atomic_loader).unwrap();
             let state = storage.load().await.unwrap();
+            storage.commit().await;
             atomic_store.commit_version().unwrap();
             state
         };
@@ -752,6 +752,7 @@ mod tests {
                 AtomicKeystoreStorage::new(&mut loader, &mut atomic_loader, 1024).unwrap();
             let mut atomic_store = AtomicStore::open(atomic_loader).unwrap();
             let state = storage.load().await.unwrap();
+            storage.commit().await;
             atomic_store.commit_version().unwrap();
             state
         };
@@ -781,6 +782,7 @@ mod tests {
             storage.revert().await;
             // Make sure loading after a revert does not commit the reverted changes.
             let state = storage.load().await.unwrap();
+            storage.commit().await;
             atomic_store.commit_version().unwrap();
             state
         };
@@ -837,6 +839,7 @@ mod tests {
 
             // Loading after revert should be a no-op.
             let state = storage.load().await.unwrap();
+            storage.commit().await;
             atomic_store.commit_version().unwrap();
             state
         };

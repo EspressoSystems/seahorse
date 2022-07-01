@@ -55,7 +55,7 @@ pub trait CLI<'a> {
     /// The [KeystoreLoader] implementation to use to create or load the keystore.
     type Loader: KeystoreLoader<Self::Ledger, Meta = Self::Meta>;
     /// The type of metadata used by [Self::Loader].
-    type Meta: 'a + Send + Serialize + DeserializeOwned + Clone + PartialEq;
+    type Meta: 'a + Send + Sync + Serialize + DeserializeOwned + Clone + PartialEq;
     /// The type of command line options for use when configuring the CLI.
     type Args: CLIArgs;
 

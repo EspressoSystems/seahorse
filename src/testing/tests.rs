@@ -1847,8 +1847,6 @@ pub mod generic_keystore_tests {
             let KeystoreSharedState { state, session, .. } = &mut *keystores[0].0.write().await;
             let key = session
                 .storage
-                .lock()
-                .await
                 .key_stream()
                 .derive_sub_tree("user".as_bytes())
                 .derive_user_key_pair(&state.key_state.user.to_le_bytes());
@@ -2481,16 +2479,14 @@ pub mod generic_keystore_tests {
         // Check that temporary assets are not persisted, and that persisted assets are never
         // verified.
         {
-            let session = &mut keystores[0].0.write().await.session;
+            let session = &keystores[0].0.read().await.session;
             let storage = &session.storage;
-            let atomic_store = &mut session.atomic_store;
-            let loaded = storage.lock().await.load().await.unwrap();
+            let loaded = storage.load().await.unwrap();
             assert!(loaded.assets.iter().all(|asset| !asset.verified));
             assert!(loaded.assets.contains(AssetCode::native()));
             assert!(loaded.assets.contains(asset1.code));
             assert!(!loaded.assets.contains(asset2.code));
             assert_eq!(loaded.assets.len(), 2);
-            atomic_store.commit_version().unwrap();
         }
 
         // Now import `asset2`, updating the existing verified asset with persistence and mint info.
@@ -2514,27 +2510,23 @@ pub mod generic_keystore_tests {
 
         // Check that `asset2` is now persisted, but still no assets in storage are verified.
         {
-            let session = &mut keystores[0].0.write().await.session;
+            let session = &keystores[0].0.read().await.session;
             let storage = &session.storage;
-            let atomic_store = &mut session.atomic_store;
-            let loaded = storage.lock().await.load().await.unwrap();
+            let loaded = storage.load().await.unwrap();
             assert!(loaded.assets.iter().all(|asset| !asset.verified));
             assert!(loaded.assets.contains(AssetCode::native()));
             assert!(loaded.assets.contains(asset1.code));
             assert!(loaded.assets.contains(asset2.code));
             assert_eq!(loaded.assets.len(), 3);
-            atomic_store.commit_version().unwrap();
         }
 
         // Finally, check that by loading the persisted, unverified information, and combining it
         // with the verified information, we get back the current in-memory information (which was
         // generated in a different order).
         let loaded = {
-            let session = &mut keystores[0].0.write().await.session;
+            let session = &keystores[0].0.read().await.session;
             let storage = &session.storage;
-            let atomic_store = &mut session.atomic_store;
-            let mut assets = storage.lock().await.load().await.unwrap().assets;
-            atomic_store.commit_version().unwrap();
+            let mut assets = storage.load().await.unwrap().assets;
             for asset in &imported {
                 assets.insert(asset.clone());
             }

@@ -57,7 +57,7 @@ use crate::{
 };
 use arbitrary::Arbitrary;
 use async_scoped::AsyncScope;
-use async_std::sync::{Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use async_std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use async_std::task::block_on;
 use async_trait::async_trait;
 use atomic_store::{AtomicStore, AtomicStoreLoader};
@@ -295,7 +295,7 @@ pub struct StorageTransaction<
     Meta: Serialize + DeserializeOwned + Send,
 > {
     pub backend: &'l mut Backend,
-    storage: Arc<Mutex<AtomicKeystoreStorage<'a, L, Meta>>>,
+    storage: &'l mut AtomicKeystoreStorage<'a, L, Meta>,
     cancelled: bool,
     _phantom: std::marker::PhantomData<&'a ()>,
     _phantom2: std::marker::PhantomData<L>,
@@ -309,10 +309,7 @@ impl<
         Meta: Serialize + DeserializeOwned + Send,
     > StorageTransaction<'a, 'l, L, Backend, Meta>
 {
-    fn new(
-        backend: &'l mut Backend,
-        storage: Arc<Mutex<AtomicKeystoreStorage<'a, L, Meta>>>,
-    ) -> Self {
+    fn new(backend: &'l mut Backend, storage: &'l mut AtomicKeystoreStorage<'a, L, Meta>) -> Self {
         Self {
             backend,
             storage,
@@ -327,7 +324,7 @@ impl<
         state: &KeystoreState<'a, L>,
     ) -> Result<(), KeystoreError<L>> {
         if !self.cancelled {
-            let res = self.storage().await.store_snapshot(state).await;
+            let res = self.storage.store_snapshot(state).await;
             if res.is_err() {
                 self.cancel().await;
             }
@@ -344,7 +341,7 @@ impl<
         assert!(!asset.verified);
 
         if !self.cancelled {
-            let res = self.storage().await.store_asset(asset).await;
+            let res = self.storage.store_asset(asset).await;
             if res.is_err() {
                 self.cancel().await;
             }
@@ -359,7 +356,7 @@ impl<
         transaction: TransactionHistoryEntry<L>,
     ) -> Result<(), KeystoreError<L>> {
         if !self.cancelled {
-            let res = self.storage().await.store_transaction(transaction).await;
+            let res = self.storage.store_transaction(transaction).await;
             if res.is_err() {
                 self.cancel().await;
             }
@@ -372,12 +369,8 @@ impl<
     async fn cancel(&mut self) {
         if !self.cancelled {
             self.cancelled = true;
-            self.storage().await.revert().await;
+            self.storage.revert().await;
         }
-    }
-
-    async fn storage(&mut self) -> MutexGuard<'_, AtomicKeystoreStorage<'a, L, Meta>> {
-        self.storage.lock().await
     }
 }
 
@@ -488,7 +481,7 @@ pub struct KeystoreSession<
 > {
     backend: Backend,
     atomic_store: AtomicStore,
-    storage: Arc<Mutex<AtomicKeystoreStorage<'a, L, Meta>>>,
+    storage: AtomicKeystoreStorage<'a, L, Meta>,
     rng: ChaChaRng,
     viewer_key_stream: hd::KeyTree,
     user_key_stream: hd::KeyTree,
@@ -523,10 +516,10 @@ impl<'a, L: Ledger, Backend: KeystoreBackend<'a, L>, Meta: Serialize + Deseriali
     {
         let fut = update(StorageTransaction::new(
             &mut self.backend,
-            self.storage.clone(),
+            &mut self.storage,
         ))
-        .and_then(|mut txn| async move {
-            txn.storage().await.commit().await;
+        .and_then(|txn| async move {
+            txn.storage.commit().await;
             Ok(())
         });
         fut.await?;
@@ -535,8 +528,8 @@ impl<'a, L: Ledger, Backend: KeystoreBackend<'a, L>, Meta: Serialize + Deseriali
     }
 
     /// Access the persistent storage layer
-    pub async fn storage(&mut self) -> MutexGuard<'_, AtomicKeystoreStorage<'a, L, Meta>> {
-        self.storage.lock().await
+    pub async fn storage(&self) -> &AtomicKeystoreStorage<'a, L, Meta> {
+        &self.storage
     }
 }
 
@@ -1758,7 +1751,7 @@ impl<
         'a,
         L: 'static + Ledger,
         Backend: 'a + KeystoreBackend<'a, L> + Send + Sync,
-        Meta: 'a + Serialize + DeserializeOwned + Send + Clone + PartialEq,
+        Meta: 'a + Serialize + DeserializeOwned + Send + Sync + Clone + PartialEq,
     > Keystore<'a, Backend, L, Meta>
 {
     // This function suffers from github.com/rust-lang/rust/issues/89657, in which, if we define it
@@ -1787,6 +1780,7 @@ impl<
                 storage.create(&state).await?;
                 state
             };
+            storage.commit().await;
             atomic_store.commit_version()?;
             Self::new_impl(backend, atomic_store, storage, state).await
         })
@@ -1795,13 +1789,18 @@ impl<
     #[cfg(any(test, bench, feature = "testing"))]
     pub fn with_state(
         backend: Backend,
-        loader: &mut impl KeystoreLoader<L, Meta = Meta>,
+        loader: &mut (impl 'a + KeystoreLoader<L, Meta = Meta>),
         state: KeystoreState<'a, L>,
     ) -> BoxFuture<'a, Result<Keystore<'a, Backend, L, Meta>, KeystoreError<L>>> {
         let mut atomic_loader = AtomicStoreLoader::load(&loader.location(), "keystore").unwrap();
-        let storage = AtomicKeystoreStorage::new(loader, &mut atomic_loader, 1024).unwrap();
-        let atomic_store = AtomicStore::open(atomic_loader).unwrap();
-        Box::pin(async move { Self::new_impl(backend, atomic_store, storage, state).await })
+        let mut storage = AtomicKeystoreStorage::new(loader, &mut atomic_loader, 1024).unwrap();
+        let mut atomic_store = AtomicStore::open(atomic_loader).unwrap();
+        Box::pin(async move {
+            storage.create(&state).await?;
+            storage.commit().await;
+            atomic_store.commit_version()?;
+            Self::new_impl(backend, atomic_store, storage, state).await
+        })
     }
 
     async fn new_impl(
@@ -1824,7 +1823,7 @@ impl<
         let mut session = KeystoreSession {
             backend,
             atomic_store,
-            storage: Arc::new(Mutex::new(storage)),
+            storage,
             rng: ChaChaRng::from_entropy(),
             viewer_key_stream: key_tree.derive_sub_tree("viewer".as_bytes()),
             freezer_key_stream: key_tree.derive_sub_tree("freezer".as_bytes()),
@@ -2186,8 +2185,7 @@ impl<
     > {
         Box::pin(async move {
             let KeystoreSharedState { session, .. } = &*self.read().await;
-            let mut storage = session.storage.lock().await;
-            storage.transaction_history().await
+            session.storage.transaction_history().await
         })
     }
 
