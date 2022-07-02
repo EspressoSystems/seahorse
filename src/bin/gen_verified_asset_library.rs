@@ -7,7 +7,7 @@
 
 use ark_serialize::CanonicalDeserialize;
 use jf_cap::KeyPair;
-use seahorse::asset_library::{AssetInfo, VerifiedAssetLibrary};
+use seahorse::{asset_library::VerifiedAssetLibrary, assets::Asset};
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, Write};
 use std::path::PathBuf;
@@ -35,7 +35,7 @@ struct Options {
     key: String,
 
     /// Optional list of assets to include, passed on the command line rather than using --input.
-    assets: Vec<AssetInfo>,
+    assets: Vec<Asset>,
 }
 
 fn main() -> io::Result<()> {
@@ -62,7 +62,7 @@ fn main() -> io::Result<()> {
         let file = BufReader::new(File::open(&path)?);
         for line in file.lines() {
             let line = line?;
-            let asset = match AssetInfo::from_str(&line) {
+            let asset = match Asset::from_str(&line) {
                 Ok(asset) => asset,
                 Err(err) => {
                     eprintln!("invalid asset {} in file {:?}: {}", line, path, err);

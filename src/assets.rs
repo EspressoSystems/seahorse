@@ -22,6 +22,9 @@ use std::collections::HashSet;
 use std::ops::{Deref, DerefMut};
 use std::str::FromStr;
 
+const ICON_WIDTH: u32 = 64;
+const ICON_HEIGHT: u32 = 64;
+
 /// An asset with its code as the primary key.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct Asset {
@@ -107,10 +110,30 @@ impl Asset {
     ///
     /// Mint information isn't included since it's a secret, and we don't want to export secret
     /// information.
-    fn export_verified(mut self) -> Self {
+    pub(crate) fn export_verified(mut self) -> Self {
         self.mint_info = None;
         self.verified = true;
         self
+    }
+
+    /// Create an asset for testing purposes.
+    #[cfg(test)]
+    pub fn from(
+        definition: AssetDefinition,
+        name: Option<String>,
+        description: Option<String>,
+        icon: Option<Icon>,
+        mint_info: Option<MintInfo>,
+        verified: bool,
+    ) -> Self {
+        Self {
+            definition,
+            name,
+            description,
+            icon,
+            mint_info,
+            verified,
+        }
     }
 }
 
@@ -185,6 +208,20 @@ impl FromStr for Asset {
     }
 }
 
+#[cfg(test)]
+impl From<AssetDefinition> for Asset {
+    fn from(definition: AssetDefinition) -> Self {
+        Self {
+            definition,
+            name: None,
+            description: None,
+            icon: None,
+            mint_info: None,
+            verified: false,
+        }
+    }
+}
+
 pub type AssetsStore = KeyValueStore<AssetCode, Asset>;
 
 /// An editor to create or update the asset or assets store.
@@ -237,12 +274,19 @@ impl<'a> AssetEditor<'a> {
 
     /// Set the optional asset icon.
     pub fn set_icon(mut self, icon: Option<Icon>) -> Self {
-        self.asset.icon = icon;
+        self.asset.icon = match icon {
+            Some(mut icon) => {
+                icon.resize(ICON_WIDTH, ICON_HEIGHT);
+                Some(icon)
+            }
+            None => None,
+        };
         self
     }
 
     /// Set the asset icon.
-    pub fn with_icon(mut self, icon: Icon) -> Self {
+    pub fn with_icon(mut self, mut icon: Icon) -> Self {
+        icon.resize(ICON_WIDTH, ICON_HEIGHT);
         self.asset.icon = Some(icon);
         self
     }
@@ -267,23 +311,52 @@ impl<'a> AssetEditor<'a> {
     ///   * the given asset has the corresponding field.
     /// * Updates the mint information, if present in the given asset.
     /// * Sets as verified if either asset if verified.
-    pub fn update(&mut self, other: Asset) {
-        assert_eq!(self.asset.definition, other.definition);
-        if other.verified || !self.asset.verified {
+    pub fn update<L: Ledger>(mut self, other: Asset) -> Result<Self, KeystoreError<L>> {
+        let mut asset = self.store.load(&other.definition.code)?;
+        if other.verified || !asset.verified {
             if let Some(name) = other.name.clone() {
-                self.asset.name = Some(name);
+                asset.name = Some(name);
             }
             if let Some(description) = other.description.clone() {
-                self.asset.description = Some(description);
+                asset.description = Some(description);
             }
             if let Some(icon) = other.icon.clone() {
-                self.asset.icon = Some(icon);
+                asset.icon = Some(icon);
             }
         }
         if let Some(mint_info) = other.mint_info.clone() {
-            self.asset.mint_info = Some(mint_info);
+            asset.mint_info = Some(mint_info);
         }
-        self.asset.verified |= other.verified;
+        asset.verified |= other.verified;
+        self.asset = asset;
+        Ok(self)
+    }
+
+    /// Updates the asset by merging in the given asset with the same definition.
+    /// * Updates the asset name, description or icon if
+    ///   * the given asset is verified, and
+    ///   * the given asset has the corresponding field.
+    /// * Updates the mint information, if present in the given asset.
+    /// * Sets as verified if either asset if verified.
+    fn update_internal<L: Ledger>(mut self, other: Asset) -> Result<Self, KeystoreError<L>> {
+        let mut asset = self.store.load(&other.definition.code)?;
+        if other.verified {
+            if let Some(name) = other.name.clone() {
+                asset.name = Some(name);
+            }
+            if let Some(description) = other.description.clone() {
+                asset.description = Some(description);
+            }
+            if let Some(icon) = other.icon.clone() {
+                asset.icon = Some(icon);
+            }
+        }
+        if let Some(mint_info) = other.mint_info.clone() {
+            asset.mint_info = Some(mint_info);
+        }
+        asset.verified |= other.verified;
+        self.asset = asset;
+        Ok(self)
     }
 }
 
@@ -325,12 +398,21 @@ impl Assets {
 
     /// Iterate through the assets.
     pub fn iter(&self) -> impl Iterator<Item = Asset> + '_ {
-        self.store.iter().cloned()
+        let mut assets = Vec::new();
+        for mut asset in self.store.iter().cloned() {
+            // The asset is verified if it's in the verified set.
+            if self.verified_assets.contains(&asset.code()) {
+                asset.verified = true;
+            }
+            assets.push(asset.clone());
+        }
+        assets.into_iter()
     }
 
     /// Load a verified asset library with its trusted signer.
     ///
-    /// Returns the list of asset definitions, codes of which are added to the verified set.
+    /// Adds the asset codes to the verified set, adds the assets to the store, and returns the
+    /// list of asset definitions.
     ///
     /// Note that the `verified` status of assets is not persisted in order to preserve the
     /// verified asset library as the single source of truth about which assets are verified.
@@ -348,6 +430,12 @@ impl Assets {
             let mut definitions = Vec::new();
             for asset in &assets {
                 self.verified_assets.insert(asset.definition.code);
+                let store_asset = self.store.load(&asset.definition.code);
+                let mut editor = AssetEditor::new(&mut self.store, asset.clone());
+                if store_asset.is_ok() {
+                    editor = editor.update_internal::<L>(asset.clone())?;
+                }
+                editor.save::<L>()?;
                 definitions.push(asset.definition.clone());
             }
             Ok(definitions)
@@ -413,9 +501,9 @@ impl Assets {
             asset.verified = true
         }
         let store_asset = self.store.load(&asset.definition.code);
-        let mut editor = AssetEditor::new(&mut self.store, asset);
-        if let Ok(store_asset) = store_asset {
-            editor.update(store_asset);
+        let mut editor = AssetEditor::new(&mut self.store, asset.clone());
+        if store_asset.is_ok() {
+            editor = editor.update::<L>(asset)?;
         }
         editor.save::<L>()?;
         Ok(editor)
@@ -431,9 +519,38 @@ impl Assets {
             asset.verified = true
         }
         let store_asset = self.store.load(&asset.definition.code);
-        let mut editor = AssetEditor::new(&mut self.store, asset);
-        if let Ok(store_asset) = store_asset {
-            editor.update(store_asset);
+        let mut editor = AssetEditor::new(&mut self.store, asset.clone());
+        if store_asset.is_ok() {
+            editor = editor.update::<L>(asset)?;
+        }
+        editor.save::<L>()?;
+        Ok(editor)
+    }
+
+    /// Create an asset internally.
+    ///
+    /// If the store doesn't have an asset with the same code, adds the created asset to the store.
+    /// Otherwise, updates the exisiting asset.
+    ///
+    /// Returns the editor for the created asset.
+    pub(crate) fn create_internal<L: Ledger>(
+        &mut self,
+        definition: AssetDefinition,
+        mint_info: Option<MintInfo>,
+        verified: bool,
+    ) -> Result<AssetEditor<'_>, KeystoreError<L>> {
+        let asset = Asset {
+            definition,
+            name: None,
+            description: None,
+            icon: None,
+            mint_info,
+            verified,
+        };
+        let store_asset = self.store.load(&asset.definition.code);
+        let mut editor = AssetEditor::new(&mut self.store, asset.clone());
+        if store_asset.is_ok() {
+            editor = editor.update_internal::<L>(asset)?;
         }
         editor.save::<L>()?;
         Ok(editor)

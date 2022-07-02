@@ -39,7 +39,7 @@ pub mod txn_builder;
 
 use crate::sparse_merkle_tree::SparseMerkleTree;
 pub use crate::{
-    asset_library::{AssetInfo, Icon, MintInfo},
+    asset_library::{Icon, MintInfo},
     assets::{Asset, AssetEditor, Assets},
     txn_builder::RecordAmount,
 };
@@ -526,6 +526,13 @@ impl<'a, L: Ledger, Backend: KeystoreBackend<'a, L>, Meta: Serialize + Deseriali
         self.assets.get(code)
     }
 
+    /// Commit the persistence storage, the assets store, and the atomic store.
+    pub async fn commit(&mut self) -> Result<(), KeystoreError<L>> {
+        self.storage().await.commit().await;
+        self.assets.commit()?;
+        Ok(self.atomic_store.commit_version()?)
+    }
+
     /// Create an unverified asset.
     pub fn create_asset(
         &mut self,
@@ -539,47 +546,53 @@ impl<'a, L: Ledger, Backend: KeystoreBackend<'a, L>, Meta: Serialize + Deseriali
             .create(definition, mint_info)?
             .set_name(name)
             .set_description(description)
-            .set_icon(icon);
+            .set_icon(icon)
+            .save()?;
         Ok(())
     }
 
     // Create a native asset.
     pub fn create_native_asset(&mut self, icon: Option<Icon>) -> Result<(), KeystoreError<L>> {
-        self.assets.create_native()?.set_icon(icon);
+        self.assets.create_native()?.set_icon(icon).save()?;
         Ok(())
     }
 
-    pub fn import_asset(&mut self, asset: Asset) -> Result<(), KeystoreError<L>> {
-        self.create_asset(
-            asset.definition().clone(),
-            asset.name(),
-            asset.description(),
-            asset.icon(),
-            asset.mint_info(),
-        )?;
-        Ok(())
-    }
-
-    /// Load a verified asset library with its trusted signer.
-    pub fn verify_assets(
+    /// Create an asset internally.
+    pub(crate) fn create_asset_internal(
         &mut self,
-        trusted_signer: &VerKey,
-        library: VerifiedAssetLibrary,
-    ) -> Result<Vec<AssetDefinition>, KeystoreError<L>> {
-        self.assets.verify_assets(trusted_signer, library)
+        definition: AssetDefinition,
+        name: Option<String>,
+        description: Option<String>,
+        icon: Option<Icon>,
+        mint_info: Option<MintInfo>,
+        verified: bool,
+    ) -> Result<(), KeystoreError<L>> {
+        self.assets
+            .create_internal(definition, mint_info, verified)?
+            .set_name(name)
+            .set_description(description)
+            .set_icon(icon)
+            .save()?;
+        Ok(())
     }
 }
 
+/// Import an unverified asset.
+///
+/// Note that this function cannot be used to import verified assets. If the `verified` flag is
+/// set on `asset`, it will simply be ignored. Verified assets can only be imported using
+/// [verify_assets], conditional on a signature check.
 pub fn import_asset<'a, L: Ledger, Meta: Serialize + DeserializeOwned + Send>(
     session: &mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>, Meta>,
     asset: Asset,
 ) -> Result<(), KeystoreError<L>> {
-    session.create_asset(
+    session.create_asset_internal(
         asset.definition().clone(),
         asset.name(),
         asset.description(),
         asset.icon(),
         asset.mint_info(),
+        asset.verified(),
     )?;
     Ok(())
 }
@@ -590,7 +603,7 @@ pub fn verify_assets<'a, L: Ledger, Meta: Serialize + DeserializeOwned + Send>(
     trusted_signer: &VerKey,
     library: VerifiedAssetLibrary,
 ) -> Result<Vec<AssetDefinition>, KeystoreError<L>> {
-    session.verify_assets(trusted_signer, library)
+    session.assets.verify_assets(trusted_signer, library)
 }
 
 // Trait used to indicate that an abstract return type captures a reference with the lifetime 'a.
@@ -2494,6 +2507,20 @@ impl<
     ) -> Result<(), KeystoreError<L>> {
         let KeystoreSharedState { session, .. } = &mut *self.lock().await;
         session.create_native_asset(icon)
+    }
+
+    /// Create an asset internally.
+    pub async fn create_asset_internal(
+        &mut self,
+        definition: AssetDefinition,
+        name: Option<String>,
+        description: Option<String>,
+        icon: Option<Icon>,
+        mint_info: Option<MintInfo>,
+        verified: bool,
+    ) -> Result<(), KeystoreError<L>> {
+        let KeystoreSharedState { session, .. } = &mut *self.lock().await;
+        session.create_asset_internal(definition, name, description, icon, mint_info, verified)
     }
 
     /// Define a new asset and store secret info for minting.

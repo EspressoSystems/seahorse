@@ -7,10 +7,8 @@
 
 //! Collections of and information on CAP assets.
 //!
-//! This module defines [AssetInfo] and [MintInfo], which store auxiliary information about assets
-//! which is useful to keystores but not present in [AssetDefinition]. For example, [AssetInfo] may
-//! include a [MintInfo], which contains the secret information needed by the asset creator to mint
-//! more of that asset type.
+//! This module defines [MintInfo], which contains the secret information needed by the asset
+//! creator to mint more of that asset type.
 //!
 //! This module also defines an interface for verified asset types, [VerifiedAssetLibrary]. This is
 //! a collection of assets which can be signed by a trusted party, such as an application developer,
@@ -19,28 +17,17 @@
 //! provides the mechanisms and interfaces for creating and consuming verified asset libraries. It
 //! does not define any specific libraries or verification keys, as these are application-specific
 //! and thus should be defined in clients of this crate.
+use crate::assets::Asset;
 use arbitrary::{Arbitrary, Unstructured};
 use ark_serialize::*;
 use espresso_macros::ser_test;
 use image::{imageops, ImageBuffer, ImageFormat, ImageResult, Pixel, Rgba};
-use jf_cap::{
-    keys::ViewerPubKey,
-    structs::{AssetCode, AssetCodeSeed, AssetDefinition},
-    BaseField, CurveParam, KeyPair, Signature, VerKey,
-};
+use jf_cap::{structs::AssetCodeSeed, BaseField, CurveParam, KeyPair, Signature, VerKey};
 use jf_primitives::signatures::{schnorr::SchnorrSignatureScheme, SignatureScheme};
 use jf_utils::tagged_blob;
-use reef::Ledger;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
-use std::fmt::{self, Display, Formatter};
 use std::io::{BufRead, Seek};
-use std::ops::Index;
-use std::str::FromStr;
 use tagged_base64::TaggedBase64;
-
-const ICON_WIDTH: u32 = 64;
-const ICON_HEIGHT: u32 = 64;
 
 type IconPixel = Rgba<u8>;
 
@@ -176,211 +163,196 @@ impl From<ImageBuffer<IconPixel, Vec<u8>>> for Icon {
     }
 }
 
-/// Details about an asset type.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct AssetInfo {
-    /// CAP asset definition.
-    pub definition: AssetDefinition,
-    /// UI-friendly name assigned to this asset.
-    ///
-    /// The name is purely for display purposes. It is not bound to anything in the CAP protocol,
-    /// and will not be populated when a keystore discovers an asset, only when a user manually
-    /// imports or creates that asset with a particular name. Two keystores will only agree on the
-    /// name for an asset if both keystores have imported that asset with the same name.
-    pub name: Option<String>,
-    /// UI-friendly description assigned to this asset.
-    ///
-    /// This is intended to be a field containing a bit more information than `name`, but really it
-    /// can be used however the client wants.
-    ///
-    /// The description is purely for display purposes. It is not bound to anything in the CAP
-    /// protocol, and will not be populated when a keystore discovers an asset, only when a user
-    /// manually imports or creates that asset with a particular description. Two keystores will only
-    /// agree on the description for an asset if both keystores have imported that asset with the same
-    /// description.
-    pub description: Option<String>,
-    /// Icon used when displaying this asset in a GUI.
-    ///
-    /// The icon is purely for display purposes. It is not bound to anything in the CAP protocol,
-    /// and will not be populated when a keystore discovers an asset, only when a user manually
-    /// imports or creates that asset with a particular icon. Two keystores will only agree on the
-    /// icon for an asset if both keystores have imported that asset with the same icon.
-    pub icon: Option<Icon>,
-    /// Secret information required to mint an asset.
-    pub mint_info: Option<MintInfo>,
-    /// This asset is included in a [VerifiedAssetLibrary].
-    pub verified: bool,
-    /// This asset is not included in the persistent asset library.
-    ///
-    /// It will need to be reloaded when the keystore is restarted.
-    pub temporary: bool,
-}
+// /// Details about an asset type.
+// #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+// pub struct AssetInfo {
+//     /// CAP asset definition.
+//     pub definition: AssetDefinition,
+//     /// UI-friendly name assigned to this asset.
+//     ///
+//     /// The name is purely for display purposes. It is not bound to anything in the CAP protocol,
+//     /// and will not be populated when a keystore discovers an asset, only when a user manually
+//     /// imports or creates that asset with a particular name. Two keystores will only agree on the
+//     /// name for an asset if both keystores have imported that asset with the same name.
+//     pub name: Option<String>,
+//     /// UI-friendly description assigned to this asset.
+//     ///
+//     /// This is intended to be a field containing a bit more information than `name`, but really it
+//     /// can be used however the client wants.
+//     ///
+//     /// The description is purely for display purposes. It is not bound to anything in the CAP
+//     /// protocol, and will not be populated when a keystore discovers an asset, only when a user
+//     /// manually imports or creates that asset with a particular description. Two keystores will only
+//     /// agree on the description for an asset if both keystores have imported that asset with the same
+//     /// description.
+//     pub description: Option<String>,
+//     /// Icon used when displaying this asset in a GUI.
+//     ///
+//     /// The icon is purely for display purposes. It is not bound to anything in the CAP protocol,
+//     /// and will not be populated when a keystore discovers an asset, only when a user manually
+//     /// imports or creates that asset with a particular icon. Two keystores will only agree on the
+//     /// icon for an asset if both keystores have imported that asset with the same icon.
+//     pub icon: Option<Icon>,
+//     /// Secret information required to mint an asset.
+//     pub mint_info: Option<MintInfo>,
+//     /// This asset is included in a [VerifiedAssetLibrary].
+//     pub verified: bool,
+//     /// This asset is not included in the persistent asset library.
+//     ///
+//     /// It will need to be reloaded when the keystore is restarted.
+//     pub temporary: bool,
+// }
 
-impl AssetInfo {
-    pub fn new(definition: AssetDefinition, mint_info: MintInfo) -> Self {
-        Self {
-            definition,
-            name: None,
-            description: None,
-            icon: None,
-            mint_info: Some(mint_info),
-            verified: false,
-            temporary: false,
-        }
-    }
+// impl AssetInfo {
+//     pub fn new(definition: AssetDefinition, mint_info: MintInfo) -> Self {
+//         Self {
+//             definition,
+//             name: None,
+//             description: None,
+//             icon: None,
+//             mint_info: Some(mint_info),
+//             verified: false,
+//             temporary: false,
+//         }
+//     }
 
-    fn verified(mut self) -> Self {
-        // Verified assets are meant to be distributed. We should never distribute mint info.
-        self.mint_info = None;
-        self.verified = true;
-        // Assets loaded from verified libraries are not included in our persistent state. Instead,
-        // they should be loaded from the verified library each time the keystore is launched, in case
-        // the verified library changes.
-        //
-        // Note that if the same asset is imported manually, it will be persisted due to the
-        // semantics of [AssetInfo::update] with respect to `temporary`, but upon being loaded it
-        // will be marked unverified until the verified library containing it is reloaded.
-        self.temporary = true;
-        self
-    }
+//     pub fn with_name(mut self, name: String) -> Self {
+//         self.name = Some(name);
+//         self
+//     }
 
-    pub fn with_name(mut self, name: String) -> Self {
-        self.name = Some(name);
-        self
-    }
+//     pub fn with_description(mut self, description: String) -> Self {
+//         self.description = Some(description);
+//         self
+//     }
 
-    pub fn with_description(mut self, description: String) -> Self {
-        self.description = Some(description);
-        self
-    }
+//     pub fn with_icon(mut self, image: impl Into<Icon>) -> Self {
+//         let mut icon = image.into();
+//         icon.resize(ICON_WIDTH, ICON_HEIGHT);
+//         self.icon = Some(icon);
+//         self
+//     }
 
-    pub fn with_icon(mut self, image: impl Into<Icon>) -> Self {
-        let mut icon = image.into();
-        icon.resize(ICON_WIDTH, ICON_HEIGHT);
-        self.icon = Some(icon);
-        self
-    }
+//     /// Details about the native asset type.
+//     pub fn native<L: Ledger>() -> Self {
+//         Self::from(AssetDefinition::native())
+//             .with_name(L::name().to_uppercase())
+//             .with_description(format!("The {} native asset type", L::name()))
+//     }
+// }
 
-    /// Details about the native asset type.
-    pub fn native<L: Ledger>() -> Self {
-        Self::from(AssetDefinition::native())
-            .with_name(L::name().to_uppercase())
-            .with_description(format!("The {} native asset type", L::name()))
-    }
-}
+// impl From<AssetDefinition> for AssetInfo {
+//     fn from(definition: AssetDefinition) -> Self {
+//         Self {
+//             definition,
+//             name: None,
+//             description: None,
+//             icon: None,
+//             mint_info: None,
+//             verified: false,
+//             temporary: false,
+//         }
+//     }
+// }
 
-impl From<AssetDefinition> for AssetInfo {
-    fn from(definition: AssetDefinition) -> Self {
-        Self {
-            definition,
-            name: None,
-            description: None,
-            icon: None,
-            mint_info: None,
-            verified: false,
-            temporary: false,
-        }
-    }
-}
+// impl Display for AssetInfo {
+//     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+//         write!(f, "definition:{}", self.definition)?;
+//         if let Some(mint_info) = &self.mint_info {
+//             write!(
+//                 f,
+//                 ",seed:{},description:{}",
+//                 mint_info.seed,
+//                 mint_info.fmt_description(),
+//             )?;
+//         }
+//         write!(
+//             f,
+//             ",verified:{},temporary:{}",
+//             self.verified, self.temporary
+//         )?;
+//         Ok(())
+//     }
+// }
 
-impl Display for AssetInfo {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "definition:{}", self.definition)?;
-        if let Some(mint_info) = &self.mint_info {
-            write!(
-                f,
-                ",seed:{},description:{}",
-                mint_info.seed,
-                mint_info.fmt_description(),
-            )?;
-        }
-        write!(
-            f,
-            ",verified:{},temporary:{}",
-            self.verified, self.temporary
-        )?;
-        Ok(())
-    }
-}
+// impl FromStr for AssetInfo {
+//     type Err = String;
 
-impl FromStr for AssetInfo {
-    type Err = String;
+//     fn from_str(s: &str) -> Result<Self, Self::Err> {
+//         // This parse method is meant for a friendly, discoverable CLI interface. It parses a comma-
+//         // separated list of key-value pairs, like `description:my_asset`. This allows the fields to
+//         // be specified in any order, or not at all.
+//         //
+//         // Recognized fields are "description", "name", "definition", "mint_description", "seed",
+//         // and "temporary". Note that the `verified` field cannot be set this way. There is only one
+//         // way to create verified `AssetInfo`: using [Keystore::verify_assets], which performs a
+//         // signature check before marking assets verified.
+//         let mut definition = None;
+//         let mut name = None;
+//         let mut description = None;
+//         let mut mint_description = None;
+//         let mut seed = None;
+//         let mut temporary = false;
+//         for kv in s.split(',') {
+//             let (key, value) = match kv.split_once(':') {
+//                 Some(split) => split,
+//                 None => return Err(format!("expected key:value pair, got {}", kv)),
+//             };
+//             match key {
+//                 "definition" => {
+//                     definition = Some(
+//                         value
+//                             .parse()
+//                             .map_err(|_| format!("expected AssetDefinition, got {}", value))?,
+//                     )
+//                 }
+//                 "name" => {
+//                     name = Some(value.into());
+//                 }
+//                 "description" => {
+//                     description = Some(value.into());
+//                 }
+//                 "seed" => {
+//                     seed = Some(
+//                         value
+//                             .parse()
+//                             .map_err(|_| format!("expected AssetCodeSeed, got {}", value))?,
+//                     )
+//                 }
+//                 "mint_description" => mint_description = Some(MintInfo::parse_description(value)),
+//                 "temporary" => {
+//                     temporary = value
+//                         .parse()
+//                         .map_err(|_| format!("expected bool, got {}", value))?
+//                 }
+//                 _ => return Err(format!("unrecognized key {}", key)),
+//             }
+//         }
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        // This parse method is meant for a friendly, discoverable CLI interface. It parses a comma-
-        // separated list of key-value pairs, like `description:my_asset`. This allows the fields to
-        // be specified in any order, or not at all.
-        //
-        // Recognized fields are "description", "name", "definition", "mint_description", "seed",
-        // and "temporary". Note that the `verified` field cannot be set this way. There is only one
-        // way to create verified `AssetInfo`: using [Keystore::verify_assets], which performs a
-        // signature check before marking assets verified.
-        let mut definition = None;
-        let mut name = None;
-        let mut description = None;
-        let mut mint_description = None;
-        let mut seed = None;
-        let mut temporary = false;
-        for kv in s.split(',') {
-            let (key, value) = match kv.split_once(':') {
-                Some(split) => split,
-                None => return Err(format!("expected key:value pair, got {}", kv)),
-            };
-            match key {
-                "definition" => {
-                    definition = Some(
-                        value
-                            .parse()
-                            .map_err(|_| format!("expected AssetDefinition, got {}", value))?,
-                    )
-                }
-                "name" => {
-                    name = Some(value.into());
-                }
-                "description" => {
-                    description = Some(value.into());
-                }
-                "seed" => {
-                    seed = Some(
-                        value
-                            .parse()
-                            .map_err(|_| format!("expected AssetCodeSeed, got {}", value))?,
-                    )
-                }
-                "mint_description" => mint_description = Some(MintInfo::parse_description(value)),
-                "temporary" => {
-                    temporary = value
-                        .parse()
-                        .map_err(|_| format!("expected bool, got {}", value))?
-                }
-                _ => return Err(format!("unrecognized key {}", key)),
-            }
-        }
-
-        let definition = match definition {
-            Some(definition) => definition,
-            None => return Err(String::from("must specify definition")),
-        };
-        let mint_info = match (seed, mint_description) {
-            (Some(seed), Some(description)) => Some(MintInfo { seed, description }),
-            (None, None) => None,
-            _ => {
-                return Err(String::from(
-                    "seed and description must be specified together or not at all",
-                ))
-            }
-        };
-        Ok(AssetInfo {
-            definition,
-            name,
-            description,
-            icon: None,
-            mint_info,
-            temporary,
-            verified: false,
-        })
-    }
-}
+//         let definition = match definition {
+//             Some(definition) => definition,
+//             None => return Err(String::from("must specify definition")),
+//         };
+//         let mint_info = match (seed, mint_description) {
+//             (Some(seed), Some(description)) => Some(MintInfo { seed, description }),
+//             (None, None) => None,
+//             _ => {
+//                 return Err(String::from(
+//                     "seed and description must be specified together or not at all",
+//                 ))
+//             }
+//         };
+//         Ok(AssetInfo {
+//             definition,
+//             name,
+//             description,
+//             icon: None,
+//             mint_info,
+//             temporary,
+//             verified: false,
+//         })
+//     }
+// }
 
 /// Information required to mint an asset.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -418,87 +390,87 @@ impl MintInfo {
     }
 }
 
-/// Indexable collection of asset types.
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct AssetLibrary {
-    assets: Vec<AssetInfo>,
-    // Map from AssetCode to index in `assets`.
-    index: HashMap<AssetCode, usize>,
-    // Map from viewable AssetCode to its definition.
-    viewable: HashMap<AssetCode, AssetDefinition>,
-    // Viewing keys, so we can tell when an asset is supposed to be in `viewable`.
-    viewing_keys: HashSet<ViewerPubKey>,
-}
+// /// Indexable collection of asset types.
+// #[derive(Clone, Debug, Default, PartialEq)]
+// pub struct AssetLibrary {
+//     assets: Vec<AssetInfo>,
+//     // Map from AssetCode to index in `assets`.
+//     index: HashMap<AssetCode, usize>,
+//     // Map from viewable AssetCode to its definition.
+//     viewable: HashMap<AssetCode, AssetDefinition>,
+//     // Viewing keys, so we can tell when an asset is supposed to be in `viewable`.
+//     viewing_keys: HashSet<ViewerPubKey>,
+// }
 
-impl AssetLibrary {
-    /// Add a viewing key.
-    ///
-    /// Any assets which were already in the library and can be viewed using this key will be marked
-    /// as viewable.
-    pub fn add_viewing_key(&mut self, key: ViewerPubKey) {
-        // Upon discovering a new viewing key, we need to check if any existing assets have now become
-        // viewable.
-        for asset in &self.assets {
-            if asset.definition.policy_ref().viewer_pub_key() == &key {
-                self.viewable
-                    .insert(asset.definition.code, asset.definition.clone());
-            }
-        }
-        self.viewing_keys.insert(key);
-    }
+// impl AssetLibrary {
+//     /// Add a viewing key.
+//     ///
+//     /// Any assets which were already in the library and can be viewed using this key will be marked
+//     /// as viewable.
+//     pub fn add_viewing_key(&mut self, key: ViewerPubKey) {
+//         // Upon discovering a new viewing key, we need to check if any existing assets have now become
+//         // viewable.
+//         for asset in &self.assets {
+//             if asset.definition.policy_ref().viewer_pub_key() == &key {
+//                 self.viewable
+//                     .insert(asset.definition.code, asset.definition.clone());
+//             }
+//         }
+//         self.viewing_keys.insert(key);
+//     }
 
-    /// List viewable assets.
-    pub fn viewable(&self) -> &HashMap<AssetCode, AssetDefinition> {
-        &self.viewable
-    }
+//     /// List viewable assets.
+//     pub fn viewable(&self) -> &HashMap<AssetCode, AssetDefinition> {
+//         &self.viewable
+//     }
 
-    /// Iterate over all assets in the library.
-    pub fn iter(&self) -> impl Iterator<Item = &AssetInfo> {
-        self.assets.iter()
-    }
+//     /// Iterate over all assets in the library.
+//     pub fn iter(&self) -> impl Iterator<Item = &AssetInfo> {
+//         self.assets.iter()
+//     }
 
-    /// Check if the library contains an asset with the given code.
-    pub fn contains(&self, code: AssetCode) -> bool {
-        self.index.contains_key(&code)
-    }
+//     /// Check if the library contains an asset with the given code.
+//     pub fn contains(&self, code: AssetCode) -> bool {
+//         self.index.contains_key(&code)
+//     }
 
-    /// Get the asset with the given code, if there is one.
-    pub fn get(&self, code: AssetCode) -> Option<&AssetInfo> {
-        self.index.get(&code).map(|i| &self.assets[*i])
-    }
+//     /// Get the asset with the given code, if there is one.
+//     pub fn get(&self, code: AssetCode) -> Option<&AssetInfo> {
+//         self.index.get(&code).map(|i| &self.assets[*i])
+//     }
 
-    /// The total number of assets in the library.
-    pub fn len(&self) -> usize {
-        self.assets.len()
-    }
+//     /// The total number of assets in the library.
+//     pub fn len(&self) -> usize {
+//         self.assets.len()
+//     }
 
-    /// Returns `true` if and only if there are no assets in the library.
-    pub fn is_empty(&self) -> bool {
-        self.assets.is_empty()
-    }
-}
+//     /// Returns `true` if and only if there are no assets in the library.
+//     pub fn is_empty(&self) -> bool {
+//         self.assets.is_empty()
+//     }
+// }
 
-impl From<AssetLibrary> for Vec<AssetInfo> {
-    fn from(lib: AssetLibrary) -> Self {
-        lib.assets
-    }
-}
+// impl From<AssetLibrary> for Vec<AssetInfo> {
+//     fn from(lib: AssetLibrary) -> Self {
+//         lib.assets
+//     }
+// }
 
-impl IntoIterator for AssetLibrary {
-    type Item = AssetInfo;
-    type IntoIter = <Vec<AssetInfo> as IntoIterator>::IntoIter;
-    fn into_iter(self) -> Self::IntoIter {
-        self.assets.into_iter()
-    }
-}
+// impl IntoIterator for AssetLibrary {
+//     type Item = AssetInfo;
+//     type IntoIter = <Vec<AssetInfo> as IntoIterator>::IntoIter;
+//     fn into_iter(self) -> Self::IntoIter {
+//         self.assets.into_iter()
+//     }
+// }
 
-impl Index<AssetCode> for AssetLibrary {
-    type Output = AssetInfo;
+// impl Index<AssetCode> for AssetLibrary {
+//     type Output = AssetInfo;
 
-    fn index(&self, code: AssetCode) -> &AssetInfo {
-        self.get(code).unwrap()
-    }
-}
+//     fn index(&self, code: AssetCode) -> &AssetInfo {
+//         self.get(code).unwrap()
+//     }
+// }
 
 /// A library of assets, signed by a trusted party.
 ///
@@ -520,28 +492,27 @@ pub struct VerifiedAssetLibrary {
     // The public key which was used to sign this library (for inspection purposes).
     signer: VerKey,
     signature: Signature,
-    assets: Vec<AssetInfo>,
+    assets: Vec<Asset>,
 }
 
 impl VerifiedAssetLibrary {
     /// Create and sign a new verified asset library.
-    pub fn new(assets: impl IntoIterator<Item = AssetInfo>, signer: &KeyPair) -> Self {
-        let assets = assets
-            .into_iter()
-            .map(|asset| asset.verified())
-            .collect::<Vec<_>>();
+    pub fn new(assets: Vec<Asset>, signer: &KeyPair) -> Self {
         Self {
             signer: signer.ver_key(),
             signature: signer.sign(
                 &[Self::digest(&assets)],
                 SchnorrSignatureScheme::<CurveParam>::CS_ID,
             ),
-            assets,
+            assets: assets
+                .into_iter()
+                .map(|asset| asset.export_verified())
+                .collect(),
         }
     }
 
     /// Obtain a list of the assets in `self`, but only if `self` is signed by `trusted_signer`.
-    pub fn open(self, trusted_signer: &VerKey) -> Option<Vec<AssetInfo>> {
+    pub fn open(self, trusted_signer: &VerKey) -> Option<Vec<Asset>> {
         if self.check() == Some(trusted_signer.clone()) {
             Some(self.assets)
         } else {
@@ -566,7 +537,7 @@ impl VerifiedAssetLibrary {
         }
     }
 
-    fn digest(assets: &[AssetInfo]) -> BaseField {
+    fn digest(assets: &[Asset]) -> BaseField {
         let bytes = assets
             .iter()
             .flat_map(|asset| bincode::serialize(asset).unwrap())

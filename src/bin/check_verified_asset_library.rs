@@ -40,7 +40,7 @@ fn main() -> io::Result<()> {
         if !opt.check {
             println!("Signed by {}", signer);
             for asset in library.open(&signer).unwrap() {
-                println!("{}", asset);
+                println!("{:?}", asset);
             }
         }
         Ok(())

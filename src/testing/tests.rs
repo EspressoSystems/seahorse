@@ -2417,7 +2417,7 @@ pub mod generic_keystore_tests {
             Err(KeystoreError::AssetVerificationError)
         ));
 
-        // Check that `asset1` got updated, retaining it's mint info and persistence but attaining
+        // Check that `asset1` got updated, retaining its mint info and persistence but attaining
         // verified status.
         {
             let asset1_info = keystores[0].0.asset(asset1.code).await.unwrap();
@@ -2425,26 +2425,15 @@ pub mod generic_keystore_tests {
             assert_eq!(asset1_info.definition(), &asset1);
             assert!(asset1_info.mint_info().is_some());
         }
-        // Check that `asset2`, which was not present before, got imported as-is.
-        {
-            let asset2_info = keystores[0].0.asset(asset2.code).await.unwrap();
-            assert!(asset2_info.verified());
-            assert_eq!(asset2_info.definition(), &asset2);
-            assert!(asset2_info.mint_info().is_none());
-        }
 
-        // Check that temporary assets are not persisted, and that persisted assets are never
-        // verified.
+        // Check that `asset2` isn't persisted.
         {
             let session = &mut keystores[0].0.lock().await.session;
             let assets = &mut session.assets;
-            let atomic_store = &mut session.atomic_store;
-            assert!(assets.iter().all(|asset| !asset.verified()));
             assert!(assets.get::<T::Ledger>(&AssetCode::native()).is_ok());
             assert!(assets.get::<T::Ledger>(&asset1.code).is_ok());
             assert!(assets.get::<T::Ledger>(&asset2.code).is_err());
-            assets.commit::<T::Ledger>().unwrap();
-            atomic_store.commit_version().unwrap();
+            session.commit().await.unwrap();
         }
 
         // Now import `asset2`, updating the existing verified asset with persistence and mint info.
@@ -2461,17 +2450,14 @@ pub mod generic_keystore_tests {
         assert_eq!(asset.mint_info(), Some(mint_info2));
         assert!(asset.verified());
 
-        // Check that `asset2` is now persisted, but still no assets in storage are verified.
+        // Check that `asset2` is now persisted.
         {
             let session = &mut keystores[0].0.lock().await.session;
             let assets = &mut session.assets;
-            let atomic_store = &mut session.atomic_store;
-            assert!(assets.iter().all(|asset| !asset.verified()));
             assert!(assets.get::<T::Ledger>(&AssetCode::native()).is_ok());
             assert!(assets.get::<T::Ledger>(&asset1.code).is_ok());
             assert!(assets.get::<T::Ledger>(&asset2.code).is_ok());
-            assets.commit::<T::Ledger>().unwrap();
-            atomic_store.commit_version().unwrap();
+            session.commit().await.unwrap();
         }
 
         // Check that the verified assets are marked verified once again.
@@ -2772,13 +2758,14 @@ pub mod generic_keystore_tests {
             .unwrap();
         keystores[0]
             .0
-            .create_asset(
+            .import_asset(Asset::from(
                 asset1.clone(),
                 Some("asset1".into()),
                 Some("asset1 description".into()),
                 None,
                 None,
-            )
+                false,
+            ))
             .await
             .unwrap();
         let info = keystores[0].0.asset(asset1.code).await.unwrap();
@@ -2792,12 +2779,22 @@ pub mod generic_keystore_tests {
             let (code, _) = AssetCode::random(&mut rng);
             AssetDefinition::new(code, AssetPolicy::default()).unwrap()
         };
-        let verified_asset1 = AssetInfo::from(asset1.clone())
-            .with_name("asset1_verified".into())
-            .with_description("asset1_verified description".into());
-        let verified_asset2 = AssetInfo::from(asset2.clone())
-            .with_name("asset2_verified".into())
-            .with_description("asset2_verified description".into());
+        let verified_asset1 = Asset::from(
+            asset1.clone(),
+            Some("asset1_verified".into()),
+            Some("asset1_verified description".into()),
+            None,
+            None,
+            true,
+        );
+        let verified_asset2 = Asset::from(
+            asset2.clone(),
+            Some("asset2_verified".into()),
+            Some("asset2_verified description".into()),
+            None,
+            None,
+            true,
+        );
         let verified_assets =
             VerifiedAssetLibrary::new(vec![verified_asset1, verified_asset2], &key_pair);
 
@@ -2815,13 +2812,14 @@ pub mod generic_keystore_tests {
         // Case 3: update verified asset with user-defined asset.
         keystores[0]
             .0
-            .create_asset(
+            .import_asset(Asset::from(
                 asset2.clone(),
                 Some("asset2_fake".into()),
-                Some("asset2_fake".into()),
+                Some("asset2_fake description".into()),
                 None,
                 None,
-            )
+                false,
+            ))
             .await
             .unwrap();
         let info = keystores[0].0.asset(asset2.code).await.unwrap();
@@ -2831,9 +2829,14 @@ pub mod generic_keystore_tests {
 
         // Case 4: update verified asset with verified asset.
         let verified_assets = VerifiedAssetLibrary::new(
-            vec![AssetInfo::from(asset2.clone())
-                .with_name("asset2_verified_new".into())
-                .with_description("asset2_verified_new description".into())],
+            vec![Asset::from(
+                asset2.clone(),
+                Some("asset2_verified_new".into()),
+                Some("asset2_verified_new description".into()),
+                None,
+                None,
+                true,
+            )],
             &key_pair,
         );
         keystores[0]
@@ -2863,7 +2866,14 @@ pub mod generic_keystore_tests {
 
         keystores[0]
             .0
-            .create_native_asset(Some(icon))
+            .import_asset(Asset::from(
+                AssetDefinition::native(),
+                None,
+                None,
+                Some(icon),
+                None,
+                false,
+            ))
             .await
             .unwrap();
         let icon = keystores[0]
