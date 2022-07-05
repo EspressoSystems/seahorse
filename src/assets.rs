@@ -276,6 +276,7 @@ impl<'a> AssetEditor<'a> {
     pub fn set_icon(mut self, icon: Option<Icon>) -> Self {
         self.asset.icon = match icon {
             Some(mut icon) => {
+                // Resize the icon to the default value.
                 icon.resize(ICON_WIDTH, ICON_HEIGHT);
                 Some(icon)
             }
@@ -286,6 +287,7 @@ impl<'a> AssetEditor<'a> {
 
     /// Set the asset icon.
     pub fn with_icon(mut self, mut icon: Icon) -> Self {
+        // Resize the icon to the default value.
         icon.resize(ICON_WIDTH, ICON_HEIGHT);
         self.asset.icon = Some(icon);
         self
@@ -338,7 +340,10 @@ impl<'a> AssetEditor<'a> {
     ///   * the given asset has the corresponding field.
     /// * Updates the mint information, if present in the given asset.
     /// * Sets as verified if either asset if verified.
-    fn update_internal<L: Ledger>(mut self, other: Asset) -> Result<Self, KeystoreError<L>> {
+    pub(crate) fn update_internal<L: Ledger>(
+        mut self,
+        other: Asset,
+    ) -> Result<Self, KeystoreError<L>> {
         let mut asset = self.store.load(&other.definition.code)?;
         if other.verified {
             if let Some(name) = other.name.clone() {
@@ -477,7 +482,31 @@ impl Assets {
         Ok(self.store.revert_version()?)
     }
 
-    /// Create an unverified asset.
+    /// Insert an asset.
+    ///
+    /// If the store doesn't have an asset with the same code, adds the created asset to the store.
+    /// Otherwise, updates the exisiting asset.
+    ///
+    /// Returns the editor for the inserted asset.
+    pub fn insert<L: Ledger>(
+        &mut self,
+        mut asset: Asset,
+    ) -> Result<AssetEditor<'_>, KeystoreError<L>> {
+        // The asset is verified if it's in the verified set.
+        if self.verified_assets.contains(&asset.definition.code) {
+            asset.verified = true
+        }
+        let store_asset = self.store.load(&asset.definition.code);
+        let mut editor = AssetEditor::new(&mut self.store, asset.clone());
+        if store_asset.is_ok() {
+            // Make sure the icon has the default size.
+            editor = editor.update::<L>(asset.clone())?.set_icon(asset.icon());
+        }
+        editor.save::<L>()?;
+        Ok(editor)
+    }
+
+    /// Create an asset.
     ///
     /// If the store doesn't have an asset with the same code, adds the created asset to the store.
     /// Otherwise, updates the exisiting asset.
@@ -488,7 +517,7 @@ impl Assets {
         definition: AssetDefinition,
         mint_info: Option<MintInfo>,
     ) -> Result<AssetEditor<'_>, KeystoreError<L>> {
-        let mut asset = Asset {
+        let asset = Asset {
             definition,
             name: None,
             description: None,
@@ -496,35 +525,15 @@ impl Assets {
             mint_info,
             verified: false,
         };
-        // The asset is verified if it's in the verified set.
-        if self.verified_assets.contains(&asset.definition.code) {
-            asset.verified = true
-        }
-        let store_asset = self.store.load(&asset.definition.code);
-        let mut editor = AssetEditor::new(&mut self.store, asset.clone());
-        if store_asset.is_ok() {
-            editor = editor.update::<L>(asset)?;
-        }
-        editor.save::<L>()?;
-        Ok(editor)
+        self.insert(asset)
     }
 
     /// Create a native asset.
     ///
     /// Returns the editor for the created asset.
     pub fn create_native<L: Ledger>(&mut self) -> Result<AssetEditor<'_>, KeystoreError<L>> {
-        let mut asset = Asset::native::<L>();
-        // The asset is verified if it's in the verified set.
-        if self.verified_assets.contains(&asset.definition.code) {
-            asset.verified = true
-        }
-        let store_asset = self.store.load(&asset.definition.code);
-        let mut editor = AssetEditor::new(&mut self.store, asset.clone());
-        if store_asset.is_ok() {
-            editor = editor.update::<L>(asset)?;
-        }
-        editor.save::<L>()?;
-        Ok(editor)
+        let asset = Asset::native::<L>();
+        self.insert(asset)
     }
 
     /// Create an asset internally.
@@ -550,7 +559,10 @@ impl Assets {
         let store_asset = self.store.load(&asset.definition.code);
         let mut editor = AssetEditor::new(&mut self.store, asset.clone());
         if store_asset.is_ok() {
-            editor = editor.update_internal::<L>(asset)?;
+            editor = editor
+                .update_internal::<L>(asset.clone())?
+                // Make sure the icon has the default size.
+                .set_icon(asset.icon());
         }
         editor.save::<L>()?;
         Ok(editor)

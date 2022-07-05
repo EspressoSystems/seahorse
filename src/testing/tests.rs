@@ -2380,7 +2380,7 @@ pub mod generic_keystore_tests {
         // Now created a verified asset library with 2 assets:
         // * one that will update `asset1` to be marked verified
         // * one that does not yet exist in the keystore (later we will import it to check updating
-        //   verified assets with persistence and new information)
+        //   verified assets with new information)
         let key_pair = KeyPair::generate(&mut rng);
         let (asset2, mint_info2) = {
             let (code, seed) = AssetCode::random(&mut rng);
@@ -2417,8 +2417,7 @@ pub mod generic_keystore_tests {
             Err(KeystoreError::AssetVerificationError)
         ));
 
-        // Check that `asset1` got updated, retaining its mint info and persistence but attaining
-        // verified status.
+        // Check that `asset1` got updated, retaining its mint info but attaining verified status.
         {
             let asset1_info = keystores[0].0.asset(asset1.code).await.unwrap();
             assert!(asset1_info.verified());
@@ -2426,51 +2425,23 @@ pub mod generic_keystore_tests {
             assert!(asset1_info.mint_info().is_some());
         }
 
-        // Check that `asset2` isn't persisted.
-        {
-            let session = &mut keystores[0].0.lock().await.session;
-            let assets = &mut session.assets;
-            assert!(assets.get::<T::Ledger>(&AssetCode::native()).is_ok());
-            assert!(assets.get::<T::Ledger>(&asset1.code).is_ok());
-            assert!(assets.get::<T::Ledger>(&asset2.code).is_err());
-            session.commit().await.unwrap();
-        }
+        // Check that `asset2`, which was not present before, got imported as-is.
+        assert_eq!(
+            keystores[0].0.asset(asset2.code).await.unwrap(),
+            Asset::from(asset2.clone(), None, None, None, None, true,)
+        );
 
-        // Now import `asset2`, updating the existing verified asset with persistence and mint info.
-        keystores[0]
-            .0
-            .create_asset(asset2.clone(), None, None, None, Some(mint_info2.clone()))
-            .await
-            .unwrap();
-        let asset = keystores[0].0.asset(asset2.code).await.unwrap();
-        assert_eq!(asset.definition(), &asset2.clone());
-        assert_eq!(asset.name(), None);
-        assert_eq!(asset.description(), None);
-        assert_eq!(asset.icon(), None);
-        assert_eq!(asset.mint_info(), Some(mint_info2));
-        assert!(asset.verified());
-
-        // Check that `asset2` is now persisted.
-        {
-            let session = &mut keystores[0].0.lock().await.session;
-            let assets = &mut session.assets;
-            assert!(assets.get::<T::Ledger>(&AssetCode::native()).is_ok());
-            assert!(assets.get::<T::Ledger>(&asset1.code).is_ok());
-            assert!(assets.get::<T::Ledger>(&asset2.code).is_ok());
-            session.commit().await.unwrap();
-        }
-
-        // Check that the verified assets are marked verified once again.
-        let assets = &mut keystores[0].0.lock().await.session.assets;
-        for asset in assets.iter() {
-            assert_eq!(
-                asset.verified(),
-                imported
-                    .iter()
-                    .find(|verified| verified == &asset.definition())
-                    .is_some()
-            );
-        }
+        // Now import `asset2`, updating the existing verified asset with mint info.
+        let asset = Asset::from(
+            asset2.clone(),
+            None,
+            None,
+            None,
+            Some(mint_info2.clone()),
+            true,
+        );
+        keystores[0].0.insert_asset(asset.clone()).await.unwrap();
+        assert_eq!(keystores[0].0.asset(asset2.code).await.unwrap(), asset);
     }
 
     #[async_std::test]
@@ -2758,7 +2729,7 @@ pub mod generic_keystore_tests {
             .unwrap();
         keystores[0]
             .0
-            .import_asset(Asset::from(
+            .insert_asset(Asset::from(
                 asset1.clone(),
                 Some("asset1".into()),
                 Some("asset1 description".into()),
@@ -2866,7 +2837,7 @@ pub mod generic_keystore_tests {
 
         keystores[0]
             .0
-            .import_asset(Asset::from(
+            .insert_asset(Asset::from(
                 AssetDefinition::native(),
                 None,
                 None,
