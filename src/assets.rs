@@ -117,7 +117,7 @@ impl Asset {
     }
 
     /// Create an asset for testing purposes.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "testing"))]
     pub fn from(
         definition: AssetDefinition,
         name: Option<String>,
@@ -208,7 +208,7 @@ impl FromStr for Asset {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "testing"))]
 impl From<AssetDefinition> for Asset {
     fn from(definition: AssetDefinition) -> Self {
         Self {
