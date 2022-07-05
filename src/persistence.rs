@@ -20,6 +20,8 @@ use reef::*;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use snafu::ResultExt;
 
+const ATOMIC_STORE_RETAINED_ENTRIES: u32 = 5;
+
 // Serialization intermediate for the static part of a KeystoreState.
 #[derive(Deserialize, Serialize, Debug)]
 struct KeystoreStaticState<'a> {
@@ -148,13 +150,16 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned + Clone + PartialE
             file_fill_size,
         )
         .context(crate::PersistenceSnafu)?;
-        let dynamic_state = RollingLog::load(
+
+        let mut dynamic_state = RollingLog::load(
             atomic_loader,
             adapter.cast(),
             "keystore_dyn",
             file_fill_size,
         )
         .context(crate::PersistenceSnafu)?;
+        dynamic_state.set_retained_entries(ATOMIC_STORE_RETAINED_ENTRIES);
+
         let txn_history = AppendLog::load(
             atomic_loader,
             adapter.cast(),
@@ -314,6 +319,7 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicKeystoreSto
 
             if self.dynamic_state_dirty {
                 self.dynamic_state.commit_version().unwrap();
+                self.dynamic_state.prune_file_entries().unwrap();
             } else {
                 self.dynamic_state.skip_version().unwrap();
             }
