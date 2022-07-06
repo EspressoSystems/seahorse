@@ -86,11 +86,6 @@ impl<
         Ok(self.store.commit_version()?)
     }
 
-    /// Skip the store version.
-    pub fn skip_version(&mut self) -> Result<(), KeyValueStoreError> {
-        Ok(self.store.skip_version()?)
-    }
-
     /// Revert the store version.
     pub fn revert_version(&mut self) -> Result<(), KeyValueStoreError> {
         Ok(self.store.revert_version()?)

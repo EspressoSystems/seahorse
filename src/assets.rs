@@ -484,7 +484,7 @@ impl Assets {
 
     /// Insert an asset.
     ///
-    /// If the store doesn't have an asset with the same code, adds the created asset to the store.
+    /// If the store doesn't have an asset with the same code, adds the inserted asset to the store.
     /// Otherwise, updates the exisiting asset.
     ///
     /// Returns the editor for the inserted asset.
