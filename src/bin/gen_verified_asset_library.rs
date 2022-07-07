@@ -7,7 +7,7 @@
 
 use ark_serialize::CanonicalDeserialize;
 use jf_cap::KeyPair;
-use seahorse::{asset_library::VerifiedAssetLibrary, assets::Asset};
+use seahorse::assets::{Asset, VerifiedAssetLibrary};
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, Write};
 use std::path::PathBuf;

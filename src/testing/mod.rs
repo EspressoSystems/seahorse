@@ -523,12 +523,12 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         )],
     ) {
         for (keystore, _, _) in keystores {
-            let KeystoreSharedState { state, session, .. } = &mut *keystore.mutex.lock().await;
-            let atomic_store = &mut session.atomic_store;
-            let storage = &session.storage;
-            let assets = &mut session.assets;
+            let KeystoreSharedState { state, model, .. } = &mut *keystore.mutex.lock().await;
+            let atomic_store = &mut model.atomic_store;
+            let persistence = &model.persistence;
+            let assets = &mut model.assets;
             let state = state.clone();
-            let loaded = storage.lock().await.load().await.unwrap();
+            let loaded = persistence.lock().await.load().await.unwrap();
             assets.commit::<Self::Ledger>().unwrap();
             atomic_store.commit_version().unwrap();
             assert_keystore_states_eq(&state, &loaded);
