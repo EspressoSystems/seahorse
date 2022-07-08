@@ -1,1 +1,1 @@
-initSidebarItems({"struct":[["AtomicKeystoreStorage",""],["EncryptingResourceAdapter",""]]});
+initSidebarItems({"struct":[["AtomicKeystoreStorage",""]]});

@@ -445,7 +445,6 @@
 <span id="445">445</span>
 <span id="446">446</span>
 <span id="447">447</span>
-<span id="448">448</span>
 </pre><pre class="rust"><code><span class="comment">// Copyright (c) 2022 Espresso Systems (espressosys.com)</span>
 <span class="comment">// This file is part of the Seahorse library.</span>
 
@@ -459,9 +458,8 @@
 <span class="doccomment">//! update, and delete) operations, with the use of [KeyValueStore] to control the transactions resource.</span>
 
 <span class="kw">use</span> <span class="kw">crate</span>::{
-    <span class="ident">key_value_store</span>::<span class="kw-2">*</span>, <span class="ident">persistence::EncryptingResourceAdapter</span>, <span class="ident">AssetCode</span>, <span class="ident">KeystoreError</span>, <span class="ident">Ledger</span>,
-    <span class="ident">RecordAmount</span>, <span class="ident">TransactionHash</span>, <span class="ident">TransactionKind</span>, <span class="ident">TransactionReceipt</span>, <span class="ident">TransactionStatus</span>,
-    <span class="ident">TransactionUID</span>,
+    <span class="ident">key_value_store</span>::<span class="kw-2">*</span>, <span class="ident">AssetCode</span>, <span class="ident">EncryptingResourceAdapter</span>, <span class="ident">KeystoreError</span>, <span class="ident">Ledger</span>, <span class="ident">RecordAmount</span>,
+    <span class="ident">TransactionHash</span>, <span class="ident">TransactionKind</span>, <span class="ident">TransactionReceipt</span>, <span class="ident">TransactionStatus</span>, <span class="ident">TransactionUID</span>,
 };
 <span class="kw">use</span> <span class="ident">atomic_store</span>::{<span class="ident">AppendLog</span>, <span class="ident">AtomicStoreLoader</span>};
 <span class="kw">use</span> <span class="ident">chrono</span>::{<span class="ident">DateTime</span>, <span class="ident">Local</span>};

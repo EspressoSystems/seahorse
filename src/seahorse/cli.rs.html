@@ -1491,6 +1491,9 @@
 <span id="1491">1491</span>
 <span id="1492">1492</span>
 <span id="1493">1493</span>
+<span id="1494">1494</span>
+<span id="1495">1495</span>
+<span id="1496">1496</span>
 </pre><pre class="rust"><code><span class="comment">// Copyright (c) 2022 Espresso Systems (espressosys.com)</span>
 <span class="comment">// This file is part of the Seahorse library.</span>
 
@@ -1510,7 +1513,7 @@
 <span class="doccomment">//! arguments to the options and flags required by the general CLI implementation. After that,</span>
 <span class="doccomment">//! [cli_main] can be used to run the CLI interactively.</span>
 <span class="kw">use</span> <span class="kw">crate</span>::{
-    <span class="ident">events::EventIndex</span>, <span class="ident">io::SharedIO</span>, <span class="ident">loader::KeystoreLoader</span>, <span class="ident">reader::Reader</span>, <span class="ident">AssetInfo</span>,
+    <span class="ident">assets::Asset</span>, <span class="ident">events::EventIndex</span>, <span class="ident">io::SharedIO</span>, <span class="ident">loader::KeystoreLoader</span>, <span class="ident">reader::Reader</span>,
     <span class="ident">BincodeSnafu</span>, <span class="ident">IoSnafu</span>, <span class="ident">KeystoreBackend</span>, <span class="ident">KeystoreError</span>, <span class="ident">RecordAmount</span>, <span class="ident">TransactionReceipt</span>,
     <span class="ident">TransactionStatus</span>,
 };
@@ -1664,7 +1667,7 @@
 }
 
 <span class="macro">cli_input_from_str!</span> {
-    <span class="ident">bool</span>, <span class="ident">u64</span>, <span class="ident">AssetCode</span>, <span class="ident">AssetInfo</span>, <span class="ident">EventIndex</span>, <span class="ident">FreezerPubKey</span>, <span class="ident">MerklePath</span>, <span class="ident">PathBuf</span>, <span class="ident">ReceiverMemo</span>,
+    <span class="ident">bool</span>, <span class="ident">u64</span>, <span class="ident">Asset</span>, <span class="ident">AssetCode</span>, <span class="ident">EventIndex</span>, <span class="ident">FreezerPubKey</span>, <span class="ident">MerklePath</span>, <span class="ident">PathBuf</span>, <span class="ident">ReceiverMemo</span>,
     <span class="ident">RecordAmount</span>, <span class="ident">RecordCommitment</span>, <span class="ident">String</span>, <span class="ident">UserAddress</span>, <span class="ident">UserPubKey</span>, <span class="ident">ViewerPubKey</span>
 }
 
@@ -1859,20 +1862,20 @@
             .<span class="ident">enumerate</span>()
             .<span class="ident">map</span>(<span class="op">|</span>(<span class="ident">index</span>, <span class="ident">asset</span>)<span class="op">|</span> <span class="ident">ListItem</span> {
                 <span class="ident">index</span>,
-                <span class="ident">annotation</span>: <span class="kw">if</span> <span class="ident">asset</span>.<span class="ident">definition</span>.<span class="ident">code</span> <span class="op">=</span><span class="op">=</span> <span class="ident">AssetCode::native</span>() {
+                <span class="ident">annotation</span>: <span class="kw">if</span> <span class="ident">asset</span>.<span class="ident">definition</span>().<span class="ident">code</span> <span class="op">=</span><span class="op">=</span> <span class="ident">AssetCode::native</span>() {
                     <span class="prelude-val">Some</span>(<span class="ident">String::from</span>(<span class="string">&quot;native&quot;</span>))
                 } <span class="kw">else</span> {
                     <span class="comment">// Annotate the listing with attributes indicating whether the asset is</span>
                     <span class="comment">// viewable, freezable, and mintable by us.</span>
                     <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">attributes</span> <span class="op">=</span> <span class="ident">String::new</span>();
-                    <span class="kw">let</span> <span class="ident">policy</span> <span class="op">=</span> <span class="ident">asset</span>.<span class="ident">definition</span>.<span class="ident">policy_ref</span>();
+                    <span class="kw">let</span> <span class="ident">policy</span> <span class="op">=</span> <span class="ident">asset</span>.<span class="ident">definition</span>().<span class="ident">policy_ref</span>();
                     <span class="kw">if</span> <span class="ident">viewing_keys</span>.<span class="ident">contains</span>(<span class="ident">policy</span>.<span class="ident">viewer_pub_key</span>()) {
                         <span class="ident">attributes</span>.<span class="ident">push</span>(<span class="string">&#39;v&#39;</span>);
                     }
                     <span class="kw">if</span> <span class="ident">freezing_keys</span>.<span class="ident">contains</span>(<span class="ident">policy</span>.<span class="ident">freezer_pub_key</span>()) {
                         <span class="ident">attributes</span>.<span class="ident">push</span>(<span class="string">&#39;f&#39;</span>);
                     }
-                    <span class="kw">if</span> <span class="ident">asset</span>.<span class="ident">mint_info</span>.<span class="ident">is_some</span>() {
+                    <span class="kw">if</span> <span class="ident">asset</span>.<span class="ident">mint_info</span>().<span class="ident">is_some</span>() {
                         <span class="ident">attributes</span>.<span class="ident">push</span>(<span class="string">&#39;m&#39;</span>);
                     }
                     <span class="kw">if</span> <span class="ident">attributes</span>.<span class="ident">is_empty</span>() {
@@ -1881,7 +1884,7 @@
                         <span class="prelude-val">Some</span>(<span class="ident">attributes</span>)
                     }
                 },
-                <span class="ident">item</span>: <span class="ident">asset</span>.<span class="ident">definition</span>.<span class="ident">code</span>,
+                <span class="ident">item</span>: <span class="ident">asset</span>.<span class="ident">definition</span>().<span class="ident">code</span>,
             })
             .<span class="ident">collect</span>()
     }
@@ -1935,17 +1938,17 @@
                 };
 
                 <span class="comment">// Try to format the asset description as human-readable as possible.</span>
-                <span class="kw">let</span> <span class="ident">desc</span> <span class="op">=</span> <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">mint_info</span>) <span class="op">=</span> <span class="kw-2">&amp;</span><span class="ident">asset</span>.<span class="ident">mint_info</span> {
+                <span class="kw">let</span> <span class="ident">desc</span> <span class="op">=</span> <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">mint_info</span>) <span class="op">=</span> <span class="kw-2">&amp;</span><span class="ident">asset</span>.<span class="ident">mint_info</span>() {
                     <span class="ident">mint_info</span>.<span class="ident">fmt_description</span>()
-                } <span class="kw">else</span> <span class="kw">if</span> <span class="ident">asset</span>.<span class="ident">definition</span>.<span class="ident">code</span> <span class="op">=</span><span class="op">=</span> <span class="ident">AssetCode::native</span>() {
+                } <span class="kw">else</span> <span class="kw">if</span> <span class="ident">asset</span>.<span class="ident">definition</span>().<span class="ident">code</span> <span class="op">=</span><span class="op">=</span> <span class="ident">AssetCode::native</span>() {
                     <span class="ident">String::from</span>(<span class="string">&quot;Native&quot;</span>)
                 } <span class="kw">else</span> {
                     <span class="ident">String::from</span>(<span class="string">&quot;Asset&quot;</span>)
                 };
-                <span class="macro">cli_writeln!</span>(<span class="ident">io</span>, <span class="string">&quot;{} {}&quot;</span>, <span class="ident">desc</span>, <span class="ident">asset</span>.<span class="ident">definition</span>.<span class="ident">code</span>);
+                <span class="macro">cli_writeln!</span>(<span class="ident">io</span>, <span class="string">&quot;{} {}&quot;</span>, <span class="ident">desc</span>, <span class="ident">asset</span>.<span class="ident">definition</span>().<span class="ident">code</span>);
 
                 <span class="comment">// Print the viewer, noting if it is us.</span>
-                <span class="kw">let</span> <span class="ident">policy</span> <span class="op">=</span> <span class="ident">asset</span>.<span class="ident">definition</span>.<span class="ident">policy_ref</span>();
+                <span class="kw">let</span> <span class="ident">policy</span> <span class="op">=</span> <span class="ident">asset</span>.<span class="ident">definition</span>().<span class="ident">policy_ref</span>();
                 <span class="kw">if</span> <span class="ident">policy</span>.<span class="ident">is_viewer_pub_key_set</span>() {
                     <span class="kw">let</span> <span class="ident">viewing_key</span> <span class="op">=</span> <span class="ident">policy</span>.<span class="ident">viewer_pub_key</span>();
                     <span class="kw">if</span> <span class="ident">keystore</span>.<span class="ident">viewer_pub_keys</span>().<span class="kw">await</span>.<span class="ident">contains</span>(<span class="ident">viewing_key</span>) {
@@ -1970,9 +1973,9 @@
                 }
 
                 <span class="comment">// Print the minter, noting if it is us.</span>
-                <span class="kw">if</span> <span class="ident">asset</span>.<span class="ident">mint_info</span>.<span class="ident">is_some</span>() {
+                <span class="kw">if</span> <span class="ident">asset</span>.<span class="ident">mint_info</span>().<span class="ident">is_some</span>() {
                     <span class="macro">cli_writeln!</span>(<span class="ident">io</span>, <span class="string">&quot;Minter: me&quot;</span>);
-                } <span class="kw">else</span> <span class="kw">if</span> <span class="ident">asset</span>.<span class="ident">definition</span>.<span class="ident">code</span> <span class="op">=</span><span class="op">=</span> <span class="ident">AssetCode::native</span>() {
+                } <span class="kw">else</span> <span class="kw">if</span> <span class="ident">asset</span>.<span class="ident">definition</span>().<span class="ident">code</span> <span class="op">=</span><span class="op">=</span> <span class="ident">AssetCode::native</span>() {
                     <span class="macro">cli_writeln!</span>(<span class="ident">io</span>, <span class="string">&quot;Not mintable&quot;</span>);
                 } <span class="kw">else</span> {
                     <span class="macro">cli_writeln!</span>(<span class="ident">io</span>, <span class="string">&quot;Minter: unknown&quot;</span>);
@@ -2121,18 +2124,21 @@
                             <span class="comment">// Try to get a readable name for the asset.</span>
                             <span class="kw">let</span> <span class="ident">asset</span> <span class="op">=</span> <span class="kw">if</span> <span class="ident">txn</span>.<span class="ident">asset</span> <span class="op">=</span><span class="op">=</span> <span class="ident">AssetCode::native</span>() {
                                 <span class="ident">String::from</span>(<span class="string">&quot;Native&quot;</span>)
-                            } <span class="kw">else</span> <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">AssetInfo</span> {
-                                <span class="ident">mint_info</span>: <span class="prelude-val">Some</span>(<span class="ident">mint_info</span>),
-                                ..
-                            }) <span class="op">=</span> <span class="ident">keystore</span>.<span class="ident">asset</span>(<span class="ident">txn</span>.<span class="ident">asset</span>).<span class="kw">await</span>
+                            } <span class="kw">else</span> <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">asset</span>) <span class="op">=</span> <span class="ident">keystore</span>
+                                .<span class="ident">asset</span>(<span class="ident">txn</span>.<span class="ident">asset</span>)
+                                .<span class="kw">await</span>
                             {
-                                <span class="comment">// If the description looks like it came from a string, interpret as</span>
-                                <span class="comment">// a string. Otherwise, encode the binary blob as tagged base64.</span>
-                                <span class="kw">match</span> <span class="ident">std::str::from_utf8</span>(<span class="kw-2">&amp;</span><span class="ident">mint_info</span>.<span class="ident">description</span>) {
-                                    <span class="prelude-val">Ok</span>(<span class="ident">s</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">String::from</span>(<span class="ident">s</span>),
-                                    <span class="prelude-val">Err</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">TaggedBase64::new</span>(<span class="string">&quot;DESC&quot;</span>, <span class="kw-2">&amp;</span><span class="ident">mint_info</span>.<span class="ident">description</span>)
-                                        .<span class="ident">unwrap</span>()
-                                        .<span class="ident">to_string</span>(),
+                                <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">mint_info</span>) <span class="op">=</span> <span class="ident">asset</span>.<span class="ident">mint_info</span>() {
+                                    <span class="comment">// If the description looks like it came from a string, interpret as</span>
+                                    <span class="comment">// a string. Otherwise, encode the binary blob as tagged base64.</span>
+                                    <span class="kw">match</span> <span class="ident">std::str::from_utf8</span>(<span class="kw-2">&amp;</span><span class="ident">mint_info</span>.<span class="ident">description</span>) {
+                                        <span class="prelude-val">Ok</span>(<span class="ident">s</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">String::from</span>(<span class="ident">s</span>),
+                                        <span class="prelude-val">Err</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">TaggedBase64::new</span>(<span class="string">&quot;DESC&quot;</span>, <span class="kw-2">&amp;</span><span class="ident">mint_info</span>.<span class="ident">description</span>)
+                                            .<span class="ident">unwrap</span>()
+                                            .<span class="ident">to_string</span>(),
+                                    }
+                                } <span class="kw">else</span> {
+                                    <span class="ident">txn</span>.<span class="ident">asset</span>.<span class="ident">to_string</span>()
                                 }
                             } <span class="kw">else</span> {
                                 <span class="ident">txn</span>.<span class="ident">asset</span>.<span class="ident">to_string</span>()
@@ -2359,7 +2365,7 @@
             <span class="ident">import_asset</span>,
             <span class="string">&quot;import an asset type&quot;</span>,
             <span class="ident">C</span>,
-            <span class="op">|</span><span class="ident">io</span>, <span class="ident">keystore</span>, <span class="ident">asset</span>: <span class="ident">AssetInfo</span><span class="op">|</span> {
+            <span class="op">|</span><span class="ident">io</span>, <span class="ident">keystore</span>, <span class="ident">asset</span>: <span class="ident">Asset</span><span class="op">|</span> {
                 <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span> <span class="ident">keystore</span>.<span class="ident">import_asset</span>(<span class="ident">asset</span>).<span class="kw">await</span> {
                     <span class="macro">cli_writeln!</span>(<span class="ident">io</span>, <span class="string">&quot;Error: {}&quot;</span>, <span class="ident">err</span>);
                 }

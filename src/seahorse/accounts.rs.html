@@ -212,10 +212,10 @@
 <span id="212">212</span>
 </pre><pre class="rust"><code><span class="doccomment">/// Keys and associated data.</span>
 <span class="kw">use</span> <span class="kw">crate</span>::{
+    <span class="ident">assets::Asset</span>,
     <span class="ident">events</span>::{<span class="ident">EventIndex</span>, <span class="ident">EventSource</span>, <span class="ident">LedgerEvent</span>},
     <span class="ident">key_scan</span>::{<span class="ident">BackgroundKeyScan</span>, <span class="ident">ScanOutputs</span>},
     <span class="ident">txn_builder::RecordInfo</span>,
-    <span class="ident">AssetInfo</span>,
 };
 <span class="kw">use</span> <span class="ident">arbitrary</span>::{<span class="ident">Arbitrary</span>, <span class="ident">Unstructured</span>};
 <span class="kw">use</span> <span class="ident">arbitrary_wrappers</span>::{<span class="ident">ArbitraryFreezerKeyPair</span>, <span class="ident">ArbitraryUserKeyPair</span>, <span class="ident">ArbitraryViewerKeyPair</span>};
@@ -340,7 +340,7 @@
     <span class="kw">pub</span> <span class="ident">address</span>: <span class="ident">Key::PubKey</span>,
     <span class="kw">pub</span> <span class="ident">description</span>: <span class="ident">String</span>,
     <span class="kw">pub</span> <span class="ident">used</span>: <span class="ident">bool</span>,
-    <span class="kw">pub</span> <span class="ident">assets</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">AssetInfo</span><span class="op">&gt;</span>,
+    <span class="kw">pub</span> <span class="ident">assets</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">Asset</span><span class="op">&gt;</span>,
     <span class="kw">pub</span> <span class="ident">records</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">RecordInfo</span><span class="op">&gt;</span>,
     <span class="doccomment">/// The table of balances with corresponding asset code.</span>
     <span class="kw">pub</span> <span class="ident">balances</span>: <span class="ident">HashMap</span><span class="op">&lt;</span><span class="ident">AssetCode</span>, <span class="ident">U256</span><span class="op">&gt;</span>,
@@ -357,7 +357,7 @@
 <span class="kw">impl</span><span class="op">&lt;</span><span class="ident">Key</span>: <span class="ident">KeyPair</span><span class="op">&gt;</span> <span class="ident">AccountInfo</span><span class="op">&lt;</span><span class="ident">Key</span><span class="op">&gt;</span> {
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">new</span><span class="op">&lt;</span><span class="ident">L</span>: <span class="ident">Ledger</span><span class="op">&gt;</span>(
         <span class="ident">account</span>: <span class="ident">Account</span><span class="op">&lt;</span><span class="ident">L</span>, <span class="ident">Key</span><span class="op">&gt;</span>,
-        <span class="ident">assets</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">AssetInfo</span><span class="op">&gt;</span>,
+        <span class="ident">assets</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">Asset</span><span class="op">&gt;</span>,
         <span class="ident">records</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">RecordInfo</span><span class="op">&gt;</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span> {
         <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">balances</span> <span class="op">=</span> <span class="ident">HashMap::new</span>();

@@ -125,7 +125,7 @@
 <span class="doccomment">//! This module defines [KeyValueStore], which provides interfaces to keystore resources (e.g.,</span>
 <span class="doccomment">//! the assets resource) to create, read, update, and delete data.</span>
 
-<span class="kw">use</span> <span class="kw">crate</span>::{<span class="ident">persistence::EncryptingResourceAdapter</span>, <span class="ident">KeystoreError</span>, <span class="ident">Ledger</span>};
+<span class="kw">use</span> <span class="kw">crate</span>::{<span class="ident">EncryptingResourceAdapter</span>, <span class="ident">KeystoreError</span>, <span class="ident">Ledger</span>};
 <span class="kw">use</span> <span class="ident">atomic_store::AppendLog</span>;
 <span class="kw">use</span> <span class="ident">serde</span>::{<span class="ident">de::DeserializeOwned</span>, <span class="ident">Serialize</span>};
 <span class="kw">use</span> <span class="ident">snafu::Snafu</span>;
