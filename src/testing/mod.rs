@@ -23,7 +23,7 @@ use hd::KeyTree;
 use jf_cap::{MerkleTree, Signature, TransactionVerifyingKey};
 use key_set::{KeySet, OrderByOutputs, ProverKeySet, VerifierKeySet};
 use rand_chacha::rand_core::RngCore;
-use std::collections::{BTreeMap, HashSet};
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::time::Instant;
@@ -211,7 +211,6 @@ pub fn assert_keystore_states_eq<'a, L: Ledger>(
     assert_eq!(w1.proving_keys, w2.proving_keys);
     assert_eq!(w1.txn_state.records, w2.txn_state.records);
     assert_eq!(w1.key_state, w2.key_state);
-    assert_eq!(w1.assets, w2.assets);
     assert_eq!(w1.viewing_accounts, w2.viewing_accounts);
     assert_eq!(w1.freezing_accounts, w2.freezing_accounts);
     assert_eq!(w1.sending_accounts, w2.sending_accounts);
@@ -524,52 +523,14 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         )],
     ) {
         for (keystore, _, _) in keystores {
-            let KeystoreSharedState { state, session, .. } = &mut *keystore.mutex.lock().await;
-            let atomic_store = &mut session.atomic_store;
-            let storage = &session.storage;
-            let mut state = state.clone();
-            let mut loaded = storage.lock().await.load().await.unwrap();
+            let KeystoreSharedState { state, model, .. } = &mut *keystore.mutex.lock().await;
+            let atomic_store = &mut model.atomic_store;
+            let persistence = &model.persistence;
+            let assets = &mut model.assets;
+            let state = state.clone();
+            let loaded = persistence.lock().await.load().await.unwrap();
+            assets.commit::<Self::Ledger>().unwrap();
             atomic_store.commit_version().unwrap();
-
-            // The persisted state should not include any temporary assets.
-            state.assets = AssetLibrary::new(
-                state
-                    .assets
-                    .into_iter()
-                    .filter(|asset| !asset.temporary)
-                    .collect(),
-                state.viewing_accounts.keys().cloned().collect(),
-            );
-
-            // The in-memory state is allowed to differ from the persisted state in the details of
-            // verified assets, so filter those out of the comparison.
-            let verified = state
-                .assets
-                .iter()
-                .filter_map(|asset| {
-                    if asset.verified {
-                        Some(asset.definition.code)
-                    } else {
-                        None
-                    }
-                })
-                .collect::<HashSet<_>>();
-            state.assets = AssetLibrary::new(
-                state
-                    .assets
-                    .into_iter()
-                    .filter(|asset| !verified.contains(&asset.definition.code))
-                    .collect(),
-                state.viewing_accounts.keys().cloned().collect(),
-            );
-            loaded.assets = AssetLibrary::new(
-                loaded
-                    .assets
-                    .into_iter()
-                    .filter(|asset| !verified.contains(&asset.definition.code))
-                    .collect(),
-                loaded.viewing_accounts.keys().cloned().collect(),
-            );
             assert_keystore_states_eq(&state, &loaded);
         }
     }

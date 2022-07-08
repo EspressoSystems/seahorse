@@ -33,7 +33,7 @@ struct BenchLedgerScannerTransactions<L: Ledger> {
     // Receiver of transfers.
     receiver: UserKeyPair,
     // Asset types used in the transactions.
-    assets: Vec<AssetInfo>,
+    assets: Vec<Asset>,
     // Viewing key for assets used in the transactions.
     viewing_key: ViewerKeyPair,
     // Freezing key for assets used in the transactions.
@@ -49,7 +49,7 @@ struct BenchLedgerScanner<'a, T: SystemUnderTest<'a> + Clone> {
     // The receiver of transactions in the prepopulated event stream.
     receiver: UserKeyPair,
     // Viewable and freezable assets used in pregenerated transactions.
-    assets: Vec<AssetInfo>,
+    assets: Vec<Asset>,
     // Viewing key for assets used in the transactions.
     viewing_key: ViewerKeyPair,
     // Freezing key for assets used in the transactions.
@@ -142,7 +142,10 @@ async fn generate_independent_transactions<
                     .await
                     .unwrap();
                 keystore.await_transaction(&receipt).await.unwrap();
-                (AssetInfo::from(asset), (mint_note, mint_info))
+                (
+                    keystore.asset(asset.code).await.unwrap(),
+                    (mint_note, mint_info),
+                )
             }
         },
     ))
@@ -160,7 +163,7 @@ async fn generate_independent_transactions<
                 keystore
                     .build_transfer(
                         None,
-                        &asset.definition.code,
+                        &asset.code(),
                         &[(receiver, 1, false)],
                         1,
                         vec![],
@@ -295,18 +298,14 @@ fn bench_ledger_scanner_run<
     let state = &mut bench.initial_state;
     // If this is a viewing benchmark, add the viewable assets and viewing keys to the state.
     if cfg.role == ScannerRole::Viewer {
-        for asset in &bench.assets {
-            state.freezing_accounts.insert(
-                bench.freezing_key.pub_key(),
-                Account::new(bench.freezing_key.clone(), "freezing".into()),
-            );
-            state.viewing_accounts.insert(
-                bench.viewing_key.pub_key(),
-                Account::new(bench.viewing_key.clone(), "viewing".into()),
-            );
-            state.assets.add_viewing_key(bench.viewing_key.pub_key());
-            state.assets.insert(asset.clone());
-        }
+        state.freezing_accounts.insert(
+            bench.freezing_key.pub_key(),
+            Account::new(bench.freezing_key.clone(), "freezing".into()),
+        );
+        state.viewing_accounts.insert(
+            bench.viewing_key.pub_key(),
+            Account::new(bench.viewing_key.clone(), "viewing".into()),
+        );
     }
 
     if cfg.background {

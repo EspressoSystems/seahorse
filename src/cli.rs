@@ -17,7 +17,7 @@
 //! arguments to the options and flags required by the general CLI implementation. After that,
 //! [cli_main] can be used to run the CLI interactively.
 use crate::{
-    events::EventIndex, io::SharedIO, loader::KeystoreLoader, reader::Reader, AssetInfo,
+    assets::Asset, events::EventIndex, io::SharedIO, loader::KeystoreLoader, reader::Reader,
     BincodeSnafu, IoSnafu, KeystoreBackend, KeystoreError, RecordAmount, TransactionReceipt,
     TransactionStatus,
 };
@@ -171,7 +171,7 @@ macro_rules! cli_input_from_str {
 }
 
 cli_input_from_str! {
-    bool, u64, AssetCode, AssetInfo, EventIndex, FreezerPubKey, MerklePath, PathBuf, ReceiverMemo,
+    bool, u64, Asset, AssetCode, EventIndex, FreezerPubKey, MerklePath, PathBuf, ReceiverMemo,
     RecordAmount, RecordCommitment, String, UserAddress, UserPubKey, ViewerPubKey
 }
 
@@ -366,20 +366,20 @@ impl<'a, C: CLI<'a>> Listable<'a, C> for AssetCode {
             .enumerate()
             .map(|(index, asset)| ListItem {
                 index,
-                annotation: if asset.definition.code == AssetCode::native() {
+                annotation: if asset.definition().code == AssetCode::native() {
                     Some(String::from("native"))
                 } else {
                     // Annotate the listing with attributes indicating whether the asset is
                     // viewable, freezable, and mintable by us.
                     let mut attributes = String::new();
-                    let policy = asset.definition.policy_ref();
+                    let policy = asset.definition().policy_ref();
                     if viewing_keys.contains(policy.viewer_pub_key()) {
                         attributes.push('v');
                     }
                     if freezing_keys.contains(policy.freezer_pub_key()) {
                         attributes.push('f');
                     }
-                    if asset.mint_info.is_some() {
+                    if asset.mint_info().is_some() {
                         attributes.push('m');
                     }
                     if attributes.is_empty() {
@@ -388,7 +388,7 @@ impl<'a, C: CLI<'a>> Listable<'a, C> for AssetCode {
                         Some(attributes)
                     }
                 },
-                item: asset.definition.code,
+                item: asset.definition().code,
             })
             .collect()
     }
@@ -442,17 +442,17 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                 };
 
                 // Try to format the asset description as human-readable as possible.
-                let desc = if let Some(mint_info) = &asset.mint_info {
+                let desc = if let Some(mint_info) = &asset.mint_info() {
                     mint_info.fmt_description()
-                } else if asset.definition.code == AssetCode::native() {
+                } else if asset.definition().code == AssetCode::native() {
                     String::from("Native")
                 } else {
                     String::from("Asset")
                 };
-                cli_writeln!(io, "{} {}", desc, asset.definition.code);
+                cli_writeln!(io, "{} {}", desc, asset.definition().code);
 
                 // Print the viewer, noting if it is us.
-                let policy = asset.definition.policy_ref();
+                let policy = asset.definition().policy_ref();
                 if policy.is_viewer_pub_key_set() {
                     let viewing_key = policy.viewer_pub_key();
                     if keystore.viewer_pub_keys().await.contains(viewing_key) {
@@ -477,9 +477,9 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                 }
 
                 // Print the minter, noting if it is us.
-                if asset.mint_info.is_some() {
+                if asset.mint_info().is_some() {
                     cli_writeln!(io, "Minter: me");
-                } else if asset.definition.code == AssetCode::native() {
+                } else if asset.definition().code == AssetCode::native() {
                     cli_writeln!(io, "Not mintable");
                 } else {
                     cli_writeln!(io, "Minter: unknown");
@@ -628,18 +628,21 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                             // Try to get a readable name for the asset.
                             let asset = if txn.asset == AssetCode::native() {
                                 String::from("Native")
-                            } else if let Some(AssetInfo {
-                                mint_info: Some(mint_info),
-                                ..
-                            }) = keystore.asset(txn.asset).await
+                            } else if let Some(asset) = keystore
+                                .asset(txn.asset)
+                                .await
                             {
-                                // If the description looks like it came from a string, interpret as
-                                // a string. Otherwise, encode the binary blob as tagged base64.
-                                match std::str::from_utf8(&mint_info.description) {
-                                    Ok(s) => String::from(s),
-                                    Err(_) => TaggedBase64::new("DESC", &mint_info.description)
-                                        .unwrap()
-                                        .to_string(),
+                                if let Some(mint_info) = asset.mint_info() {
+                                    // If the description looks like it came from a string, interpret as
+                                    // a string. Otherwise, encode the binary blob as tagged base64.
+                                    match std::str::from_utf8(&mint_info.description) {
+                                        Ok(s) => String::from(s),
+                                        Err(_) => TaggedBase64::new("DESC", &mint_info.description)
+                                            .unwrap()
+                                            .to_string(),
+                                    }
+                                } else {
+                                    txn.asset.to_string()
                                 }
                             } else {
                                 txn.asset.to_string()
@@ -866,7 +869,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             import_asset,
             "import an asset type",
             C,
-            |io, keystore, asset: AssetInfo| {
+            |io, keystore, asset: Asset| {
                 if let Err(err) = keystore.import_asset(asset).await {
                     cli_writeln!(io, "Error: {}", err);
                 }

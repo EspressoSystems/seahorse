@@ -5,7 +5,7 @@
 // This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 // You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-use seahorse::asset_library::VerifiedAssetLibrary;
+use seahorse::assets::VerifiedAssetLibrary;
 use std::fs::read;
 use std::io;
 use std::path::PathBuf;
@@ -40,7 +40,7 @@ fn main() -> io::Result<()> {
         if !opt.check {
             println!("Signed by {}", signer);
             for asset in library.open(&signer).unwrap() {
-                println!("{}", asset);
+                println!("{:?}", asset);
             }
         }
         Ok(())

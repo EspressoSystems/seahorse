@@ -246,7 +246,6 @@ impl<'a, const H: u8> KeystoreBackend<'a, cap::LedgerWithHeight<H>>
                     transactions: Default::default(),
                 },
                 key_state: Default::default(),
-                assets: Default::default(),
                 viewing_accounts: Default::default(),
                 freezing_accounts: Default::default(),
                 sending_accounts: Default::default(),
