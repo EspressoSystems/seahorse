@@ -670,44 +670,6 @@ impl Assets {
         assets.into_iter()
     }
 
-    /// Load a verified asset library with its trusted signer.
-    ///
-    /// Adds the asset codes to the verified set, adds the assets to the store, and returns the
-    /// list of asset definitions.
-    ///
-    /// Note that the `verified` status of assets is not persisted in order to preserve the
-    /// verified asset library as the single source of truth about which assets are verified.
-    /// Therefore, this function must be called each time an `Assets` store is created in order to
-    /// ensure that the verified assets show up in `verified_assets`.
-    ///
-    /// This function will not affect assets that have already been loaded into memory. If there's
-    /// a previously-loaded asset, we need to reload it after its `verified` flag is updated.
-    pub fn verify_assets<L: Ledger>(
-        &mut self,
-        trusted_signer: &VerKey,
-        library: VerifiedAssetLibrary,
-    ) -> Result<Vec<AssetDefinition>, KeystoreError<L>> {
-        if let Some(assets) = library.open(trusted_signer) {
-            let mut definitions = Vec::new();
-            for asset in &assets {
-                self.verified_assets.insert(asset.definition.code);
-                let store_asset = self.store.load(&asset.definition.code);
-                let mut editor = if let Ok(store_asset) = store_asset {
-                    AssetEditor::new(&mut self.store, store_asset).update(asset.clone())?
-                } else {
-                    AssetEditor::new(&mut self.store, asset.clone())
-                };
-                // Make sure the icon has the default size.
-                editor = editor.set_icon(asset.icon());
-                editor.save::<L>()?;
-                definitions.push(asset.definition.clone());
-            }
-            Ok(definitions)
-        } else {
-            Err(KeystoreError::AssetVerificationError)
-        }
-    }
-
     /// Get the asset by the code from the store.
     pub fn get<L: Ledger>(&self, code: &AssetCode) -> Result<Asset, KeystoreError<L>> {
         let mut asset = self.store.load(code)?;
@@ -817,16 +779,37 @@ impl Assets {
             mint_info,
             verified,
         };
-        let store_asset = self.store.load(&asset.definition.code);
-        let mut editor = if let Ok(store_asset) = store_asset {
-            AssetEditor::new(&mut self.store, store_asset).update(asset.clone())?
+        self.insert(asset)
+    }
+
+    /// Load a verified asset library with its trusted signer.
+    ///
+    /// Adds the asset codes to the verified set, adds the assets to the store, and returns the
+    /// list of asset definitions.
+    ///
+    /// Note that the `verified` status of assets is not persisted in order to preserve the
+    /// verified asset library as the single source of truth about which assets are verified.
+    /// Therefore, this function must be called each time an `Assets` store is created in order to
+    /// ensure that the verified assets show up in `verified_assets`.
+    ///
+    /// This function will not affect assets that have already been loaded into memory. If there's
+    /// a previously-loaded asset, we need to reload it after its `verified` flag is updated.
+    pub fn verify_assets<L: Ledger>(
+        &mut self,
+        trusted_signer: &VerKey,
+        library: VerifiedAssetLibrary,
+    ) -> Result<Vec<AssetDefinition>, KeystoreError<L>> {
+        if let Some(assets) = library.open(trusted_signer) {
+            let mut definitions = Vec::new();
+            for asset in &assets {
+                self.verified_assets.insert(asset.definition.code);
+                self.insert(asset.clone())?;
+                definitions.push(asset.definition.clone());
+            }
+            Ok(definitions)
         } else {
-            AssetEditor::new(&mut self.store, asset.clone())
-        };
-        // Make sure the icon has the default size.
-        editor = editor.set_icon(asset.icon());
-        editor.save::<L>()?;
-        Ok(editor)
+            Err(KeystoreError::AssetVerificationError)
+        }
     }
 
     /// Deletes an asset from the store.
