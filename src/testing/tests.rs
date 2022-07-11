@@ -1844,14 +1844,21 @@ pub mod generic_keystore_tests {
         // the key through the keystore's public interface, triggering a background ledger scan which
         // should identify the existing record belonging to the key.
         let key = {
-            let KeystoreSharedState { state, session, .. } = &mut *keystores[0].0.write().await;
-            let key = session
-                .storage
-                .key_stream()
-                .derive_sub_tree("user".as_bytes())
-                .derive_user_key_pair(&state.key_state.user.to_le_bytes());
-            session.backend.register_user_key(&key).await.unwrap();
-            key
+            keystores[0]
+                .0
+                .write()
+                .await
+                .update(|KeystoreSharedState { state, session, .. }| async move {
+                    let key = session
+                        .storage
+                        .key_stream()
+                        .derive_sub_tree("user".as_bytes())
+                        .derive_user_key_pair(&state.key_state.user.to_le_bytes());
+                    session.backend.register_user_key(&key).await.unwrap();
+                    Ok(key)
+                })
+                .await
+                .unwrap()
         };
 
         // Transfer a record to `key` before we tell `keystores[0]` to generate the key, so that we

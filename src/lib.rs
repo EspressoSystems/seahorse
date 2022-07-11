@@ -58,12 +58,12 @@ use crate::{
 use arbitrary::Arbitrary;
 use async_scoped::AsyncScope;
 use async_std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
-use async_std::task::block_on;
+use async_std::task::sleep;
 use async_trait::async_trait;
 use atomic_store::{AtomicStore, AtomicStoreLoader};
 use core::fmt::Debug;
 use espresso_macros::ser_test;
-use futures::{channel::oneshot, prelude::*, stream::Stream};
+use futures::{channel::oneshot, future::TryFuture, prelude::*, stream::Stream};
 use jf_cap::{
     errors::TxnApiError,
     freeze::FreezeNote,
@@ -96,6 +96,7 @@ use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::iter::repeat;
 use std::sync::Arc;
+use std::time::Duration;
 
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
@@ -278,115 +279,6 @@ pub struct KeystoreState<'a, L: Ledger> {
     pub assets: AssetLibrary,
 }
 
-/// Interface for atomic storage transactions.
-///
-/// Any changes made to the persistent storage state through this struct will be part of a single
-/// transaction. If any operation in the transaction fails, or if the transaction is dropped before
-/// being committed, the entire transaction will be reverted and have no effect.
-///
-/// This struct should not be constructed directly, but instead a transaction should be obtained
-/// through the [KeystoreBackend::store] method, which will automatically commit the transaction after
-/// it succeeds.
-pub struct StorageTransaction<
-    'a,
-    'l,
-    L: Ledger,
-    Backend: KeystoreBackend<'a, L> + ?Sized,
-    Meta: Serialize + DeserializeOwned + Send,
-> {
-    pub backend: &'l mut Backend,
-    storage: &'l mut AtomicKeystoreStorage<'a, L, Meta>,
-    cancelled: bool,
-    _phantom: std::marker::PhantomData<&'a ()>,
-    _phantom2: std::marker::PhantomData<L>,
-}
-
-impl<
-        'a,
-        'l,
-        L: Ledger,
-        Backend: KeystoreBackend<'a, L> + ?Sized,
-        Meta: Serialize + DeserializeOwned + Send,
-    > StorageTransaction<'a, 'l, L, Backend, Meta>
-{
-    fn new(backend: &'l mut Backend, storage: &'l mut AtomicKeystoreStorage<'a, L, Meta>) -> Self {
-        Self {
-            backend,
-            storage,
-            cancelled: false,
-            _phantom: Default::default(),
-            _phantom2: Default::default(),
-        }
-    }
-
-    async fn store_snapshot(
-        &mut self,
-        state: &KeystoreState<'a, L>,
-    ) -> Result<(), KeystoreError<L>> {
-        if !self.cancelled {
-            let res = self.storage.store_snapshot(state).await;
-            if res.is_err() {
-                self.cancel().await;
-            }
-            res
-        } else {
-            Ok(())
-        }
-    }
-
-    async fn store_asset(&mut self, asset: &AssetInfo) -> Result<(), KeystoreError<L>> {
-        // We should never mark assets as verified in persistent storage. The single source of truth
-        // for verified assets is a verified asset library loaded independently from our own
-        // persistent storage.
-        assert!(!asset.verified);
-
-        if !self.cancelled {
-            let res = self.storage.store_asset(asset).await;
-            if res.is_err() {
-                self.cancel().await;
-            }
-            res
-        } else {
-            Ok(())
-        }
-    }
-
-    async fn store_transaction(
-        &mut self,
-        transaction: TransactionHistoryEntry<L>,
-    ) -> Result<(), KeystoreError<L>> {
-        if !self.cancelled {
-            let res = self.storage.store_transaction(transaction).await;
-            if res.is_err() {
-                self.cancel().await;
-            }
-            res
-        } else {
-            Ok(())
-        }
-    }
-
-    async fn cancel(&mut self) {
-        if !self.cancelled {
-            self.cancelled = true;
-            self.storage.revert().await;
-        }
-    }
-}
-
-impl<
-        'a,
-        'l,
-        L: Ledger,
-        Backend: KeystoreBackend<'a, L> + ?Sized,
-        Meta: Serialize + DeserializeOwned + Send,
-    > Drop for StorageTransaction<'a, 'l, L, Backend, Meta>
-{
-    fn drop(&mut self) {
-        block_on(self.cancel())
-    }
-}
-
 /// The interface required by the keystore from a specific network/ledger implementation.
 ///
 /// This trait is the adaptor for ledger-specific plugins into the ledger-agnostic [Keystore]
@@ -493,43 +385,14 @@ pub struct KeystoreSession<
 impl<'a, L: Ledger, Backend: KeystoreBackend<'a, L>, Meta: Serialize + DeserializeOwned + Send>
     KeystoreSession<'a, L, Backend, Meta>
 {
-    /// Make a change to the persisted state using a function describing a transaction.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// session.store(key_pair, |mut t| async move {
-    ///     t.store_snapshot(keystore_state).await?;
-    ///     // If this store fails, the effects of the previous store will be reverted.
-    ///     t.store_asset(keystore_state, asset).await?;
-    ///     // Use `t.backend` to access other backend functions during the transaction. Any
-    ///     // failures here will revert all previous stores.
-    ///     t.backend.do_something().await?;
-    ///     Ok(t)
-    /// }).await?;
-    /// ```
-    async fn store<'l, F, Fut>(&'l mut self, update: F) -> Result<(), KeystoreError<L>>
-    where
-        F: Send + FnOnce(StorageTransaction<'a, 'l, L, Backend, Meta>) -> Fut,
-        Fut: Send
-            + Future<Output = Result<StorageTransaction<'a, 'l, L, Backend, Meta>, KeystoreError<L>>>,
-    {
-        let fut = update(StorageTransaction::new(
-            &mut self.backend,
-            &mut self.storage,
-        ))
-        .and_then(|txn| async move {
-            txn.storage.commit().await;
-            Ok(())
-        });
-        fut.await?;
-        self.atomic_store.commit_version()?;
-        Ok(())
-    }
-
     /// Access the persistent storage layer
     pub async fn storage(&self) -> &AtomicKeystoreStorage<'a, L, Meta> {
         &self.storage
+    }
+
+    /// Access the persistent storage layer
+    pub async fn storage_mut(&mut self) -> &mut AtomicKeystoreStorage<'a, L, Meta> {
+        &mut self.storage
     }
 }
 
@@ -638,7 +501,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         session: &mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>, Meta>,
         event: LedgerEvent<L>,
         source: EventSource,
-    ) -> EventSummary<L> {
+    ) -> Result<EventSummary<L>, KeystoreError<L>> {
         self.txn_state.now += EventIndex::from_source(source, 1);
         let mut summary = EventSummary::default();
         match event {
@@ -658,7 +521,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                             // mistaken about the state commitment. This would be a good time to
                             // switch to a different query server or something, but for now we'll
                             // just log the problem.
-                            println!("received valid block with invalid state commitment");
+                            tracing::error!("received valid block with invalid state commitment");
                         }
 
                         // Get a list of new uids and whether we want to remember them in our record
@@ -783,8 +646,6 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                     if let Err(err) = self
                         .receive_attached_records(
                             session,
-                            block_id,
-                            txn_id as u64,
                             &txn,
                             &mut this_txn_uids,
                             !self_published,
@@ -792,9 +653,11 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                         )
                         .await
                     {
-                        println!(
+                        tracing::error!(
                             "Error saving records attached to transaction {}:{}: {}",
-                            block_id, txn_id, err
+                            block_id,
+                            txn_id,
+                            err
                         );
                     }
 
@@ -848,9 +711,9 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                             transaction.clone(),
                             !self_published,
                         )
-                        .await;
+                        .await?;
                     if let Err(err) = self.add_records(session, &account.key, records).await {
-                        println!("error saving received records: {}", err);
+                        tracing::error!("error saving received records: {}", err);
                     }
                 }
             }
@@ -898,20 +761,8 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
             }
         };
 
-        if let Err(err) = session
-            .store(|mut t| async {
-                t.store_snapshot(self).await?;
-                Ok(t)
-            })
-            .await
-        {
-            // We can ignore errors when saving the snapshot. If the save fails and then we crash,
-            // we will replay this event when we load from the previously saved snapshot. Just print
-            // a warning and move on.
-            println!("warning: failed to save keystore state to disk: {}", err);
-        }
-
-        summary
+        session.storage.store_snapshot(self).await?;
+        Ok(summary)
     }
 
     async fn try_open_memos<Meta: Serialize + DeserializeOwned + Send>(
@@ -921,7 +772,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         memos: &[(ReceiverMemo, RecordCommitment, u64, MerklePath)],
         transaction: Option<(u64, u64, TransactionHash<L>, TransactionKind<L>)>,
         add_to_history: bool,
-    ) -> Vec<(RecordOpening, u64, MerklePath)> {
+    ) -> Result<Vec<(RecordOpening, u64, MerklePath)>, KeystoreError<L>> {
         let mut records = Vec::new();
         for (memo, comm, uid, proof) in memos {
             if let Ok(record_opening) = memo.decrypt(key_pair, comm, &[]) {
@@ -934,11 +785,9 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         }
 
         if add_to_history && !records.is_empty() {
-            if let Some((block_id, txn_id, hash, kind)) = transaction {
+            if let Some((_block_id, _txn_id, hash, kind)) = transaction {
                 self.add_receive_history(
                     session,
-                    block_id,
-                    txn_id,
                     kind,
                     hash,
                     &records
@@ -946,18 +795,16 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                         .map(|(ro, _, _)| ro.clone())
                         .collect::<Vec<_>>(),
                 )
-                .await;
+                .await?;
             }
         }
 
-        records
+        Ok(records)
     }
 
     async fn receive_attached_records<Meta: Serialize + DeserializeOwned + Send>(
         &mut self,
         session: &mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>, Meta>,
-        block_id: u64,
-        txn_id: u64,
         txn: &Transaction<L>,
         uids: &mut [(u64, bool)],
         add_to_history: bool,
@@ -1008,15 +855,8 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         }
 
         if add_to_history && !my_records.is_empty() {
-            self.add_receive_history(
-                session,
-                block_id,
-                txn_id,
-                txn.kind(),
-                txn.hash(),
-                &my_records,
-            )
-            .await;
+            self.add_receive_history(session, txn.kind(), txn.hash(), &my_records)
+                .await?;
         }
 
         Ok(())
@@ -1025,26 +865,12 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
     async fn add_receive_history<Meta: Serialize + DeserializeOwned + Send>(
         &mut self,
         session: &mut KeystoreSession<'a, L, impl KeystoreBackend<'a, L>, Meta>,
-        block_id: u64,
-        txn_id: u64,
         kind: TransactionKind<L>,
         txn_hash: TransactionHash<L>,
         records: &[RecordOpening],
-    ) {
+    ) -> Result<(), KeystoreError<L>> {
         let history = receive_history_entry(kind, txn_hash, records);
-
-        if let Err(err) = session
-            .store(|mut t| async move {
-                t.store_transaction(history).await?;
-                Ok(t)
-            })
-            .await
-        {
-            println!(
-                "Failed to store transaction ({}, {}) in history: {}.",
-                block_id, txn_id, err
-            );
-        }
+        session.storage.store_transaction(history).await
     }
 
     async fn add_records<Meta: Serialize + DeserializeOwned + Send>(
@@ -1096,7 +922,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                     None,
                     false,
                 )
-                .await;
+                .await?;
             if !records.is_empty() {
                 return self.add_records(session, &account.key, records).await;
             }
@@ -1249,15 +1075,12 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                 .with_description(mint_info.fmt_description());
 
             // If the asset is viewable/freezable, mark the appropriate viewing/freezing accounts
-            // `used`. If we do update any accounts, save the old ones in case we have to revert.
-            let mut used_viewing_key = None;
-            let mut used_freezing_key = None;
+            // `used`.
             let policy = asset.definition.policy_ref();
             if policy.is_viewer_pub_key_set() {
                 if let Some(account) = self.viewing_accounts.get_mut(policy.viewer_pub_key()) {
                     if !account.used {
                         account.used = true;
-                        used_viewing_key = Some(policy.viewer_pub_key());
                     }
                 }
             }
@@ -1265,36 +1088,16 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                 if let Some(account) = self.freezing_accounts.get_mut(policy.freezer_pub_key()) {
                     if !account.used {
                         account.used = true;
-                        used_freezing_key = Some(policy.freezer_pub_key());
                     }
                 }
             }
 
-            // Persist the change that we're about to make before updating our in-memory state. We
-            // can't report success until we know the new asset has been saved to disk (otherwise we
-            // might lose the seed if we crash at the wrong time) and we don't want it in our
-            // in-memory state if we're not going to report success.
-            if let Err(err) = session
-                .store(|mut t| async {
-                    t.store_asset(&asset).await?;
-                    t.store_snapshot(self).await?;
-                    Ok(t)
-                })
-                .await
-            {
-                // If we failed to persist the changes, undo the changes we made to our
-                // in-memory accounts.
-                if let Some(viewing_key) = used_viewing_key {
-                    self.viewing_accounts.get_mut(viewing_key).unwrap().used = false;
-                }
-                if let Some(freezing_key) = used_freezing_key {
-                    self.freezing_accounts.get_mut(freezing_key).unwrap().used = false;
-                }
-                return Err(err);
-            }
-
-            // Now we can add the asset definition to the in-memory state.
+            // Add the asset to our library.
             self.assets.insert(asset.clone());
+
+            // Persist the changes.
+            session.storage.store_asset(&asset).await?;
+            session.storage.store_snapshot(self).await?;
             Ok(asset.definition)
         }
     }
@@ -1312,14 +1115,8 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
             }
         }
 
-        // Persist the change before modifying in-memory data structures, in case persistence fails.
-        session
-            .store(|mut t| async {
-                t.store_asset(&asset).await?;
-                Ok(t)
-            })
-            .await?;
-
+        // Add the asset to our library.
+        session.storage.store_asset(&asset).await?;
         self.assets.insert(asset);
         Ok(())
     }
@@ -1347,7 +1144,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         ),
         KeystoreError<L>,
     > {
-        let (user_key, revert_key_state) = match user_key {
+        let user_key = match user_key {
             Some(user_key) => {
                 if self.sending_accounts.contains_key(&user_key.address()) {
                     // For other key types, adding a key that already exists is a no-op. However,
@@ -1359,18 +1156,16 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                         pub_key: user_key.pub_key(),
                     });
                 }
-                (user_key, None)
+                user_key
             }
             None => {
-                let revert_key_state = self.key_state.user;
-
                 // It is possible that we already have some of the keys that will be yielded by the
                 // deterministic key stream. For example, the user could create a second keystore with
                 // the same mnemonic, generate some keys, and then manually add those keys to this
                 // keystore. If `user_key` is not provided, this function is required to generate a
                 // new key, so keep incrementing the key stream state and generating keys until we
                 // find one that is new.
-                let user_key = loop {
+                loop {
                     let user_key = session
                         .user_key_stream
                         .derive_user_key_pair(&self.key_state.user.to_le_bytes());
@@ -1378,9 +1173,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                     if !self.sending_accounts.contains_key(&user_key.address()) {
                         break user_key;
                     }
-                };
-
-                (user_key, Some(revert_key_state))
+                }
             }
         };
 
@@ -1408,24 +1201,10 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         // Add the new account to our set of accounts and update our persistent data structures and
         // remote services.
         self.sending_accounts.insert(user_key.address(), account);
-        if let Err(err) = session
-            .store(|mut t| async {
-                t.store_snapshot(self).await?;
-                // If we successfully updated our data structures, register the key with the
-                // network. The storage transaction will revert if this fails.
-                t.backend.register_user_key(&user_key).await?;
-                Ok(t)
-            })
-            .await
-        {
-            // If anything went wrong, no storage transaction was committed. Revert our changes to
-            // in-memory data structures before returning the error.
-            if let Some(old_key_state) = revert_key_state {
-                self.key_state.user = old_key_state;
-            }
-            self.sending_accounts.remove(&user_key.address());
-            return Err(err);
-        }
+        session.storage.store_snapshot(self).await?;
+        // If we successfully updated our data structures, register the key with the
+        // network. The storage transaction will revert if this fails.
+        session.backend.register_user_key(&user_key).await?;
 
         Ok((user_key, events))
     }
@@ -1445,13 +1224,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
             viewing_key.pub_key(),
             Account::new(viewing_key.clone(), description),
         );
-        session
-            .store(|mut t| async {
-                t.store_snapshot(self).await?;
-                Ok(t)
-            })
-            .await?;
-
+        session.storage.store_snapshot(self).await?;
         Ok(())
     }
 
@@ -1467,12 +1240,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
 
         self.freezing_accounts
             .insert(freeze_key.pub_key(), Account::new(freeze_key, description));
-        session
-            .store(|mut t| async {
-                t.store_snapshot(self).await?;
-                Ok(t)
-            })
-            .await?;
+        session.storage.store_snapshot(self).await?;
 
         Ok(())
     }
@@ -1618,37 +1386,19 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
 
             // Persist the pending transaction.
             let history = info.history.clone();
-            if let Err(err) = session
-                .store(|mut t| async {
-                    t.store_snapshot(self).await?;
+            session.storage.store_snapshot(self).await?;
 
-                    // If we're submitting this transaction for the first time (as opposed to
-                    // updating and resubmitting a failed transaction) add it to the history.
-                    if let Some(mut history) = history {
-                        history.receipt = Some(receipt.clone());
-                        history.hash = Some(txn.hash());
-                        t.store_transaction(history).await?;
-                    }
-
-                    Ok(t)
-                })
-                .await
-            {
-                // If we failed to persist the pending transaction, we cannot submit it, because if
-                // we then exit and reload the process from storage, there will be an in-flight
-                // transaction which is not accounted for in our pending transaction data
-                // structures. Instead, we remove the pending transaction from our in-memory data
-                // structures and return the error.
-                self.clear_pending_transaction(&txn, None).await;
-                return Err(err);
+            // If we're submitting this transaction for the first time (as opposed to
+            // updating and resubmitting a failed transaction) add it to the history.
+            if let Some(mut history) = history {
+                history.receipt = Some(receipt.clone());
+                history.hash = Some(txn.hash());
+                session.storage.store_transaction(history).await?;
             }
 
             // If we succeeded in creating and persisting the pending transaction, submit it to the
             // validators.
-            if let Err(err) = session.backend.submit(txn.clone(), info).await {
-                self.clear_pending_transaction(&txn, None).await;
-                return Err(err);
-            }
+            session.backend.submit(txn.clone(), info).await?;
 
             Ok(receipt)
         }
@@ -1708,6 +1458,26 @@ pub struct KeystoreSharedState<
 impl<'a, L: Ledger, Backend: KeystoreBackend<'a, L>, Meta: Serialize + DeserializeOwned + Send>
     KeystoreSharedState<'a, L, Backend, Meta>
 {
+    async fn commit(&mut self) -> Result<(), KeystoreError<L>> {
+        self.session.storage.commit().await;
+        self.session
+            .atomic_store
+            .commit_version()
+            .map_err(KeystoreError::from)
+    }
+
+    async fn revert(&mut self) -> Result<(), KeystoreError<L>> {
+        self.session.storage.revert().await;
+
+        // Reload in-memory state after the revert.
+        self.state = self.session.storage.load().await?;
+        Ok(())
+    }
+}
+
+impl<'a, L: Ledger, Backend: KeystoreBackend<'a, L>, Meta: Serialize + DeserializeOwned + Send>
+    KeystoreSharedState<'a, L, Backend, Meta>
+{
     pub fn backend(&self) -> &Backend {
         &self.session.backend
     }
@@ -1722,6 +1492,166 @@ impl<'a, L: Ledger, Backend: KeystoreBackend<'a, L>, Meta: Serialize + Deseriali
 
     pub fn rng(&mut self) -> &mut ChaChaRng {
         &mut self.session.rng
+    }
+}
+
+/// A guard for [KeystoreSharedState] that allows writing and gracefully handles errors.
+///
+/// Unlike [RwLockWriteGuard], [KeystoreSharedStateWriteGuard] does not dereference to the target,
+/// so the [KeystoreSharedState] cannot be freely edited directly. Instead,
+/// [KeystoreSharedStateWriteGuard] provides an [update](Self::update) function, which can be used
+/// to apply a closure to the shared state. The guard checks the result of this closure and takes
+/// note if it fails. Upon being dropped, if any operation on the guard fails, the persistent _and_
+/// in-memory state will be reverted to the state at the time the guard was created. All operations
+/// between creating and dropping the guard are atomic.
+///
+/// This abstraction simplifies the problem of reverting previous changes when a later change fails,
+/// and avoids confusion about when to open a storage transaction and when to commit it. With
+/// [KeystoreSharedStateWriteGuard], both of these questions have simple answers: you open a
+/// transaction when you obtain write access to the resource and you keep it open until you drop
+/// your write access. All changes made within a transaction are reverted atomically and
+/// automatically if the transaction fails.
+pub struct KeystoreSharedStateWriteGuard<
+    'l,
+    'a,
+    L: Ledger,
+    Backend: KeystoreBackend<'a, L>,
+    Meta: Send + Serialize + DeserializeOwned,
+> {
+    guard: RwLockWriteGuard<'l, KeystoreSharedState<'a, L, Backend, Meta>>,
+    failed: bool,
+}
+
+impl<
+        'l,
+        'a,
+        L: Ledger,
+        Backend: KeystoreBackend<'a, L>,
+        Meta: Send + Serialize + DeserializeOwned,
+    > KeystoreSharedStateWriteGuard<'l, 'a, L, Backend, Meta>
+{
+    async fn new(
+        mutex: &'l RwLock<KeystoreSharedState<'a, L, Backend, Meta>>,
+    ) -> KeystoreSharedStateWriteGuard<'l, 'a, L, Backend, Meta> {
+        Self {
+            guard: mutex.write().await,
+            failed: false,
+        }
+    }
+
+    /// Mutate the [KeystoreSharedState] with a closure.
+    ///
+    /// `op` defines a self-contained operation to apply to the shared state. If it fails, or if any
+    /// later operation on the same guard fails, all of its changes will be reverted. Otherwise, its
+    /// changes will be committed when the guard is dropped.
+    ///
+    /// The result of [update](Self::update) is the result of `op`.
+    ///
+    /// # Lifetimes
+    ///
+    /// The lifetime `'s` deserves some discussion. It is more idiomatic for closure parameters that
+    /// take a reference to use a higher-rank type bound, like
+    ///
+    /// ```ignore
+    /// for<'s> FnOnce(&'s mut T) -> BoxFuture<'s, R>
+    /// ```
+    ///
+    /// However, this simpler type signature states something that we don't want to be true: that
+    /// the function parameter, `op`, returns a future that _only_ borrows from its argument
+    /// (indicated by the polymorphic `'s`). We want to allow closures that borrow from _both_ their
+    /// argument and their environment. Without this, it is impossible to write a function that
+    /// takes a reference parameter and uses that parameter during an [update](Self::update) (at
+    /// least, not without cloning every reference parameter and moving the clone into the closure).
+    /// Unfortunately, there is not a good way to require that the future is bounded by two
+    /// lifetimes. We'd like to write something like
+    ///
+    /// ```ignore
+    /// F: for<'a> FnOnce(&'a T) -> BoxFuture<'a + 'b, R>
+    /// ```
+    ///
+    /// or
+    ///
+    /// ```ignore
+    /// for<'a>
+    ///     F: FnOnce(&'a T) -> Fut,
+    ///     Fut: 'a,
+    ///     Fut: 'b,
+    /// ```
+    ///
+    /// But neither of these can be expressed in the Rust type system.
+    ///
+    /// So, instead of requiring a closure that works for _every_ `'s`, we let the caller provide a
+    /// lifetime `'s`, which can be the lifetime of some reference that outlives the
+    /// [update](Self::update) operation. This is why the parameter `&'s mut self` is crucial: it
+    /// allows the closure `op` to _also_ borrow from its argument, since it's argument, the shared
+    /// state managed by this guard, is also borrowed from `self` and thus has the same lifetime,
+    /// `'s`.
+    ///
+    /// This is actually the reason for this guard type's existence. Were it not for this limitation
+    /// of the type system, we could simply write an update function that takes a
+    /// `RwLock<KeystoreSharedState<'a, L, Backend, Meta>>`, locks it, and then calls `op` on the
+    /// temporary guard. This fails because the lifetime of the guard itself must be the same as the
+    /// lifetime of the captured environment chosen by the caller, and so the guard must outlive the
+    /// update function; hence, we define this [KeystoreSharedStateWriteGuard] type, which can live
+    /// on the caller's stack for the duration of the [update](Self::update), allowing the caller to
+    /// name its lifetime: `'s`.
+    ///
+    /// # Errors
+    ///
+    /// If `op` returns an error, the error propagates out of [update](Self::update), and the guard
+    /// enters a failed state. When it is dropped, any changes made by `op` will be reverted.
+    ///
+    /// If a previous [update](Self::update) failed, subsequent calls to [update](Self::update) will
+    /// fail immediately without invoking `op` at all.
+    pub async fn update<'s, F, Fut>(&'s mut self, op: F) -> Result<Fut::Ok, Fut::Error>
+    where
+        F: FnOnce(&'s mut KeystoreSharedState<'a, L, Backend, Meta>) -> Fut,
+        Fut: TryFuture<Error = KeystoreError<L>>,
+    {
+        if self.failed {
+            return Err(KeystoreError::Failed {
+                msg: "calling update on a transaction that has already failed".into(),
+            });
+        }
+
+        let failed = &mut self.failed;
+        op(&mut *self.guard)
+            .inspect_err(|_| {
+                // Enter the failed state if the operation fails.
+                //
+                // The reason we do things this way, instead of just reverting the change right
+                // here, is a bit silly. In order to give a name to the lifetime of `op`s argument,
+                // we defined the lifetime parameter `'s`, which necessarily outlives the body of
+                // this function. Since the future returned by `op` borrows from `self.guard` with
+                // lifetime `'s`, the compiler believes that `self.guard` is borrowed mutably until
+                // after this function returns, even though this is impossible, since we know that
+                // the future will be driven to completion before this error handler gets called.
+                // Nevertheless, entering a failure state and then cleaning things up on drop (after
+                // this function returns and the compiler realizes `self.guard` can no longer be
+                // borrowed) is an acceptable workaround.
+                *failed = true;
+            })
+            .into_future()
+            .await
+    }
+}
+
+impl<
+        'l,
+        'a,
+        L: Ledger,
+        Backend: KeystoreBackend<'a, L>,
+        Meta: Send + Serialize + DeserializeOwned,
+    > Drop for KeystoreSharedStateWriteGuard<'l, 'a, L, Backend, Meta>
+{
+    fn drop(&mut self) {
+        async_std::task::block_on(async move {
+            if self.failed {
+                self.guard.revert().await.unwrap();
+            } else {
+                self.guard.commit().await.unwrap();
+            }
+        });
     }
 }
 
@@ -1846,7 +1776,10 @@ impl<
             sync_handles,
             txn_subscribers,
             pending_foreign_txns,
-            pending_key_scans: Default::default(),
+            pending_key_scans: key_scans
+                .iter()
+                .map(|(key, _)| (key.clone(), vec![]))
+                .collect(),
         }));
 
         let mut scope = unsafe {
@@ -1870,71 +1803,23 @@ impl<
                 async move {
                     let mut foreign_txns_awaiting_memos = HashMap::new();
                     while let Some((event, source)) = events.next().await {
-                        let KeystoreSharedState {
-                            state,
-                            session,
-                            sync_handles,
-                            txn_subscribers,
-                            pending_foreign_txns,
-                            ..
-                        } = &mut *mutex.write().await;
-                        // handle an event
-                        let summary = state.handle_event(session, event, source).await;
-                        for (txn_uid, status) in summary.updated_txns {
-                            // signal any await_transaction() futures which should complete due to a
-                            // transaction having been completed.
-                            if status.is_final() {
-                                for sender in txn_subscribers.remove(&txn_uid).into_iter().flatten()
-                                {
-                                    // It is ok to ignore errors here; they just mean the receiver
-                                    // has disconnected.
-                                    sender.send(status).ok();
-                                }
-                            }
-                        }
-                        // For any await_transaction() futures waiting on foreign transactions which
-                        // were just accepted, move them to the retired or awaiting memos state.
-                        for n in summary.retired_nullifiers {
-                            for sender in pending_foreign_txns.remove(&n).into_iter().flatten() {
-                                sender.send(TransactionStatus::Retired).ok();
-                            }
-                        }
-                        for (n, uid) in summary.spent_nullifiers {
-                            if let Some(subscribers) = pending_foreign_txns.remove(&n) {
-                                foreign_txns_awaiting_memos
-                                    .entry(uid)
-                                    .or_insert_with(Vec::new)
-                                    .extend(subscribers);
-                            }
-                        }
-                        // Signal await_transaction() futures with a Rejected state for all rejected
-                        // nullifiers.
-                        for n in summary.rejected_nullifiers {
-                            for sender in pending_foreign_txns.remove(&n).into_iter().flatten() {
-                                sender.send(TransactionStatus::Rejected).ok();
-                            }
-                        }
-                        // Signal any await_transaction() futures that are waiting on foreign
-                        // transactions whose memos just arrived.
-                        for (_, uid) in summary.received_memos {
-                            for sender in foreign_txns_awaiting_memos
-                                .remove(&uid)
-                                .into_iter()
-                                .flatten()
-                            {
-                                sender.send(TransactionStatus::Retired).ok();
-                            }
-                        }
-
-                        // Keep all the sync() futures whose index is still in the future, and
-                        // signal the rest.
-                        let (sync_handles_to_keep, sync_handles_to_signal) =
-                            std::mem::take(sync_handles)
-                                .into_iter()
-                                .partition(|(index, _)| *index > state.txn_state.now);
-                        *sync_handles = sync_handles_to_keep;
-                        for (_, handle) in sync_handles_to_signal {
-                            handle.send(()).ok();
+                        while let Err(err) = KeystoreSharedStateWriteGuard::new(&mutex)
+                            .await
+                            .update(|state| {
+                                update_ledger(
+                                    event.clone(),
+                                    source,
+                                    state,
+                                    &mut foreign_txns_awaiting_memos,
+                                )
+                                .boxed()
+                            })
+                            .await
+                        {
+                            tracing::error!("error while scanning ledger, retrying: {}", err);
+                            // Sleep a little bit before retrying, so that if the error is
+                            // persistent, we don't obnoxiously spam the logs or hog the mutex.
+                            sleep(Duration::from_secs(5)).await;
                         }
                     }
                 },
@@ -1947,8 +1832,8 @@ impl<
             task_scope: scope,
         };
 
-        // Spawn background tasks for any scans which were in progress when the keystore was last shut
-        // down.
+        // Spawn background tasks for any scans which were in progress when the keystore was last
+        // shut down.
         for (key, events) in key_scans {
             keystore.spawn_key_scan(key, events).await;
         }
@@ -1957,8 +1842,8 @@ impl<
     }
 
     /// Access the shared state directly.
-    pub async fn write(&self) -> RwLockWriteGuard<'_, KeystoreSharedState<'a, L, Backend, Meta>> {
-        self.mutex.write().await
+    pub async fn write(&self) -> KeystoreSharedStateWriteGuard<'_, 'a, L, Backend, Meta> {
+        KeystoreSharedStateWriteGuard::new(&self.mutex).await
     }
 
     /// Access the shared state directly.
@@ -2228,27 +2113,36 @@ impl<
         bound_data: Vec<u8>,
         xfr_size_requirement: Option<(usize, usize)>,
     ) -> Result<(TransferNote, TransactionInfo<L>), KeystoreError<L>> {
-        let KeystoreSharedState { state, session, .. } = &mut *self.write().await;
-        let sender_key_pairs = match sender {
-            Some(addr) => {
-                vec![state.account_key_pair(addr)?.clone()]
-            }
-            None => state.key_pairs(),
-        };
-        // Convert receiver amounts to `RecordAmount`.
+        // Convert amounts to `RecordAmount`.
+        let fee = fee.into();
         let receivers = receivers
             .iter()
             .map(|(key, amt, burn)| (key.clone(), amt.clone().into(), *burn))
             .collect::<Vec<_>>();
-        let spec = TransferSpec {
-            sender_key_pairs: &sender_key_pairs,
-            asset,
-            receivers: &receivers,
-            fee: fee.into(),
-            bound_data,
-            xfr_size_requirement,
-        };
-        state.build_transfer(session, spec)
+
+        self.write()
+            .await
+            .update(|KeystoreSharedState { state, session, .. }| {
+                async move {
+                    let sender_key_pairs = match sender {
+                        Some(addr) => {
+                            vec![state.account_key_pair(addr)?.clone()]
+                        }
+                        None => state.key_pairs(),
+                    };
+                    let spec = TransferSpec {
+                        sender_key_pairs: &sender_key_pairs,
+                        asset,
+                        receivers: &receivers,
+                        fee,
+                        bound_data,
+                        xfr_size_requirement,
+                    };
+                    state.build_transfer(session, spec)
+                }
+                .boxed()
+            })
+            .await
     }
 
     /// Submit a transaction to be validated.
@@ -2260,9 +2154,13 @@ impl<
         txn: Transaction<L>,
         info: TransactionInfo<L>,
     ) -> Result<TransactionReceipt<L>, KeystoreError<L>> {
-        let KeystoreSharedState { state, session, .. } = &mut *self.write().await;
-        state
-            .submit_elaborated_transaction(session, txn, info)
+        self.write()
+            .await
+            .update(|KeystoreSharedState { state, session, .. }| {
+                state
+                    .submit_elaborated_transaction(session, txn, info)
+                    .boxed()
+            })
             .await
     }
 
@@ -2272,8 +2170,12 @@ impl<
         txn: TransactionNote,
         info: TransactionInfo<L>,
     ) -> Result<TransactionReceipt<L>, KeystoreError<L>> {
-        let KeystoreSharedState { state, session, .. } = &mut *self.write().await;
-        state.submit_transaction(session, txn, info).await
+        self.write()
+            .await
+            .update(|KeystoreSharedState { state, session, .. }| {
+                state.submit_transaction(session, txn, info).boxed()
+            })
+            .await
     }
 
     /// Define a new asset and store secret info for minting.
@@ -2283,8 +2185,12 @@ impl<
         description: &[u8],
         policy: AssetPolicy,
     ) -> Result<AssetDefinition, KeystoreError<L>> {
-        let KeystoreSharedState { state, session, .. } = &mut *self.write().await;
-        state.define_asset(session, name, description, policy).await
+        self.write()
+            .await
+            .update(|KeystoreSharedState { state, session, .. }| {
+                state.define_asset(session, name, description, policy)
+            })
+            .await
     }
 
     /// Add an asset to the asset library.
@@ -2294,8 +2200,10 @@ impl<
     /// [Keystore::verify_assets], conditional on a signature check.
     pub async fn import_asset(&mut self, mut asset: AssetInfo) -> Result<(), KeystoreError<L>> {
         asset.verified = false;
-        let KeystoreSharedState { state, session, .. } = &mut *self.write().await;
-        state.import_asset(session, asset).await
+        self.write()
+            .await
+            .update(|KeystoreSharedState { state, session, .. }| state.import_asset(session, asset))
+            .await
     }
 
     /// Load a verified asset library from a file or byte stream.
@@ -2305,25 +2213,30 @@ impl<
     ///
     /// If successful, the assets loaded from `library` are returned as well as being added to this
     /// keystore's asset library. Note that assets loaded from a verified library are not persisted
-    /// (unless the same assets are imported as unverified using [Keystore::import_asset]) in order to
-    /// preserve the verified library as the single source of truth about verified assets.
-    /// Therefore, this function must be called each time a keystore is created or opened in order to
-    /// ensure that the verified assets show up in the keystore's library.
+    /// (unless the same assets are imported as unverified using [Keystore::import_asset]) in order
+    /// to preserve the verified library as the single source of truth about verified assets.
+    /// Therefore, this function must be called each time a keystore is created or opened in order
+    /// to ensure that the verified assets show up in the keystore's library.
     pub async fn verify_assets(
         &mut self,
         trusted_signer: &VerKey,
         library: VerifiedAssetLibrary,
     ) -> Result<Vec<AssetInfo>, KeystoreError<L>> {
         if let Some(assets) = library.open(trusted_signer) {
-            let KeystoreSharedState { state, .. } = &mut *self.write().await;
-            for asset in &assets {
-                // `import_asset` is only for unverified assets. It automatically persists the asset
-                // being imported. We explicitly do not want to persist verified assets (unless
-                // the user explicitly requests persistence by importing the same asset manually) so
-                // all we need to do is add the asset to our in-memory asset library.
-                state.assets.insert(asset.clone());
-            }
-            Ok(assets)
+            self.write()
+                .await
+                .update(|KeystoreSharedState { state, .. }| async move {
+                    for asset in &assets {
+                        // `import_asset` is only for unverified assets. It automatically persists
+                        // the asset being imported. We explicitly do not want to persist verified
+                        // assets (unless the user explicitly requests persistence by importing the
+                        // same asset manually) so all we need to do is add the asset to our
+                        // in-memory asset library.
+                        state.assets.insert(asset.clone());
+                    }
+                    Ok(assets)
+                })
+                .await
         } else {
             Err(KeystoreError::AssetVerificationError)
         }
@@ -2339,9 +2252,11 @@ impl<
         'a: 'l,
     {
         Box::pin(async move {
-            let KeystoreSharedState { state, session, .. } = &mut *self.write().await;
-            state
-                .add_viewing_key(session, viewing_key, description)
+            self.write()
+                .await
+                .update(|KeystoreSharedState { state, session, .. }| {
+                    state.add_viewing_key(session, viewing_key, description)
+                })
                 .await
         })
     }
@@ -2355,15 +2270,19 @@ impl<
         'a: 'l,
     {
         Box::pin(async move {
-            let KeystoreSharedState { state, session, .. } = &mut *self.write().await;
-            let viewing_key = session
-                .viewer_key_stream
-                .derive_viewer_key_pair(&state.key_state.viewer.to_le_bytes());
-            state.key_state.viewer += 1;
-            state
-                .add_viewing_key(session, viewing_key.clone(), description)
-                .await?;
-            Ok(viewing_key.pub_key())
+            self.write()
+                .await
+                .update(|KeystoreSharedState { state, session, .. }| async move {
+                    let viewing_key = session
+                        .viewer_key_stream
+                        .derive_viewer_key_pair(&state.key_state.viewer.to_le_bytes());
+                    state.key_state.viewer += 1;
+                    state
+                        .add_viewing_key(session, viewing_key.clone(), description)
+                        .await?;
+                    Ok(viewing_key.pub_key())
+                })
+                .await
         })
     }
 
@@ -2377,8 +2296,12 @@ impl<
         'a: 'l,
     {
         Box::pin(async move {
-            let KeystoreSharedState { state, session, .. } = &mut *self.write().await;
-            state.add_freeze_key(session, freeze_key, description).await
+            self.write()
+                .await
+                .update(|KeystoreSharedState { state, session, .. }| {
+                    state.add_freeze_key(session, freeze_key, description)
+                })
+                .await
         })
     }
 
@@ -2391,15 +2314,19 @@ impl<
         'a: 'l,
     {
         Box::pin(async move {
-            let KeystoreSharedState { state, session, .. } = &mut *self.write().await;
-            let freeze_key = session
-                .freezer_key_stream
-                .derive_freezer_key_pair(&state.key_state.freezer.to_le_bytes());
-            state.key_state.freezer += 1;
-            state
-                .add_freeze_key(session, freeze_key.clone(), description)
-                .await?;
-            Ok(freeze_key.pub_key())
+            self.write()
+                .await
+                .update(|KeystoreSharedState { state, session, .. }| async move {
+                    let freeze_key = session
+                        .freezer_key_stream
+                        .derive_freezer_key_pair(&state.key_state.freezer.to_le_bytes());
+                    state.key_state.freezer += 1;
+                    state
+                        .add_freeze_key(session, freeze_key.clone(), description)
+                        .await?;
+                    Ok(freeze_key.pub_key())
+                })
+                .await
         })
     }
 
@@ -2418,12 +2345,26 @@ impl<
         'a: 'l,
     {
         Box::pin(async move {
-            let (user_key, events) = {
-                let KeystoreSharedState { state, session, .. } = &mut *self.write().await;
-                state
-                    .add_user_key(session, Some(user_key), description, Some(scan_from))
-                    .await?
-            };
+            let (user_key, events) = self
+                .write()
+                .await
+                .update(
+                    |KeystoreSharedState {
+                         state,
+                         session,
+                         pending_key_scans,
+                         ..
+                     }| async move {
+                        let (user_key, events) = state
+                            .add_user_key(session, Some(user_key), description, Some(scan_from))
+                            .await?;
+                        // Register the key scan in `pending_key_scans` so that `await_key_scan`
+                        // will work.
+                        pending_key_scans.insert(user_key.address(), vec![]);
+                        Ok((user_key, events))
+                    },
+                )
+                .await?;
 
             if let Some(events) = events {
                 // Start a background task to scan for records belonging to the new key.
@@ -2450,9 +2391,24 @@ impl<
     {
         Box::pin(async move {
             let (user_key, events) = {
-                let KeystoreSharedState { state, session, .. } = &mut *self.write().await;
-                state
-                    .add_user_key(session, None, description, scan_from)
+                self.write()
+                    .await
+                    .update(
+                        |KeystoreSharedState {
+                             state,
+                             session,
+                             pending_key_scans,
+                             ..
+                         }| async move {
+                            let (user_key, events) = state
+                                .add_user_key(session, None, description, scan_from)
+                                .await?;
+                            // Register the key scan in `pending_key_scans` so that `await_key_scan`
+                            // will work.
+                            pending_key_scans.insert(user_key.address(), vec![]);
+                            Ok((user_key, events))
+                        },
+                    )
                     .await?
             };
 
@@ -2476,8 +2432,12 @@ impl<
         uid: u64,
         proof: MerklePath,
     ) -> Result<(), KeystoreError<L>> {
-        let KeystoreSharedState { state, session, .. } = &mut *self.write().await;
-        state.import_memo(session, memo, comm, uid, proof).await
+        self.write()
+            .await
+            .update(|KeystoreSharedState { state, session, .. }| {
+                state.import_memo(session, memo, comm, uid, proof)
+            })
+            .await
     }
 
     /// Create a mint note that assigns an asset to an owner.
@@ -2489,16 +2449,18 @@ impl<
         amount: impl Into<RecordAmount>,
         receiver: UserPubKey,
     ) -> Result<(MintNote, TransactionInfo<L>), KeystoreError<L>> {
-        let KeystoreSharedState { state, session, .. } = &mut *self.write().await;
-        state
-            .build_mint(
-                session,
-                minter,
-                fee.into(),
-                asset_code,
-                amount.into(),
-                receiver,
-            )
+        self.write()
+            .await
+            .update(|KeystoreSharedState { state, session, .. }| {
+                state.build_mint(
+                    session,
+                    minter,
+                    fee.into(),
+                    asset_code,
+                    amount.into(),
+                    receiver,
+                )
+            })
             .await
     }
 
@@ -2547,17 +2509,19 @@ impl<
         amount: impl Into<U256>,
         owner: UserAddress,
     ) -> Result<(FreezeNote, TransactionInfo<L>), KeystoreError<L>> {
-        let KeystoreSharedState { state, session, .. } = &mut *self.write().await;
-        state
-            .build_freeze(
-                session,
-                freezer,
-                fee.into(),
-                asset,
-                amount.into(),
-                owner,
-                FreezeFlag::Frozen,
-            )
+        self.write()
+            .await
+            .update(|KeystoreSharedState { state, session, .. }| {
+                state.build_freeze(
+                    session,
+                    freezer,
+                    fee.into(),
+                    asset,
+                    amount.into(),
+                    owner,
+                    FreezeFlag::Frozen,
+                )
+            })
             .await
     }
 
@@ -2591,17 +2555,19 @@ impl<
         amount: impl Into<U256>,
         owner: UserAddress,
     ) -> Result<(FreezeNote, TransactionInfo<L>), KeystoreError<L>> {
-        let KeystoreSharedState { state, session, .. } = &mut *self.write().await;
-        state
-            .build_freeze(
-                session,
-                freezer,
-                fee.into(),
-                asset,
-                amount.into(),
-                owner,
-                FreezeFlag::Unfrozen,
-            )
+        self.write()
+            .await
+            .update(|KeystoreSharedState { state, session, .. }| {
+                state.build_freeze(
+                    session,
+                    freezer,
+                    fee.into(),
+                    asset,
+                    amount.into(),
+                    owner,
+                    FreezeFlag::Unfrozen,
+                )
+            })
             .await
     }
 
@@ -2628,8 +2594,12 @@ impl<
         &self,
         receipt: &TransactionReceipt<L>,
     ) -> Result<TransactionStatus, KeystoreError<L>> {
-        let KeystoreSharedState { state, session, .. } = &mut *self.write().await;
-        state.transaction_status(session, receipt).await
+        self.write()
+            .await
+            .update(|KeystoreSharedState { state, session, .. }| {
+                state.transaction_status(session, receipt)
+            })
+            .await
     }
 
     /// A future which completes when the transaction is finalized (committed or rejected).
@@ -2637,67 +2607,89 @@ impl<
         &self,
         receipt: &TransactionReceipt<L>,
     ) -> Result<TransactionStatus, KeystoreError<L>> {
-        let mut guard = self.write().await;
-        let KeystoreSharedState {
-            state,
-            session,
-            txn_subscribers,
-            pending_foreign_txns,
-            ..
-        } = &mut *guard;
+        // Check the status of the transaction. `res` will be `Ok(status)` if the transaction has
+        // already completed, or `Err(receiver)` with a `oneshot::Receiver` to wait on if the
+        // transaction is not ready yet.
+        let res = {
+            self.write()
+                .await
+                .update(
+                    |KeystoreSharedState {
+                         state,
+                         session,
+                         txn_subscribers,
+                         pending_foreign_txns,
+                         ..
+                     }| async move {
+                        let status = state.transaction_status(session, receipt).await?;
+                        if status.is_final() {
+                            Ok(Ok(status))
+                        } else {
+                            let (sender, receiver) = oneshot::channel();
 
-        let status = state.transaction_status(session, receipt).await?;
-        if status.is_final() {
-            Ok(status)
-        } else {
-            let (sender, receiver) = oneshot::channel();
-
-            if receipt
-                .submitters
-                .iter()
-                .all(|key| state.sending_accounts.contains_key(key))
-            {
-                // If we submitted this transaction, we have all the information we need to track it
-                // through the lifecycle based on its uid alone.
-                txn_subscribers
-                    .entry(receipt.uid.clone())
-                    .or_insert_with(Vec::new)
-                    .push(sender);
-            } else {
-                // Transaction uids are unique only to a given keystore, so if we're trying to track
-                // somebody else's transaction, the best we can do is wait for one of its nullifiers
-                // to be published on the ledger.
-                pending_foreign_txns
-                    .entry(receipt.fee_nullifier)
-                    .or_insert_with(Vec::new)
-                    .push(sender);
-            }
-            drop(guard);
-            receiver.await.map_err(|_| KeystoreError::<L>::Cancelled {})
+                            if receipt
+                                .submitters
+                                .iter()
+                                .all(|key| state.sending_accounts.contains_key(key))
+                            {
+                                // If we submitted this transaction, we have all the information we
+                                // need to track it through the lifecycle based on its uid alone.
+                                txn_subscribers
+                                    .entry(receipt.uid.clone())
+                                    .or_insert_with(Vec::new)
+                                    .push(sender);
+                            } else {
+                                // Transaction uids are unique only to a given keystore, so if we're
+                                // trying to track somebody else's transaction, the best we can do
+                                // is wait for one of its nullifiers to be published on the ledger.
+                                pending_foreign_txns
+                                    .entry(receipt.fee_nullifier)
+                                    .or_insert_with(Vec::new)
+                                    .push(sender);
+                            }
+                            Ok(Err(receiver))
+                        }
+                    },
+                )
+                .await?
+        };
+        match res {
+            Ok(status) => Ok(status),
+            Err(receiver) => receiver.await.map_err(|_| KeystoreError::<L>::Cancelled {}),
         }
     }
 
     /// A future which completes when the keystore has processed events at least including `t`.
-    pub async fn sync(&self, t: EventIndex) -> Result<(), oneshot::Canceled> {
-        let mut guard = self.write().await;
-        let KeystoreSharedState {
-            state,
-            sync_handles,
-            ..
-        } = &mut *guard;
-
-        // It's important that we do the comparison this way (now >= t) rather than comparing
-        // now < t and switching the branches of the `if`. This is because the partial order of
-        // EventIndex tells us when _all_ event streams in `now` are at an index >= t, which is the
-        // terminating condition for `sync()`: it should wait until _all_ event streams have been
-        // processed at least to time `t`.
-        if state.txn_state.now >= t {
-            Ok(())
-        } else {
-            let (sender, receiver) = oneshot::channel();
-            sync_handles.push((t, sender));
-            drop(guard);
-            receiver.await
+    pub async fn sync(&self, t: EventIndex) -> Result<(), KeystoreError<L>> {
+        let receiver = {
+            self.write()
+                .await
+                .update(
+                    |KeystoreSharedState {
+                         state,
+                         sync_handles,
+                         ..
+                     }| async move {
+                        // It's important that we do the comparison this way (now >= t) rather than
+                        // comparing now < t and switching the branches of the `if`. This is because
+                        // the partial order of EventIndex tells us when _all_ event streams in
+                        // `now` are at an index >= t, which is the terminating condition for
+                        // `sync()`: it should wait until _all_ event streams have been processed at
+                        // least to time `t`.
+                        if state.txn_state.now >= t {
+                            Ok(None)
+                        } else {
+                            let (sender, receiver) = oneshot::channel();
+                            sync_handles.push((t, sender));
+                            Ok(Some(receiver))
+                        }
+                    },
+                )
+                .await?
+        };
+        match receiver {
+            Some(receiver) => receiver.await.map_err(|_| KeystoreError::Cancelled {}),
+            None => Ok(()),
         }
     }
 
@@ -2707,26 +2699,35 @@ impl<
     }
 
     /// A future which completes when the keystore has processed at least as many events as `peer`.
-    pub async fn sync_with_peer(&self, peer: &Self) -> Result<(), oneshot::Canceled> {
+    pub async fn sync_with_peer(&self, peer: &Self) -> Result<(), KeystoreError<L>> {
         self.sync(peer.now().await).await
     }
 
     /// A future which completes when there are no more in-progress ledger scans for `address`.
-    pub async fn await_key_scan(&self, address: &UserAddress) -> Result<(), oneshot::Canceled> {
-        let mut guard = self.write().await;
-        let KeystoreSharedState {
-            pending_key_scans, ..
-        } = &mut *guard;
-        let senders = match pending_key_scans.get_mut(address) {
-            Some(senders) => senders,
-            // If there is not an in-progress scan for this key, return immediately.
-            None => return Ok(()),
+    pub async fn await_key_scan(&self, address: &UserAddress) -> Result<(), KeystoreError<L>> {
+        let receiver = {
+            self.write()
+                .await
+                .update(
+                    |KeystoreSharedState {
+                         pending_key_scans, ..
+                     }| async move {
+                        let senders = match pending_key_scans.get_mut(address) {
+                            Some(senders) => senders,
+                            // If there is not an in-progress scan for this key, return immediately.
+                            None => return Ok(None),
+                        };
+                        let (sender, receiver) = oneshot::channel();
+                        senders.push(sender);
+                        Ok(Some(receiver))
+                    },
+                )
+                .await?
         };
-        let (sender, receiver) = oneshot::channel();
-        senders.push(sender);
-
-        drop(guard);
-        receiver.await
+        match receiver {
+            Some(receiver) => receiver.await.map_err(|_| KeystoreError::Cancelled {}),
+            None => Ok(()),
+        }
     }
 
     async fn spawn_key_scan(
@@ -2734,76 +2735,163 @@ impl<
         address: UserAddress,
         mut events: impl 'a + Stream<Item = (LedgerEvent<L>, EventSource)> + Unpin + Send,
     ) {
-        {
-            // Register the key scan in `pending_key_scans` so that `await_key_scan` will work.
-            let KeystoreSharedState {
-                pending_key_scans, ..
-            } = &mut *self.write().await;
-            pending_key_scans.insert(address.clone(), vec![]);
-        }
-
         let mutex = self.mutex.clone();
         self.task_scope.spawn_cancellable(
             async move {
                 let mut finished = false;
                 while !finished {
                     let (next_event, source) = events.next().await.unwrap();
-
-                    let KeystoreSharedState {
-                        state,
-                        session,
-                        pending_key_scans,
-                        ..
-                    } = &mut *mutex.write().await;
-                    finished = if let Some((key, ScanOutputs { records, history })) = state
-                        .sending_accounts
-                        .get_mut(&address)
-                        .unwrap()
-                        .update_scan(next_event, source, state.txn_state.record_mt.commitment())
-                        .await
-                    {
-                        if let Err(err) = state.add_records(session, &key, records).await {
-                            println!("Error saving records from key scan {}: {}", address, err);
-                        }
-                        if let Err(err) = session
-                            .store(|mut t| async {
-                                for h in history {
-                                    t.store_transaction(h).await?;
-                                }
-                                Ok(t)
+                    loop {
+                        match KeystoreSharedStateWriteGuard::new(&mutex)
+                            .await
+                            .update(|state| {
+                                update_key_scan(&address, next_event.clone(), source, state).boxed()
                             })
                             .await
                         {
-                            println!(
-                                "Error saving tranaction history from key scan {}: {}",
-                                address, err
-                            );
+                            Ok(f) => {
+                                finished = f;
+                                break;
+                            }
+                            Err(err) => {
+                                tracing::error!("error during key scan, retrying: {}", err);
+                                // Sleep a little bit before retrying, so that if the error is
+                                // persistent, we don't obnoxiously spam the logs or hog the mutex.
+                                sleep(Duration::from_secs(5)).await;
+                            }
                         }
-
-                        // Signal anyone waiting for a notification that this scan finished.
-                        for sender in pending_key_scans.remove(&address).into_iter().flatten() {
-                            // Ignore errors, it just means the receiving end of the channel has
-                            // been dropped.
-                            sender.send(()).ok();
-                        }
-
-                        true
-                    } else {
-                        false
-                    };
-
-                    session
-                        .store(|mut t| async {
-                            t.store_snapshot(state).await?;
-                            Ok(t)
-                        })
-                        .await
-                        .ok();
+                    }
                 }
             },
             || (),
         );
     }
+}
+
+async fn update_ledger<
+    'a,
+    L: 'static + Ledger,
+    Backend: KeystoreBackend<'a, L>,
+    Meta: Send + DeserializeOwned + Serialize,
+>(
+    event: LedgerEvent<L>,
+    source: EventSource,
+    shared_state: &mut KeystoreSharedState<'a, L, Backend, Meta>,
+    foreign_txns_awaiting_memos: &mut HashMap<u64, Vec<oneshot::Sender<TransactionStatus>>>,
+) -> Result<(), KeystoreError<L>> {
+    let KeystoreSharedState {
+        state,
+        session,
+        sync_handles,
+        txn_subscribers,
+        pending_foreign_txns,
+        ..
+    } = shared_state;
+    // handle an event
+    let summary = state.handle_event(session, event, source).await?;
+    for (txn_uid, status) in summary.updated_txns {
+        // signal any await_transaction() futures which should complete due to a
+        // transaction having been completed.
+        if status.is_final() {
+            for sender in txn_subscribers.remove(&txn_uid).into_iter().flatten() {
+                // It is ok to ignore errors here; they just mean the receiver
+                // has disconnected.
+                sender.send(status).ok();
+            }
+        }
+    }
+    // For any await_transaction() futures waiting on foreign transactions which
+    // were just accepted, move them to the retired or awaiting memos state.
+    for n in summary.retired_nullifiers {
+        for sender in pending_foreign_txns.remove(&n).into_iter().flatten() {
+            sender.send(TransactionStatus::Retired).ok();
+        }
+    }
+    for (n, uid) in summary.spent_nullifiers {
+        if let Some(subscribers) = pending_foreign_txns.remove(&n) {
+            foreign_txns_awaiting_memos
+                .entry(uid)
+                .or_insert_with(Vec::new)
+                .extend(subscribers);
+        }
+    }
+    // Signal await_transaction() futures with a Rejected state for all rejected
+    // nullifiers.
+    for n in summary.rejected_nullifiers {
+        for sender in pending_foreign_txns.remove(&n).into_iter().flatten() {
+            sender.send(TransactionStatus::Rejected).ok();
+        }
+    }
+    // Signal any await_transaction() futures that are waiting on foreign
+    // transactions whose memos just arrived.
+    for (_, uid) in summary.received_memos {
+        for sender in foreign_txns_awaiting_memos
+            .remove(&uid)
+            .into_iter()
+            .flatten()
+        {
+            sender.send(TransactionStatus::Retired).ok();
+        }
+    }
+
+    // Keep all the sync() futures whose index is still in the future, and
+    // signal the rest.
+    let (sync_handles_to_keep, sync_handles_to_signal) = std::mem::take(sync_handles)
+        .into_iter()
+        .partition(|(index, _)| *index > state.txn_state.now);
+    *sync_handles = sync_handles_to_keep;
+    for (_, handle) in sync_handles_to_signal {
+        handle.send(()).ok();
+    }
+    Ok(())
+}
+
+async fn update_key_scan<
+    'a,
+    L: 'static + Ledger,
+    Backend: KeystoreBackend<'a, L>,
+    Meta: Send + DeserializeOwned + Serialize,
+>(
+    address: &UserAddress,
+    event: LedgerEvent<L>,
+    source: EventSource,
+    shared_state: &mut KeystoreSharedState<'a, L, Backend, Meta>,
+) -> Result<bool, KeystoreError<L>> {
+    let KeystoreSharedState {
+        state,
+        session,
+        pending_key_scans,
+        ..
+    } = shared_state;
+
+    let finished = if let Some((key, ScanOutputs { records, history })) = state
+        .sending_accounts
+        .get_mut(address)
+        .unwrap()
+        .update_scan(event, source, state.txn_state.record_mt.commitment())
+        .await
+    {
+        if let Err(err) = state.add_records(session, &key, records).await {
+            tracing::error!("Error saving records from key scan {}: {}", address, err);
+        }
+        for h in history {
+            session.storage.store_transaction(h).await?;
+        }
+
+        // Signal anyone waiting for a notification that this scan finished.
+        for sender in pending_key_scans.remove(address).into_iter().flatten() {
+            // Ignore errors, it just means the receiving end of the channel has
+            // been dropped.
+            sender.send(()).ok();
+        }
+
+        true
+    } else {
+        false
+    };
+
+    session.storage.store_snapshot(state).await?;
+    Ok(finished)
 }
 
 pub fn new_key_pair() -> UserKeyPair {
