@@ -661,7 +661,7 @@ impl Assets {
         let mut assets = Vec::new();
         for mut asset in self.store.iter().cloned() {
             // The asset is verified if it's in the verified set.
-            if self.verified_assets.index.contains(&asset.code()) {
+            if self.verified_assets.index().contains(&asset.code()) {
                 asset.verified = true;
             }
             assets.push(asset.clone());
@@ -673,7 +673,7 @@ impl Assets {
     pub fn get<L: Ledger>(&self, code: &AssetCode) -> Result<Asset, KeystoreError<L>> {
         let mut asset = self.store.load(code)?;
         // The asset is verified if it's in the verified set.
-        if self.verified_assets.index.contains(code) {
+        if self.verified_assets.index().contains(code) {
             asset.verified = true
         }
         Ok(asset)
@@ -686,7 +686,7 @@ impl Assets {
     ) -> Result<AssetEditor<'_>, KeystoreError<L>> {
         let mut asset = self.get(code)?;
         // The asset is verified if it's in the verified set.
-        if self.verified_assets.index.contains(code) {
+        if self.verified_assets.index().contains(code) {
             asset.verified = true
         }
         Ok(AssetEditor::new(&mut self.store, asset))
@@ -715,7 +715,11 @@ impl Assets {
         mut asset: Asset,
     ) -> Result<AssetEditor<'_>, KeystoreError<L>> {
         // The asset is verified if it's in the verified set.
-        if self.verified_assets.index.contains(&asset.definition.code) {
+        if self
+            .verified_assets
+            .index()
+            .contains(&asset.definition.code)
+        {
             asset.verified = true
         }
         let store_asset = self.store.load(&asset.definition.code);

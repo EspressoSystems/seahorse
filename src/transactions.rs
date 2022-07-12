@@ -239,7 +239,7 @@ pub struct Transactions<L: Ledger + Serialize + DeserializeOwned> {
     /// A key-value store for transactions.
     store: TransactionsStore<L>,
     txn_by_hash: PersistableHashMap<TransactionHash<L>, TransactionUID<L>>,
-    expiring_txns: PersistableBTreeMap<u64, TransactionUID<L>>,
+    expiring_txns: PersistableBTreeMultiMap<u64, TransactionUID<L>>,
     /// Maps pending memo UIDs to the Transaction<L>they come from
     uids_awaiting_memos: PersistableHashMap<u64, TransactionUID<L>>,
 }
@@ -318,7 +318,7 @@ impl<L: Ledger + Serialize + DeserializeOwned> Transactions<L> {
     pub fn with_memo_id(&self, id: u64) -> Result<Transaction<L>, KeystoreError<L>> {
         let uid = self
             .uids_awaiting_memos
-            .index
+            .index()
             .get(&id)
             .ok_or(KeyValueStoreError::KeyNotFound)?;
         Ok(self.get(uid).unwrap())
@@ -337,7 +337,7 @@ impl<L: Ledger + Serialize + DeserializeOwned> Transactions<L> {
     pub fn with_hash(&self, hash: &TransactionHash<L>) -> Result<Transaction<L>, KeystoreError<L>> {
         let uid = self
             .txn_by_hash
-            .index
+            .index()
             .get(hash)
             .ok_or(KeyValueStoreError::KeyNotFound)?;
         Ok(self.get(uid).unwrap())
@@ -359,7 +359,7 @@ impl<L: Ledger + Serialize + DeserializeOwned> Transactions<L> {
     ) -> Result<impl Iterator<Item = Transaction<L>> + '_, KeystoreError<L>> {
         let uids = self
             .expiring_txns
-            .index
+            .index()
             .get(&timeout)
             .ok_or(KeyValueStoreError::KeyNotFound)?;
 
@@ -368,7 +368,13 @@ impl<L: Ledger + Serialize + DeserializeOwned> Transactions<L> {
 
     /// Remove a transaction from the pending index when it is known to have timed out
     pub async fn remove_expired(&mut self, timeout: u64) -> Result<(), KeystoreError<L>> {
-        if let Some(expiring_uids) = self.expiring_txns.index.get_mut(&timeout).cloned() {
+        if let Some(expiring_uids) = self
+            .expiring_txns
+            .index()
+            .clone()
+            .get_mut(&timeout)
+            .cloned()
+        {
             for uid in expiring_uids.iter() {
                 let editor = self.get_mut(uid)?;
                 editor

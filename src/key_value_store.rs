@@ -135,12 +135,17 @@ pub trait Persist<C> {
 /// A persistable in-memory state.
 pub struct Persistable<I, C: Eq> {
     /// In-memory index, including both committed and uncommitted changes.
-    pub index: I,
+    index: I,
     /// Changes that haven't been committed.
     pending_changes: Vec<IndexChange<C>>,
 }
 
 impl<I, C: Eq> Persistable<I, C> {
+    /// Get the index.
+    pub fn index(&self) -> &I {
+        &self.index
+    }
+
     /// Commit the pending changes.
     pub fn commit(&mut self) {
         // The index is always up-to-date, so commting only needs to clear the pending changes.
@@ -150,7 +155,7 @@ impl<I, C: Eq> Persistable<I, C> {
 
 pub type PersistableHashSet<K> = Persistable<HashSet<K>, K>;
 pub type PersistableHashMap<K, V> = Persistable<HashMap<K, V>, (K, V)>;
-pub type PersistableBTreeMap<K, V> = Persistable<BTreeMap<K, HashSet<V>>, (K, V)>;
+pub type PersistableBTreeMultiMap<K, V> = Persistable<BTreeMap<K, HashSet<V>>, (K, V)>;
 
 impl<K: Copy + Eq + Hash> Persist<K> for PersistableHashSet<K> {
     fn new() -> Self {
@@ -219,7 +224,7 @@ impl<K: Clone + Eq + Hash, V: Clone + Eq + Hash> Persist<(K, V)> for Persistable
 }
 
 impl<K: Copy + Eq + Hash + Ord, V: Clone + Eq + Hash> Persist<(K, V)>
-    for PersistableBTreeMap<K, V>
+    for PersistableBTreeMultiMap<K, V>
 {
     fn new() -> Self {
         Self {
@@ -237,15 +242,15 @@ impl<K: Copy + Eq + Hash + Ord, V: Clone + Eq + Hash> Persist<(K, V)>
     }
 
     fn remove(&mut self, change: (K, V)) {
-        self.index.remove(&change.0);
+        self.index.entry(change.0).or_default().remove(&change.1);
         self.pending_changes.push(IndexChange::Remove(change));
     }
 
     fn revert(&mut self) {
         for change in &self.pending_changes {
             match change {
-                IndexChange::Add((key, _)) => {
-                    self.index.remove(key);
+                IndexChange::Add((key, value)) => {
+                    self.index.entry(*key).or_default().remove(value);
                 }
                 IndexChange::Remove((key, value)) => {
                     self.index
