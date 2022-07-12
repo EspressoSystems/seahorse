@@ -7,25 +7,16 @@
 
 //! Ledger-agnostic implementation of [KeystoreStorage].
 use crate::{
-    accounts::Account,
-    asset_library::{AssetInfo, AssetLibrary},
-    encryption::Cipher,
-    hd::KeyTree,
-    loader::KeystoreLoader,
-    txn_builder::TransactionState,
-    KeyStreamState, KeystoreError, KeystoreState, TransactionHistoryEntry,
+    accounts::Account, hd::KeyTree, loader::KeystoreLoader, txn_builder::TransactionState,
+    EncryptingResourceAdapter, KeyStreamState, KeystoreError, KeystoreState,
+    TransactionHistoryEntry,
 };
 use arbitrary::{Arbitrary, Unstructured};
 use async_std::sync::Arc;
-use atomic_store::{
-    error::PersistenceError,
-    load_store::{BincodeLoadStore, LoadStore},
-    AppendLog, AtomicStoreLoader, RollingLog,
-};
+use atomic_store::{load_store::BincodeLoadStore, AppendLog, AtomicStoreLoader, RollingLog};
 use espresso_macros::ser_test;
 use jf_cap::keys::{FreezerKeyPair, UserKeyPair, ViewerKeyPair};
 use key_set::{OrderByOutputs, ProverKeySet};
-use rand_chacha::{rand_core::SeedableRng, ChaChaRng};
 use reef::*;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use snafu::ResultExt;
@@ -122,55 +113,6 @@ where
     }
 }
 
-pub struct EncryptingResourceAdapter<T> {
-    cipher: Cipher<ChaChaRng>,
-    _phantom: std::marker::PhantomData<T>,
-}
-
-impl<T> EncryptingResourceAdapter<T> {
-    fn new(key: KeyTree) -> Self {
-        Self {
-            cipher: Cipher::new(key, ChaChaRng::from_entropy()),
-            _phantom: Default::default(),
-        }
-    }
-
-    fn cast<S>(&self) -> EncryptingResourceAdapter<S> {
-        EncryptingResourceAdapter {
-            cipher: self.cipher.clone(),
-            _phantom: Default::default(),
-        }
-    }
-}
-
-impl<T: Serialize + DeserializeOwned> LoadStore for EncryptingResourceAdapter<T> {
-    type ParamType = T;
-
-    fn load(&self, stream: &[u8]) -> Result<Self::ParamType, PersistenceError> {
-        let ciphertext = bincode::deserialize(stream)
-            .map_err(|source| PersistenceError::BincodeDe { source })?;
-        let plaintext =
-            self.cipher
-                .decrypt(&ciphertext)
-                .map_err(|err| PersistenceError::OtherLoad {
-                    inner: Box::new(err),
-                })?;
-        bincode::deserialize(&plaintext).map_err(|source| PersistenceError::BincodeDe { source })
-    }
-
-    fn store(&mut self, param: &Self::ParamType) -> Result<Vec<u8>, PersistenceError> {
-        let plaintext =
-            bincode::serialize(param).map_err(|source| PersistenceError::BincodeSer { source })?;
-        let ciphertext =
-            self.cipher
-                .encrypt(&plaintext)
-                .map_err(|err| PersistenceError::OtherStore {
-                    inner: Box::new(err),
-                })?;
-        bincode::serialize(&ciphertext).map_err(|source| PersistenceError::BincodeSer { source })
-    }
-}
-
 pub struct AtomicKeystoreStorage<'a, L: Ledger, Meta: Serialize + DeserializeOwned> {
     // Metadata given at initialization time that may not have been written to disk yet.
     meta: Meta,
@@ -185,11 +127,9 @@ pub struct AtomicKeystoreStorage<'a, L: Ledger, Meta: Serialize + DeserializeOwn
     static_dirty: bool,
     dynamic_state: RollingLog<EncryptingResourceAdapter<KeystoreSnapshot<L>>>,
     dynamic_state_dirty: bool,
-    assets: AppendLog<EncryptingResourceAdapter<AssetInfo>>,
-    assets_dirty: bool,
     txn_history: AppendLog<EncryptingResourceAdapter<TransactionHistoryEntry<L>>>,
     txn_history_dirty: bool,
-    keystore_key_tree: KeyTree,
+    root_key_tree: KeyTree,
 }
 
 impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned + Clone + PartialEq>
@@ -207,8 +147,7 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned + Clone + PartialE
             BincodeLoadStore::<Meta>::default(),
             "keystore_meta",
             1024,
-        )
-        .context(crate::PersistenceSnafu)?;
+        )?;
         let (meta, key, meta_dirty) = match persisted_meta.load_latest() {
             Ok(mut meta) => {
                 let old_meta = meta.clone();
@@ -216,9 +155,7 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned + Clone + PartialE
 
                 // Store the new metadata if the loader changed it
                 if meta != old_meta {
-                    persisted_meta
-                        .store_resource(&meta)
-                        .context(crate::PersistenceSnafu)?;
+                    persisted_meta.store_resource(&meta)?;
                     (meta, key, true)
                 } else {
                     (meta, key, false)
@@ -230,11 +167,11 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned + Clone + PartialE
                 (meta, key, false)
             }
         };
+        let adapter = EncryptingResourceAdapter::<()>::new(key.derive_sub_tree("enc".as_bytes()));
 
-        let adaptor = EncryptingResourceAdapter::<()>::new(key.derive_sub_tree("enc".as_bytes()));
         let static_data = RollingLog::load(
             atomic_loader,
-            adaptor.cast(),
+            adapter.cast(),
             "keystore_static",
             file_fill_size,
         )
@@ -242,23 +179,16 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned + Clone + PartialE
 
         let mut dynamic_state = RollingLog::load(
             atomic_loader,
-            adaptor.cast(),
+            adapter.cast(),
             "keystore_dyn",
             file_fill_size,
         )
         .context(crate::PersistenceSnafu)?;
         dynamic_state.set_retained_entries(ATOMIC_STORE_RETAINED_ENTRIES);
 
-        let assets = AppendLog::load(
-            atomic_loader,
-            adaptor.cast(),
-            "keystore_assets",
-            file_fill_size,
-        )
-        .context(crate::PersistenceSnafu)?;
         let txn_history = AppendLog::load(
             atomic_loader,
-            adaptor.cast(),
+            adapter.cast(),
             "keystore_txns",
             file_fill_size,
         )
@@ -272,11 +202,9 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned + Clone + PartialE
             static_dirty: false,
             dynamic_state,
             dynamic_state_dirty: false,
-            assets,
-            assets_dirty: false,
             txn_history,
             txn_history_dirty: false,
-            keystore_key_tree: key.derive_sub_tree("keystore".as_bytes()),
+            root_key_tree: key,
         })
     }
 }
@@ -314,7 +242,11 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicKeystoreSto
     }
 
     pub fn key_stream(&self) -> KeyTree {
-        self.keystore_key_tree.clone()
+        self.root_key_tree.derive_sub_tree("keystore".as_bytes())
+    }
+
+    pub fn encrypting_storage_adapter<T>(&self) -> EncryptingResourceAdapter<T> {
+        EncryptingResourceAdapter::<T>::new(self.root_key_tree.derive_sub_tree("enc".as_bytes()))
     }
 
     pub fn meta(&self) -> &Meta {
@@ -337,7 +269,6 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicKeystoreSto
             .dynamic_state
             .load_latest()
             .context(crate::PersistenceSnafu)?;
-        let assets = self.assets.iter().filter_map(|res| res.ok()).collect();
 
         Ok(KeystoreState {
             // Static state
@@ -346,16 +277,6 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicKeystoreSto
             // Dynamic state
             txn_state: dynamic_state.txn_state,
             key_state: dynamic_state.key_state,
-
-            // Monotonic state
-            assets: AssetLibrary::new(
-                assets,
-                dynamic_state
-                    .viewing_accounts
-                    .iter()
-                    .map(|account| account.key.pub_key())
-                    .collect(),
-            ),
             viewing_accounts: dynamic_state
                 .viewing_accounts
                 .into_iter()
@@ -382,14 +303,6 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicKeystoreSto
             .store_resource(&KeystoreSnapshot::from(w))
             .context(crate::PersistenceSnafu)?;
         self.dynamic_state_dirty = true;
-        Ok(())
-    }
-
-    pub async fn store_asset(&mut self, asset: &AssetInfo) -> Result<(), KeystoreError<L>> {
-        self.assets
-            .store_resource(asset)
-            .context(crate::PersistenceSnafu)?;
-        self.assets_dirty = true;
         Ok(())
     }
 
@@ -434,12 +347,6 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicKeystoreSto
                 self.dynamic_state.skip_version().unwrap();
             }
 
-            if self.assets_dirty {
-                self.assets.commit_version().unwrap();
-            } else {
-                self.assets.skip_version().unwrap();
-            }
-
             if self.txn_history_dirty {
                 self.txn_history.commit_version().unwrap();
             } else {
@@ -450,7 +357,6 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicKeystoreSto
         self.meta_dirty = false;
         self.static_dirty = false;
         self.dynamic_state_dirty = false;
-        self.assets_dirty = false;
         self.txn_history_dirty = false;
     }
 
@@ -458,7 +364,6 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicKeystoreSto
         self.persisted_meta.revert_version().unwrap();
         self.static_data.revert_version().unwrap();
         self.dynamic_state.revert_version().unwrap();
-        self.assets.revert_version().unwrap();
         self.txn_history.revert_version().unwrap();
     }
 }
@@ -468,9 +373,11 @@ mod tests {
     use super::*;
     use crate::{
         events::{EventIndex, EventSource},
+        loader::KeystoreLoader,
         sparse_merkle_tree::SparseMerkleTree,
-        testing::assert_keystore_states_eq,
+        testing::{assert_keystore_states_eq, mocks::MockBackend},
         txn_builder::{PendingTransaction, TransactionInfo, TransactionUID},
+        Keystore,
     };
     use atomic_store::AtomicStore;
     use chrono::Local;
@@ -600,7 +507,6 @@ mod tests {
                 transactions: Default::default(),
             },
             key_state: Default::default(),
-            assets: Default::default(),
             viewing_accounts: Default::default(),
             freezing_accounts: Default::default(),
             sending_accounts: Default::default(),
@@ -688,16 +594,11 @@ mod tests {
 
         // Snapshot the modified dynamic state and then reload.
         {
-            let mut atomic_loader = AtomicStoreLoader::load(
-                &KeystoreLoader::<cap::Ledger>::location(&loader),
-                "keystore",
-            )
-            .unwrap();
-            let mut storage =
-                AtomicKeystoreStorage::new(&mut loader, &mut atomic_loader, 1024).unwrap();
-            let mut atomic_store = AtomicStore::open(atomic_loader).unwrap();
+            let (mut atomic_store, mut storage, mut assets) =
+                Keystore::<MockBackend, cap::Ledger, ()>::create_stores(&mut loader).unwrap();
             storage.store_snapshot(&stored).await.unwrap();
             storage.commit().await;
+            assets.commit::<cap::Ledger>().unwrap();
             atomic_store.commit_version().unwrap();
         }
         let loaded = {
@@ -717,29 +618,18 @@ mod tests {
         assert_keystore_states_eq(&stored, &loaded);
 
         // Append to monotonic state and then reload.
-        let definition =
-            AssetDefinition::new(AssetCode::random(&mut rng).0, Default::default()).unwrap();
-        let asset = AssetInfo::from(definition);
         let viewing_key = ViewerKeyPair::generate(&mut rng);
-        stored.assets.insert(asset.clone());
-        stored.assets.add_viewing_key(viewing_key.pub_key());
         // viewing keys for the asset library get persisted with the viewing accounts.
         stored.viewing_accounts.insert(
             viewing_key.pub_key(),
             Account::new(viewing_key, "viewing_account".into()),
         );
         {
-            let mut atomic_loader = AtomicStoreLoader::load(
-                &KeystoreLoader::<cap::Ledger>::location(&loader),
-                "keystore",
-            )
-            .unwrap();
-            let mut storage =
-                AtomicKeystoreStorage::new(&mut loader, &mut atomic_loader, 1024).unwrap();
-            let mut atomic_store = AtomicStore::open(atomic_loader).unwrap();
+            let (mut atomic_store, mut storage, mut assets) =
+                Keystore::<MockBackend, cap::Ledger, ()>::create_stores(&mut loader).unwrap();
             storage.store_snapshot(&stored).await.unwrap();
-            storage.store_asset(&asset).await.unwrap();
             storage.commit().await;
+            assets.commit::<cap::Ledger>().unwrap();
             atomic_store.commit_version().unwrap();
         }
         let loaded = {
@@ -775,15 +665,18 @@ mod tests {
             let mut storage =
                 AtomicKeystoreStorage::new(&mut loader, &mut atomic_loader, 1024).unwrap();
             let mut atomic_store = AtomicStore::open(atomic_loader).unwrap();
-            storage
-                .store_asset(&AssetInfo::native::<cap::Ledger>())
-                .await
-                .unwrap();
+            let user_key = UserKeyPair::generate(&mut rng);
+            let ro = random_ro(&mut rng, &user_key);
+
+            let mut updated = stored.clone();
+            updated.txn_state.records.insert(ro, 0, &user_key);
+            storage.store_snapshot(&updated).await.unwrap();
             storage.revert().await;
-            // Make sure loading after a revert does not commit the reverted changes.
-            let state = storage.load().await.unwrap();
             storage.commit().await;
             atomic_store.commit_version().unwrap();
+
+            // Make sure loading after a revert does not return the reverted changes.
+            let state = storage.load().await.unwrap();
             state
         };
         assert_keystore_states_eq(&stored, &loaded);
@@ -810,10 +703,6 @@ mod tests {
             // Store some data.
             stored.txn_state.records.insert(ro, 0, &user_key);
             storage.store_snapshot(&stored).await.unwrap();
-            storage
-                .store_asset(&AssetInfo::native::<cap::Ledger>())
-                .await
-                .unwrap();
             storage
                 .store_transaction(TransactionHistoryEntry {
                     time: Local::now(),

@@ -11,9 +11,8 @@
 //! update, and delete) operations, with the use of [KeyValueStore] to control the transactions resource.
 
 use crate::{
-    key_value_store::*, persistence::EncryptingResourceAdapter, AssetCode, KeystoreError, Ledger,
-    RecordAmount, TransactionHash, TransactionKind, TransactionReceipt, TransactionStatus,
-    TransactionUID,
+    key_value_store::*, AssetCode, EncryptingResourceAdapter, KeystoreError, Ledger, RecordAmount,
+    TransactionHash, TransactionKind, TransactionReceipt, TransactionStatus, TransactionUID,
 };
 use atomic_store::{AppendLog, AtomicStoreLoader};
 use chrono::{DateTime, Local};
