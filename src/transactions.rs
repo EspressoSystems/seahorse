@@ -368,13 +368,7 @@ impl<L: Ledger + Serialize + DeserializeOwned> Transactions<L> {
 
     /// Remove a transaction from the pending index when it is known to have timed out
     pub async fn remove_expired(&mut self, timeout: u64) -> Result<(), KeystoreError<L>> {
-        if let Some(expiring_uids) = self
-            .expiring_txns
-            .index()
-            .clone()
-            .get_mut(&timeout)
-            .cloned()
-        {
+        if let Some(expiring_uids) = self.expiring_txns.index().get(&timeout).cloned() {
             for uid in expiring_uids.iter() {
                 let editor = self.get_mut(uid)?;
                 editor

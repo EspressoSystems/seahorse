@@ -242,7 +242,11 @@ impl<K: Copy + Eq + Hash + Ord, V: Clone + Eq + Hash> Persist<(K, V)>
     }
 
     fn remove(&mut self, change: (K, V)) {
-        self.index.entry(change.0).or_default().remove(&change.1);
+        let values = self.index.entry(change.0).or_default();
+        values.remove(&change.1);
+        if values.is_empty() {
+            self.index.remove(&change.0);
+        }
         self.pending_changes.push(IndexChange::Remove(change));
     }
 
@@ -250,7 +254,11 @@ impl<K: Copy + Eq + Hash + Ord, V: Clone + Eq + Hash> Persist<(K, V)>
         for change in &self.pending_changes {
             match change {
                 IndexChange::Add((key, value)) => {
-                    self.index.entry(*key).or_default().remove(value);
+                    let values = self.index.entry(*key).or_default();
+                    values.remove(value);
+                    if values.is_empty() {
+                        self.index.remove(key);
+                    }
                 }
                 IndexChange::Remove((key, value)) => {
                     self.index
