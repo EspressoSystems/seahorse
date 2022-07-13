@@ -1494,6 +1494,15 @@
 <span id="1494">1494</span>
 <span id="1495">1495</span>
 <span id="1496">1496</span>
+<span id="1497">1497</span>
+<span id="1498">1498</span>
+<span id="1499">1499</span>
+<span id="1500">1500</span>
+<span id="1501">1501</span>
+<span id="1502">1502</span>
+<span id="1503">1503</span>
+<span id="1504">1504</span>
+<span id="1505">1505</span>
 </pre><pre class="rust"><code><span class="comment">// Copyright (c) 2022 Espresso Systems (espressosys.com)</span>
 <span class="comment">// This file is part of the Seahorse library.</span>
 
@@ -2817,13 +2826,13 @@
             <span class="ident">view_key</span>, <span class="ident">freeze_key</span>
         )
         .<span class="ident">unwrap</span>();
-        <span class="ident">wait_for_prompt</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">viewer_output</span>);
-        <span class="comment">// Mint some of the asset on behalf of `sender` (the asset has numeric code 1, since the</span>
-        <span class="comment">// native asset is always 0).</span>
+        <span class="kw">let</span> <span class="ident">matches</span> <span class="op">=</span> <span class="ident">match_output</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">viewer_output</span>, <span class="kw-2">&amp;</span>[<span class="string">&quot;(?P&lt;asset_code&gt;ASSET_CODE~.*)&quot;</span>]);
+        <span class="kw">let</span> <span class="ident">asset_code</span> <span class="op">=</span> <span class="ident">matches</span>.<span class="ident">get</span>(<span class="string">&quot;asset_code&quot;</span>);
+        <span class="comment">// Mint some of the asset on behalf of `sender`.</span>
         <span class="macro">writeln!</span>(
             <span class="ident">viewer_input</span>,
-            <span class="string">&quot;mint 1 {} 1000 1 fee_account={}&quot;</span>,
-            <span class="ident">sender_pub_key</span>, <span class="ident">viewer_address</span>,
+            <span class="string">&quot;mint {} {} 1000 1 fee_account={}&quot;</span>,
+            <span class="ident">asset_code</span>, <span class="ident">sender_pub_key</span>, <span class="ident">viewer_address</span>,
         )
         .<span class="ident">unwrap</span>();
         <span class="kw">let</span> <span class="ident">matches</span> <span class="op">=</span> <span class="ident">match_output</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">viewer_output</span>, <span class="kw-2">&amp;</span>[<span class="string">&quot;(?P&lt;txn&gt;TXN~.*)&quot;</span>]);
@@ -2833,15 +2842,15 @@
             (<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">viewer_input</span>, <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">viewer_output</span>),
             <span class="kw-2">&amp;</span><span class="kw-2">mut</span> [(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">sender_input</span>, <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">sender_output</span>)],
         );
-        <span class="macro">writeln!</span>(<span class="ident">sender_input</span>, <span class="string">&quot;balance 1&quot;</span>).<span class="ident">unwrap</span>();
+        <span class="macro">writeln!</span>(<span class="ident">sender_input</span>, <span class="string">&quot;balance {}&quot;</span>, <span class="ident">asset_code</span>).<span class="ident">unwrap</span>();
         <span class="ident">match_output</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">sender_output</span>, <span class="kw-2">&amp;</span>[<span class="macro">format!</span>(<span class="string">&quot;{} 1000&quot;</span>, <span class="ident">sender_address</span>)]);
 
         <span class="comment">// Make an anonymous transfer that doesn&#39;t involve the viewer (so we can check that the</span>
         <span class="comment">// viewer nonetheless discovers the details of the transaction).</span>
         <span class="macro">writeln!</span>(
             <span class="ident">sender_input</span>,
-            <span class="string">&quot;transfer 1 {} 50 1 from={}&quot;</span>,
-            <span class="ident">receiver_pub_key</span>, <span class="ident">sender_address</span>,
+            <span class="string">&quot;transfer {} {} 50 1 from={}&quot;</span>,
+            <span class="ident">asset_code</span>, <span class="ident">receiver_pub_key</span>, <span class="ident">sender_address</span>,
         )
         .<span class="ident">unwrap</span>();
         <span class="kw">let</span> <span class="ident">matches</span> <span class="op">=</span> <span class="ident">match_output</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">sender_output</span>, <span class="kw-2">&amp;</span>[<span class="string">&quot;(?P&lt;txn&gt;TXN~.*)&quot;</span>]);
@@ -2858,7 +2867,7 @@
         <span class="comment">// View the transaction. We should find two unspent records: first the amount-50 transaction</span>
         <span class="comment">// output, and second the amount-950 change output. These records have UIDs 7 and 8, because</span>
         <span class="comment">// we already have 7 records: 5 initial grants, a mint output, and a mint fee change record.</span>
-        <span class="macro">writeln!</span>(<span class="ident">viewer_input</span>, <span class="string">&quot;view 1&quot;</span>).<span class="ident">unwrap</span>();
+        <span class="macro">writeln!</span>(<span class="ident">viewer_input</span>, <span class="string">&quot;view {}&quot;</span>, <span class="ident">asset_code</span>).<span class="ident">unwrap</span>();
         <span class="ident">match_output</span>(
             <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">viewer_output</span>,
             <span class="kw-2">&amp;</span>[
@@ -2868,12 +2877,22 @@
             ],
         );
         <span class="comment">// Filter by account.</span>
-        <span class="macro">writeln!</span>(<span class="ident">viewer_input</span>, <span class="string">&quot;view 1 account={}&quot;</span>, <span class="ident">receiver_address</span>).<span class="ident">unwrap</span>();
+        <span class="macro">writeln!</span>(
+            <span class="ident">viewer_input</span>,
+            <span class="string">&quot;view {} account={}&quot;</span>,
+            <span class="ident">asset_code</span>, <span class="ident">receiver_address</span>
+        )
+        .<span class="ident">unwrap</span>();
         <span class="ident">match_output</span>(
             <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">viewer_output</span>,
             <span class="kw-2">&amp;</span>[<span class="string">&quot;^UID\\s+AMOUNT\\s+FROZEN$&quot;</span>, <span class="string">&quot;^7\\s+50\\s+false$&quot;</span>],
         );
-        <span class="macro">writeln!</span>(<span class="ident">viewer_input</span>, <span class="string">&quot;view 1 account={}&quot;</span>, <span class="ident">sender_address</span>).<span class="ident">unwrap</span>();
+        <span class="macro">writeln!</span>(
+            <span class="ident">viewer_input</span>,
+            <span class="string">&quot;view {} account={}&quot;</span>,
+            <span class="ident">asset_code</span>, <span class="ident">sender_address</span>
+        )
+        .<span class="ident">unwrap</span>();
         <span class="ident">match_output</span>(
             <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">viewer_output</span>,
             <span class="kw-2">&amp;</span>[<span class="string">&quot;^UID\\s+AMOUNT\\s+FROZEN$&quot;</span>, <span class="string">&quot;^8\\s+950\\s+false$&quot;</span>],
@@ -2883,8 +2902,8 @@
         <span class="comment">// freeze them.</span>
         <span class="macro">writeln!</span>(
             <span class="ident">viewer_input</span>,
-            <span class="string">&quot;freeze 1 {} 950 1 fee_account={}&quot;</span>,
-            <span class="ident">sender_address</span>, <span class="ident">viewer_address</span>,
+            <span class="string">&quot;freeze {} {} 950 1 fee_account={}&quot;</span>,
+            <span class="ident">asset_code</span>, <span class="ident">sender_address</span>, <span class="ident">viewer_address</span>,
         )
         .<span class="ident">unwrap</span>();
         <span class="kw">let</span> <span class="ident">matches</span> <span class="op">=</span> <span class="ident">match_output</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">viewer_output</span>, <span class="kw-2">&amp;</span>[<span class="string">&quot;(?P&lt;txn&gt;TXN~.*)&quot;</span>]);
@@ -2894,7 +2913,7 @@
             (<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">viewer_input</span>, <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">viewer_output</span>),
             <span class="kw-2">&amp;</span><span class="kw-2">mut</span> [(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">sender_input</span>, <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">sender_output</span>)],
         );
-        <span class="macro">writeln!</span>(<span class="ident">viewer_input</span>, <span class="string">&quot;view 1&quot;</span>).<span class="ident">unwrap</span>();
+        <span class="macro">writeln!</span>(<span class="ident">viewer_input</span>, <span class="string">&quot;view {}&quot;</span>, <span class="ident">asset_code</span>).<span class="ident">unwrap</span>();
         <span class="comment">// Note that the UID changes after freezing, because the freeze consume the unfrozen record</span>
         <span class="comment">// and creates a new frozen one.</span>
         <span class="ident">match_output</span>(
@@ -2909,8 +2928,8 @@
         <span class="comment">// Transfers that need the frozen record as an input should now fail.</span>
         <span class="macro">writeln!</span>(
             <span class="ident">sender_input</span>,
-            <span class="string">&quot;transfer 1 {} 50 1 from={}&quot;</span>,
-            <span class="ident">receiver_pub_key</span>, <span class="ident">sender_address</span>
+            <span class="string">&quot;transfer {} {} 50 1 from={}&quot;</span>,
+            <span class="ident">asset_code</span>, <span class="ident">receiver_pub_key</span>, <span class="ident">sender_address</span>
         )
         .<span class="ident">unwrap</span>();
         <span class="comment">// Search for error message with a slightly permissive regex to allow the CLI some freedom</span>
@@ -2920,8 +2939,8 @@
         <span class="comment">// Unfreezing the record makes it available again.</span>
         <span class="macro">writeln!</span>(
             <span class="ident">viewer_input</span>,
-            <span class="string">&quot;unfreeze 1 {} 950 1 fee_account={}&quot;</span>,
-            <span class="ident">sender_address</span>, <span class="ident">viewer_address</span>,
+            <span class="string">&quot;unfreeze {} {} 950 1 fee_account={}&quot;</span>,
+            <span class="ident">asset_code</span>, <span class="ident">sender_address</span>, <span class="ident">viewer_address</span>,
         )
         .<span class="ident">unwrap</span>();
         <span class="kw">let</span> <span class="ident">matches</span> <span class="op">=</span> <span class="ident">match_output</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">viewer_output</span>, <span class="kw-2">&amp;</span>[<span class="string">&quot;(?P&lt;txn&gt;TXN~.*)&quot;</span>]);
@@ -2931,7 +2950,7 @@
             (<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">viewer_input</span>, <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">viewer_output</span>),
             <span class="kw-2">&amp;</span><span class="kw-2">mut</span> [(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">sender_input</span>, <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">sender_output</span>)],
         );
-        <span class="macro">writeln!</span>(<span class="ident">viewer_input</span>, <span class="string">&quot;view 1&quot;</span>).<span class="ident">unwrap</span>();
+        <span class="macro">writeln!</span>(<span class="ident">viewer_input</span>, <span class="string">&quot;view {}&quot;</span>, <span class="ident">asset_code</span>).<span class="ident">unwrap</span>();
         <span class="ident">match_output</span>(
             <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">viewer_output</span>,
             <span class="kw-2">&amp;</span>[
@@ -2977,8 +2996,7 @@
         )
         .<span class="ident">unwrap</span>();
         <span class="ident">wait_for_prompt</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">output</span>);
-        <span class="comment">// Asset 0 is the native asset, ours is asset 1.</span>
-        <span class="macro">writeln!</span>(<span class="ident">input</span>, <span class="string">&quot;asset 1&quot;</span>).<span class="ident">unwrap</span>();
+        <span class="macro">writeln!</span>(<span class="ident">input</span>, <span class="string">&quot;asset {}&quot;</span>, <span class="ident">definition</span>.<span class="ident">code</span>).<span class="ident">unwrap</span>();
         <span class="ident">match_output</span>(
             <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">output</span>,
             <span class="kw-2">&amp;</span>[<span class="string">&quot;my_asset&quot;</span>, <span class="string">&quot;Not viewable&quot;</span>, <span class="string">&quot;Not freezeable&quot;</span>, <span class="string">&quot;Minter: me&quot;</span>],
