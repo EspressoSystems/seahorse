@@ -1323,6 +1323,7 @@ mod test {
         .unwrap();
         let matches = match_output(&mut viewer_output, &["(?P<asset_code>ASSET_CODE~.*)"]);
         let asset_code = matches.get("asset_code");
+        // Mint some of the asset on behalf of `sender`.
         writeln!(
             viewer_input,
             "mint {} {} 1000 1 fee_account={}",
