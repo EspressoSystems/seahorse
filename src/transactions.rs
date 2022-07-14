@@ -21,12 +21,13 @@ use jf_cap::{
     structs::{ReceiverMemo, RecordOpening},
     Signature,
 };
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use std::collections::HashSet;
+use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::ops::{Deref, DerefMut};
 
 /// A Transaction<L>with its UID as the primary key.
 #[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(bound = "")]
 pub struct Transaction<L: Ledger> {
     /// Identifier for the Transaction, also the primary key in storage
     uid: TransactionUID<L>,
@@ -39,7 +40,7 @@ pub struct Transaction<L: Ledger> {
     pending_uids: HashSet<u64>,
     /// A receiver memo for each output, except for burned outputs.
     memos: Vec<Option<ReceiverMemo>>,
-    sig: Signature,
+    sig: Option<Signature>,
     inputs: Vec<RecordOpening>,
     outputs: Vec<RecordOpening>,
     /// Time when this transaction was created in the transaction builder or time when it was received
@@ -100,7 +101,7 @@ impl<L: Ledger> Transaction<L> {
     pub fn memos(&self) -> &Vec<Option<ReceiverMemo>> {
         &self.memos
     }
-    pub fn sig(&self) -> &Signature {
+    pub fn sig(&self) -> &Option<Signature> {
         &self.sig
     }
     pub fn inputs(&self) -> &Vec<RecordOpening> {
@@ -133,20 +134,30 @@ impl<L: Ledger> Transaction<L> {
     pub fn receipt(&self) -> &Option<TransactionReceipt<L>> {
         &self.receipt
     }
+    pub fn status(&self) -> TransactionStatus {
+        self.status
+    }
+    pub fn pending_uids(&self) -> &HashSet<u64> {
+        &self.pending_uids
+    }
 }
 
 type TransactionsStore<L> = KeyValueStore<TransactionUID<L>, Transaction<L>>;
 
 /// An editor to create or update the transaction or transactions store.
-pub struct TransactionEditor<'a, L: Ledger + Serialize + DeserializeOwned> {
+pub struct TransactionEditor<'a, L: Ledger> {
     transaction: Transaction<L>,
     store: &'a mut Transactions<L>,
 }
 
-impl<'a, L: Ledger + Serialize + DeserializeOwned> TransactionEditor<'a, L> {
+impl<'a, L: Ledger> TransactionEditor<'a, L> {
     /// Create a transaction editor.
     fn new(store: &'a mut Transactions<L>, transaction: Transaction<L>) -> Self {
         Self { transaction, store }
+    }
+
+    pub fn transaction(&self) -> &Transaction<L> {
+        &self.transaction
     }
 
     pub fn set_status(mut self, status: TransactionStatus) -> Self {
@@ -184,9 +195,9 @@ impl<'a, L: Ledger + Serialize + DeserializeOwned> TransactionEditor<'a, L> {
     }
 
     /// Add the UIDs of memos we are waiting on to complete the transaction
-    pub fn add_pending_uids(mut self, uids: &[u64]) -> Self {
+    pub fn add_pending_uids(mut self, uids: Vec<u64>) -> Self {
         for uid in uids {
-            self.transaction.pending_uids.insert(*uid);
+            self.transaction.pending_uids.insert(uid);
         }
         self
     }
@@ -205,7 +216,7 @@ impl<'a, L: Ledger + Serialize + DeserializeOwned> TransactionEditor<'a, L> {
     }
 }
 
-impl<'a, L: Ledger + Serialize + DeserializeOwned> Deref for TransactionEditor<'a, L> {
+impl<'a, L: Ledger> Deref for TransactionEditor<'a, L> {
     type Target = Transaction<L>;
 
     fn deref(&self) -> &Transaction<L> {
@@ -213,18 +224,20 @@ impl<'a, L: Ledger + Serialize + DeserializeOwned> Deref for TransactionEditor<'
     }
 }
 
-impl<'a, L: Ledger + Serialize + DeserializeOwned> DerefMut for TransactionEditor<'a, L> {
+impl<'a, L: Ledger> DerefMut for TransactionEditor<'a, L> {
     fn deref_mut(&mut self) -> &mut Transaction<L> {
         &mut self.transaction
     }
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(bound = "")]
 pub struct TransactionParams<L: Ledger> {
-    pub uid: TransactionUID<L>,
+    pub uid: Option<TransactionUID<L>>,
     pub timeout: Option<u64>,
     pub status: TransactionStatus,
     pub memos: Vec<Option<ReceiverMemo>>,
-    pub sig: Signature,
+    pub sig: Option<Signature>,
     pub inputs: Vec<RecordOpening>,
     pub outputs: Vec<RecordOpening>,
     pub time: DateTime<Local>,
@@ -232,19 +245,30 @@ pub struct TransactionParams<L: Ledger> {
     pub kind: TransactionKind<L>,
     pub senders: Vec<UserAddress>,
     pub receivers: Vec<(UserAddress, RecordAmount)>,
+    pub fee_change: Option<RecordAmount>,
+    pub asset_change: Option<RecordAmount>,
+}
+
+impl<L: Ledger> PartialEq<Self> for TransactionParams<L> {
+    fn eq(&self, other: &Self) -> bool {
+        self.uid == other.uid
+            && self.kind == other.kind
+            && self.timeout == other.timeout
+            && self.time == other.time
+    }
 }
 
 /// Transactions stored in an transactions store.
-pub struct Transactions<L: Ledger + Serialize + DeserializeOwned> {
+pub struct Transactions<L: Ledger> {
     /// A key-value store for transactions.
     store: TransactionsStore<L>,
-    txn_by_hash: PersistableHashMap<TransactionHash<L>, TransactionUID<L>>,
-    expiring_txns: PersistableBTreeMultiMap<u64, TransactionUID<L>>,
+    txn_by_hash: HashMap<TransactionHash<L>, TransactionUID<L>>,
+    expiring_txns: BTreeMap<u64, HashSet<TransactionUID<L>>>,
     /// Maps pending memo UIDs to the Transaction<L>they come from
-    uids_awaiting_memos: PersistableHashMap<u64, TransactionUID<L>>,
+    uids_awaiting_memos: HashMap<u64, TransactionUID<L>>,
 }
 
-impl<L: Ledger + Serialize + DeserializeOwned> Transactions<L> {
+impl<L: Ledger> Transactions<L> {
     #![allow(dead_code)]
 
     /// Load a transactions store.
@@ -257,9 +281,9 @@ impl<L: Ledger + Serialize + DeserializeOwned> Transactions<L> {
         let store = TransactionsStore::<L>::new(log)?;
         let mut transactions = Self {
             store,
-            txn_by_hash: Persistable::new(),
-            expiring_txns: Persistable::new(),
-            uids_awaiting_memos: Persistable::new(),
+            txn_by_hash: Default::default(),
+            expiring_txns: Default::default(),
+            uids_awaiting_memos: Default::default(),
         };
         transactions.reload();
         Ok(transactions)
@@ -267,20 +291,23 @@ impl<L: Ledger + Serialize + DeserializeOwned> Transactions<L> {
 
     /// Reload from disc to, rebuilds the indices
     pub fn reload(&mut self) {
-        self.txn_by_hash = Persistable::new();
-        self.expiring_txns = Persistable::new();
-        self.uids_awaiting_memos = Persistable::new();
+        self.txn_by_hash = self
+            .store
+            .iter()
+            .filter(|txn| txn.hash.is_some())
+            .map(|txn| (txn.hash.as_ref().unwrap().clone(), txn.uid().clone()))
+            .collect();
+        self.expiring_txns = BTreeMap::new();
+        self.uids_awaiting_memos = HashMap::new();
         for txn in self.store.iter() {
-            if txn.hash.is_some() {
-                self.txn_by_hash
-                    .insert((txn.hash.as_ref().unwrap().clone(), txn.uid().clone()));
-            }
             if let Some(timeout) = txn.timeout() {
-                self.expiring_txns.insert((timeout, txn.uid().clone()));
+                self.expiring_txns
+                    .entry(timeout)
+                    .or_insert_with(HashSet::default)
+                    .insert(txn.uid().clone());
             }
             for pending in &txn.pending_uids {
-                self.uids_awaiting_memos
-                    .insert((*pending, txn.uid().clone()));
+                self.uids_awaiting_memos.insert(*pending, txn.uid().clone());
             }
         }
     }
@@ -318,7 +345,6 @@ impl<L: Ledger + Serialize + DeserializeOwned> Transactions<L> {
     pub fn with_memo_id(&self, id: u64) -> Result<Transaction<L>, KeystoreError<L>> {
         let uid = self
             .uids_awaiting_memos
-            .index()
             .get(&id)
             .ok_or(KeyValueStoreError::KeyNotFound)?;
         Ok(self.get(uid).unwrap())
@@ -337,7 +363,6 @@ impl<L: Ledger + Serialize + DeserializeOwned> Transactions<L> {
     pub fn with_hash(&self, hash: &TransactionHash<L>) -> Result<Transaction<L>, KeystoreError<L>> {
         let uid = self
             .txn_by_hash
-            .index()
             .get(hash)
             .ok_or(KeyValueStoreError::KeyNotFound)?;
         Ok(self.get(uid).unwrap())
@@ -359,7 +384,6 @@ impl<L: Ledger + Serialize + DeserializeOwned> Transactions<L> {
     ) -> Result<impl Iterator<Item = Transaction<L>> + '_, KeystoreError<L>> {
         let uids = self
             .expiring_txns
-            .index()
             .get(&timeout)
             .ok_or(KeyValueStoreError::KeyNotFound)?;
 
@@ -367,33 +391,29 @@ impl<L: Ledger + Serialize + DeserializeOwned> Transactions<L> {
     }
 
     /// Remove a transaction from the pending index when it is known to have timed out
-    pub async fn remove_expired(&mut self, timeout: u64) -> Result<(), KeystoreError<L>> {
-        if let Some(expiring_uids) = self.expiring_txns.index().get(&timeout).cloned() {
+    pub fn remove_expired(&mut self, timeout: u64) -> Result<Vec<Transaction<L>>, KeystoreError<L>> {
+        let mut removed = vec!();
+        if let Some(expiring_uids) = self.expiring_txns.get_mut(&timeout).cloned() {
             for uid in expiring_uids.iter() {
                 let editor = self.get_mut(uid)?;
+                removed.push(editor.transaction.clone());
                 editor
                     .set_status(TransactionStatus::Rejected)
                     .clear_timeout()
                     .save()?;
-                self.expiring_txns.remove((timeout, uid.clone()));
             }
         }
-        Ok(())
+        self.expiring_txns.remove(&timeout);
+        Ok(removed)
     }
 
     /// Commit the store version.
     pub fn commit(&mut self) -> Result<(), KeystoreError<L>> {
-        self.txn_by_hash.commit();
-        self.expiring_txns.commit();
-        self.uids_awaiting_memos.commit();
         Ok(self.store.commit_version()?)
     }
 
     /// Revert the store version.
     pub fn revert(&mut self) -> Result<(), KeystoreError<L>> {
-        self.txn_by_hash.revert();
-        self.expiring_txns.revert();
-        self.uids_awaiting_memos.revert();
         Ok(self.store.revert_version()?)
     }
 
@@ -411,7 +431,7 @@ impl<L: Ledger + Serialize + DeserializeOwned> Transactions<L> {
         params: TransactionParams<L>,
     ) -> Result<TransactionEditor<'_, L>, KeystoreError<L>> {
         let txn = Transaction::<L> {
-            uid: params.uid,
+            uid: params.uid.unwrap(),
             timeout: params.timeout,
             hash: None,
             status: params.status,
@@ -425,12 +445,15 @@ impl<L: Ledger + Serialize + DeserializeOwned> Transactions<L> {
             kind: params.kind,
             senders: params.senders,
             receivers: params.receivers,
-            fee_change: None,
-            asset_change: None,
+            fee_change: params.fee_change,
+            asset_change: params.asset_change,
             receipt: None,
         };
         if let Some(timeout) = params.timeout {
-            self.expiring_txns.insert((timeout, txn.uid().clone()));
+            self.expiring_txns
+                .entry(timeout)
+                .or_insert_with(HashSet::default)
+                .insert(txn.uid().clone());
         }
 
         let mut editor = TransactionEditor::new(self, txn);

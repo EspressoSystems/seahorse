@@ -54,6 +54,7 @@ use crate::{
     key_scan::{receive_history_entry, BackgroundKeyScan, ScanOutputs},
     loader::KeystoreLoader,
     persistence::AtomicKeystoreStorage,
+    transactions::{Transaction, Transactions, TransactionParams, TransactionEditor},
     txn_builder::*,
 };
 use arbitrary::Arbitrary;
@@ -332,24 +333,21 @@ impl<
         }
     }
 
-    async fn store_transaction(
-        &mut self,
-        transaction: TransactionHistoryEntry<L>,
-    ) -> Result<(), KeystoreError<L>> {
-        if !self.cancelled {
-            let res = self
-                .persistence()
-                .await
-                .store_transaction(transaction)
-                .await;
-            if res.is_err() {
-                self.cancel().await;
-            }
-            res
-        } else {
-            Ok(())
-        }
-    }
+    // !REPLACE with just using transactions model
+    // async fn store_transaction(
+    //     &mut self,
+    //     transaction: Transaction<L>,
+    // ) -> Result<(), KeystoreError<L>> {
+    //     if !self.cancelled {
+    //         let res = self.storage().await.store_transaction(transaction).await;
+    //         if res.is_err() {
+    //             self.cancel().await;
+    //         }
+    //         res
+    //     } else {
+    //         Ok(())
+    //     }
+    // }
 
     async fn cancel(&mut self) {
         if !self.cancelled {
@@ -444,8 +442,8 @@ pub trait KeystoreBackend<'a, L: Ledger>: Send {
     /// Submit a transaction to a validator.
     async fn submit(
         &mut self,
-        note: Transaction<L>,
-        info: TransactionInfo<L>,
+        note: reef::Transaction<L>,
+        info: Transaction<L>,
     ) -> Result<(), KeystoreError<L>>;
 
     /// Record a finalized transaction.
@@ -454,7 +452,7 @@ pub trait KeystoreBackend<'a, L: Ledger>: Send {
     ///
     /// This function is optional and does nothing by default. The backend can override it to
     /// perform cleanup or post-processing on completed transactions.
-    async fn finalize(&mut self, _txn: PendingTransaction<L>, _txn_id: Option<(u64, u64)>)
+    async fn finalize(&mut self, _txn: Transaction<L>, _txn_id: Option<(u64, u64)>)
     where
         L: 'static,
     {
@@ -464,7 +462,7 @@ pub trait KeystoreBackend<'a, L: Ledger>: Send {
 /// Transient state derived from the persistent [KeystoreState].
 pub struct KeystoreModel<
     'a,
-    L: Ledger,
+    L:Ledger,
     Backend: KeystoreBackend<'a, L>,
     Meta: Serialize + DeserializeOwned + Send,
 > {
@@ -472,6 +470,7 @@ pub struct KeystoreModel<
     atomic_store: AtomicStore,
     persistence: Arc<Mutex<AtomicKeystoreStorage<'a, L, Meta>>>,
     assets: Assets,
+    transactions: Transactions<L>,
     rng: ChaChaRng,
     viewer_key_stream: hd::KeyTree,
     user_key_stream: hd::KeyTree,
@@ -480,7 +479,7 @@ pub struct KeystoreModel<
     _marker2: std::marker::PhantomData<L>,
 }
 
-impl<'a, L: Ledger, Backend: KeystoreBackend<'a, L>, Meta: Serialize + DeserializeOwned + Send>
+impl<'a, L:Ledger, Backend: KeystoreBackend<'a, L>, Meta: Serialize + DeserializeOwned + Send>
     KeystoreModel<'a, L, Backend, Meta>
 {
     /// Make a change to the persisted state using a function describing a transaction.
@@ -521,12 +520,7 @@ impl<'a, L: Ledger, Backend: KeystoreBackend<'a, L>, Meta: Serialize + Deseriali
         self.persistence.lock().await
     }
 
-    /// Get the mutable assets.
-    pub fn assets_mut(&mut self) -> &mut Assets {
-        &mut self.assets
-    }
-
-    /// Get the list of assets.
+    /// Get all assets
     pub fn assets(&self) -> Vec<Asset> {
         self.assets.iter().collect()
     }
@@ -542,13 +536,43 @@ impl<'a, L: Ledger, Backend: KeystoreBackend<'a, L>, Meta: Serialize + Deseriali
         self.assets.commit()?;
         Ok(self.atomic_store.commit_version()?)
     }
+
+    /// Insert an asset.
+    pub(crate) fn insert_asset(&mut self, asset: Asset) -> Result<(), KeystoreError<L>> {
+        self.assets.insert(asset)?;
+        Ok(())
+    }
+
+    /// Create an asset.
+    pub fn create_asset(
+        &mut self,
+        definition: AssetDefinition,
+        name: Option<String>,
+        description: Option<String>,
+        icon: Option<Icon>,
+        mint_info: Option<MintInfo>,
+    ) -> Result<(), KeystoreError<L>> {
+        self.assets
+            .create(definition, mint_info)?
+            .set_name(name)
+            .set_description(description)
+            .set_icon(icon)
+            .save()?;
+        Ok(())
+    }
+
+    // Create a native asset.
+    pub fn create_native_asset(&mut self, icon: Option<Icon>) -> Result<(), KeystoreError<L>> {
+        self.assets.create_native()?.set_icon(icon).save()?;
+        Ok(())
+    }
 }
 
 /// Import an unverified asset.
 ///
 /// Note that this function cannot be used to import verified assets. Verified assets can only be
 /// imported using [verify_assets], conditional on a signature check.
-pub fn import_asset<'a, L: Ledger, Meta: Serialize + DeserializeOwned + Send>(
+pub fn import_asset<'a, L:Ledger, Meta: Serialize + DeserializeOwned + Send>(
     model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
     asset: Asset,
 ) -> Result<(), KeystoreError<L>> {
@@ -566,7 +590,7 @@ pub fn import_asset<'a, L: Ledger, Meta: Serialize + DeserializeOwned + Send>(
 }
 
 /// Load a verified asset library with its trusted signer.
-pub fn verify_assets<'a, L: Ledger, Meta: Serialize + DeserializeOwned + Send>(
+pub fn verify_assets<'a, L:Ledger, Meta: Serialize + DeserializeOwned + Send>(
     model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
     trusted_signer: &VerKey,
     library: VerifiedAssetLibrary,
@@ -601,7 +625,7 @@ impl<L: Ledger> Default for EventSummary<L> {
     }
 }
 
-impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
+impl<'a, L: 'static +Ledger> KeystoreState<'a, L> {
     fn key_pairs(&self) -> Vec<UserKeyPair> {
         self.sending_accounts
             .values()
@@ -645,7 +669,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
         receipt: &TransactionReceipt<L>,
     ) -> Result<TransactionStatus, KeystoreError<L>> {
-        match self.txn_state.transactions.status(&receipt.uid) {
+        match self.txn_state.transactions.get(&receipt.uid)?.status() {
             TransactionStatus::Unknown => {
                 // If the transactions database returns Unknown, it means the transaction is not in-
                 // flight (the database only tracks in-flight transactions). So it must be retired,
@@ -669,8 +693,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                     Ok(TransactionStatus::Rejected)
                 }
             }
-
-            state => Ok(state),
+            status => Ok(status),
         }
     }
 
@@ -800,13 +823,13 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                         } else {
                             TransactionStatus::AwaitingMemos
                         };
-                        summary.updated_txns.push((pending.uid(), status));
-                        self.txn_state.transactions.await_memos(
-                            pending.uid(),
+                        summary.updated_txns.push((pending.uid().clone(), status));
+                        self.txn_state.transactions.get_mut(
+                            pending.uid()).unwrap().add_pending_uids(
                             this_txn_uids
                                 .iter()
-                                .zip(&pending.info.memos)
-                                .filter_map(|((uid, _), memo)| memo.as_ref().map(|_| *uid)),
+                                .zip(pending.memos().iter())
+                                .filter_map(|((uid, _), memo)| memo.as_ref().map(|_| *uid)).into_iter().collect(),
                         );
                         model
                             .backend
@@ -855,7 +878,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                 for txn in self.txn_state.clear_expired_transactions() {
                     summary
                         .updated_txns
-                        .push((txn.uid(), TransactionStatus::Rejected));
+                        .push((txn.uid().clone(), TransactionStatus::Rejected));
                     model.backend.finalize(txn, None).await;
                 }
             }
@@ -866,7 +889,6 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
             } => {
                 let completed = self
                     .txn_state
-                    .transactions
                     .received_memos(outputs.iter().map(|info| info.2));
                 let self_published = !completed.is_empty();
                 summary.updated_txns.extend(
@@ -906,7 +928,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                         if error.is_bad_nullifier_proof() {
                             if self.update_nullifier_proofs(model, &mut txn).await.is_ok()
                                 && self
-                                    .submit_elaborated_transaction(model, txn, pending.info.clone())
+                                    .submit_elaborated_transaction(model, txn, None)
                                     .await
                                     .is_ok()
                             {
@@ -968,12 +990,14 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
 
         if add_to_history && !records.is_empty() {
             if let Some((block_id, txn_id, hash, kind)) = transaction {
+                let uid = TransactionUID::<L>(hash.clone());
                 self.add_receive_history(
                     model,
                     block_id,
                     txn_id,
                     kind,
                     hash,
+                    uid,
                     &records
                         .iter()
                         .map(|(ro, _, _)| ro.clone())
@@ -991,7 +1015,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
         block_id: u64,
         txn_id: u64,
-        txn: &Transaction<L>,
+        txn: &reef::Transaction<L>,
         uids: &mut [(u64, bool)],
         add_to_history: bool,
     ) -> Result<(), KeystoreError<L>> {
@@ -1004,7 +1028,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                 // entry.
                 *remember = true;
                 // Add the asset type if it is not already in the asset library.
-                model.assets_mut().create(ro.asset_def.clone(), None)?;
+                model.create_asset(ro.asset_def.clone(), None, None, None, None)?;
                 // Mark the account receiving the records used.
                 self.sending_accounts
                     .get_mut(&account.key.address())
@@ -1025,7 +1049,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                 // records, but do not include it in the history entry.
                 *remember = true;
                 // Add the asset type if it is not already in the asset library.
-                model.assets_mut().create(ro.asset_def.clone(), None)?;
+                model.create_asset(ro.asset_def.clone(), None, None, None, None)?;
                 // Mark the freezing account which is tracking the record used.
                 self.freezing_accounts
                     .get_mut(&account.key.pub_key())
@@ -1039,7 +1063,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         }
 
         if add_to_history && !my_records.is_empty() {
-            self.add_receive_history(model, block_id, txn_id, txn.kind(), txn.hash(), &my_records)
+            self.add_receive_history(model, block_id, txn_id, txn.kind(), txn.hash().clone(), TransactionUID::<L>(txn.hash().clone()), &my_records)
                 .await;
         }
 
@@ -1052,17 +1076,13 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         block_id: u64,
         txn_id: u64,
         kind: TransactionKind<L>,
-        txn_hash: TransactionHash<L>,
+        hash: TransactionHash<L>,
+        uid: TransactionUID<L>,
         records: &[RecordOpening],
     ) {
-        let history = receive_history_entry(kind, txn_hash, records);
+        let history = receive_history_entry(kind, uid.clone(), records);
 
-        if let Err(err) = model
-            .store(|mut t| async move {
-                t.store_transaction(history).await?;
-                Ok(t)
-            })
-            .await
+        if let Err(err) = self.txn_state.transactions.create(history).unwrap().with_hash(hash).save()
         {
             println!(
                 "Failed to store transaction ({}, {}) in history: {}.",
@@ -1090,7 +1110,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
             }
 
             // Add the asset type if it is not already in the asset library.
-            model.assets_mut().create(record.asset_def.clone(), None)?;
+            model.create_asset(record.asset_def.clone(), None, None, None, None)?;
 
             // Mark the account receiving the record as used.
             self.sending_accounts
@@ -1131,9 +1151,9 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
 
     async fn clear_pending_transaction<'t>(
         &mut self,
-        txn: &Transaction<L>,
+        txn: &reef::Transaction<L>,
         res: Option<CommittedTxn<'t>>,
-    ) -> Option<PendingTransaction<L>> {
+    ) -> Option<Transaction<L>> {
         let pending = self.txn_state.clear_pending_transaction(txn, &res);
 
         // If this was a successful transaction, add all of its frozen/unfrozen outputs to our
@@ -1143,7 +1163,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                 // the first uid corresponds to the fee change output, which is not one of the
                 // `freeze_outputs`, so we skip that one
                 for ((uid, remember), ro) in
-                    uids.iter_mut().skip(1).zip(&pending.info.freeze_outputs)
+                    uids.iter_mut().skip(1).zip(pending.outputs())
                 {
                     self.txn_state.records.insert_freezable(
                         ro.clone(),
@@ -1161,7 +1181,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
     async fn view_transaction<Meta: Serialize + DeserializeOwned + Send>(
         &mut self,
         model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
-        txn: &Transaction<L>,
+        txn: &reef::Transaction<L>,
         uids: &mut [(u64, bool)],
     ) {
         // Try to decrypt viewer memos.
@@ -1238,7 +1258,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
     async fn update_nullifier_proofs<Meta: Serialize + DeserializeOwned + Send>(
         &mut self,
         model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
-        txn: &mut Transaction<L>,
+        txn: &mut reef::Transaction<L>,
     ) -> Result<(), KeystoreError<L>> {
         let mut proofs = Vec::new();
         for n in txn.input_nullifiers() {
@@ -1278,13 +1298,13 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                 description: description.to_vec(),
             };
 
-            let assets = model.assets_mut();
-            match assets
-                .create(definition.clone(), Some(mint_info.clone()))?
-                .with_name(name)
-                .with_description(mint_info.fmt_description())
-                .save()
-            {
+            match model.create_asset(
+                definition.clone(),
+                Some(name),
+                Some(mint_info.fmt_description()),
+                None,
+                Some(mint_info),
+            ) {
                 Ok(_) => {
                     match model
                         .store(|mut t| async {
@@ -1481,7 +1501,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         &mut self,
         model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
         spec: TransferSpec<'k>,
-    ) -> Result<(TransferNote, TransactionInfo<L>), KeystoreError<L>> {
+    ) -> Result<(TransferNote, TransactionParams<L>), KeystoreError<L>> {
         self.txn_state
             .transfer(spec, &self.proving_keys.xfr, &mut model.rng)
             .context(TransactionSnafu)
@@ -1495,7 +1515,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         asset_code: &AssetCode,
         amount: RecordAmount,
         receiver: UserPubKey,
-    ) -> Result<(MintNote, TransactionInfo<L>), KeystoreError<L>> {
+    ) -> Result<(MintNote, TransactionParams<L>), KeystoreError<L>> {
         let asset = model
             .assets
             .get::<L>(asset_code)
@@ -1533,7 +1553,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         amount: U256,
         owner: UserAddress,
         outputs_frozen: FreezeFlag,
-    ) -> Result<(FreezeNote, TransactionInfo<L>), KeystoreError<L>> {
+    ) -> Result<(FreezeNote, TransactionParams<L>), KeystoreError<L>> {
         let asset = model
             .assets
             .get::<L>(asset)
@@ -1571,7 +1591,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         &mut self,
         model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
         note: TransactionNote,
-        info: TransactionInfo<L>,
+        info: TransactionParams<L>,
     ) -> Result<TransactionReceipt<L>, KeystoreError<L>> {
         let mut nullifier_pfs = Vec::new();
         for n in note.nullifiers() {
@@ -1585,8 +1605,8 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
             nullifier_pfs.push(proof);
         }
 
-        let txn = Transaction::<L>::cap(note, nullifier_pfs);
-        self.submit_elaborated_transaction(model, txn, info).await
+        let txn = reef::Transaction::<L>::cap(note, nullifier_pfs);
+        self.submit_elaborated_transaction(model, txn, Some(info)).await
     }
 
     // For reasons that are not clearly understood, the default async desugaring for this function
@@ -1604,49 +1624,36 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
     fn submit_elaborated_transaction<'b, Meta: Serialize + DeserializeOwned + Send + Send>(
         &'b mut self,
         model: &'b mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
-        txn: Transaction<L>,
-        mut info: TransactionInfo<L>,
+        txn: reef::Transaction<L>,
+        info: Option<TransactionParams<L>>,
     ) -> impl 'b + Captures<'a> + Future<Output = Result<TransactionReceipt<L>, KeystoreError<L>>> + Send
     where
         'a: 'b,
     {
         async move {
-            let receipt = self.txn_state.add_pending_transaction(&txn, info.clone());
-
-            // Ensure `info.uid` is set, in the case where `add_pending_transaction` established a
-            // new UID.
-            info.uid = Some(receipt.uid.clone());
-
-            // Persist the pending transaction.
-            let history = info.history.clone();
-            if let Err(err) = model
-                .store(|mut t| async {
-                    t.store_snapshot(self).await?;
-
-                    // If we're submitting this transaction for the first time (as opposed to
-                    // updating and resubmitting a failed transaction) add it to the history.
-                    if let Some(mut history) = history {
-                        history.receipt = Some(receipt.clone());
-                        history.hash = Some(txn.hash());
-                        t.store_transaction(history).await?;
-                    }
-
-                    Ok(t)
-                })
-                .await
-            {
-                // If we failed to persist the pending transaction, we cannot submit it, because if
-                // we then exit and reload the process from storage, there will be an in-flight
-                // transaction which is not accounted for in our pending transaction data
-                // structures. Instead, we remove the pending transaction from our in-memory data
-                // structures and return the error.
-                self.clear_pending_transaction(&txn, None).await;
-                return Err(err);
-            }
-
+            let stored_txn = if info.is_some() {
+                 // Persist the pending transaction.
+                let t = self.txn_state.add_pending_transaction(&txn, info.unwrap());
+                if let Err(err) = self.txn_state.transactions.commit()
+                {
+                    // If we failed to persist the pending transaction, we cannot submit it, because if
+                    // we then exit and reload the process from storage, there will be an in-flight
+                    // transaction which is not accounted for in our pending transaction data
+                    // structures. Instead, we remove the pending transaction from our in-memory data
+                    // structures and return the error.
+                    self.txn_state.transactions.revert();
+                    self.clear_pending_transaction(&txn, None).await;
+                    return Err(err);
+                }
+                t
+            } else {
+                self.txn_state.transactions.with_hash(&txn.hash())?
+            };
+            let receipt = stored_txn.receipt().clone().unwrap();
             // If we succeeded in creating and persisting the pending transaction, submit it to the
             // validators.
-            if let Err(err) = model.backend.submit(txn.clone(), info).await {
+            if let Err(err) = model.backend.submit(txn.clone(), stored_txn).await {
+                self.txn_state.transactions.revert();
                 self.clear_pending_transaction(&txn, None).await;
                 return Err(err);
             }
@@ -1676,7 +1683,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
 pub struct Keystore<
     'a,
     Backend: KeystoreBackend<'a, L>,
-    L: Ledger,
+    L:Ledger,
     Meta: Serialize + DeserializeOwned + Send,
 > {
     // Data shared between the main thread and the event handling thread:
@@ -1744,7 +1751,7 @@ impl<T: Serialize + DeserializeOwned> LoadStore for EncryptingResourceAdapter<T>
 /// Keystore state which is shared with event handling threads.
 pub struct KeystoreSharedState<
     'a,
-    L: Ledger,
+    L:Ledger,
     Backend: KeystoreBackend<'a, L>,
     Meta: Serialize + DeserializeOwned + Send,
 > {
@@ -1756,7 +1763,7 @@ pub struct KeystoreSharedState<
     pending_key_scans: HashMap<UserAddress, Vec<oneshot::Sender<()>>>,
 }
 
-impl<'a, L: Ledger, Backend: KeystoreBackend<'a, L>, Meta: Serialize + DeserializeOwned + Send>
+impl<'a, L:Ledger, Backend: KeystoreBackend<'a, L>, Meta: Serialize + DeserializeOwned + Send>
     KeystoreSharedState<'a, L, Backend, Meta>
 {
     pub fn backend(&self) -> &Backend {
@@ -1800,14 +1807,14 @@ impl<'a, T, F: Future<Output = T> + Captures<'a> + Send> SendFuture<'a, T> for F
 
 impl<
         'a,
-        L: 'static + Ledger,
+        L: 'static +Ledger,
         Backend: 'a + KeystoreBackend<'a, L> + Send + Sync,
         Meta: 'a + Serialize + DeserializeOwned + Send + Clone + PartialEq,
     > Keystore<'a, Backend, L, Meta>
 {
     pub fn create_stores(
         loader: &mut impl KeystoreLoader<L, Meta = Meta>,
-    ) -> Result<(AtomicStore, AtomicKeystoreStorage<'a, L, Meta>, Assets), KeystoreError<L>> {
+    ) -> Result<(AtomicStore, AtomicKeystoreStorage<'a, L, Meta>, Assets, Transactions<L>), KeystoreError<L>> {
         let mut atomic_loader = AtomicStoreLoader::load(&loader.location(), "keystore").unwrap();
         // Load the metadata first so the loader can use it to generate the encryption key needed to
         // read the rest of the data.
@@ -1853,8 +1860,13 @@ impl<
             "keystore_assets",
             file_fill_size,
         )?)?)?;
+        let transactions = Transactions::new(
+            &mut atomic_loader,
+            adapter.cast(),
+            file_fill_size,
+        )?;
         let atomic_store = AtomicStore::open(atomic_loader)?;
-        Ok((atomic_store, persistence, assets))
+        Ok((atomic_store, persistence, assets, transactions))
     }
 
     // This function suffers from github.com/rust-lang/rust/issues/89657, in which, if we define it
@@ -1872,7 +1884,7 @@ impl<
         mut backend: Backend,
         loader: &mut impl KeystoreLoader<L, Meta = Meta>,
     ) -> BoxFuture<'a, Result<Keystore<'a, Backend, L, Meta>, KeystoreError<L>>> {
-        let (mut atomic_store, mut persistence, mut assets) = Self::create_stores(loader).unwrap();
+        let (mut atomic_store, mut persistence, mut assets, mut transactions) = Self::create_stores(loader).unwrap();
         Box::pin(async move {
             let state = if persistence.exists() {
                 persistence.load().await?
@@ -1882,8 +1894,9 @@ impl<
                 state
             };
             assets.commit()?;
+            transactions.commit()?;
             atomic_store.commit_version()?;
-            Self::new_impl(backend, atomic_store, persistence, assets, state).await
+            Self::new_impl(backend, atomic_store, persistence, assets, transactions, state).await
         })
     }
 
@@ -1893,9 +1906,9 @@ impl<
         loader: &mut impl KeystoreLoader<L, Meta = Meta>,
         state: KeystoreState<'a, L>,
     ) -> BoxFuture<'a, Result<Keystore<'a, Backend, L, Meta>, KeystoreError<L>>> {
-        let (atomic_store, persistence, assets) = Self::create_stores(loader).unwrap();
+        let (atomic_store, persistence, assets, transactions) = Self::create_stores(loader).unwrap();
         Box::pin(
-            async move { Self::new_impl(backend, atomic_store, persistence, assets, state).await },
+            async move { Self::new_impl(backend, atomic_store, persistence, assets, transactions, state).await },
         )
     }
 
@@ -1904,6 +1917,7 @@ impl<
         atomic_store: AtomicStore,
         persistence: AtomicKeystoreStorage<'a, L, Meta>,
         assets: Assets,
+        transactions: Transactions<L>,
         state: KeystoreState<'a, L>,
     ) -> Result<Keystore<'a, Backend, L, Meta>, KeystoreError<L>> {
         let mut events = backend.subscribe(state.txn_state.now, None).await;
@@ -1922,6 +1936,7 @@ impl<
             atomic_store,
             persistence: Arc::new(Mutex::new(persistence)),
             assets,
+            transactions,
             rng: ChaChaRng::from_entropy(),
             viewer_key_stream: key_tree.derive_sub_tree("viewer".as_bytes()),
             freezer_key_stream: key_tree.derive_sub_tree("freezer".as_bytes()),
@@ -1931,7 +1946,7 @@ impl<
         };
 
         // Ensure the native asset type is always recognized.
-        model.assets_mut().create_native()?;
+        model.create_native_asset(None)?;
 
         let sync_handles = Vec::new();
         let txn_subscribers = HashMap::new();
@@ -2255,14 +2270,14 @@ impl<
 
     /// List assets discovered or imported by this keystore.
     pub async fn assets(&self) -> Vec<Asset> {
-        let KeystoreSharedState { model, .. } = &*self.lock().await;
-        model.assets()
+        let KeystoreSharedState { model, .. } = &mut *self.mutex.lock().await;
+        model.assets.iter().collect()
     }
 
     /// Get details about an asset type using its code.
     pub async fn asset(&self, code: AssetCode) -> Option<Asset> {
-        let KeystoreSharedState { model, .. } = &*self.lock().await;
-        model.asset(&code).ok()
+        let KeystoreSharedState { model, .. } = &mut *self.mutex.lock().await;
+        model.assets.get::<L>(&code).ok()
     }
 
     /// List past transactions involving this keystore.
@@ -2270,12 +2285,11 @@ impl<
     pub fn transaction_history<'l>(
         &'l self,
     ) -> std::pin::Pin<
-        Box<dyn SendFuture<'a, Result<Vec<TransactionHistoryEntry<L>>, KeystoreError<L>>> + 'l>,
+        Box<dyn SendFuture<'a, Result<Vec<Transaction<L>>, KeystoreError<L>>> + 'l>,
     > {
         Box::pin(async move {
             let KeystoreSharedState { model, .. } = &mut *self.mutex.lock().await;
-            let mut persistence = model.persistence.lock().await;
-            persistence.transaction_history().await
+            Ok(model.transactions.iter().collect())
         })
     }
 
@@ -2317,7 +2331,7 @@ impl<
         fee: impl Into<RecordAmount>,
         bound_data: Vec<u8>,
         xfr_size_requirement: Option<(usize, usize)>,
-    ) -> Result<(TransferNote, TransactionInfo<L>), KeystoreError<L>> {
+    ) -> Result<(TransferNote, TransactionParams<L>), KeystoreError<L>> {
         let KeystoreSharedState { state, model, .. } = &mut *self.mutex.lock().await;
         let sender_key_pairs = match sender {
             Some(addr) => {
@@ -2347,21 +2361,49 @@ impl<
     /// transaction types that are not part of the base CAP protocol.
     pub async fn submit(
         &mut self,
-        txn: Transaction<L>,
-        info: TransactionInfo<L>,
+        txn: reef::Transaction<L>,
+        info: TransactionParams<L>,
     ) -> Result<TransactionReceipt<L>, KeystoreError<L>> {
         let KeystoreSharedState { state, model, .. } = &mut *self.mutex.lock().await;
-        state.submit_elaborated_transaction(model, txn, info).await
+        state.submit_elaborated_transaction(model, txn, Some(info)).await
     }
 
     /// Submit a CAP transaction to be validated.
     pub async fn submit_cap(
         &mut self,
         txn: TransactionNote,
-        info: TransactionInfo<L>,
+        info: TransactionParams<L>,
     ) -> Result<TransactionReceipt<L>, KeystoreError<L>> {
         let KeystoreSharedState { state, model, .. } = &mut *self.mutex.lock().await;
         state.submit_transaction(model, txn, info).await
+    }
+
+    /// Insert an asset.
+    pub async fn insert_asset(&mut self, asset: Asset) -> Result<(), KeystoreError<L>> {
+        let KeystoreSharedState { model, .. } = &mut *self.lock().await;
+        model.insert_asset(asset)
+    }
+
+    /// Create an asset.
+    pub async fn create_asset(
+        &mut self,
+        definition: AssetDefinition,
+        name: Option<String>,
+        description: Option<String>,
+        icon: Option<Icon>,
+        mint_info: Option<MintInfo>,
+    ) -> Result<(), KeystoreError<L>> {
+        let KeystoreSharedState { model, .. } = &mut *self.lock().await;
+        model.create_asset(definition, name, description, icon, mint_info)
+    }
+
+    /// Create a native asset.
+    pub async fn create_native_asset(
+        &mut self,
+        icon: Option<Icon>,
+    ) -> Result<(), KeystoreError<L>> {
+        let KeystoreSharedState { model, .. } = &mut *self.lock().await;
+        model.create_native_asset(icon)
     }
 
     /// Define a new asset and store secret info for minting.
@@ -2563,7 +2605,7 @@ impl<
         asset_code: &AssetCode,
         amount: impl Into<RecordAmount>,
         receiver: UserPubKey,
-    ) -> Result<(MintNote, TransactionInfo<L>), KeystoreError<L>> {
+    ) -> Result<(MintNote, TransactionParams<L>), KeystoreError<L>> {
         let KeystoreSharedState { state, model, .. } = &mut *self.mutex.lock().await;
         state
             .build_mint(
@@ -2621,7 +2663,7 @@ impl<
         asset: &AssetCode,
         amount: impl Into<U256>,
         owner: UserAddress,
-    ) -> Result<(FreezeNote, TransactionInfo<L>), KeystoreError<L>> {
+    ) -> Result<(FreezeNote, TransactionParams<L>), KeystoreError<L>> {
         let KeystoreSharedState { state, model, .. } = &mut *self.mutex.lock().await;
         state
             .build_freeze(
@@ -2665,7 +2707,7 @@ impl<
         asset: &AssetCode,
         amount: impl Into<U256>,
         owner: UserAddress,
-    ) -> Result<(FreezeNote, TransactionInfo<L>), KeystoreError<L>> {
+    ) -> Result<(FreezeNote, TransactionParams<L>), KeystoreError<L>> {
         let KeystoreSharedState { state, model, .. } = &mut *self.mutex.lock().await;
         state
             .build_freeze(
@@ -2840,20 +2882,16 @@ impl<
                         if let Err(err) = state.add_records(model, &key, records).await {
                             println!("Error saving records from key scan {}: {}", address, err);
                         }
-                        if let Err(err) = model
-                            .store(|mut t| async {
-                                for h in history {
-                                    t.store_transaction(h).await?;
+                        history.iter().cloned().map(|t| {
+                                if let Err(err) = model.transactions.create(t)
+                                {
+                                    println!(
+                                        "Error saving tranaction history from key scan {}: {}",
+                                        address, err
+                                    );
                                 }
-                                Ok(t)
-                            })
-                            .await
-                        {
-                            println!(
-                                "Error saving tranaction history from key scan {}: {}",
-                                address, err
-                            );
-                        }
+                        });
+
 
                         // Signal anyone waiting for a notification that this scan finished.
                         for sender in pending_key_scans.remove(&address).into_iter().flatten() {
@@ -2866,7 +2904,7 @@ impl<
                     } else {
                         false
                     };
-
+                    // model.transactions.commit()?;
                     model
                         .store(|mut t| async {
                             t.store_snapshot(state).await?;
@@ -2878,50 +2916,6 @@ impl<
             },
             || (),
         );
-    }
-
-    /// Insert an asset for testing purposes.
-    #[cfg(any(test, feature = "testing"))]
-    pub async fn insert_asset(&mut self, asset: Asset) -> Result<(), KeystoreError<L>> {
-        let KeystoreSharedState { model, .. } = &mut *self.lock().await;
-        model.assets_mut().insert(asset)?;
-        Ok(())
-    }
-
-    /// Create an asset for testing purposes.
-    #[cfg(any(test, feature = "testing"))]
-    pub async fn create_asset(
-        &mut self,
-        definition: AssetDefinition,
-        name: Option<String>,
-        description: Option<String>,
-        icon: Option<Icon>,
-        mint_info: Option<MintInfo>,
-    ) -> Result<(), KeystoreError<L>> {
-        let KeystoreSharedState { model, .. } = &mut *self.lock().await;
-        model
-            .assets_mut()
-            .create(definition, mint_info)?
-            .set_name(name)
-            .set_description(description)
-            .set_icon(icon)
-            .save::<L>()?;
-        Ok(())
-    }
-
-    /// Create a native asset for testing purposes.
-    #[cfg(any(test, feature = "testing"))]
-    pub async fn create_native_asset(
-        &mut self,
-        icon: Option<Icon>,
-    ) -> Result<(), KeystoreError<L>> {
-        let KeystoreSharedState { model, .. } = &mut *self.lock().await;
-        model
-            .assets_mut()
-            .create_native()?
-            .set_icon(icon)
-            .save::<L>()?;
-        Ok(())
     }
 }
 

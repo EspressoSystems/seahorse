@@ -8,7 +8,7 @@
 //! Ledger-agnostic implementation of [KeystoreStorage].
 use crate::{
     accounts::Account, hd::KeyTree, txn_builder::TransactionState, EncryptingResourceAdapter,
-    KeyStreamState, KeystoreError, KeystoreState, TransactionHistoryEntry,
+    KeyStreamState, KeystoreError, KeystoreState,
 };
 use arbitrary::{Arbitrary, Unstructured};
 use async_std::sync::Arc;
@@ -126,8 +126,6 @@ pub struct AtomicKeystoreStorage<'a, L: Ledger, Meta: Serialize + DeserializeOwn
     static_dirty: bool,
     dynamic_state: RollingLog<EncryptingResourceAdapter<KeystoreSnapshot<L>>>,
     dynamic_state_dirty: bool,
-    txn_history: AppendLog<EncryptingResourceAdapter<TransactionHistoryEntry<L>>>,
-    txn_history_dirty: bool,
     keystore_key_tree: KeyTree,
 }
 
@@ -160,13 +158,6 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned + Clone + PartialE
         .context(crate::PersistenceSnafu)?;
         dynamic_state.set_retained_entries(ATOMIC_STORE_RETAINED_ENTRIES);
 
-        let txn_history = AppendLog::load(
-            atomic_loader,
-            adapter.cast(),
-            "keystore_txns",
-            file_fill_size,
-        )
-        .context(crate::PersistenceSnafu)?;
 
         Ok(Self {
             meta,
@@ -176,8 +167,6 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned + Clone + PartialE
             static_dirty: false,
             dynamic_state,
             dynamic_state_dirty: false,
-            txn_history,
-            txn_history_dirty: false,
             keystore_key_tree: key.derive_sub_tree("keystore".as_bytes()),
         })
     }
@@ -283,25 +272,25 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicKeystoreSto
         Ok(())
     }
 
-    pub async fn store_transaction(
-        &mut self,
-        txn: TransactionHistoryEntry<L>,
-    ) -> Result<(), KeystoreError<L>> {
-        self.txn_history
-            .store_resource(&txn)
-            .context(crate::PersistenceSnafu)?;
-        self.txn_history_dirty = true;
-        Ok(())
-    }
+    // pub async fn store_transaction(
+    //     &mut self,
+    //     txn: TransactionHistoryEntry<L>,
+    // ) -> Result<(), KeystoreError<L>> {
+    //     self.txn_history
+    //         .store_resource(&txn)
+    //         .context(crate::PersistenceSnafu)?;
+    //     self.txn_history_dirty = true;
+    //     Ok(())
+    // }
 
-    pub async fn transaction_history(
-        &mut self,
-    ) -> Result<Vec<TransactionHistoryEntry<L>>, KeystoreError<L>> {
-        self.txn_history
-            .iter()
-            .map(|res| res.context(crate::PersistenceSnafu))
-            .collect()
-    }
+    // pub async fn transaction_history(
+    //     &mut self,
+    // ) -> Result<Vec<TransactionHistoryEntry<L>>, KeystoreError<L>> {
+    //     self.txn_history
+    //         .iter()
+    //         .map(|res| res.context(crate::PersistenceSnafu))
+    //         .collect()
+    // }
 
     pub async fn commit(&mut self) {
         {
@@ -323,25 +312,17 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicKeystoreSto
             } else {
                 self.dynamic_state.skip_version().unwrap();
             }
-
-            if self.txn_history_dirty {
-                self.txn_history.commit_version().unwrap();
-            } else {
-                self.txn_history.skip_version().unwrap();
-            }
         }
 
         self.meta_dirty = false;
         self.static_dirty = false;
         self.dynamic_state_dirty = false;
-        self.txn_history_dirty = false;
     }
 
     pub async fn revert(&mut self) {
         self.persisted_meta.revert_version().unwrap();
         self.static_data.revert_version().unwrap();
         self.dynamic_state.revert_version().unwrap();
-        self.txn_history.revert_version().unwrap();
     }
 }
 
@@ -353,7 +334,7 @@ mod tests {
         loader::KeystoreLoader,
         sparse_merkle_tree::SparseMerkleTree,
         testing::{assert_keystore_states_eq, mocks::MockBackend},
-        txn_builder::{PendingTransaction, TransactionInfo, TransactionUID},
+        txn_builder::{TransactionUID},
         Keystore,
     };
     use chrono::Local;

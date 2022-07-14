@@ -9,7 +9,7 @@
 //!
 //! This module defines the subset of ledger state required by a keystore to build transactions, and
 //! provides an interface for building them.
-use crate::{events::EventIndex, sparse_merkle_tree::SparseMerkleTree};
+use crate::{events::EventIndex, sparse_merkle_tree::SparseMerkleTree, transactions::{Transaction, Transactions, TransactionParams}};
 use arbitrary::{Arbitrary, Unstructured};
 use arbitrary_wrappers::*;
 use ark_serialize::*;
@@ -553,102 +553,102 @@ where
     }
 }
 
-#[ser_test(arbitrary, types(cap::Ledger), ark(false))]
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(bound = "")]
-pub struct PendingTransaction<L: Ledger> {
-    pub info: TransactionInfo<L>,
-    pub timeout: u64,
-    pub hash: TransactionHash<L>,
-}
+// #[ser_test(arbitrary, types(cap::Ledger), ark(false))]
+// #[derive(Clone, Debug, Deserialize, Serialize)]
+// #[serde(bound = "")]
+// pub struct PendingTransaction<L: Ledger> {
+//     pub info: TransactionInfo<L>,
+//     pub timeout: u64,
+//     pub hash: TransactionHash<L>,
+// }
 
-impl<L: Ledger> PartialEq<Self> for PendingTransaction<L> {
-    fn eq(&self, other: &Self) -> bool {
-        self.info == other.info && self.timeout == other.timeout && self.hash == other.hash
-    }
-}
+// impl<L: Ledger> PartialEq<Self> for PendingTransaction<L> {
+//     fn eq(&self, other: &Self) -> bool {
+//         self.info == other.info && self.timeout == other.timeout && self.hash == other.hash
+//     }
+// }
 
-impl<'a, L: Ledger> Arbitrary<'a> for PendingTransaction<L>
-where
-    TransactionHash<L>: Arbitrary<'a>,
-{
-    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
-        let mut info = u.arbitrary::<TransactionInfo<L>>()?;
-        // Pending transactions must always have a UID.
-        if info.uid.is_none() {
-            info.uid = Some(u.arbitrary()?);
-        }
-        Ok(Self {
-            info,
-            timeout: u.arbitrary()?,
-            hash: u.arbitrary()?,
-        })
-    }
-}
+// impl<'a, L: Ledger> Arbitrary<'a> for PendingTransaction<L>
+// where
+//     TransactionHash<L>: Arbitrary<'a>,
+// {
+//     fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
+//         let mut info = u.arbitrary::<TransactionInfo<L>>()?;
+//         // Pending transactions must always have a UID.
+//         if info.uid.is_none() {
+//             info.uid = Some(u.arbitrary()?);
+//         }
+//         Ok(Self {
+//             info,
+//             timeout: u.arbitrary()?,
+//             hash: u.arbitrary()?,
+//         })
+//     }
+// }
 
-impl<L: Ledger> PendingTransaction<L> {
-    pub fn uid(&self) -> TransactionUID<L> {
-        // Pending transactions always have a UID
-        self.info.uid.clone().unwrap()
-    }
-}
+// impl<L: Ledger> PendingTransaction<L> {
+//     pub fn uid(&self) -> TransactionUID<L> {
+//         // Pending transactions always have a UID
+//         self.info.uid.clone().unwrap()
+//     }
+// }
 
-#[ser_test(arbitrary, types(cap::Ledger), ark(false))]
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(bound = "")]
-pub struct TransactionAwaitingMemos<L: Ledger> {
-    // The uid of this transaction.
-    uid: TransactionUID<L>,
-    // The uids of the outputs of this transaction for which memos have not yet been posted.
-    pending_uids: HashSet<u64>,
-}
+// #[ser_test(arbitrary, types(cap::Ledger), ark(false))]
+// #[derive(Clone, Debug, Deserialize, Serialize)]
+// #[serde(bound = "")]
+// pub struct TransactionAwaitingMemos<L: Ledger> {
+//     // The uid of this transaction.
+//     uid: TransactionUID<L>,
+//     // The uids of the outputs of this transaction for which memos have not yet been posted.
+//     pending_uids: HashSet<u64>,
+// }
 
-impl<L: Ledger> PartialEq<Self> for TransactionAwaitingMemos<L> {
-    fn eq(&self, other: &Self) -> bool {
-        self.uid == other.uid && self.pending_uids == other.pending_uids
-    }
-}
+// impl<L: Ledger> PartialEq<Self> for TransactionAwaitingMemos<L> {
+//     fn eq(&self, other: &Self) -> bool {
+//         self.uid == other.uid && self.pending_uids == other.pending_uids
+//     }
+// }
 
-impl<'a, L: Ledger> Arbitrary<'a> for TransactionAwaitingMemos<L>
-where
-    TransactionHash<L>: Arbitrary<'a>,
-{
-    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
-        Ok(Self {
-            uid: u.arbitrary()?,
-            pending_uids: u.arbitrary()?,
-        })
-    }
-}
+// impl<'a, L: Ledger> Arbitrary<'a> for TransactionAwaitingMemos<L>
+// where
+//     TransactionHash<L>: Arbitrary<'a>,
+// {
+//     fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
+//         Ok(Self {
+//             uid: u.arbitrary()?,
+//             pending_uids: u.arbitrary()?,
+//         })
+//     }
+// }
 
-// Serialization intermediate for TransactionDatabase, which eliminates the redundancy of the
-// in-memory indices in TransactionDatabase.
-#[ser_test(arbitrary, types(cap::Ledger), ark(false))]
-#[derive(Debug, Default, Serialize, Deserialize)]
-#[serde(bound = "")]
-struct TransactionStorage<L: Ledger> {
-    pending_txns: Vec<PendingTransaction<L>>,
-    txns_awaiting_memos: Vec<TransactionAwaitingMemos<L>>,
-}
+// // Serialization intermediate for TransactionDatabase, which eliminates the redundancy of the
+// // in-memory indices in TransactionDatabase.
+// #[ser_test(arbitrary, types(cap::Ledger), ark(false))]
+// #[derive(Debug, Default, Serialize, Deserialize)]
+// #[serde(bound = "")]
+// struct TransactionStorage<L: Ledger> {
+//     pending_txns: Vec<PendingTransaction<L>>,
+//     txns_awaiting_memos: Vec<TransactionAwaitingMemos<L>>,
+// }
 
-impl<L: Ledger> PartialEq<Self> for TransactionStorage<L> {
-    fn eq(&self, other: &Self) -> bool {
-        self.pending_txns == other.pending_txns
-            && self.txns_awaiting_memos == other.txns_awaiting_memos
-    }
-}
+// impl<L: Ledger> PartialEq<Self> for TransactionStorage<L> {
+//     fn eq(&self, other: &Self) -> bool {
+//         self.pending_txns == other.pending_txns
+//             && self.txns_awaiting_memos == other.txns_awaiting_memos
+//     }
+// }
 
-impl<'a, L: Ledger> Arbitrary<'a> for TransactionStorage<L>
-where
-    TransactionHash<L>: Arbitrary<'a>,
-{
-    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
-        Ok(Self {
-            pending_txns: u.arbitrary()?,
-            txns_awaiting_memos: u.arbitrary()?,
-        })
-    }
-}
+// impl<'a, L: Ledger> Arbitrary<'a> for TransactionStorage<L>
+// where
+//     TransactionHash<L>: Arbitrary<'a>,
+// {
+//     fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
+//         Ok(Self {
+//             pending_txns: u.arbitrary()?,
+//             txns_awaiting_memos: u.arbitrary()?,
+//         })
+//     }
+// }
 
 #[ser_test(arbitrary, types(cap::Ledger))]
 #[tagged_blob("TXUID")]
@@ -678,326 +678,309 @@ where
     }
 }
 
-#[ser_test(arbitrary, types(cap::Ledger), ark(false))]
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(from = "TransactionStorage<L>", into = "TransactionStorage<L>")]
-#[serde(bound = "")]
-pub struct TransactionDatabase<L: Ledger> {
-    // The base storage. Every in-flight transaction is either pending or accepted and awaiting
-    // memos. All the auxiliary data in this database is just an index into one of these two tables.
-    pending_txns: HashMap<TransactionUID<L>, PendingTransaction<L>>,
-    txns_awaiting_memos: HashMap<TransactionUID<L>, TransactionAwaitingMemos<L>>,
+// #[ser_test(arbitrary, types(cap::Ledger), ark(false))]
+// #[derive(Clone, Debug, Serialize, Deserialize)]
+// #[serde(from = "TransactionStorage<L>", into = "TransactionStorage<L>")]
+// #[serde(bound = "")]
+// pub struct TransactionDatabase<L: Ledger> {
+//     // The base storage. Every in-flight transaction is either pending or accepted and awaiting
+//     // memos. All the auxiliary data in this database is just an index into one of these two tables.
+//     pending_txns: HashMap<TransactionUID<L>, PendingTransaction<L>>,
+//     txns_awaiting_memos: HashMap<TransactionUID<L>, TransactionAwaitingMemos<L>>,
 
-    txn_uids: HashMap<TransactionHash<L>, TransactionUID<L>>,
-    expiring_txns: BTreeMap<u64, HashSet<TransactionUID<L>>>,
-    uids_awaiting_memos: HashMap<u64, TransactionUID<L>>,
-}
+//     txn_uids: HashMap<TransactionHash<L>, TransactionUID<L>>,
+//     expiring_txns: BTreeMap<u64, HashSet<TransactionUID<L>>>,
+//     uids_awaiting_memos: HashMap<u64, TransactionUID<L>>,
+// }
 
-impl<L: Ledger> TransactionDatabase<L> {
-    pub fn status(&self, uid: &TransactionUID<L>) -> TransactionStatus {
-        if self.pending_txns.contains_key(uid) {
-            TransactionStatus::Pending
-        } else if self.txns_awaiting_memos.contains_key(uid) {
-            TransactionStatus::AwaitingMemos
-        } else {
-            TransactionStatus::Unknown
-        }
-    }
+// impl<L: Ledger> TransactionDatabase<L> {
+//     pub fn status(&self, uid: &TransactionUID<L>) -> TransactionStatus {
+//         if self.pending_txns.contains_key(uid) {
+//             TransactionStatus::Pending
+//         } else if self.txns_awaiting_memos.contains_key(uid) {
+//             TransactionStatus::AwaitingMemos
+//         } else {
+//             TransactionStatus::Unknown
+//         }
+//     }
 
-    // Inform the database that we have received memos for the given record UIDs. Return a list of
-    // the transactions that are completed as a result.
-    pub fn received_memos(&mut self, uids: impl Iterator<Item = u64>) -> Vec<TransactionUID<L>> {
-        let mut completed = Vec::new();
-        for uid in uids {
-            if let Some(txn_uid) = self.uids_awaiting_memos.remove(&uid) {
-                let txn = self.txns_awaiting_memos.get_mut(&txn_uid).unwrap();
-                txn.pending_uids.remove(&uid);
-                if txn.pending_uids.is_empty() {
-                    self.txns_awaiting_memos.remove(&txn_uid);
-                    completed.push(txn_uid);
-                }
-            }
-        }
-        completed
-    }
+//     pub fn await_memos(
+//         &mut self,
+//         uid: TransactionUID<L>,
+//         pending_uids: impl IntoIterator<Item = u64>,
+//     ) {
+//         self.insert_awaiting_memos(TransactionAwaitingMemos {
+//             uid,
+//             pending_uids: pending_uids.into_iter().collect(),
+//         })
+//     }
 
-    pub fn await_memos(
-        &mut self,
-        uid: TransactionUID<L>,
-        pending_uids: impl IntoIterator<Item = u64>,
-    ) {
-        self.insert_awaiting_memos(TransactionAwaitingMemos {
-            uid,
-            pending_uids: pending_uids.into_iter().collect(),
-        })
-    }
+//     pub fn remove_pending(&mut self, hash: &TransactionHash<L>) -> Option<PendingTransaction<L>> {
+//         self.txn_uids.remove(hash).and_then(|uid| {
+//             let pending = self.pending_txns.remove(&uid);
+//             if let Some(pending) = &pending {
+//                 if let Some(expiring) = self.expiring_txns.get_mut(&pending.timeout) {
+//                     expiring.remove(&uid);
+//                     if expiring.is_empty() {
+//                         self.expiring_txns.remove(&pending.timeout);
+//                     }
+//                 }
+//             }
+//             pending
+//         })
+//     }
 
-    pub fn remove_pending(&mut self, hash: &TransactionHash<L>) -> Option<PendingTransaction<L>> {
-        self.txn_uids.remove(hash).and_then(|uid| {
-            let pending = self.pending_txns.remove(&uid);
-            if let Some(pending) = &pending {
-                if let Some(expiring) = self.expiring_txns.get_mut(&pending.timeout) {
-                    expiring.remove(&uid);
-                    if expiring.is_empty() {
-                        self.expiring_txns.remove(&pending.timeout);
-                    }
-                }
-            }
-            pending
-        })
-    }
+//     pub fn remove_expired(&mut self, now: u64) -> Vec<PendingTransaction<L>> {
+//         #[cfg(any(test, debug_assertions))]
+//         {
+//             if let Some(earliest_timeout) = self.expiring_txns.keys().next() {
+//                 // Transactions expiring before now should already have been removed from the
+//                 // expiring_txns set, because we clear expired transactions every time we step the
+//                 // validator state.
+//                 assert!(*earliest_timeout >= now);
+//             }
+//         }
 
-    pub fn remove_expired(&mut self, now: u64) -> Vec<PendingTransaction<L>> {
-        #[cfg(any(test, debug_assertions))]
-        {
-            if let Some(earliest_timeout) = self.expiring_txns.keys().next() {
-                // Transactions expiring before now should already have been removed from the
-                // expiring_txns set, because we clear expired transactions every time we step the
-                // validator state.
-                assert!(*earliest_timeout >= now);
-            }
-        }
+//         self.expiring_txns
+//             .remove(&now)
+//             .into_iter()
+//             .flatten()
+//             .map(|uid| {
+//                 let pending = self.pending_txns.remove(&uid).unwrap();
+//                 self.txn_uids.remove(&pending.hash);
+//                 pending
+//             })
+//             .collect()
+//     }
 
-        self.expiring_txns
-            .remove(&now)
-            .into_iter()
-            .flatten()
-            .map(|uid| {
-                let pending = self.pending_txns.remove(&uid).unwrap();
-                self.txn_uids.remove(&pending.hash);
-                pending
-            })
-            .collect()
-    }
+//     pub fn insert_pending(&mut self, txn: PendingTransaction<L>) {
+//         self.txn_uids.insert(txn.hash.clone(), txn.uid());
+//         self.expiring_txns
+//             .entry(txn.timeout)
+//             .or_insert_with(HashSet::default)
+//             .insert(txn.uid());
+//         self.pending_txns.insert(txn.uid(), txn);
+//     }
 
-    pub fn insert_pending(&mut self, txn: PendingTransaction<L>) {
-        self.txn_uids.insert(txn.hash.clone(), txn.uid());
-        self.expiring_txns
-            .entry(txn.timeout)
-            .or_insert_with(HashSet::default)
-            .insert(txn.uid());
-        self.pending_txns.insert(txn.uid(), txn);
-    }
+//     pub fn insert_awaiting_memos(&mut self, txn: TransactionAwaitingMemos<L>) {
+//         for uid in &txn.pending_uids {
+//             self.uids_awaiting_memos.insert(*uid, txn.uid.clone());
+//         }
+//         self.txns_awaiting_memos.insert(txn.uid.clone(), txn);
+//     }
+// }
 
-    pub fn insert_awaiting_memos(&mut self, txn: TransactionAwaitingMemos<L>) {
-        for uid in &txn.pending_uids {
-            self.uids_awaiting_memos.insert(*uid, txn.uid.clone());
-        }
-        self.txns_awaiting_memos.insert(txn.uid.clone(), txn);
-    }
-}
+// impl<L: Ledger> Default for TransactionDatabase<L> {
+//     fn default() -> Self {
+//         Self {
+//             pending_txns: Default::default(),
+//             txns_awaiting_memos: Default::default(),
+//             txn_uids: Default::default(),
+//             expiring_txns: Default::default(),
+//             uids_awaiting_memos: Default::default(),
+//         }
+//     }
+// }
 
-impl<L: Ledger> Default for TransactionDatabase<L> {
-    fn default() -> Self {
-        Self {
-            pending_txns: Default::default(),
-            txns_awaiting_memos: Default::default(),
-            txn_uids: Default::default(),
-            expiring_txns: Default::default(),
-            uids_awaiting_memos: Default::default(),
-        }
-    }
-}
+// impl<L: Ledger> PartialEq<TransactionDatabase<L>> for TransactionDatabase<L> {
+//     fn eq(&self, other: &TransactionDatabase<L>) -> bool {
+//         self.pending_txns == other.pending_txns
+//             && self.txns_awaiting_memos == other.txns_awaiting_memos
+//             && self.txn_uids == other.txn_uids
+//             && self.expiring_txns == other.expiring_txns
+//             && self.uids_awaiting_memos == other.uids_awaiting_memos
+//     }
+// }
 
-impl<L: Ledger> PartialEq<TransactionDatabase<L>> for TransactionDatabase<L> {
-    fn eq(&self, other: &TransactionDatabase<L>) -> bool {
-        self.pending_txns == other.pending_txns
-            && self.txns_awaiting_memos == other.txns_awaiting_memos
-            && self.txn_uids == other.txn_uids
-            && self.expiring_txns == other.expiring_txns
-            && self.uids_awaiting_memos == other.uids_awaiting_memos
-    }
-}
+// impl<L: Ledger> From<TransactionStorage<L>> for TransactionDatabase<L> {
+//     fn from(txns: TransactionStorage<L>) -> Self {
+//         let mut db = Self::default();
+//         for txn in txns.pending_txns {
+//             db.insert_pending(txn);
+//         }
+//         for txn in txns.txns_awaiting_memos {
+//             db.insert_awaiting_memos(txn);
+//         }
+//         db
+//     }
+// }
 
-impl<L: Ledger> From<TransactionStorage<L>> for TransactionDatabase<L> {
-    fn from(txns: TransactionStorage<L>) -> Self {
-        let mut db = Self::default();
-        for txn in txns.pending_txns {
-            db.insert_pending(txn);
-        }
-        for txn in txns.txns_awaiting_memos {
-            db.insert_awaiting_memos(txn);
-        }
-        db
-    }
-}
+// impl<L: Ledger> From<TransactionDatabase<L>> for TransactionStorage<L> {
+//     fn from(db: TransactionDatabase<L>) -> Self {
+//         Self {
+//             pending_txns: db.pending_txns.into_values().collect(),
+//             txns_awaiting_memos: db.txns_awaiting_memos.into_values().collect(),
+//         }
+//     }
+// }
 
-impl<L: Ledger> From<TransactionDatabase<L>> for TransactionStorage<L> {
-    fn from(db: TransactionDatabase<L>) -> Self {
-        Self {
-            pending_txns: db.pending_txns.into_values().collect(),
-            txns_awaiting_memos: db.txns_awaiting_memos.into_values().collect(),
-        }
-    }
-}
+// impl<'a, L: Ledger> Arbitrary<'a> for TransactionDatabase<L>
+// where
+//     TransactionHash<L>: Arbitrary<'a>,
+// {
+//     fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
+//         Ok(Self::from(u.arbitrary::<TransactionStorage<L>>()?))
+//     }
+// }
 
-impl<'a, L: Ledger> Arbitrary<'a> for TransactionDatabase<L>
-where
-    TransactionHash<L>: Arbitrary<'a>,
-{
-    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
-        Ok(Self::from(u.arbitrary::<TransactionStorage<L>>()?))
-    }
-}
+// #[ser_test(arbitrary, ark(false), types(cap::Ledger))]
+// #[derive(Clone, Debug, Serialize, Deserialize, Derivative)]
+// #[serde(bound = "")]
+// #[derivative(PartialEq(bound = "L: Ledger"))]
+// pub struct TransactionHistoryEntry<L: Ledger> {
+//     pub time: DateTime<Local>,
+//     pub asset: AssetCode,
+//     pub kind: TransactionKind<L>,
+//     pub hash: Option<TransactionHash<L>>,
+//     /// Addresses used to build this transaction.
+//     ///
+//     /// If we sent this transaction, `senders` records the addresses of the spending keys used to
+//     /// submit it. If we received this transaction from someone else, we may not know who the
+//     /// senders are and this field may be empty.
+//     pub senders: Vec<UserAddress>,
+//     // Receivers and corresponding amounts.
+//     pub receivers: Vec<(UserAddress, RecordAmount)>,
+//     /// Amount of change included in the transaction from the fee.
+//     ///
+//     /// Every transaction includes a fee, but the record used to pay the fee may be larger than the
+//     /// actual fee. In this case, one of the outputs of the transaction will contain change from the
+//     /// fee, which the transaction sender receives when the transaction is finalized.
+//     ///
+//     /// Note that `None` indicates that the amount of change is unknown, not that there is no
+//     /// change, which would be indicated by `Some(0)`. The amount of change may be unknown if, for
+//     /// example, this is a transaction we received from someone else, in which case we may not know
+//     /// how much of a fee they paid and how much change they expect to get.
+//     pub fee_change: Option<RecordAmount>,
+//     /// Amount of change included in the transaction in the asset being transferred.
+//     ///
+//     /// For non-native transfers, the amount of the asset being transferred which is consumed by the
+//     /// transaction may exceed the amount that the sender wants to transfer, due to the way discrete
+//     /// record amounts break down. In this case, one of the outputs of the transaction will contain
+//     /// change from the fee, which the transaction sender receives when the transaction is
+//     /// finalized.
+//     ///
+//     /// For native transfers, the transfer inputs and the fee input get mixed together, so there is
+//     /// only one change output, which accounts for both the fee change and the transfer change. In
+//     /// this case, the total amount of change will be reflected in `fee_change` and `asset_change`
+//     /// will be `Some(0)`.
+//     ///
+//     /// Note that `None` indicates that the amount of change is unknown, not that there is no
+//     /// change, which would be indicated by `Some(0)`. The amount of change may be unknown if, for
+//     /// example, this is a transaction we received from someone else, and we do not hold the
+//     /// necessary viewing keys to inspect the change outputs of the transaction.
+//     pub asset_change: Option<RecordAmount>,
+//     /// If we sent this transaction, a receipt to track its progress.
+//     pub receipt: Option<TransactionReceipt<L>>,
+// }
 
-#[ser_test(arbitrary, ark(false), types(cap::Ledger))]
-#[derive(Clone, Debug, Serialize, Deserialize, Derivative)]
-#[serde(bound = "")]
-#[derivative(PartialEq(bound = "L: Ledger"))]
-pub struct TransactionHistoryEntry<L: Ledger> {
-    pub time: DateTime<Local>,
-    pub asset: AssetCode,
-    pub kind: TransactionKind<L>,
-    pub hash: Option<TransactionHash<L>>,
-    /// Addresses used to build this transaction.
-    ///
-    /// If we sent this transaction, `senders` records the addresses of the spending keys used to
-    /// submit it. If we received this transaction from someone else, we may not know who the
-    /// senders are and this field may be empty.
-    pub senders: Vec<UserAddress>,
-    // Receivers and corresponding amounts.
-    pub receivers: Vec<(UserAddress, RecordAmount)>,
-    /// Amount of change included in the transaction from the fee.
-    ///
-    /// Every transaction includes a fee, but the record used to pay the fee may be larger than the
-    /// actual fee. In this case, one of the outputs of the transaction will contain change from the
-    /// fee, which the transaction sender receives when the transaction is finalized.
-    ///
-    /// Note that `None` indicates that the amount of change is unknown, not that there is no
-    /// change, which would be indicated by `Some(0)`. The amount of change may be unknown if, for
-    /// example, this is a transaction we received from someone else, in which case we may not know
-    /// how much of a fee they paid and how much change they expect to get.
-    pub fee_change: Option<RecordAmount>,
-    /// Amount of change included in the transaction in the asset being transferred.
-    ///
-    /// For non-native transfers, the amount of the asset being transferred which is consumed by the
-    /// transaction may exceed the amount that the sender wants to transfer, due to the way discrete
-    /// record amounts break down. In this case, one of the outputs of the transaction will contain
-    /// change from the fee, which the transaction sender receives when the transaction is
-    /// finalized.
-    ///
-    /// For native transfers, the transfer inputs and the fee input get mixed together, so there is
-    /// only one change output, which accounts for both the fee change and the transfer change. In
-    /// this case, the total amount of change will be reflected in `fee_change` and `asset_change`
-    /// will be `Some(0)`.
-    ///
-    /// Note that `None` indicates that the amount of change is unknown, not that there is no
-    /// change, which would be indicated by `Some(0)`. The amount of change may be unknown if, for
-    /// example, this is a transaction we received from someone else, and we do not hold the
-    /// necessary viewing keys to inspect the change outputs of the transaction.
-    pub asset_change: Option<RecordAmount>,
-    /// If we sent this transaction, a receipt to track its progress.
-    pub receipt: Option<TransactionReceipt<L>>,
-}
-
-impl<'a, L: Ledger> Arbitrary<'a> for TransactionHistoryEntry<L>
-where
-    TransactionHash<L>: Arbitrary<'a>,
-{
-    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
-        Ok(Self {
-            time: Local::now(),
-            asset: AssetCode::native(),
-            kind: TransactionKind::<L>::send(),
-            hash: u.arbitrary()?,
-            senders: u
-                .arbitrary_iter::<ArbitraryUserAddress>()?
-                .map(|a| Ok(a?.into()))
-                .collect::<Result<_, _>>()?,
-            receivers: u
-                .arbitrary_iter::<(ArbitraryUserAddress, u64)>()?
-                .map(|r| {
-                    let (addr, amt) = r?;
-                    Ok((addr.into(), amt.into()))
-                })
-                .collect::<Result<_, _>>()?,
-            fee_change: u.arbitrary::<Option<u128>>()?.map(RecordAmount::from),
-            asset_change: u.arbitrary::<Option<u128>>()?.map(RecordAmount::from),
-            receipt: u.arbitrary()?,
-        })
-    }
-}
+// impl<'a, L: Ledger> Arbitrary<'a> for TransactionHistoryEntry<L>
+// where
+//     TransactionHash<L>: Arbitrary<'a>,
+// {
+//     fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
+//         Ok(Self {
+//             time: Local::now(),
+//             asset: AssetCode::native(),
+//             kind: TransactionKind::<L>::send(),
+//             hash: u.arbitrary()?,
+//             senders: u
+//                 .arbitrary_iter::<ArbitraryUserAddress>()?
+//                 .map(|a| Ok(a?.into()))
+//                 .collect::<Result<_, _>>()?,
+//             receivers: u
+//                 .arbitrary_iter::<(ArbitraryUserAddress, u64)>()?
+//                 .map(|r| {
+//                     let (addr, amt) = r?;
+//                     Ok((addr.into(), amt.into()))
+//                 })
+//                 .collect::<Result<_, _>>()?,
+//             fee_change: u.arbitrary::<Option<u128>>()?.map(RecordAmount::from),
+//             asset_change: u.arbitrary::<Option<u128>>()?.map(RecordAmount::from),
+//             receipt: u.arbitrary()?,
+//         })
+//     }
+// }
 
 /// Additional information about a transaction.
 ///
 /// Any information not included in the note, needed to submit the transaction and track it after
 /// submission.
-#[ser_test(arbitrary, types(cap::Ledger), ark(false))]
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(bound = "")]
-pub struct TransactionInfo<L: Ledger> {
-    /// The accounts sending the transaction.
-    pub accounts: Vec<UserAddress>,
-    /// A receiver memo for each output, except for burned outputs.
-    pub memos: Vec<Option<ReceiverMemo>>,
-    pub sig: Signature,
-    /// If the transaction is a freeze, the expected frozen/unfrozen outputs.
-    pub freeze_outputs: Vec<RecordOpening>,
-    /// Entry to include in transaction history when the transaction is submitted.
-    pub history: Option<TransactionHistoryEntry<L>>,
-    /// If this is a resubmission of a previous transaction, the UID for tracking.
-    pub uid: Option<TransactionUID<L>>,
-    pub inputs: Vec<RecordOpening>,
-    pub outputs: Vec<RecordOpening>,
-}
+// #[ser_test(arbitrary, types(cap::Ledger), ark(false))]
+// #[derive(Clone, Debug, Serialize, Deserialize)]
+// #[serde(bound = "")]
+// pub struct TransactionInfo<L: Ledger> {
+//     /// The accounts sending the transaction.
+//     pub accounts: Vec<UserAddress>,
+//     /// A receiver memo for each output, except for burned outputs.
+//     pub memos: Vec<Option<ReceiverMemo>>,
+//     pub sig: Signature,
+//     /// If the transaction is a freeze, the expected frozen/unfrozen outputs.
+//     pub freeze_outputs: Vec<RecordOpening>,
+//     /// Entry to include in transaction history when the transaction is submitted.
+//     pub history: Option<TransactionHistoryEntry<L>>,
+//     /// If this is a resubmission of a previous transaction, the UID for tracking.
+//     pub uid: Option<TransactionUID<L>>,
+//     pub inputs: Vec<RecordOpening>,
+//     pub outputs: Vec<RecordOpening>,
+// }
 
-impl<L: Ledger> PartialEq<Self> for TransactionInfo<L> {
-    fn eq(&self, other: &Self) -> bool {
-        self.accounts == other.accounts
-            && self.memos == other.memos
-            && self.sig == other.sig
-            && self.freeze_outputs == other.freeze_outputs
-            && self.history == other.history
-            && self.uid == other.uid
-            && self.inputs == other.inputs
-            && self.outputs == other.outputs
-    }
-}
+// impl<L: Ledger> PartialEq<Self> for TransactionInfo<L> {
+//     fn eq(&self, other: &Self) -> bool {
+//         self.accounts == other.accounts
+//             && self.memos == other.memos
+//             && self.sig == other.sig
+//             && self.freeze_outputs == other.freeze_outputs
+//             && self.history == other.history
+//             && self.uid == other.uid
+//             && self.inputs == other.inputs
+//             && self.outputs == other.outputs
+//     }
+// }
 
-impl<'a, L: Ledger> Arbitrary<'a> for TransactionInfo<L>
-where
-    TransactionHash<L>: Arbitrary<'a>,
-{
-    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
-        let memos = std::iter::once(u.arbitrary())
-            .chain(u.arbitrary_iter::<Option<ArbitraryReceiverMemo>>()?)
-            .map(|a| Ok(a?.map(|memo| memo.into())))
-            .collect::<Result<Vec<_>, _>>()?;
-        let key = u.arbitrary::<ArbitraryKeyPair>()?.into();
-        let sig = sign_receiver_memos(
-            &key,
-            memos
-                .iter()
-                .flatten()
-                .cloned()
-                .collect::<Vec<_>>()
-                .as_slice(),
-        )
-        .unwrap();
-        Ok(Self {
-            accounts: u
-                .arbitrary_iter::<ArbitraryUserAddress>()?
-                .map(|a| Ok(a?.into()))
-                .collect::<Result<_, _>>()?,
-            memos,
-            sig,
-            freeze_outputs: u
-                .arbitrary_iter::<ArbitraryRecordOpening>()?
-                .map(|a| Ok(a?.into()))
-                .collect::<Result<_, _>>()?,
-            uid: u.arbitrary()?,
-            inputs: u
-                .arbitrary_iter::<ArbitraryRecordOpening>()?
-                .map(|ro| Ok(ro?.into()))
-                .collect::<Result<_, _>>()?,
-            outputs: u
-                .arbitrary_iter::<ArbitraryRecordOpening>()?
-                .map(|ro| Ok(ro?.into()))
-                .collect::<Result<_, _>>()?,
-            history: None,
-        })
-    }
-}
+// impl<'a, L: Ledger> Arbitrary<'a> for TransactionInfo<L>
+// where
+//     TransactionHash<L>: Arbitrary<'a>,
+// {
+//     fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
+//         let memos = std::iter::once(u.arbitrary())
+//             .chain(u.arbitrary_iter::<Option<ArbitraryReceiverMemo>>()?)
+//             .map(|a| Ok(a?.map(|memo| memo.into())))
+//             .collect::<Result<Vec<_>, _>>()?;
+//         let key = u.arbitrary::<ArbitraryKeyPair>()?.into();
+//         let sig = sign_receiver_memos(
+//             &key,
+//             memos
+//                 .iter()
+//                 .flatten()
+//                 .cloned()
+//                 .collect::<Vec<_>>()
+//                 .as_slice(),
+//         )
+//         .unwrap();
+//         Ok(Self {
+//             accounts: u
+//                 .arbitrary_iter::<ArbitraryUserAddress>()?
+//                 .map(|a| Ok(a?.into()))
+//                 .collect::<Result<_, _>>()?,
+//             memos,
+//             sig,
+//             freeze_outputs: u
+//                 .arbitrary_iter::<ArbitraryRecordOpening>()?
+//                 .map(|a| Ok(a?.into()))
+//                 .collect::<Result<_, _>>()?,
+//             uid: u.arbitrary()?,
+//             inputs: u
+//                 .arbitrary_iter::<ArbitraryRecordOpening>()?
+//                 .map(|ro| Ok(ro?.into()))
+//                 .collect::<Result<_, _>>()?,
+//             outputs: u
+//                 .arbitrary_iter::<ArbitraryRecordOpening>()?
+//                 .map(|ro| Ok(ro?.into()))
+//                 .collect::<Result<_, _>>()?,
+//             history: None,
+//         })
+//     }
+// }
 
 pub struct TransferSpec<'a> {
     /// List of key_pairs that will be used to find the records for the transfer.
@@ -1032,8 +1015,6 @@ pub struct TransactionState<L: Ledger> {
     pub nullifiers: NullifierSet<L>,
     // sparse record Merkle tree mirrored from validators
     pub record_mt: SparseMerkleTree,
-    // set of pending transactions
-    pub transactions: TransactionDatabase<L>,
 }
 
 impl<L: Ledger> PartialEq<Self> for TransactionState<L> {
@@ -1043,27 +1024,26 @@ impl<L: Ledger> PartialEq<Self> for TransactionState<L> {
             && self.records == other.records
             && self.nullifiers == other.nullifiers
             && self.record_mt == other.record_mt
-            && self.transactions == other.transactions
     }
 }
 
-impl<'a, L: Ledger> Arbitrary<'a> for TransactionState<L>
-where
-    Validator<L>: Arbitrary<'a>,
-    NullifierSet<L>: Arbitrary<'a>,
-    TransactionHash<L>: Arbitrary<'a>,
-{
-    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
-        Ok(Self {
-            now: u.arbitrary()?,
-            validator: u.arbitrary()?,
-            records: u.arbitrary()?,
-            nullifiers: u.arbitrary()?,
-            record_mt: u.arbitrary()?,
-            transactions: u.arbitrary()?,
-        })
-    }
-}
+// impl<'a, L: Ledger> Arbitrary<'a> for TransactionState<L>
+// where
+//     Validator<L>: Arbitrary<'a>,
+//     NullifierSet<L>: Arbitrary<'a>,
+//     TransactionHash<L>: Arbitrary<'a>,
+// {
+//     fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
+//         Ok(Self {
+//             now: u.arbitrary()?,
+//             validator: u.arbitrary()?,
+//             records: u.arbitrary()?,
+//             nullifiers: u.arbitrary()?,
+//             record_mt: u.arbitrary()?,
+//             transactions: Default::default(),
+//         })
+//     }
+// }
 
 impl<L: Ledger> TransactionState<L> {
     pub fn balance(&self, asset: &AssetCode, pub_key: &UserPubKey, frozen: FreezeFlag) -> U256 {
@@ -1072,13 +1052,26 @@ impl<L: Ledger> TransactionState<L> {
             .fold(U256::zero(), |sum, record| sum + record.amount())
     }
 
-    pub fn clear_expired_transactions(&mut self) -> Vec<PendingTransaction<L>> {
-        self.transactions
-            .remove_expired(self.validator.now())
-            .into_iter()
-            .collect()
+    pub fn clear_expired_transactions(&mut self, transactions: &mut Transactions<L>) -> Vec<Transaction<L>> {
+        transactions
+            .remove_expired(self.validator.now()).unwrap()
     }
 
+    // Inform the database that we have received memos for the given record UIDs. Return a list of
+    // the transactions that are completed as a result.
+    pub fn received_memos(&mut self, transactions: &mut Transactions<L>, uids: impl Iterator<Item = u64>) -> Vec<TransactionUID<L>> {
+        let mut completed = Vec::new();
+        for uid in uids {
+            if let Some(txn) = transactions.with_memo_id_mut(uid).ok() {
+                txn.remove_pending_uid(uid);
+                if txn.transaction().pending_uids().is_empty() {
+                    completed.push(txn.transaction().uid().clone());
+                }
+                txn.save();
+            }
+        }
+        completed
+    }
     pub fn define_asset<'b>(
         &'b mut self,
         rng: &mut ChaChaRng,
@@ -1093,13 +1086,14 @@ impl<L: Ledger> TransactionState<L> {
 
     pub fn add_pending_transaction(
         &mut self,
-        txn: &Transaction<L>,
-        mut info: TransactionInfo<L>,
-    ) -> TransactionReceipt<L> {
+        transactions: &mut Transactions<L>,
+        txn: &reef::Transaction<L>,
+        mut info: TransactionParams<L>,
+    ) -> Transaction<L> {
         let now = self.validator.now();
         let timeout = now + (L::record_root_history() as u64);
         let hash = txn.hash();
-        info.uid = Some(info.uid.unwrap_or_else(|| TransactionUID(hash.clone())));
+        info.uid = Some(TransactionUID(hash.clone()));
 
         for nullifier in txn.input_nullifiers() {
             // hold the record corresponding to this nullifier until the transaction is committed,
@@ -1109,31 +1103,27 @@ impl<L: Ledger> TransactionState<L> {
                 record.hold_until(timeout);
             }
         }
-
-        let pending = PendingTransaction {
-            info,
-            timeout,
-            hash,
-        };
+        info.timeout = Some(timeout);
         let receipt = TransactionReceipt {
-            uid: pending.uid(),
+            uid: info.uid.unwrap(),
             fee_nullifier: txn.input_nullifiers()[0],
-            submitters: pending.info.accounts.clone(),
+            submitters: info.senders.clone(),
         };
-        self.transactions.insert_pending(pending);
-        receipt
+        let stored_txn = transactions.create(info).unwrap().with_receipt(receipt).with_hash(txn.hash().clone()).save().unwrap();
+        stored_txn
     }
 
     pub fn clear_pending_transaction<'t>(
         &mut self,
-        txn: &Transaction<L>,
+        transactions: &mut Transactions<L>,
+        txn: &reef::Transaction<L>,
         res: &Option<CommittedTxn<'t>>,
-    ) -> Option<PendingTransaction<L>> {
+    ) -> Option<Transaction<L>> {
         let now = self.validator.now();
 
         // Remove the transaction from pending transaction data structures.
         let txn_hash = txn.hash();
-        let pending = self.transactions.remove_pending(&txn_hash);
+        let pending = transactions.with_hash(&txn_hash).ok();
 
         for nullifier in txn.input_nullifiers() {
             if let Some(record) = self.records.record_with_nullifier_mut(&nullifier) {
@@ -1163,7 +1153,7 @@ impl<L: Ledger> TransactionState<L> {
         spec: TransferSpec<'k>,
         proving_keys: &'k KeySet<TransferProvingKey<'a>, key_set::OrderByOutputs>,
         rng: &mut ChaChaRng,
-    ) -> Result<(TransferNote, TransactionInfo<L>), TransactionError> {
+    ) -> Result<(TransferNote, TransactionParams<L>), TransactionError> {
         if *spec.asset == AssetCode::native() {
             self.transfer_native(spec, proving_keys, rng)
         } else {
@@ -1176,7 +1166,7 @@ impl<L: Ledger> TransactionState<L> {
         spec: TransferSpec<'k>,
         proving_keys: &'k KeySet<TransferProvingKey<'a>, key_set::OrderByOutputs>,
         rng: &mut ChaChaRng,
-    ) -> Result<(TransferNote, TransactionInfo<L>), TransactionError> {
+    ) -> Result<(TransferNote, TransactionParams<L>), TransactionError> {
         let total_output_amount: U256 = spec
             .receivers
             .iter()
@@ -1274,11 +1264,17 @@ impl<L: Ledger> TransactionState<L> {
             .iter()
             .map(|key_pair| key_pair.address())
             .collect::<Vec<UserAddress>>();
-        let history = TransactionHistoryEntry {
+        let txn_params = TransactionParams {
+            uid: None,
+            timeout: None,
+            status: TransactionStatus::Pending,
+            memos: memos,
+            sig: Some(sig),
+            inputs: input_ros,
+            outputs: outputs,
             time: Local::now(),
             asset: AssetCode::native(),
             kind: TransactionKind::<L>::send(),
-            hash: None,
             senders: owner_addresses.clone(),
             receivers: spec
                 .receivers
@@ -1287,20 +1283,25 @@ impl<L: Ledger> TransactionState<L> {
                 .collect(),
             fee_change: Some(fee_change.into()),
             asset_change: Some(RecordAmount::zero()),
-            receipt: None,
         };
+        // let history = TransactionHistoryEntry {
+        //     time: Local::now(),
+        //     asset: AssetCode::native(),
+        //     kind: TransactionKind::<L>::send(),
+        //     hash: None,
+        //     senders: owner_addresses.clone(),
+            // receivers: spec
+            //     .receivers
+            //     .iter()
+            //     .map(|(pub_key, amount, _)| (pub_key.address(), *amount))
+            //     .collect(),
+        //     fee_change: Some(fee_change.into()),
+        //     asset_change: Some(RecordAmount::zero()),
+        //     receipt: None,
+        // };
         Ok((
             note,
-            TransactionInfo {
-                accounts: owner_addresses,
-                memos,
-                sig,
-                freeze_outputs: vec![],
-                history: Some(history),
-                uid: None,
-                inputs: input_ros,
-                outputs,
-            },
+            txn_params,
         ))
     }
 
@@ -1309,7 +1310,7 @@ impl<L: Ledger> TransactionState<L> {
         spec: TransferSpec<'k>,
         proving_keys: &'k KeySet<TransferProvingKey<'a>, key_set::OrderByOutputs>,
         rng: &mut ChaChaRng,
-    ) -> Result<(TransferNote, TransactionInfo<L>), TransactionError> {
+    ) -> Result<(TransferNote, TransactionParams<L>), TransactionError> {
         assert_ne!(
             *spec.asset,
             AssetCode::native(),
@@ -1440,11 +1441,32 @@ impl<L: Ledger> TransactionState<L> {
             .iter()
             .map(|key_pair| key_pair.address())
             .collect::<Vec<UserAddress>>();
-        let history = TransactionHistoryEntry {
+        // let history = TransactionHistoryEntry {
+        //     time: Local::now(),
+        //     asset: asset.code,
+        //     kind: TransactionKind::<L>::send(),
+        //     hash: None,
+        //     senders: owner_addresses.clone(),
+        //     receivers: spec
+        //         .receivers
+        //         .iter()
+        //         .map(|(pub_key, amount, _)| (pub_key.address(), *amount))
+        //         .collect(),
+        //     fee_change: Some(fee_change.into()),
+        //     asset_change: Some(asset_change),
+        //     receipt: None,
+        // };
+        let txn_params = TransactionParams {
+            uid: Default::default(),
+            timeout: None,
+            status: TransactionStatus::Pending,
+            memos: memos,
+            sig: Some(sig),
+            inputs: input_ros,
+            outputs: outputs,
             time: Local::now(),
             asset: asset.code,
             kind: TransactionKind::<L>::send(),
-            hash: None,
             senders: owner_addresses.clone(),
             receivers: spec
                 .receivers
@@ -1452,21 +1474,11 @@ impl<L: Ledger> TransactionState<L> {
                 .map(|(pub_key, amount, _)| (pub_key.address(), *amount))
                 .collect(),
             fee_change: Some(fee_change.into()),
-            asset_change: Some(asset_change),
-            receipt: None,
+            asset_change: Some(RecordAmount::zero()),
         };
         Ok((
             note,
-            TransactionInfo {
-                accounts: owner_addresses,
-                memos,
-                sig,
-                freeze_outputs: vec![],
-                history: Some(history),
-                uid: None,
-                inputs: input_ros,
-                outputs,
-            },
+            txn_params,
         ))
     }
 
@@ -1512,7 +1524,7 @@ impl<L: Ledger> TransactionState<L> {
         amount: RecordAmount,
         receiver: UserPubKey,
         rng: &mut ChaChaRng,
-    ) -> Result<(MintNote, TransactionInfo<L>), TransactionError> {
+    ) -> Result<(MintNote, TransactionParams<L>), TransactionError> {
         let (asset_def, seed, asset_description) = asset;
         let mint_record = RecordOpening::new(
             rng,
@@ -1539,29 +1551,36 @@ impl<L: Ledger> TransactionState<L> {
         let (memos, sig) = self.generate_memos(&outputs, vec![true, true], rng, &sig_key_pair)?;
 
         // Build auxiliary info.
-        let history = TransactionHistoryEntry {
+        // let history = TransactionHistoryEntry {
+        //     time: Local::now(),
+        //     asset: asset_def.code,
+        //     kind: TransactionKind::<L>::mint(),
+        //     hash: None,
+        //     senders: vec![fee_rec.pub_key.address()],
+        //     receivers: vec![(receiver.address(), amount)],
+        //     fee_change: Some(fee_rec.amount.into()),
+        //     asset_change: Some(RecordAmount::zero()),
+        //     receipt: None,
+        // };
+        let txn_params = TransactionParams {
+            uid: Default::default(),
+            timeout: None,
+            status: TransactionStatus::Pending,
+            memos: memos,
+            sig: Some(sig),
+            inputs: vec![fee_rec],
+            outputs: outputs,
             time: Local::now(),
             asset: asset_def.code,
-            kind: TransactionKind::<L>::mint(),
-            hash: None,
+            kind: TransactionKind::<L>::send(),
             senders: vec![fee_rec.pub_key.address()],
             receivers: vec![(receiver.address(), amount)],
             fee_change: Some(fee_rec.amount.into()),
             asset_change: Some(RecordAmount::zero()),
-            receipt: None,
         };
         Ok((
             note,
-            TransactionInfo {
-                accounts: vec![fee_rec.pub_key.address()],
-                memos,
-                sig,
-                freeze_outputs: vec![],
-                history: Some(history),
-                uid: None,
-                inputs: vec![fee_rec],
-                outputs,
-            },
+            txn_params,
         ))
     }
 
@@ -1577,7 +1596,7 @@ impl<L: Ledger> TransactionState<L> {
         owner: UserAddress,
         outputs_frozen: FreezeFlag,
         rng: &mut ChaChaRng,
-    ) -> Result<(FreezeNote, TransactionInfo<L>), TransactionError> {
+    ) -> Result<(FreezeNote, TransactionParams<L>), TransactionError> {
         // find input records of the asset type to freeze (this does not include the fee input)
         let inputs_frozen = match outputs_frozen {
             FreezeFlag::Frozen => FreezeFlag::Unfrozen,
@@ -1621,38 +1640,46 @@ impl<L: Ledger> TransactionState<L> {
         let (memos, sig) = self.generate_memos(&outputs, gen_memos, rng, &sig_key_pair)?;
 
         // Build auxiliary info.
-        let history = TransactionHistoryEntry {
+        // let history = TransactionHistoryEntry {
+        //     time: Local::now(),
+        //     asset: asset.code,
+        //     kind: match outputs_frozen {
+        //         FreezeFlag::Frozen => TransactionKind::<L>::freeze(),
+        //         FreezeFlag::Unfrozen => TransactionKind::<L>::unfreeze(),
+        //     },
+        //     hash: None,
+        //     senders: vec![fee_address.clone()],
+        //     // The target receives one frozen output record for each input record we are freezing.
+        //     receivers: input_records
+        //         .iter()
+        //         .map(|(ro, _)| (owner.clone(), ro.amount.into()))
+        //         .collect(),
+        //     fee_change: Some(fee_change.into()),
+        //     asset_change: Some(RecordAmount::zero()),
+        //     receipt: None,
+        // };
+        let txn_params = TransactionParams {
+            uid: Default::default(),
+            timeout: None,
+            status: TransactionStatus::Pending,
+            memos: memos,
+            sig: Some(sig),
+            inputs: input_records.into_iter().map(|(ro, _)| ro).collect(),
+            outputs: outputs,
             time: Local::now(),
             asset: asset.code,
-            kind: match outputs_frozen {
-                FreezeFlag::Frozen => TransactionKind::<L>::freeze(),
-                FreezeFlag::Unfrozen => TransactionKind::<L>::unfreeze(),
-            },
-            hash: None,
+            kind: TransactionKind::<L>::send(),
             senders: vec![fee_address.clone()],
-            // The target receives one frozen output record for each input record we are freezing.
             receivers: input_records
-                .iter()
-                .map(|(ro, _)| (owner.clone(), ro.amount.into()))
-                .collect(),
+                    .iter()
+                    .map(|(ro, _)| (owner.clone(), ro.amount.into()))
+                    .collect(),
             fee_change: Some(fee_change.into()),
             asset_change: Some(RecordAmount::zero()),
-            receipt: None,
         };
         Ok((
             note,
-            TransactionInfo {
-                accounts: vec![fee_address],
-                memos,
-                sig,
-                // `freeze_outputs` should only contain the frozen/unfrozen records, not the fee
-                // change, so we skip the first output.
-                freeze_outputs: outputs.clone().into_iter().skip(1).collect(),
-                history: Some(history),
-                uid: None,
-                inputs: input_records.into_iter().map(|(ro, _)| ro).collect(),
-                outputs,
-            },
+            txn_params,
         ))
     }
 
