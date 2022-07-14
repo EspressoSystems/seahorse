@@ -23,6 +23,7 @@ use jf_cap::{
 use jf_primitives::signatures::{schnorr::SchnorrSignatureScheme, SignatureScheme};
 use jf_utils::tagged_blob;
 use serde::{Deserialize, Serialize};
+use std::cmp::min;
 use std::io::{BufRead, Seek};
 use std::ops::{Deref, DerefMut};
 use std::str::FromStr;
@@ -619,6 +620,7 @@ impl<'a> AssetEditor<'a> {
             self.asset.mint_info = Some(mint_info);
         }
         self.asset.verified |= other.verified;
+        self.asset.created_time = min(self.asset.created_time, other.created_time);
         self.asset.modified_time = Local::now();
         Ok(self)
     }
@@ -653,6 +655,7 @@ impl<'a> AssetEditor<'a> {
             self.asset.mint_info = Some(mint_info);
         }
         self.asset.verified |= other.verified;
+        self.asset.created_time = min(self.asset.created_time, other.created_time);
         self.asset.modified_time = Local::now();
         Ok(self)
     }
