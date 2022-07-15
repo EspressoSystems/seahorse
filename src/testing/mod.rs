@@ -523,14 +523,10 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         )],
     ) {
         for (keystore, _, _) in keystores {
-            let KeystoreSharedState { state, model, .. } = &mut *keystore.mutex.lock().await;
-            let atomic_store = &mut model.atomic_store;
+            let KeystoreSharedState { state, model, .. } = &*keystore.mutex.read().await;
             let persistence = &model.persistence;
-            let assets = &mut model.assets;
             let state = state.clone();
-            let loaded = persistence.lock().await.load().await.unwrap();
-            assets.commit::<Self::Ledger>().unwrap();
-            atomic_store.commit_version().unwrap();
+            let loaded = persistence.load().await.unwrap();
             assert_keystore_states_eq(&state, &loaded);
         }
     }
@@ -663,7 +659,7 @@ pub async fn await_transaction<
     'a,
     L: Ledger + 'static,
     Backend: KeystoreBackend<'a, L> + Sync + 'a,
-    Meta: 'a + Serialize + DeserializeOwned + Send + Clone + PartialEq,
+    Meta: 'a + Serialize + DeserializeOwned + Send + Sync + Clone + PartialEq,
 >(
     receipt: &TransactionReceipt<L>,
     sender: &Keystore<'a, Backend, L, Meta>,
