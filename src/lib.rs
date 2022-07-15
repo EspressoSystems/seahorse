@@ -394,7 +394,12 @@ impl<'a, L: Ledger, Backend: KeystoreBackend<'a, L>, Meta: Serialize + Deseriali
         &mut self.persistence
     }
 
-    /// Get all assets
+    /// Get the mutable assets.
+    pub fn assets_mut(&mut self) -> &mut Assets {
+        &mut self.assets
+    }
+
+    /// Get the list of assets.
     pub fn assets(&self) -> Vec<Asset> {
         self.assets.iter().collect()
     }
@@ -402,36 +407,6 @@ impl<'a, L: Ledger, Backend: KeystoreBackend<'a, L>, Meta: Serialize + Deseriali
     /// Get an asset
     pub fn asset(&self, code: &AssetCode) -> Result<Asset, KeystoreError<L>> {
         self.assets.get(code)
-    }
-
-    /// Insert an asset.
-    pub(crate) fn insert_asset(&mut self, asset: Asset) -> Result<(), KeystoreError<L>> {
-        self.assets.insert(asset)?;
-        Ok(())
-    }
-
-    /// Create an asset.
-    pub fn create_asset(
-        &mut self,
-        definition: AssetDefinition,
-        name: Option<String>,
-        description: Option<String>,
-        icon: Option<Icon>,
-        mint_info: Option<MintInfo>,
-    ) -> Result<(), KeystoreError<L>> {
-        self.assets
-            .create(definition, mint_info)?
-            .set_name(name)
-            .set_description(description)
-            .set_icon(icon)
-            .save()?;
-        Ok(())
-    }
-
-    // Create a native asset.
-    pub fn create_native_asset(&mut self, icon: Option<Icon>) -> Result<(), KeystoreError<L>> {
-        self.assets.create_native()?.set_icon(icon).save()?;
-        Ok(())
     }
 }
 
@@ -879,7 +854,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                 // entry.
                 *remember = true;
                 // Add the asset type if it is not already in the asset library.
-                model.create_asset(ro.asset_def.clone(), None, None, None, None)?;
+                model.assets_mut().create(ro.asset_def.clone(), None)?;
                 // Mark the account receiving the records used.
                 self.sending_accounts
                     .get_mut(&account.key.address())
@@ -900,7 +875,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                 // records, but do not include it in the history entry.
                 *remember = true;
                 // Add the asset type if it is not already in the asset library.
-                model.create_asset(ro.asset_def.clone(), None, None, None, None)?;
+                model.assets_mut().create(ro.asset_def.clone(), None)?;
                 // Mark the freezing account which is tracking the record used.
                 self.freezing_accounts
                     .get_mut(&account.key.pub_key())
@@ -951,7 +926,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
             }
 
             // Add the asset type if it is not already in the asset library.
-            model.create_asset(record.asset_def.clone(), None, None, None, None)?;
+            model.assets_mut().create(record.asset_def.clone(), None)?;
 
             // Mark the account receiving the record as used.
             self.sending_accounts
@@ -1139,13 +1114,12 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                 description: description.to_vec(),
             };
 
-            model.create_asset(
-                definition.clone(),
-                Some(name),
-                Some(mint_info.fmt_description()),
-                None,
-                Some(mint_info),
-            )?;
+            model
+                .assets_mut()
+                .create(definition.clone(), Some(mint_info.clone()))?
+                .with_name(name)
+                .with_description(mint_info.fmt_description())
+                .save()?;
 
             // If the asset is viewable/freezable, mark the appropriate viewing/freezing accounts
             // `used`.
@@ -1657,7 +1631,7 @@ impl<
             _marker2: Default::default(),
         };
         // Ensure the native asset type is always recognized.
-        model.create_native_asset(None)?;
+        model.assets_mut().create_native()?;
 
         let mutex = Arc::new(KeystoreSharedStateRwLock::new(
             state,
@@ -1933,13 +1907,13 @@ impl<
     /// List assets discovered or imported by this keystore.
     pub async fn assets(&self) -> Vec<Asset> {
         let KeystoreSharedState { model, .. } = &*self.read().await;
-        model.assets.iter().collect()
+        model.assets()
     }
 
     /// Get details about an asset type using its code.
     pub async fn asset(&self, code: AssetCode) -> Option<Asset> {
         let KeystoreSharedState { model, .. } = &*self.read().await;
-        model.assets.get::<L>(&code).ok()
+        model.asset(&code).ok()
     }
 
     /// List past transactions involving this keystore.
@@ -2056,44 +2030,6 @@ impl<
             .update(|KeystoreSharedState { state, model, .. }| {
                 state.submit_transaction(model, txn, info).boxed()
             })
-            .await
-    }
-
-    /// Insert an asset.
-    pub async fn insert_asset(&mut self, asset: Asset) -> Result<(), KeystoreError<L>> {
-        self.write()
-            .await
-            .update(|KeystoreSharedState { model, .. }| async move { model.insert_asset(asset) })
-            .await
-    }
-
-    /// Create an asset.
-    pub async fn create_asset(
-        &mut self,
-        definition: AssetDefinition,
-        name: Option<String>,
-        description: Option<String>,
-        icon: Option<Icon>,
-        mint_info: Option<MintInfo>,
-    ) -> Result<(), KeystoreError<L>> {
-        self.write()
-            .await
-            .update(|KeystoreSharedState { model, .. }| async move {
-                model.create_asset(definition, name, description, icon, mint_info)
-            })
-            .await
-    }
-
-    /// Create a native asset.
-    pub async fn create_native_asset(
-        &mut self,
-        icon: Option<Icon>,
-    ) -> Result<(), KeystoreError<L>> {
-        self.write()
-            .await
-            .update(
-                |KeystoreSharedState { model, .. }| async move { model.create_native_asset(icon) },
-            )
             .await
     }
 
@@ -2672,6 +2608,62 @@ impl<
             },
             || (),
         );
+    }
+
+    /// Insert an asset for testing purposes.
+    #[cfg(any(test, feature = "testing"))]
+    pub async fn insert_asset(&mut self, asset: Asset) -> Result<(), KeystoreError<L>> {
+        self.write()
+            .await
+            .update(|KeystoreSharedState { model, .. }| async move {
+                model.assets_mut().insert(asset)?;
+                Ok(())
+            })
+            .await
+    }
+
+    /// Create an asset for testing purposes.
+    #[cfg(any(test, feature = "testing"))]
+    pub async fn create_asset(
+        &mut self,
+        definition: AssetDefinition,
+        name: Option<String>,
+        description: Option<String>,
+        icon: Option<Icon>,
+        mint_info: Option<MintInfo>,
+    ) -> Result<(), KeystoreError<L>> {
+        self.write()
+            .await
+            .update(|KeystoreSharedState { model, .. }| async move {
+                model
+                    .assets_mut()
+                    .create(definition, mint_info)?
+                    .set_name(name)
+                    .set_description(description)
+                    .set_icon(icon)
+                    .save::<L>()?;
+                Ok(())
+            })
+            .await
+    }
+
+    /// Create a native asset for testing purposes.
+    #[cfg(any(test, feature = "testing"))]
+    pub async fn create_native_asset(
+        &mut self,
+        icon: Option<Icon>,
+    ) -> Result<(), KeystoreError<L>> {
+        self.write()
+            .await
+            .update(|KeystoreSharedState { model, .. }| async move {
+                model
+                    .assets_mut()
+                    .create_native()?
+                    .set_icon(icon)
+                    .save::<L>()?;
+                Ok(())
+            })
+            .await
     }
 }
 

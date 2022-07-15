@@ -1321,13 +1321,13 @@ mod test {
             view_key, freeze_key
         )
         .unwrap();
-        wait_for_prompt(&mut viewer_output);
-        // Mint some of the asset on behalf of `sender` (the asset has numeric code 1, since the
-        // native asset is always 0).
+        let matches = match_output(&mut viewer_output, &["(?P<asset_code>ASSET_CODE~.*)"]);
+        let asset_code = matches.get("asset_code");
+        // Mint some of the asset on behalf of `sender`.
         writeln!(
             viewer_input,
-            "mint 1 {} 1000 1 fee_account={}",
-            sender_pub_key, viewer_address,
+            "mint {} {} 1000 1 fee_account={}",
+            asset_code, sender_pub_key, viewer_address,
         )
         .unwrap();
         let matches = match_output(&mut viewer_output, &["(?P<txn>TXN~.*)"]);
@@ -1337,15 +1337,15 @@ mod test {
             (&mut viewer_input, &mut viewer_output),
             &mut [(&mut sender_input, &mut sender_output)],
         );
-        writeln!(sender_input, "balance 1").unwrap();
+        writeln!(sender_input, "balance {}", asset_code).unwrap();
         match_output(&mut sender_output, &[format!("{} 1000", sender_address)]);
 
         // Make an anonymous transfer that doesn't involve the viewer (so we can check that the
         // viewer nonetheless discovers the details of the transaction).
         writeln!(
             sender_input,
-            "transfer 1 {} 50 1 from={}",
-            receiver_pub_key, sender_address,
+            "transfer {} {} 50 1 from={}",
+            asset_code, receiver_pub_key, sender_address,
         )
         .unwrap();
         let matches = match_output(&mut sender_output, &["(?P<txn>TXN~.*)"]);
@@ -1362,7 +1362,7 @@ mod test {
         // View the transaction. We should find two unspent records: first the amount-50 transaction
         // output, and second the amount-950 change output. These records have UIDs 7 and 8, because
         // we already have 7 records: 5 initial grants, a mint output, and a mint fee change record.
-        writeln!(viewer_input, "view 1").unwrap();
+        writeln!(viewer_input, "view {}", asset_code).unwrap();
         match_output(
             &mut viewer_output,
             &[
@@ -1372,12 +1372,22 @@ mod test {
             ],
         );
         // Filter by account.
-        writeln!(viewer_input, "view 1 account={}", receiver_address).unwrap();
+        writeln!(
+            viewer_input,
+            "view {} account={}",
+            asset_code, receiver_address
+        )
+        .unwrap();
         match_output(
             &mut viewer_output,
             &["^UID\\s+AMOUNT\\s+FROZEN$", "^7\\s+50\\s+false$"],
         );
-        writeln!(viewer_input, "view 1 account={}", sender_address).unwrap();
+        writeln!(
+            viewer_input,
+            "view {} account={}",
+            asset_code, sender_address
+        )
+        .unwrap();
         match_output(
             &mut viewer_output,
             &["^UID\\s+AMOUNT\\s+FROZEN$", "^8\\s+950\\s+false$"],
@@ -1387,8 +1397,8 @@ mod test {
         // freeze them.
         writeln!(
             viewer_input,
-            "freeze 1 {} 950 1 fee_account={}",
-            sender_address, viewer_address,
+            "freeze {} {} 950 1 fee_account={}",
+            asset_code, sender_address, viewer_address,
         )
         .unwrap();
         let matches = match_output(&mut viewer_output, &["(?P<txn>TXN~.*)"]);
@@ -1398,7 +1408,7 @@ mod test {
             (&mut viewer_input, &mut viewer_output),
             &mut [(&mut sender_input, &mut sender_output)],
         );
-        writeln!(viewer_input, "view 1").unwrap();
+        writeln!(viewer_input, "view {}", asset_code).unwrap();
         // Note that the UID changes after freezing, because the freeze consume the unfrozen record
         // and creates a new frozen one.
         match_output(
@@ -1413,8 +1423,8 @@ mod test {
         // Transfers that need the frozen record as an input should now fail.
         writeln!(
             sender_input,
-            "transfer 1 {} 50 1 from={}",
-            receiver_pub_key, sender_address
+            "transfer {} {} 50 1 from={}",
+            asset_code, receiver_pub_key, sender_address
         )
         .unwrap();
         // Search for error message with a slightly permissive regex to allow the CLI some freedom
@@ -1424,8 +1434,8 @@ mod test {
         // Unfreezing the record makes it available again.
         writeln!(
             viewer_input,
-            "unfreeze 1 {} 950 1 fee_account={}",
-            sender_address, viewer_address,
+            "unfreeze {} {} 950 1 fee_account={}",
+            asset_code, sender_address, viewer_address,
         )
         .unwrap();
         let matches = match_output(&mut viewer_output, &["(?P<txn>TXN~.*)"]);
@@ -1435,7 +1445,7 @@ mod test {
             (&mut viewer_input, &mut viewer_output),
             &mut [(&mut sender_input, &mut sender_output)],
         );
-        writeln!(viewer_input, "view 1").unwrap();
+        writeln!(viewer_input, "view {}", asset_code).unwrap();
         match_output(
             &mut viewer_output,
             &[
@@ -1481,8 +1491,7 @@ mod test {
         )
         .unwrap();
         wait_for_prompt(&mut output);
-        // Asset 0 is the native asset, ours is asset 1.
-        writeln!(input, "asset 1").unwrap();
+        writeln!(input, "asset {}", definition.code).unwrap();
         match_output(
             &mut output,
             &["my_asset", "Not viewable", "Not freezeable", "Minter: me"],

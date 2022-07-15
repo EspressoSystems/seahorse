@@ -2431,22 +2431,33 @@ pub mod generic_keystore_tests {
         }
 
         // Check that `asset2`, which was not present before, got imported as-is.
-        assert_eq!(
-            keystores[0].0.asset(asset2.code).await.unwrap(),
-            Asset::from(asset2.clone(), None, None, None, None, true,)
-        );
+
+        let asset2_info = keystores[0].0.asset(asset2.code).await.unwrap();
+        assert_eq!(asset2_info.definition(), &asset2);
+        assert_eq!(asset2_info.mint_info(), None);
+        assert!(asset2_info.verified());
+        let created_time = asset2_info.created_time();
+        let modified_time = asset2_info.modified_time();
+        assert!(modified_time >= created_time);
 
         // Now import `asset2`, updating the existing verified asset with mint info.
-        let asset = Asset::from(
-            asset2.clone(),
-            None,
-            None,
-            None,
-            Some(mint_info2.clone()),
-            true,
-        );
-        keystores[0].0.insert_asset(asset.clone()).await.unwrap();
-        assert_eq!(keystores[0].0.asset(asset2.code).await.unwrap(), asset);
+        keystores[0]
+            .0
+            .insert_asset(Asset::from(
+                asset2.clone(),
+                None,
+                None,
+                None,
+                Some(mint_info2.clone()),
+                true,
+            ))
+            .await
+            .unwrap();
+        let asset2_info = keystores[0].0.asset(asset2.code).await.unwrap();
+        assert_eq!(asset2_info.mint_info(), Some(mint_info2.clone()));
+        assert!(asset2_info.verified());
+        assert_eq!(asset2_info.created_time(), created_time);
+        assert!(asset2_info.modified_time() > modified_time);
     }
 
     #[async_std::test]
