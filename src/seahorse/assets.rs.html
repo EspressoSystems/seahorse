@@ -824,6 +824,53 @@
 <span id="824">824</span>
 <span id="825">825</span>
 <span id="826">826</span>
+<span id="827">827</span>
+<span id="828">828</span>
+<span id="829">829</span>
+<span id="830">830</span>
+<span id="831">831</span>
+<span id="832">832</span>
+<span id="833">833</span>
+<span id="834">834</span>
+<span id="835">835</span>
+<span id="836">836</span>
+<span id="837">837</span>
+<span id="838">838</span>
+<span id="839">839</span>
+<span id="840">840</span>
+<span id="841">841</span>
+<span id="842">842</span>
+<span id="843">843</span>
+<span id="844">844</span>
+<span id="845">845</span>
+<span id="846">846</span>
+<span id="847">847</span>
+<span id="848">848</span>
+<span id="849">849</span>
+<span id="850">850</span>
+<span id="851">851</span>
+<span id="852">852</span>
+<span id="853">853</span>
+<span id="854">854</span>
+<span id="855">855</span>
+<span id="856">856</span>
+<span id="857">857</span>
+<span id="858">858</span>
+<span id="859">859</span>
+<span id="860">860</span>
+<span id="861">861</span>
+<span id="862">862</span>
+<span id="863">863</span>
+<span id="864">864</span>
+<span id="865">865</span>
+<span id="866">866</span>
+<span id="867">867</span>
+<span id="868">868</span>
+<span id="869">869</span>
+<span id="870">870</span>
+<span id="871">871</span>
+<span id="872">872</span>
+<span id="873">873</span>
 </pre><pre class="rust"><code><span class="comment">// Copyright (c) 2022 Espresso Systems (espressosys.com)</span>
 <span class="comment">// This file is part of the Seahorse library.</span>
 
@@ -839,6 +886,7 @@
 <span class="kw">use</span> <span class="kw">crate</span>::{<span class="ident">key_value_store</span>::<span class="kw-2">*</span>, <span class="ident">KeystoreError</span>, <span class="ident">Ledger</span>};
 <span class="kw">use</span> <span class="ident">arbitrary</span>::{<span class="ident">Arbitrary</span>, <span class="ident">Unstructured</span>};
 <span class="kw">use</span> <span class="ident">ark_serialize</span>::<span class="kw-2">*</span>;
+<span class="kw">use</span> <span class="ident">chrono</span>::{<span class="ident">DateTime</span>, <span class="ident">Local</span>};
 <span class="kw">use</span> <span class="ident">espresso_macros::ser_test</span>;
 <span class="kw">use</span> <span class="ident">image</span>::{<span class="ident">imageops</span>, <span class="ident">ImageBuffer</span>, <span class="ident">ImageFormat</span>, <span class="ident">ImageResult</span>, <span class="ident">Pixel</span>, <span class="ident">Rgba</span>};
 <span class="kw">use</span> <span class="ident">jf_cap</span>::{
@@ -848,6 +896,7 @@
 <span class="kw">use</span> <span class="ident">jf_primitives::signatures</span>::{<span class="ident">schnorr::SchnorrSignatureScheme</span>, <span class="ident">SignatureScheme</span>};
 <span class="kw">use</span> <span class="ident">jf_utils::tagged_blob</span>;
 <span class="kw">use</span> <span class="ident">serde</span>::{<span class="ident">Deserialize</span>, <span class="ident">Serialize</span>};
+<span class="kw">use</span> <span class="ident">std::cmp::min</span>;
 <span class="kw">use</span> <span class="ident">std::io</span>::{<span class="ident">BufRead</span>, <span class="ident">Seek</span>};
 <span class="kw">use</span> <span class="ident">std::ops</span>::{<span class="ident">Deref</span>, <span class="ident">DerefMut</span>};
 <span class="kw">use</span> <span class="ident">std::str::FromStr</span>;
@@ -1120,6 +1169,10 @@
     <span class="comment">// in-memory only field which is `true` if and only if it&#39;s in the verified set.</span>
     <span class="attribute">#[<span class="ident">serde</span>(<span class="ident">skip</span>)]</span>
     <span class="ident">verified</span>: <span class="ident">bool</span>,
+    <span class="doccomment">/// The time when the asset was created.</span>
+    <span class="ident">created_time</span>: <span class="ident">DateTime</span><span class="op">&lt;</span><span class="ident">Local</span><span class="op">&gt;</span>,
+    <span class="doccomment">/// The last time when the asset was modified.</span>
+    <span class="ident">modified_time</span>: <span class="ident">DateTime</span><span class="op">&lt;</span><span class="ident">Local</span><span class="op">&gt;</span>,
 }
 
 <span class="kw">impl</span> <span class="ident">Asset</span> {
@@ -1129,6 +1182,7 @@
     <span class="doccomment">///</span>
     <span class="doccomment">/// Returns the created asset.</span>
     <span class="kw">fn</span> <span class="ident">native</span><span class="op">&lt;</span><span class="ident">L</span>: <span class="ident">Ledger</span><span class="op">&gt;</span>() <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span> {
+        <span class="kw">let</span> <span class="ident">time</span> <span class="op">=</span> <span class="ident">Local::now</span>();
         <span class="self">Self</span> {
             <span class="ident">definition</span>: <span class="ident">AssetDefinition::native</span>(),
             <span class="ident">name</span>: <span class="prelude-val">Some</span>(<span class="ident">L::name</span>().<span class="ident">to_uppercase</span>()),
@@ -1136,6 +1190,8 @@
             <span class="ident">icon</span>: <span class="prelude-val">None</span>,
             <span class="ident">mint_info</span>: <span class="prelude-val">None</span>,
             <span class="ident">verified</span>: <span class="bool-val">false</span>,
+            <span class="ident">created_time</span>: <span class="ident">time</span>,
+            <span class="ident">modified_time</span>: <span class="ident">time</span>,
         }
     }
 
@@ -1179,6 +1235,16 @@
         <span class="self">self</span>.<span class="ident">verified</span>
     }
 
+    <span class="doccomment">/// Get the created time.</span>
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">created_time</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">DateTime</span><span class="op">&lt;</span><span class="ident">Local</span><span class="op">&gt;</span> {
+        <span class="self">self</span>.<span class="ident">created_time</span>
+    }
+
+    <span class="doccomment">/// Get the modified time.</span>
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">modified_time</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">DateTime</span><span class="op">&lt;</span><span class="ident">Local</span><span class="op">&gt;</span> {
+        <span class="self">self</span>.<span class="ident">modified_time</span>
+    }
+
     <span class="doccomment">/// Changes the asset to be verified without mint information.</span>
     <span class="doccomment">///</span>
     <span class="doccomment">/// Returns the verified asset.</span>
@@ -1201,6 +1267,7 @@
         <span class="ident">mint_info</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">MintInfo</span><span class="op">&gt;</span>,
         <span class="ident">verified</span>: <span class="ident">bool</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span> {
+        <span class="kw">let</span> <span class="ident">time</span> <span class="op">=</span> <span class="ident">Local::now</span>();
         <span class="self">Self</span> {
             <span class="ident">definition</span>,
             <span class="ident">name</span>,
@@ -1208,6 +1275,8 @@
             <span class="ident">icon</span>,
             <span class="ident">mint_info</span>,
             <span class="ident">verified</span>,
+            <span class="ident">created_time</span>: <span class="ident">time</span>,
+            <span class="ident">modified_time</span>: <span class="ident">time</span>,
         }
     }
 }
@@ -1272,6 +1341,7 @@
                 ))
             }
         };
+        <span class="kw">let</span> <span class="ident">time</span> <span class="op">=</span> <span class="ident">Local::now</span>();
         <span class="prelude-val">Ok</span>(<span class="ident">Asset</span> {
             <span class="ident">definition</span>,
             <span class="ident">name</span>,
@@ -1279,6 +1349,8 @@
             <span class="ident">icon</span>: <span class="prelude-val">None</span>,
             <span class="ident">mint_info</span>,
             <span class="ident">verified</span>: <span class="bool-val">false</span>,
+            <span class="ident">created_time</span>: <span class="ident">time</span>,
+            <span class="ident">modified_time</span>: <span class="ident">time</span>,
         })
     }
 }
@@ -1286,6 +1358,7 @@
 <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">any</span>(<span class="ident">test</span>, <span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;testing&quot;</span>))]</span>
 <span class="kw">impl</span> <span class="ident">From</span><span class="op">&lt;</span><span class="ident">AssetDefinition</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">Asset</span> {
     <span class="kw">fn</span> <span class="ident">from</span>(<span class="ident">definition</span>: <span class="ident">AssetDefinition</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span> {
+        <span class="kw">let</span> <span class="ident">time</span> <span class="op">=</span> <span class="ident">Local::now</span>();
         <span class="self">Self</span> {
             <span class="ident">definition</span>,
             <span class="ident">name</span>: <span class="prelude-val">None</span>,
@@ -1293,6 +1366,8 @@
             <span class="ident">icon</span>: <span class="prelude-val">None</span>,
             <span class="ident">mint_info</span>: <span class="prelude-val">None</span>,
             <span class="ident">verified</span>: <span class="bool-val">false</span>,
+            <span class="ident">created_time</span>: <span class="ident">time</span>,
+            <span class="ident">modified_time</span>: <span class="ident">time</span>,
         }
     }
 }
@@ -1314,36 +1389,42 @@
     <span class="doccomment">/// Set the optional asset name.</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">set_name</span>(<span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">name</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">String</span><span class="op">&gt;</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span> {
         <span class="self">self</span>.<span class="ident">asset</span>.<span class="ident">name</span> <span class="op">=</span> <span class="ident">name</span>;
+        <span class="self">self</span>.<span class="ident">asset</span>.<span class="ident">modified_time</span> <span class="op">=</span> <span class="ident">Local::now</span>();
         <span class="self">self</span>
     }
 
     <span class="doccomment">/// Set the asset name.</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">with_name</span>(<span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">name</span>: <span class="ident">String</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span> {
         <span class="self">self</span>.<span class="ident">asset</span>.<span class="ident">name</span> <span class="op">=</span> <span class="prelude-val">Some</span>(<span class="ident">name</span>);
+        <span class="self">self</span>.<span class="ident">asset</span>.<span class="ident">modified_time</span> <span class="op">=</span> <span class="ident">Local::now</span>();
         <span class="self">self</span>
     }
 
     <span class="doccomment">/// Clear the asset name.</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">clear_name</span>(<span class="kw-2">mut</span> <span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span> {
         <span class="self">self</span>.<span class="ident">asset</span>.<span class="ident">name</span> <span class="op">=</span> <span class="prelude-val">None</span>;
+        <span class="self">self</span>.<span class="ident">asset</span>.<span class="ident">modified_time</span> <span class="op">=</span> <span class="ident">Local::now</span>();
         <span class="self">self</span>
     }
 
     <span class="doccomment">/// Set the optional asset description.</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">set_description</span>(<span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">description</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">String</span><span class="op">&gt;</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span> {
         <span class="self">self</span>.<span class="ident">asset</span>.<span class="ident">description</span> <span class="op">=</span> <span class="ident">description</span>;
+        <span class="self">self</span>.<span class="ident">asset</span>.<span class="ident">modified_time</span> <span class="op">=</span> <span class="ident">Local::now</span>();
         <span class="self">self</span>
     }
 
     <span class="doccomment">/// Set the asset description.</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">with_description</span>(<span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">description</span>: <span class="ident">String</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span> {
         <span class="self">self</span>.<span class="ident">asset</span>.<span class="ident">description</span> <span class="op">=</span> <span class="prelude-val">Some</span>(<span class="ident">description</span>);
+        <span class="self">self</span>.<span class="ident">asset</span>.<span class="ident">modified_time</span> <span class="op">=</span> <span class="ident">Local::now</span>();
         <span class="self">self</span>
     }
 
     <span class="doccomment">/// Clear the asset description.</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">clear_description</span>(<span class="kw-2">mut</span> <span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span> {
         <span class="self">self</span>.<span class="ident">asset</span>.<span class="ident">description</span> <span class="op">=</span> <span class="prelude-val">None</span>;
+        <span class="self">self</span>.<span class="ident">asset</span>.<span class="ident">modified_time</span> <span class="op">=</span> <span class="ident">Local::now</span>();
         <span class="self">self</span>
     }
 
@@ -1357,6 +1438,7 @@
             }
             <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">None</span>,
         };
+        <span class="self">self</span>.<span class="ident">asset</span>.<span class="ident">modified_time</span> <span class="op">=</span> <span class="ident">Local::now</span>();
         <span class="self">self</span>
     }
 
@@ -1365,12 +1447,14 @@
         <span class="comment">// Resize the icon to the default value.</span>
         <span class="ident">icon</span>.<span class="ident">resize</span>(<span class="ident">ICON_WIDTH</span>, <span class="ident">ICON_HEIGHT</span>);
         <span class="self">self</span>.<span class="ident">asset</span>.<span class="ident">icon</span> <span class="op">=</span> <span class="prelude-val">Some</span>(<span class="ident">icon</span>);
+        <span class="self">self</span>.<span class="ident">asset</span>.<span class="ident">modified_time</span> <span class="op">=</span> <span class="ident">Local::now</span>();
         <span class="self">self</span>
     }
 
     <span class="doccomment">/// Clear the asset icon.</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">clear_icon</span>(<span class="kw-2">mut</span> <span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span> {
         <span class="self">self</span>.<span class="ident">asset</span>.<span class="ident">icon</span> <span class="op">=</span> <span class="prelude-val">None</span>;
+        <span class="self">self</span>.<span class="ident">asset</span>.<span class="ident">modified_time</span> <span class="op">=</span> <span class="ident">Local::now</span>();
         <span class="self">self</span>
     }
 
@@ -1409,6 +1493,8 @@
             <span class="self">self</span>.<span class="ident">asset</span>.<span class="ident">mint_info</span> <span class="op">=</span> <span class="prelude-val">Some</span>(<span class="ident">mint_info</span>);
         }
         <span class="self">self</span>.<span class="ident">asset</span>.<span class="ident">verified</span> <span class="op">|</span><span class="op">=</span> <span class="ident">other</span>.<span class="ident">verified</span>;
+        <span class="self">self</span>.<span class="ident">asset</span>.<span class="ident">created_time</span> <span class="op">=</span> <span class="ident">min</span>(<span class="self">self</span>.<span class="ident">asset</span>.<span class="ident">created_time</span>, <span class="ident">other</span>.<span class="ident">created_time</span>);
+        <span class="self">self</span>.<span class="ident">asset</span>.<span class="ident">modified_time</span> <span class="op">=</span> <span class="ident">Local::now</span>();
         <span class="prelude-val">Ok</span>(<span class="self">self</span>)
     }
 
@@ -1442,6 +1528,8 @@
             <span class="self">self</span>.<span class="ident">asset</span>.<span class="ident">mint_info</span> <span class="op">=</span> <span class="prelude-val">Some</span>(<span class="ident">mint_info</span>);
         }
         <span class="self">self</span>.<span class="ident">asset</span>.<span class="ident">verified</span> <span class="op">|</span><span class="op">=</span> <span class="ident">other</span>.<span class="ident">verified</span>;
+        <span class="self">self</span>.<span class="ident">asset</span>.<span class="ident">created_time</span> <span class="op">=</span> <span class="ident">min</span>(<span class="self">self</span>.<span class="ident">asset</span>.<span class="ident">created_time</span>, <span class="ident">other</span>.<span class="ident">created_time</span>);
+        <span class="self">self</span>.<span class="ident">asset</span>.<span class="ident">modified_time</span> <span class="op">=</span> <span class="ident">Local::now</span>();
         <span class="prelude-val">Ok</span>(<span class="self">self</span>)
     }
 }
@@ -1571,6 +1659,7 @@
         <span class="ident">definition</span>: <span class="ident">AssetDefinition</span>,
         <span class="ident">mint_info</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">MintInfo</span><span class="op">&gt;</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">AssetEditor</span><span class="op">&lt;</span><span class="lifetime">&#39;_</span><span class="op">&gt;</span>, <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
+        <span class="kw">let</span> <span class="ident">time</span> <span class="op">=</span> <span class="ident">Local::now</span>();
         <span class="kw">let</span> <span class="ident">asset</span> <span class="op">=</span> <span class="ident">Asset</span> {
             <span class="ident">definition</span>,
             <span class="ident">name</span>: <span class="prelude-val">None</span>,
@@ -1578,6 +1667,8 @@
             <span class="ident">icon</span>: <span class="prelude-val">None</span>,
             <span class="ident">mint_info</span>,
             <span class="ident">verified</span>: <span class="bool-val">false</span>,
+            <span class="ident">created_time</span>: <span class="ident">time</span>,
+            <span class="ident">modified_time</span>: <span class="ident">time</span>,
         };
         <span class="self">self</span>.<span class="ident">insert</span>(<span class="ident">asset</span>)
     }
@@ -1602,6 +1693,7 @@
         <span class="ident">mint_info</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">MintInfo</span><span class="op">&gt;</span>,
         <span class="ident">verified</span>: <span class="ident">bool</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">AssetEditor</span><span class="op">&lt;</span><span class="lifetime">&#39;_</span><span class="op">&gt;</span>, <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
+        <span class="kw">let</span> <span class="ident">time</span> <span class="op">=</span> <span class="ident">Local::now</span>();
         <span class="kw">let</span> <span class="ident">asset</span> <span class="op">=</span> <span class="ident">Asset</span> {
             <span class="ident">definition</span>,
             <span class="ident">name</span>: <span class="prelude-val">None</span>,
@@ -1609,6 +1701,8 @@
             <span class="ident">icon</span>: <span class="prelude-val">None</span>,
             <span class="ident">mint_info</span>,
             <span class="ident">verified</span>,
+            <span class="ident">created_time</span>: <span class="ident">time</span>,
+            <span class="ident">modified_time</span>: <span class="ident">time</span>,
         };
         <span class="self">self</span>.<span class="ident">insert</span>(<span class="ident">asset</span>)
     }
