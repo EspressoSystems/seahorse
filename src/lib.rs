@@ -690,42 +690,43 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
             } => {
                 // Don't trust the network connection that provided us this event; validate it
                 // against our local mirror of the ledger and bail out if it is invalid.
-                let mut uids = match self.txn_state.validator.validate_and_apply(block.clone()) {
-                    Ok(uids) => {
-                        if state_comm != self.txn_state.validator.commit() {
-                            // Received a block which validates, but our state commitment does not
-                            // match that of the event source. Since the block validates, we will
-                            // accept it, but this must indicate that the event source is lying or
-                            // mistaken about the state commitment. This would be a good time to
-                            // switch to a different query server or something, but for now we'll
-                            // just log the problem.
-                            println!("received valid block with invalid state commitment");
-                        }
+                let (mut uids, nullifier_proofs) =
+                    match self.txn_state.validator.validate_and_apply(block.clone()) {
+                        Ok((uids, nullifier_proofs)) => {
+                            if state_comm != self.txn_state.validator.commit() {
+                                // Received a block which validates, but our state commitment does
+                                // not match that of the event source. Since the block validates, we
+                                // will accept it, but this must indicate that the event source is
+                                // lying or mistaken about the state commitment. This would be a
+                                // good time to switch to a different query server or something, but
+                                // for now we'll just log the problem.
+                                println!("received valid block with invalid state commitment");
+                            }
 
-                        // Get a list of new uids and whether we want to remember them in our record
-                        // Merkle tree. Initially, set `remember` to false for all uids, to maximize
-                        // sparseness. If any of the consumers of this block (for example, the
-                        // viewer component, or the owner of this keystore) care about a uid, they
-                        // will set its `remember` flag to true.
-                        uids.into_iter().map(|uid| (uid, false)).collect::<Vec<_>>()
-                    }
-                    Err(val_err) => {
-                        //todo !jeb.bearer handle this case more robustly. If we get here, it means
-                        // the event stream has lied to us, so recovery is quite tricky and may
-                        // require us to fail over to a different query service.
-                        panic!("received invalid block: {:?}, {:?}", block, val_err);
-                    }
-                };
+                            // Get a list of new uids and whether we want to remember them in our
+                            // record Merkle tree. Initially, set `remember` to false for all uids,
+                            // to maximize sparseness. If any of the consumers of this block (for
+                            // example, the viewer component, or the owner of this keystore) care
+                            // about a uid, they will set its `remember` flag to true.
+                            (
+                                uids.into_iter().map(|uid| (uid, false)).collect::<Vec<_>>(),
+                                nullifier_proofs,
+                            )
+                        }
+                        Err(val_err) => {
+                            //todo !jeb.bearer handle this case more robustly. If we get here, it
+                            // means the event stream has lied to us, so recovery is quite tricky
+                            // and may require us to fail over to a different query service.
+                            panic!("received invalid block: {:?}, {:?}", block, val_err);
+                        }
+                    };
 
                 // Update our full copies of sparse validator data structures to be consistent with
                 // the validator state.
-                for txn in block.txns() {
-                    let nullifiers = txn.input_nullifiers();
-                    // Remove spent records.
-                    for n in &nullifiers {
-                        if let Some(record) = self.txn_state.records.remove_by_nullifier(*n) {
-                            self.txn_state.forget_merkle_leaf(record.uid);
-                        }
+                // Remove spent records.
+                for (n, _) in &nullifier_proofs {
+                    if let Some(record) = self.txn_state.records.remove_by_nullifier(*n) {
+                        self.txn_state.forget_merkle_leaf(record.uid);
                     }
                 }
                 // Insert new records.
@@ -736,11 +737,6 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                         .flat_map(|txn| txn.output_commitments()),
                 );
                 // Update nullifier set
-                let nullifier_proofs = block
-                    .txns()
-                    .into_iter()
-                    .flat_map(|txn| txn.proven_nullifiers())
-                    .collect::<Vec<_>>();
                 if self
                     .txn_state
                     .nullifiers

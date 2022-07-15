@@ -57,7 +57,7 @@ jf-primitives = { features=["std"], git = "https://github.com/EspressoSystems/je
 jf-utils = { features=["std"], git = "https://github.com/EspressoSystems/jellyfish.git", tag = "0.1.1" }
 arbitrary-wrappers = { git = "https://github.com/EspressoSystems/arbitrary-wrappers.git"}
 net = { git = "https://github.com/EspressoSystems/net.git" }
-reef = {  git = "https://github.com/EspressoSystems/reef.git" }
+reef = {  git = "https://github.com/EspressoSystems/reef.git", branch = "feat/sliding-nullifiers" }
 tagged-base64 = { git = "https://github.com/EspressoSystems/tagged-base64.git", tag = "0.2.0" }
 
 [dev-dependencies]
@@ -66,7 +66,7 @@ proptest = "0.8.7"
 quickcheck = "1.0"
 quickcheck_macros = "1.0"
 rand = "0.8.5"
-reef = { git = "https://github.com/EspressoSystems/reef.git", features = ["testing"] }
+reef = { git = "https://github.com/EspressoSystems/reef.git", features = ["testing"], branch = "feat/sliding-nullifiers" }
 
 [features]
 slow-tests = []

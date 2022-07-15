@@ -3308,7 +3308,7 @@ dependencies = [
 [[package]]
 name = "reef"
 version = "0.3.0"
-source = "git+https://github.com/EspressoSystems/reef.git#7b45d90bcf1894a4a542e1680ccdf8cb7e6df247"
+source = "git+https://github.com/EspressoSystems/reef.git?branch=feat/sliding-nullifiers#34c68ae5b031468dd1d5d4aaf7b4742ec671a9a4"
 dependencies = [
  "arbitrary",
  "arbitrary-wrappers",

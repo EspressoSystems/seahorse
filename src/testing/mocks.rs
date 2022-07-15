@@ -102,7 +102,7 @@ impl<'a, const H: u8> super::MockNetwork<'a, cap::LedgerWithHeight<H>>
 
     fn submit(&mut self, block: cap::Block) -> Result<(), KeystoreError<cap::LedgerWithHeight<H>>> {
         match self.validator.validate_and_apply(block.clone()) {
-            Ok(mut uids) => {
+            Ok((mut uids, _)) => {
                 // Add nullifiers
                 for txn in &block {
                     for nullifier in txn.input_nullifiers() {
