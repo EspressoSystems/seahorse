@@ -11,7 +11,8 @@ use crate::{
     events::{EventIndex, EventSource, LedgerEvent},
     sparse_merkle_tree::SparseMerkleTree,
     testing::{MockEventSource, MockNetwork as _},
-    txn_builder::{PendingTransaction, TransactionInfo, TransactionState},
+    transactions::Transaction,
+    txn_builder::TransactionState,
     CryptoSnafu, KeystoreBackend, KeystoreError, KeystoreState,
 };
 use async_std::sync::{Arc, Mutex};
@@ -243,7 +244,6 @@ impl<'a, const H: u8> KeystoreBackend<'a, cap::LedgerWithHeight<H>>
                     record_mt: SparseMerkleTree::sparse(network.records.clone()),
 
                     now: network.now(),
-                    transactions: Default::default(),
                 },
                 key_state: Default::default(),
                 viewing_accounts: Default::default(),
@@ -304,14 +304,14 @@ impl<'a, const H: u8> KeystoreBackend<'a, cap::LedgerWithHeight<H>>
     async fn submit(
         &mut self,
         txn: cap::Transaction,
-        _info: TransactionInfo<cap::LedgerWithHeight<H>>,
+        _info: Transaction<cap::LedgerWithHeight<H>>,
     ) -> Result<(), KeystoreError<cap::LedgerWithHeight<H>>> {
         self.ledger.lock().await.submit(txn)
     }
 
     async fn finalize(
         &mut self,
-        txn: PendingTransaction<cap::LedgerWithHeight<H>>,
+        txn: Transaction<cap::LedgerWithHeight<H>>,
         txn_id: Option<(u64, u64)>,
     ) {
         if let Some((block_id, txn_id)) = txn_id {
@@ -321,8 +321,8 @@ impl<'a, const H: u8> KeystoreBackend<'a, cap::LedgerWithHeight<H>>
                 .post_memos(
                     block_id,
                     txn_id,
-                    txn.info.memos.into_iter().flatten().collect(),
-                    txn.info.sig,
+                    txn.memos().iter().cloned().flatten().collect(),
+                    txn.sig().as_ref().unwrap().clone(),
                 )
                 .unwrap();
         }

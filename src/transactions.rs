@@ -16,6 +16,7 @@ use crate::{
 };
 use atomic_store::{AppendLog, AtomicStoreLoader};
 use chrono::{DateTime, Local};
+use derivative::Derivative;
 use jf_cap::{
     keys::UserAddress,
     structs::{ReceiverMemo, RecordOpening},
@@ -26,8 +27,9 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::ops::{Deref, DerefMut};
 
 /// A Transaction<L>with its UID as the primary key.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Derivative, Deserialize, Serialize)]
 #[serde(bound = "")]
+#[derivative(PartialEq(bound = "L: Ledger"))]
 pub struct Transaction<L: Ledger> {
     /// Identifier for the Transaction, also the primary key in storage
     uid: TransactionUID<L>,
@@ -391,8 +393,11 @@ impl<L: Ledger> Transactions<L> {
     }
 
     /// Remove a transaction from the pending index when it is known to have timed out
-    pub fn remove_expired(&mut self, timeout: u64) -> Result<Vec<Transaction<L>>, KeystoreError<L>> {
-        let mut removed = vec!();
+    pub fn remove_expired(
+        &mut self,
+        timeout: u64,
+    ) -> Result<Vec<Transaction<L>>, KeystoreError<L>> {
+        let mut removed = vec![];
         if let Some(expiring_uids) = self.expiring_txns.get_mut(&timeout).cloned() {
             for uid in expiring_uids.iter() {
                 let editor = self.get_mut(uid)?;

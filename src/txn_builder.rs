@@ -9,7 +9,11 @@
 //!
 //! This module defines the subset of ledger state required by a keystore to build transactions, and
 //! provides an interface for building them.
-use crate::{events::EventIndex, sparse_merkle_tree::SparseMerkleTree, transactions::{Transaction, Transactions, TransactionParams}};
+use crate::{
+    events::EventIndex,
+    sparse_merkle_tree::SparseMerkleTree,
+    transactions::{Transaction, TransactionParams, Transactions},
+};
 use arbitrary::{Arbitrary, Unstructured};
 use arbitrary_wrappers::*;
 use ark_serialize::*;
@@ -1027,23 +1031,22 @@ impl<L: Ledger> PartialEq<Self> for TransactionState<L> {
     }
 }
 
-// impl<'a, L: Ledger> Arbitrary<'a> for TransactionState<L>
-// where
-//     Validator<L>: Arbitrary<'a>,
-//     NullifierSet<L>: Arbitrary<'a>,
-//     TransactionHash<L>: Arbitrary<'a>,
-// {
-//     fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
-//         Ok(Self {
-//             now: u.arbitrary()?,
-//             validator: u.arbitrary()?,
-//             records: u.arbitrary()?,
-//             nullifiers: u.arbitrary()?,
-//             record_mt: u.arbitrary()?,
-//             transactions: Default::default(),
-//         })
-//     }
-// }
+impl<'a, L: Ledger> Arbitrary<'a> for TransactionState<L>
+where
+    Validator<L>: Arbitrary<'a>,
+    NullifierSet<L>: Arbitrary<'a>,
+    TransactionHash<L>: Arbitrary<'a>,
+{
+    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
+        Ok(Self {
+            now: u.arbitrary()?,
+            validator: u.arbitrary()?,
+            records: u.arbitrary()?,
+            nullifiers: u.arbitrary()?,
+            record_mt: u.arbitrary()?,
+        })
+    }
+}
 
 impl<L: Ledger> TransactionState<L> {
     pub fn balance(&self, asset: &AssetCode, pub_key: &UserPubKey, frozen: FreezeFlag) -> U256 {
@@ -1052,18 +1055,24 @@ impl<L: Ledger> TransactionState<L> {
             .fold(U256::zero(), |sum, record| sum + record.amount())
     }
 
-    pub fn clear_expired_transactions(&mut self, transactions: &mut Transactions<L>) -> Vec<Transaction<L>> {
-        transactions
-            .remove_expired(self.validator.now()).unwrap()
+    pub fn clear_expired_transactions(
+        &mut self,
+        transactions: &mut Transactions<L>,
+    ) -> Vec<Transaction<L>> {
+        transactions.remove_expired(self.validator.now()).unwrap()
     }
 
     // Inform the database that we have received memos for the given record UIDs. Return a list of
     // the transactions that are completed as a result.
-    pub fn received_memos(&mut self, transactions: &mut Transactions<L>, uids: impl Iterator<Item = u64>) -> Vec<TransactionUID<L>> {
+    pub fn received_memos(
+        &mut self,
+        uids: impl Iterator<Item = u64>,
+        transactions: &mut Transactions<L>,
+    ) -> Vec<TransactionUID<L>> {
         let mut completed = Vec::new();
         for uid in uids {
             if let Some(txn) = transactions.with_memo_id_mut(uid).ok() {
-                txn.remove_pending_uid(uid);
+                let mut txn = txn.remove_pending_uid(uid);
                 if txn.transaction().pending_uids().is_empty() {
                     completed.push(txn.transaction().uid().clone());
                 }
@@ -1105,11 +1114,17 @@ impl<L: Ledger> TransactionState<L> {
         }
         info.timeout = Some(timeout);
         let receipt = TransactionReceipt {
-            uid: info.uid.unwrap(),
+            uid: info.uid.as_ref().unwrap().clone(),
             fee_nullifier: txn.input_nullifiers()[0],
             submitters: info.senders.clone(),
         };
-        let stored_txn = transactions.create(info).unwrap().with_receipt(receipt).with_hash(txn.hash().clone()).save().unwrap();
+        let stored_txn = transactions
+            .create(info)
+            .unwrap()
+            .with_receipt(receipt)
+            .with_hash(txn.hash().clone())
+            .save()
+            .unwrap();
         stored_txn
     }
 
@@ -1290,19 +1305,16 @@ impl<L: Ledger> TransactionState<L> {
         //     kind: TransactionKind::<L>::send(),
         //     hash: None,
         //     senders: owner_addresses.clone(),
-            // receivers: spec
-            //     .receivers
-            //     .iter()
-            //     .map(|(pub_key, amount, _)| (pub_key.address(), *amount))
-            //     .collect(),
+        // receivers: spec
+        //     .receivers
+        //     .iter()
+        //     .map(|(pub_key, amount, _)| (pub_key.address(), *amount))
+        //     .collect(),
         //     fee_change: Some(fee_change.into()),
         //     asset_change: Some(RecordAmount::zero()),
         //     receipt: None,
         // };
-        Ok((
-            note,
-            txn_params,
-        ))
+        Ok((note, txn_params))
     }
 
     fn transfer_non_native<'a, 'k>(
@@ -1476,10 +1488,7 @@ impl<L: Ledger> TransactionState<L> {
             fee_change: Some(fee_change.into()),
             asset_change: Some(RecordAmount::zero()),
         };
-        Ok((
-            note,
-            txn_params,
-        ))
+        Ok((note, txn_params))
     }
 
     fn generate_memos(
@@ -1568,7 +1577,7 @@ impl<L: Ledger> TransactionState<L> {
             status: TransactionStatus::Pending,
             memos: memos,
             sig: Some(sig),
-            inputs: vec![fee_rec],
+            inputs: vec![fee_rec.clone()],
             outputs: outputs,
             time: Local::now(),
             asset: asset_def.code,
@@ -1578,10 +1587,7 @@ impl<L: Ledger> TransactionState<L> {
             fee_change: Some(fee_rec.amount.into()),
             asset_change: Some(RecordAmount::zero()),
         };
-        Ok((
-            note,
-            txn_params,
-        ))
+        Ok((note, txn_params))
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1664,23 +1670,20 @@ impl<L: Ledger> TransactionState<L> {
             status: TransactionStatus::Pending,
             memos: memos,
             sig: Some(sig),
-            inputs: input_records.into_iter().map(|(ro, _)| ro).collect(),
+            inputs: input_records.iter().cloned().map(|(ro, _)| ro).collect(),
             outputs: outputs,
             time: Local::now(),
             asset: asset.code,
             kind: TransactionKind::<L>::send(),
             senders: vec![fee_address.clone()],
             receivers: input_records
-                    .iter()
-                    .map(|(ro, _)| (owner.clone(), ro.amount.into()))
-                    .collect(),
+                .iter()
+                .map(|(ro, _)| (owner.clone(), ro.amount.into()))
+                .collect(),
             fee_change: Some(fee_change.into()),
             asset_change: Some(RecordAmount::zero()),
         };
-        Ok((
-            note,
-            txn_params,
-        ))
+        Ok((note, txn_params))
     }
 
     pub fn forget_merkle_leaf(&mut self, leaf: u64) {

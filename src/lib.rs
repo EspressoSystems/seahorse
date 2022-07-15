@@ -54,7 +54,7 @@ use crate::{
     key_scan::{receive_history_entry, BackgroundKeyScan, ScanOutputs},
     loader::KeystoreLoader,
     persistence::AtomicKeystoreStorage,
-    transactions::{Transaction, Transactions, TransactionParams, TransactionEditor},
+    transactions::{Transaction, TransactionEditor, TransactionParams, Transactions},
     txn_builder::*,
 };
 use arbitrary::Arbitrary;
@@ -462,7 +462,7 @@ pub trait KeystoreBackend<'a, L: Ledger>: Send {
 /// Transient state derived from the persistent [KeystoreState].
 pub struct KeystoreModel<
     'a,
-    L:Ledger,
+    L: Ledger,
     Backend: KeystoreBackend<'a, L>,
     Meta: Serialize + DeserializeOwned + Send,
 > {
@@ -479,7 +479,7 @@ pub struct KeystoreModel<
     _marker2: std::marker::PhantomData<L>,
 }
 
-impl<'a, L:Ledger, Backend: KeystoreBackend<'a, L>, Meta: Serialize + DeserializeOwned + Send>
+impl<'a, L: Ledger, Backend: KeystoreBackend<'a, L>, Meta: Serialize + DeserializeOwned + Send>
     KeystoreModel<'a, L, Backend, Meta>
 {
     /// Make a change to the persisted state using a function describing a transaction.
@@ -572,7 +572,7 @@ impl<'a, L:Ledger, Backend: KeystoreBackend<'a, L>, Meta: Serialize + Deserializ
 ///
 /// Note that this function cannot be used to import verified assets. Verified assets can only be
 /// imported using [verify_assets], conditional on a signature check.
-pub fn import_asset<'a, L:Ledger, Meta: Serialize + DeserializeOwned + Send>(
+pub fn import_asset<'a, L: Ledger, Meta: Serialize + DeserializeOwned + Send>(
     model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
     asset: Asset,
 ) -> Result<(), KeystoreError<L>> {
@@ -590,7 +590,7 @@ pub fn import_asset<'a, L:Ledger, Meta: Serialize + DeserializeOwned + Send>(
 }
 
 /// Load a verified asset library with its trusted signer.
-pub fn verify_assets<'a, L:Ledger, Meta: Serialize + DeserializeOwned + Send>(
+pub fn verify_assets<'a, L: Ledger, Meta: Serialize + DeserializeOwned + Send>(
     model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
     trusted_signer: &VerKey,
     library: VerifiedAssetLibrary,
@@ -625,7 +625,7 @@ impl<L: Ledger> Default for EventSummary<L> {
     }
 }
 
-impl<'a, L: 'static +Ledger> KeystoreState<'a, L> {
+impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
     fn key_pairs(&self) -> Vec<UserKeyPair> {
         self.sending_accounts
             .values()
@@ -669,7 +669,7 @@ impl<'a, L: 'static +Ledger> KeystoreState<'a, L> {
         model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
         receipt: &TransactionReceipt<L>,
     ) -> Result<TransactionStatus, KeystoreError<L>> {
-        match self.txn_state.transactions.get(&receipt.uid)?.status() {
+        match model.transactions.get(&receipt.uid)?.status() {
             TransactionStatus::Unknown => {
                 // If the transactions database returns Unknown, it means the transaction is not in-
                 // flight (the database only tracks in-flight transactions). So it must be retired,
@@ -813,6 +813,7 @@ impl<'a, L: 'static +Ledger> KeystoreState<'a, L> {
                     let mut self_published = false;
                     if let Some(pending) = self
                         .clear_pending_transaction(
+                            model,
                             &txn,
                             Some((block_id, txn_id as u64, &mut this_txn_uids)),
                         )
@@ -824,13 +825,18 @@ impl<'a, L: 'static +Ledger> KeystoreState<'a, L> {
                             TransactionStatus::AwaitingMemos
                         };
                         summary.updated_txns.push((pending.uid().clone(), status));
-                        self.txn_state.transactions.get_mut(
-                            pending.uid()).unwrap().add_pending_uids(
-                            this_txn_uids
-                                .iter()
-                                .zip(pending.memos().iter())
-                                .filter_map(|((uid, _), memo)| memo.as_ref().map(|_| *uid)).into_iter().collect(),
-                        );
+                        model
+                            .transactions
+                            .get_mut(pending.uid())
+                            .unwrap()
+                            .add_pending_uids(
+                                this_txn_uids
+                                    .iter()
+                                    .zip(pending.memos().iter())
+                                    .filter_map(|((uid, _), memo)| memo.as_ref().map(|_| *uid))
+                                    .into_iter()
+                                    .collect(),
+                            );
                         model
                             .backend
                             .finalize(pending, Some((block_id, txn_id as u64)))
@@ -875,7 +881,10 @@ impl<'a, L: 'static +Ledger> KeystoreState<'a, L> {
                 // This maintains the invariant that everything in `pending_transactions` must
                 // correspond to an on-hold record, because everything which corresponds to a record
                 // whose hold just expired will be removed from the set now.
-                for txn in self.txn_state.clear_expired_transactions() {
+                for txn in self
+                    .txn_state
+                    .clear_expired_transactions(&mut model.transactions)
+                {
                     summary
                         .updated_txns
                         .push((txn.uid().clone(), TransactionStatus::Rejected));
@@ -889,7 +898,7 @@ impl<'a, L: 'static +Ledger> KeystoreState<'a, L> {
             } => {
                 let completed = self
                     .txn_state
-                    .received_memos(outputs.iter().map(|info| info.2));
+                    .received_memos(outputs.iter().map(|info| info.2), &mut model.transactions);
                 let self_published = !completed.is_empty();
                 summary.updated_txns.extend(
                     completed
@@ -922,7 +931,7 @@ impl<'a, L: 'static +Ledger> KeystoreState<'a, L> {
                     summary
                         .rejected_nullifiers
                         .append(&mut txn.input_nullifiers());
-                    if let Some(pending) = self.clear_pending_transaction(&txn, None).await {
+                    if let Some(pending) = self.clear_pending_transaction(model, &txn, None).await {
                         // Try to resubmit if the error is recoverable.
                         let uid = pending.uid();
                         if error.is_bad_nullifier_proof() {
@@ -1063,8 +1072,16 @@ impl<'a, L: 'static +Ledger> KeystoreState<'a, L> {
         }
 
         if add_to_history && !my_records.is_empty() {
-            self.add_receive_history(model, block_id, txn_id, txn.kind(), txn.hash().clone(), TransactionUID::<L>(txn.hash().clone()), &my_records)
-                .await;
+            self.add_receive_history(
+                model,
+                block_id,
+                txn_id,
+                txn.kind(),
+                txn.hash().clone(),
+                TransactionUID::<L>(txn.hash().clone()),
+                &my_records,
+            )
+            .await;
         }
 
         Ok(())
@@ -1082,7 +1099,12 @@ impl<'a, L: 'static +Ledger> KeystoreState<'a, L> {
     ) {
         let history = receive_history_entry(kind, uid.clone(), records);
 
-        if let Err(err) = self.txn_state.transactions.create(history).unwrap().with_hash(hash).save()
+        if let Err(err) = model
+            .transactions
+            .create(history)
+            .unwrap()
+            .with_hash(hash)
+            .save()
         {
             println!(
                 "Failed to store transaction ({}, {}) in history: {}.",
@@ -1149,12 +1171,15 @@ impl<'a, L: 'static +Ledger> KeystoreState<'a, L> {
         Err(KeystoreError::<L>::CannotDecryptMemo {})
     }
 
-    async fn clear_pending_transaction<'t>(
+    async fn clear_pending_transaction<'t, Meta: Serialize + DeserializeOwned + Send>(
         &mut self,
+        model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
         txn: &reef::Transaction<L>,
         res: Option<CommittedTxn<'t>>,
     ) -> Option<Transaction<L>> {
-        let pending = self.txn_state.clear_pending_transaction(txn, &res);
+        let pending = self
+            .txn_state
+            .clear_pending_transaction(&mut model.transactions, txn, &res);
 
         // If this was a successful transaction, add all of its frozen/unfrozen outputs to our
         // freezable database (for freeze/unfreeze transactions).
@@ -1162,9 +1187,7 @@ impl<'a, L: 'static +Ledger> KeystoreState<'a, L> {
             if let Some(pending) = &pending {
                 // the first uid corresponds to the fee change output, which is not one of the
                 // `freeze_outputs`, so we skip that one
-                for ((uid, remember), ro) in
-                    uids.iter_mut().skip(1).zip(pending.outputs())
-                {
+                for ((uid, remember), ro) in uids.iter_mut().skip(1).zip(pending.outputs()) {
                     self.txn_state.records.insert_freezable(
                         ro.clone(),
                         *uid,
@@ -1606,7 +1629,8 @@ impl<'a, L: 'static +Ledger> KeystoreState<'a, L> {
         }
 
         let txn = reef::Transaction::<L>::cap(note, nullifier_pfs);
-        self.submit_elaborated_transaction(model, txn, Some(info)).await
+        self.submit_elaborated_transaction(model, txn, Some(info))
+            .await
     }
 
     // For reasons that are not clearly understood, the default async desugaring for this function
@@ -1632,29 +1656,32 @@ impl<'a, L: 'static +Ledger> KeystoreState<'a, L> {
     {
         async move {
             let stored_txn = if info.is_some() {
-                 // Persist the pending transaction.
-                let t = self.txn_state.add_pending_transaction(&txn, info.unwrap());
-                if let Err(err) = self.txn_state.transactions.commit()
-                {
+                // Persist the pending transaction.
+                let t = self.txn_state.add_pending_transaction(
+                    &mut model.transactions,
+                    &txn,
+                    info.unwrap(),
+                );
+                if let Err(err) = model.transactions.commit() {
                     // If we failed to persist the pending transaction, we cannot submit it, because if
                     // we then exit and reload the process from storage, there will be an in-flight
                     // transaction which is not accounted for in our pending transaction data
                     // structures. Instead, we remove the pending transaction from our in-memory data
                     // structures and return the error.
-                    self.txn_state.transactions.revert();
-                    self.clear_pending_transaction(&txn, None).await;
+                    model.transactions.revert();
+                    self.clear_pending_transaction(model, &txn, None).await;
                     return Err(err);
                 }
                 t
             } else {
-                self.txn_state.transactions.with_hash(&txn.hash())?
+                model.transactions.with_hash(&txn.hash())?
             };
             let receipt = stored_txn.receipt().clone().unwrap();
             // If we succeeded in creating and persisting the pending transaction, submit it to the
             // validators.
             if let Err(err) = model.backend.submit(txn.clone(), stored_txn).await {
-                self.txn_state.transactions.revert();
-                self.clear_pending_transaction(&txn, None).await;
+                model.transactions.revert();
+                self.clear_pending_transaction(model, &txn, None).await;
                 return Err(err);
             }
 
@@ -1683,7 +1710,7 @@ impl<'a, L: 'static +Ledger> KeystoreState<'a, L> {
 pub struct Keystore<
     'a,
     Backend: KeystoreBackend<'a, L>,
-    L:Ledger,
+    L: Ledger,
     Meta: Serialize + DeserializeOwned + Send,
 > {
     // Data shared between the main thread and the event handling thread:
@@ -1751,7 +1778,7 @@ impl<T: Serialize + DeserializeOwned> LoadStore for EncryptingResourceAdapter<T>
 /// Keystore state which is shared with event handling threads.
 pub struct KeystoreSharedState<
     'a,
-    L:Ledger,
+    L: Ledger,
     Backend: KeystoreBackend<'a, L>,
     Meta: Serialize + DeserializeOwned + Send,
 > {
@@ -1763,7 +1790,7 @@ pub struct KeystoreSharedState<
     pending_key_scans: HashMap<UserAddress, Vec<oneshot::Sender<()>>>,
 }
 
-impl<'a, L:Ledger, Backend: KeystoreBackend<'a, L>, Meta: Serialize + DeserializeOwned + Send>
+impl<'a, L: Ledger, Backend: KeystoreBackend<'a, L>, Meta: Serialize + DeserializeOwned + Send>
     KeystoreSharedState<'a, L, Backend, Meta>
 {
     pub fn backend(&self) -> &Backend {
@@ -1807,14 +1834,22 @@ impl<'a, T, F: Future<Output = T> + Captures<'a> + Send> SendFuture<'a, T> for F
 
 impl<
         'a,
-        L: 'static +Ledger,
+        L: 'static + Ledger,
         Backend: 'a + KeystoreBackend<'a, L> + Send + Sync,
         Meta: 'a + Serialize + DeserializeOwned + Send + Clone + PartialEq,
     > Keystore<'a, Backend, L, Meta>
 {
     pub fn create_stores(
         loader: &mut impl KeystoreLoader<L, Meta = Meta>,
-    ) -> Result<(AtomicStore, AtomicKeystoreStorage<'a, L, Meta>, Assets, Transactions<L>), KeystoreError<L>> {
+    ) -> Result<
+        (
+            AtomicStore,
+            AtomicKeystoreStorage<'a, L, Meta>,
+            Assets,
+            Transactions<L>,
+        ),
+        KeystoreError<L>,
+    > {
         let mut atomic_loader = AtomicStoreLoader::load(&loader.location(), "keystore").unwrap();
         // Load the metadata first so the loader can use it to generate the encryption key needed to
         // read the rest of the data.
@@ -1860,11 +1895,7 @@ impl<
             "keystore_assets",
             file_fill_size,
         )?)?)?;
-        let transactions = Transactions::new(
-            &mut atomic_loader,
-            adapter.cast(),
-            file_fill_size,
-        )?;
+        let transactions = Transactions::new(&mut atomic_loader, adapter.cast(), file_fill_size)?;
         let atomic_store = AtomicStore::open(atomic_loader)?;
         Ok((atomic_store, persistence, assets, transactions))
     }
@@ -1884,7 +1915,8 @@ impl<
         mut backend: Backend,
         loader: &mut impl KeystoreLoader<L, Meta = Meta>,
     ) -> BoxFuture<'a, Result<Keystore<'a, Backend, L, Meta>, KeystoreError<L>>> {
-        let (mut atomic_store, mut persistence, mut assets, mut transactions) = Self::create_stores(loader).unwrap();
+        let (mut atomic_store, mut persistence, mut assets, mut transactions) =
+            Self::create_stores(loader).unwrap();
         Box::pin(async move {
             let state = if persistence.exists() {
                 persistence.load().await?
@@ -1896,7 +1928,15 @@ impl<
             assets.commit()?;
             transactions.commit()?;
             atomic_store.commit_version()?;
-            Self::new_impl(backend, atomic_store, persistence, assets, transactions, state).await
+            Self::new_impl(
+                backend,
+                atomic_store,
+                persistence,
+                assets,
+                transactions,
+                state,
+            )
+            .await
         })
     }
 
@@ -1906,10 +1946,19 @@ impl<
         loader: &mut impl KeystoreLoader<L, Meta = Meta>,
         state: KeystoreState<'a, L>,
     ) -> BoxFuture<'a, Result<Keystore<'a, Backend, L, Meta>, KeystoreError<L>>> {
-        let (atomic_store, persistence, assets, transactions) = Self::create_stores(loader).unwrap();
-        Box::pin(
-            async move { Self::new_impl(backend, atomic_store, persistence, assets, transactions, state).await },
-        )
+        let (atomic_store, persistence, assets, transactions) =
+            Self::create_stores(loader).unwrap();
+        Box::pin(async move {
+            Self::new_impl(
+                backend,
+                atomic_store,
+                persistence,
+                assets,
+                transactions,
+                state,
+            )
+            .await
+        })
     }
 
     async fn new_impl(
@@ -2284,9 +2333,8 @@ impl<
     #[allow(clippy::type_complexity)]
     pub fn transaction_history<'l>(
         &'l self,
-    ) -> std::pin::Pin<
-        Box<dyn SendFuture<'a, Result<Vec<Transaction<L>>, KeystoreError<L>>> + 'l>,
-    > {
+    ) -> std::pin::Pin<Box<dyn SendFuture<'a, Result<Vec<Transaction<L>>, KeystoreError<L>>> + 'l>>
+    {
         Box::pin(async move {
             let KeystoreSharedState { model, .. } = &mut *self.mutex.lock().await;
             Ok(model.transactions.iter().collect())
@@ -2365,7 +2413,9 @@ impl<
         info: TransactionParams<L>,
     ) -> Result<TransactionReceipt<L>, KeystoreError<L>> {
         let KeystoreSharedState { state, model, .. } = &mut *self.mutex.lock().await;
-        state.submit_elaborated_transaction(model, txn, Some(info)).await
+        state
+            .submit_elaborated_transaction(model, txn, Some(info))
+            .await
     }
 
     /// Submit a CAP transaction to be validated.
@@ -2883,15 +2933,13 @@ impl<
                             println!("Error saving records from key scan {}: {}", address, err);
                         }
                         history.iter().cloned().map(|t| {
-                                if let Err(err) = model.transactions.create(t)
-                                {
-                                    println!(
-                                        "Error saving tranaction history from key scan {}: {}",
-                                        address, err
-                                    );
-                                }
+                            if let Err(err) = model.transactions.create(t) {
+                                println!(
+                                    "Error saving tranaction history from key scan {}: {}",
+                                    address, err
+                                );
+                            }
                         });
-
 
                         // Signal anyone waiting for a notification that this scan finished.
                         for sender in pending_key_scans.remove(&address).into_iter().flatten() {

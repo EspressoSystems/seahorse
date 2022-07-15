@@ -76,7 +76,7 @@ pub struct MockLedger<'a, L: Ledger, N: MockNetwork<'a, L>> {
     current_block: Block<L>,
     block_size: usize,
     hold_next_transaction: bool,
-    held_transaction: Option<Transaction<L>>,
+    held_transaction: Option<reef::Transaction<L>>,
     mangled: bool,
     missing_memos: usize,
     sync_index: EventIndex,
@@ -124,7 +124,7 @@ impl<'a, L: Ledger, N: MockNetwork<'a, L>> MockLedger<'a, L, N> {
         self.hold_next_transaction = true;
     }
 
-    pub fn release_held_transaction(&mut self) -> Option<Transaction<L>> {
+    pub fn release_held_transaction(&mut self) -> Option<reef::Transaction<L>> {
         if let Some(txn) = self.held_transaction.take() {
             self.submit(txn.clone()).unwrap();
             Some(txn)
@@ -141,7 +141,7 @@ impl<'a, L: Ledger, N: MockNetwork<'a, L>> MockLedger<'a, L, N> {
         self.mangled = false;
     }
 
-    pub fn submit(&mut self, txn: Transaction<L>) -> Result<(), KeystoreError<L>> {
+    pub fn submit(&mut self, txn: reef::Transaction<L>) -> Result<(), KeystoreError<L>> {
         if self.hold_next_transaction {
             self.held_transaction = Some(txn);
             self.hold_next_transaction = false;
@@ -219,7 +219,6 @@ pub fn assert_keystore_states_eq<'a, L: Ledger>(
         w1.txn_state.record_mt.commitment(),
         w2.txn_state.record_mt.commitment()
     );
-    assert_eq!(w1.txn_state.transactions, w2.txn_state.transactions);
 }
 
 #[async_trait]
