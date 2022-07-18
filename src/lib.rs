@@ -169,6 +169,9 @@ pub enum WalletError<L: Ledger> {
     InvalidAuditorKey {
         key: AuditorPubKey,
     },
+    PubkeyNotFound {
+        address: UserAddress,
+    },
 }
 
 impl<L: Ledger> From<crate::txn_builder::TransactionError> for WalletError<L> {
