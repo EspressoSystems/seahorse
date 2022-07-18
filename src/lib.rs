@@ -511,6 +511,7 @@ impl<'a, L: Ledger, Backend: KeystoreBackend<'a, L>, Meta: Serialize + Deseriali
         });
         fut.await?;
         self.assets.commit()?;
+        self.transactions.commit()?;
         self.atomic_store.commit_version()?;
         Ok(())
     }
@@ -534,6 +535,7 @@ impl<'a, L: Ledger, Backend: KeystoreBackend<'a, L>, Meta: Serialize + Deseriali
     pub async fn commit(&mut self) -> Result<(), KeystoreError<L>> {
         self.persistence().await.commit().await;
         self.assets.commit()?;
+        self.transactions.commit()?;
         Ok(self.atomic_store.commit_version()?)
     }
 
@@ -669,8 +671,10 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
         receipt: &TransactionReceipt<L>,
     ) -> Result<TransactionStatus, KeystoreError<L>> {
+        println!("getting transacrtion status");
         match model.transactions.get(&receipt.uid)?.status() {
             TransactionStatus::Unknown => {
+                println!("unknown");
                 // If the transactions database returns Unknown, it means the transaction is not in-
                 // flight (the database only tracks in-flight transactions). So it must be retired,
                 // rejected, or a foreign transaction that we were never tracking to begin with.
@@ -693,7 +697,10 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                     Ok(TransactionStatus::Rejected)
                 }
             }
-            status => Ok(status),
+            status => {
+                println!("status {}", status);
+                Ok(status)
+            },
         }
     }
 
@@ -1458,10 +1465,13 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         self.sending_accounts.insert(user_key.address(), account);
         if let Err(err) = model
             .store(|mut t| async {
+                println!("Storing callback");
                 t.store_snapshot(self).await?;
+                println!("completed stnapshot");
                 // If we successfully updated our data structures, register the key with the
                 // network. The storage transaction will revert if this fails.
                 t.backend.register_user_key(&user_key).await?;
+                println!("registered user key");
                 Ok(t)
             })
             .await
@@ -2623,14 +2633,12 @@ impl<
         Box::pin(async move {
             let (user_key, events) = {
                 let KeystoreSharedState { state, model, .. } = &mut *self.mutex.lock().await;
-                println!("got lock");
                 state
                     .add_user_key(model, None, description, scan_from)
                     .await?
             };
 
             if let Some(events) = events {
-                println!("some events in generate user key");
                 // Start a background task to scan for records belonging to the new key.
                 self.spawn_key_scan(user_key.address(), events).await;
             }

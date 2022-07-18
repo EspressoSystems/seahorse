@@ -206,6 +206,11 @@ impl<'a, L: Ledger> TransactionEditor<'a, L> {
     /// remove a UID of a memo we were waiting because it was received
     pub fn remove_pending_uid(mut self, uid: u64) -> Self {
         self.transaction.pending_uids.remove(&uid);
+        // if self.transaction.pending_uids().is_empty() {
+        //     self.set_status(TransactionStatus::Retired)
+        // } else {
+        //     self
+        // }
         self
     }
 

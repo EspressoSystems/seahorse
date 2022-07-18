@@ -13,6 +13,7 @@
 use crate::{key_value_store::*, KeystoreError, Ledger};
 use arbitrary::{Arbitrary, Unstructured};
 use ark_serialize::*;
+use chrono::{DateTime, Local};
 use espresso_macros::ser_test;
 use image::{imageops, ImageBuffer, ImageFormat, ImageResult, Pixel, Rgba};
 use jf_cap::{
@@ -23,6 +24,7 @@ use jf_primitives::signatures::{schnorr::SchnorrSignatureScheme, SignatureScheme
 use jf_utils::tagged_blob;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+use std::cmp::min;
 use std::io::{BufRead, Seek};
 use std::ops::{Deref, DerefMut};
 use std::str::FromStr;
@@ -295,6 +297,10 @@ pub struct Asset {
     // in-memory only field which is `true` if and only if it's in the verified set.
     #[serde(skip)]
     verified: bool,
+    /// The time when the asset was created.
+    created_time: DateTime<Local>,
+    /// The last time when the asset was modified.
+    modified_time: DateTime<Local>,
 }
 
 impl Asset {
@@ -304,6 +310,7 @@ impl Asset {
     ///
     /// Returns the created asset.
     fn native<L: Ledger>() -> Self {
+        let time = Local::now();
         Self {
             definition: AssetDefinition::native(),
             name: Some(L::name().to_uppercase()),
@@ -311,6 +318,8 @@ impl Asset {
             icon: None,
             mint_info: None,
             verified: false,
+            created_time: time,
+            modified_time: time,
         }
     }
 
@@ -354,6 +363,16 @@ impl Asset {
         self.verified
     }
 
+    /// Get the created time.
+    pub fn created_time(&self) -> DateTime<Local> {
+        self.created_time
+    }
+
+    /// Get the modified time.
+    pub fn modified_time(&self) -> DateTime<Local> {
+        self.modified_time
+    }
+
     /// Changes the asset to be verified without mint information.
     ///
     /// Returns the verified asset.
@@ -376,6 +395,7 @@ impl Asset {
         mint_info: Option<MintInfo>,
         verified: bool,
     ) -> Self {
+        let time = Local::now();
         Self {
             definition,
             name,
@@ -383,6 +403,8 @@ impl Asset {
             icon,
             mint_info,
             verified,
+            created_time: time,
+            modified_time: time,
         }
     }
 }
@@ -447,6 +469,7 @@ impl FromStr for Asset {
                 ))
             }
         };
+        let time = Local::now();
         Ok(Asset {
             definition,
             name,
@@ -454,6 +477,8 @@ impl FromStr for Asset {
             icon: None,
             mint_info,
             verified: false,
+            created_time: time,
+            modified_time: time,
         })
     }
 }
@@ -461,6 +486,7 @@ impl FromStr for Asset {
 #[cfg(any(test, feature = "testing"))]
 impl From<AssetDefinition> for Asset {
     fn from(definition: AssetDefinition) -> Self {
+        let time = Local::now();
         Self {
             definition,
             name: None,
@@ -468,6 +494,8 @@ impl From<AssetDefinition> for Asset {
             icon: None,
             mint_info: None,
             verified: false,
+            created_time: time,
+            modified_time: time,
         }
     }
 }
@@ -489,36 +517,42 @@ impl<'a> AssetEditor<'a> {
     /// Set the optional asset name.
     pub fn set_name(mut self, name: Option<String>) -> Self {
         self.asset.name = name;
+        self.asset.modified_time = Local::now();
         self
     }
 
     /// Set the asset name.
     pub fn with_name(mut self, name: String) -> Self {
         self.asset.name = Some(name);
+        self.asset.modified_time = Local::now();
         self
     }
 
     /// Clear the asset name.
     pub fn clear_name(mut self) -> Self {
         self.asset.name = None;
+        self.asset.modified_time = Local::now();
         self
     }
 
     /// Set the optional asset description.
     pub fn set_description(mut self, description: Option<String>) -> Self {
         self.asset.description = description;
+        self.asset.modified_time = Local::now();
         self
     }
 
     /// Set the asset description.
     pub fn with_description(mut self, description: String) -> Self {
         self.asset.description = Some(description);
+        self.asset.modified_time = Local::now();
         self
     }
 
     /// Clear the asset description.
     pub fn clear_description(mut self) -> Self {
         self.asset.description = None;
+        self.asset.modified_time = Local::now();
         self
     }
 
@@ -532,6 +566,7 @@ impl<'a> AssetEditor<'a> {
             }
             None => None,
         };
+        self.asset.modified_time = Local::now();
         self
     }
 
@@ -540,12 +575,14 @@ impl<'a> AssetEditor<'a> {
         // Resize the icon to the default value.
         icon.resize(ICON_WIDTH, ICON_HEIGHT);
         self.asset.icon = Some(icon);
+        self.asset.modified_time = Local::now();
         self
     }
 
     /// Clear the asset icon.
     pub fn clear_icon(mut self) -> Self {
         self.asset.icon = None;
+        self.asset.modified_time = Local::now();
         self
     }
 
@@ -584,6 +621,8 @@ impl<'a> AssetEditor<'a> {
             self.asset.mint_info = Some(mint_info);
         }
         self.asset.verified |= other.verified;
+        self.asset.created_time = min(self.asset.created_time, other.created_time);
+        self.asset.modified_time = Local::now();
         Ok(self)
     }
 
@@ -617,6 +656,8 @@ impl<'a> AssetEditor<'a> {
             self.asset.mint_info = Some(mint_info);
         }
         self.asset.verified |= other.verified;
+        self.asset.created_time = min(self.asset.created_time, other.created_time);
+        self.asset.modified_time = Local::now();
         Ok(self)
     }
 }
@@ -740,6 +781,7 @@ impl Assets {
         definition: AssetDefinition,
         mint_info: Option<MintInfo>,
     ) -> Result<AssetEditor<'_>, KeystoreError<L>> {
+        let time = Local::now();
         let asset = Asset {
             definition,
             name: None,
@@ -747,6 +789,8 @@ impl Assets {
             icon: None,
             mint_info,
             verified: false,
+            created_time: time,
+            modified_time: time,
         };
         self.insert(asset)
     }
@@ -771,6 +815,7 @@ impl Assets {
         mint_info: Option<MintInfo>,
         verified: bool,
     ) -> Result<AssetEditor<'_>, KeystoreError<L>> {
+        let time = Local::now();
         let asset = Asset {
             definition,
             name: None,
@@ -778,6 +823,8 @@ impl Assets {
             icon: None,
             mint_info,
             verified,
+            created_time: time,
+            modified_time: time,
         };
         self.insert(asset)
     }

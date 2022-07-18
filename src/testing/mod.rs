@@ -526,9 +526,11 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
             let atomic_store = &mut model.atomic_store;
             let persistence = &model.persistence;
             let assets = &mut model.assets;
+            let transactions = &mut model.transactions;
             let state = state.clone();
             let loaded = persistence.lock().await.load().await.unwrap();
             assets.commit::<Self::Ledger>().unwrap();
+            transactions.commit().unwrap();
             atomic_store.commit_version().unwrap();
             assert_keystore_states_eq(&state, &loaded);
         }
