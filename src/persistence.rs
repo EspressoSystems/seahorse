@@ -492,14 +492,14 @@ mod tests {
         // Create a new storage instance to load the keystore back from disk, to ensure that what we
         // load comes only from persistent storage and not from any in-memory state of the first
         // instance.
-        let loaded = {
+        let (loaded, mut transactions) = {
             let (mut atomic_store, mut storage, mut assets, mut transactions) =
                 Keystore::<MockBackend, cap::Ledger, ()>::create_stores(&mut loader).unwrap();
             let state = storage.load().await.unwrap();
             assets.commit::<cap::Ledger>().unwrap();
             transactions.commit().unwrap();
             atomic_store.commit_version().unwrap();
-            state
+            (state, transactions)
         };
         assert_keystore_states_eq(&stored, &loaded);
 
@@ -533,7 +533,7 @@ mod tests {
             .create(txn)
             .unwrap()
             .with_hash(random_txn_hash(&mut rng));
-        stored_txn.add_pending_uids(txn_uid, vec![1, 2, 3]).save()?;
+        stored_txn.add_pending_uids(vec![1, 2, 3]).save().unwrap();
 
         // Snapshot the modified dynamic state and then reload.
         {
@@ -550,6 +550,7 @@ mod tests {
                 Keystore::<MockBackend, cap::Ledger, ()>::create_stores(&mut loader).unwrap();
             let state = storage.load().await.unwrap();
             assets.commit::<cap::Ledger>().unwrap();
+            transactions.commit().unwrap();
             atomic_store.commit_version().unwrap();
             state
         };
@@ -568,6 +569,7 @@ mod tests {
             storage.store_snapshot(&stored).await.unwrap();
             storage.commit().await;
             assets.commit::<cap::Ledger>().unwrap();
+            transactions.commit().unwrap();
             atomic_store.commit_version().unwrap();
         }
         let loaded = {
@@ -575,6 +577,7 @@ mod tests {
                 Keystore::<MockBackend, cap::Ledger, ()>::create_stores(&mut loader).unwrap();
             let state = storage.load().await.unwrap();
             assets.commit::<cap::Ledger>().unwrap();
+            transactions.commit().unwrap();
             atomic_store.commit_version().unwrap();
             state
         };
@@ -603,9 +606,9 @@ mod tests {
             // Store some data.
             stored.txn_state.records.insert(ro, 0, &user_key);
             storage.store_snapshot(&stored).await.unwrap();
-            // replace with transactions.create()
+            let txn_uid = TransactionUID(random_txn_hash(&mut rng));
             transactions.create(TransactionParams {
-                uid: None,
+                uid: Some(txn_uid),
                 timeout: Some(5000),
                 status: TransactionStatus::Pending,
                 memos: Default::default(),
@@ -629,11 +632,12 @@ mod tests {
                 .remove_by_nullifier(nullifier)
                 .unwrap();
             storage.revert().await;
-            transactions.revert();
+            transactions.revert().unwrap();
 
             // Loading after revert should be a no-op.
             let state = storage.load().await.unwrap();
             assets.commit::<cap::Ledger>().unwrap();
+            transactions.commit().unwrap();
             atomic_store.commit_version().unwrap();
             state
         };

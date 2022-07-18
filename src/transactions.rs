@@ -476,3 +476,27 @@ impl<L: Ledger> Transactions<L> {
         Ok(txn)
     }
 }
+
+#[cfg(test)]
+pub fn create_test_txn<L: Ledger>(params: TransactionParams<L>, hash: Option<TransactionHash<L>>, receipt: Option<TransactionReceipt<L>>) -> Transaction<L> {
+    Transaction::<L> {
+        uid: params.uid.unwrap(),
+        timeout: params.timeout,
+        hash: hash,
+        status: params.status,
+        pending_uids: HashSet::new(),
+        memos: params.memos,
+        sig: params.sig,
+        inputs: params.inputs,
+        outputs: params.outputs,
+        time: params.time,
+        asset: params.asset,
+        kind: params.kind,
+        senders: params.senders,
+        receivers: params.receivers,
+        fee_change: params.fee_change,
+        asset_change: params.asset_change,
+        receipt,
+    }
+}
+

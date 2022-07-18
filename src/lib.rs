@@ -1428,6 +1428,8 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
             }
         };
 
+        println!("One");
+
         let (scan, events) = if let Some(scan_from) = scan_from {
             // Get the stream of events for the background scan worker task to process.
             let (frontier, next_event) = model.backend.get_initial_scan_state(scan_from).await?;
@@ -1446,6 +1448,8 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
             (None, None)
         };
 
+        println!("2");
+
         let mut account = Account::new(user_key.clone(), description);
         account.scan = scan;
 
@@ -1462,6 +1466,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
             })
             .await
         {
+            println!("Something went wrong storing model");
             // If anything went wrong, no storage transaction was committed. Revert our changes to
             // in-memory data structures before returning the error.
             if let Some(old_key_state) = revert_key_state {
@@ -1470,7 +1475,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
             self.sending_accounts.remove(&user_key.address());
             return Err(err);
         }
-
+        println!("three");
         Ok((user_key, events))
     }
 
@@ -2618,12 +2623,14 @@ impl<
         Box::pin(async move {
             let (user_key, events) = {
                 let KeystoreSharedState { state, model, .. } = &mut *self.mutex.lock().await;
+                println!("got lock");
                 state
                     .add_user_key(model, None, description, scan_from)
                     .await?
             };
 
             if let Some(events) = events {
+                println!("some events in generate user key");
                 // Start a background task to scan for records belonging to the new key.
                 self.spawn_key_scan(user_key.address(), events).await;
             }
