@@ -1088,7 +1088,7 @@ async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
     Ok(())
 }
 
-#[cfg(all(test, feature = "slow-tests"))]
+#[cfg(all(test))]
 mod test {
     use super::*;
     use crate::{
@@ -1460,6 +1460,7 @@ mod test {
             create_keystore(ledger.clone(), PathBuf::from(tmp_dir.path()));
 
         // Load without mint info.
+        println!("load 1");
         writeln!(input, "import_asset definition:{}", definition).unwrap();
         wait_for_prompt(&mut output);
         writeln!(input, "asset {}", definition.code).unwrap();
@@ -1473,6 +1474,7 @@ mod test {
             ],
         );
 
+        println!("load 2");
         // Update later with mint info.
         writeln!(
             input,
@@ -1482,7 +1484,7 @@ mod test {
         .unwrap();
         wait_for_prompt(&mut output);
         // Asset 0 is the native asset, ours is asset 1.
-        writeln!(input, "asset 1").unwrap();
+        writeln!(input, "asset {}", definition.code).unwrap();
         match_output(
             &mut output,
             &["my_asset", "Not viewable", "Not freezeable", "Minter: me"],
