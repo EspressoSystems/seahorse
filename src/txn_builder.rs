@@ -368,6 +368,7 @@ impl RecordDatabase {
     }
 
     pub fn insert_freezable(&mut self, ro: RecordOpening, uid: u64, key_pair: &FreezerKeyPair) {
+        println!("insert freezable");
         let nullifier = key_pair.nullify(&ro.pub_key.address(), uid, &RecordCommitment::from(&ro));
         self.insert_with_nullifier(ro, uid, nullifier)
     }
@@ -1073,10 +1074,10 @@ impl<L: Ledger> TransactionState<L> {
         for uid in uids {
             if let Some(txn) = transactions.with_memo_id_mut(uid).ok() {
                 let mut txn = txn.remove_pending_uid(uid);
-                if txn.transaction().pending_uids().is_empty() {
+                let transaction = txn.save().unwrap();
+                if transaction.pending_uids().is_empty() {
                     completed.push(txn.transaction().uid().clone());
                 }
-                txn.save();
             }
         }
         completed
@@ -1101,6 +1102,7 @@ impl<L: Ledger> TransactionState<L> {
     ) -> Transaction<L> {
         let now = self.validator.now();
         let timeout = now + (L::record_root_history() as u64);
+        println!("adding pending txn with timeout {}", timeout);
         let hash = txn.hash();
         info.uid = Some(TransactionUID(hash.clone()));
 
@@ -1674,7 +1676,10 @@ impl<L: Ledger> TransactionState<L> {
             outputs: outputs,
             time: Local::now(),
             asset: asset.code,
-            kind: TransactionKind::<L>::send(),
+            kind: match outputs_frozen {
+                FreezeFlag::Frozen => TransactionKind::<L>::freeze(),
+                FreezeFlag::Unfrozen => TransactionKind::<L>::unfreeze(),
+            },
             senders: vec![fee_address.clone()],
             receivers: input_records
                 .iter()

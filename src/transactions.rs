@@ -206,12 +206,11 @@ impl<'a, L: Ledger> TransactionEditor<'a, L> {
     /// remove a UID of a memo we were waiting because it was received
     pub fn remove_pending_uid(mut self, uid: u64) -> Self {
         self.transaction.pending_uids.remove(&uid);
-        // if self.transaction.pending_uids().is_empty() {
-        //     self.set_status(TransactionStatus::Retired)
-        // } else {
-        //     self
-        // }
-        self
+        if self.transaction.pending_uids().is_empty() {
+            self.set_status(TransactionStatus::Retired)
+        } else {
+            self
+        }
     }
 
     /// Save the transaction to the store.
@@ -406,11 +405,17 @@ impl<L: Ledger> Transactions<L> {
         if let Some(expiring_uids) = self.expiring_txns.get_mut(&timeout).cloned() {
             for uid in expiring_uids.iter() {
                 let editor = self.get_mut(uid)?;
-                removed.push(editor.transaction.clone());
-                editor
-                    .set_status(TransactionStatus::Rejected)
-                    .clear_timeout()
-                    .save()?;
+                // Only return transactions that actually expried
+                if editor.transaction.status() == TransactionStatus::Pending {
+                    removed.push(editor.transaction.clone());
+                    editor
+                        .set_status(TransactionStatus::Rejected)
+                        .clear_timeout()
+                        .save()?;
+                } else {
+                    editor.clear_timeout().save()?;
+                }
+
             }
         }
         self.expiring_txns.remove(&timeout);

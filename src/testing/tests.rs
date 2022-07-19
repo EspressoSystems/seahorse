@@ -3033,6 +3033,7 @@ pub mod generic_keystore_tests {
         );
 
         // The sender's entry should be unchanged...
+        // It is wrong becuase the status is different
         assert_eq!(
             entry,
             keystores[0]
