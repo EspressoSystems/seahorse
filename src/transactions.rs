@@ -100,6 +100,9 @@ impl<L: Ledger> Transaction<L> {
     pub fn timeout(&self) -> Option<u64> {
         self.timeout
     }
+    pub fn hash(&self) -> &Option<TransactionHash<L>> {
+        &self.hash
+    }
     pub fn memos(&self) -> &Vec<Option<ReceiverMemo>> {
         &self.memos
     }

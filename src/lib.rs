@@ -91,8 +91,8 @@ use primitive_types::U256;
 use rand_chacha::{rand_core::SeedableRng, ChaChaRng};
 use reef::{
     traits::{
-        Block as _, NullifierSet as _, Transaction as _, ValidationError as _, Validator as _,
-    },
+        Block as _, NullifierSet as _, Transaction as _, ValidationError as _, Validator as _, TransactionKind as _
+    }, TransactionKind,
     *,
 };
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
@@ -1198,22 +1198,22 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
 
         // If this was a successful transaction, add all of its frozen/unfrozen outputs to our
         // freezable database (for freeze/unfreeze transactions).
-        // if let Some((_, _, uids)) = res {
-        //     if let Some(pending) = &pending {
-        //         // if pending.kind() == TransactionKind::<L>::freeze() || pednign.kind() == TransactionKind::<L>::unfreeze() {
-        //         // the first uid corresponds to the fee change output, which is not one of the
-        //         // `freeze_outputs`, so we skip that one
-        //         for ((uid, remember), ro) in uids.iter_mut().skip(1).zip(pending.outputs()) {
-        //             self.txn_state.records.insert_freezable(
-        //                 ro.clone(),
-        //                 *uid,
-        //                 &self.freezing_accounts[ro.asset_def.policy_ref().freezer_pub_key()].key,
-        //             );
-        //             *remember = true;
-        //         }
-        //     // }
-        //     }
-        // }
+        if let Some((_, _, uids)) = res {
+            if let Some(pending) = &pending {
+                if pending.kind().clone() == TransactionKind::<L>::freeze() || pending.kind().clone() == TransactionKind::<L>::unfreeze() {
+                // the first uid corresponds to the fee change output, which is not one of the
+                // `freeze_outputs`, so we skip that one
+                for ((uid, remember), ro) in uids.iter_mut().zip(pending.outputs()).skip(1) {
+                    self.txn_state.records.insert_freezable(
+                        ro.clone(),
+                        *uid,
+                        &self.freezing_accounts[ro.asset_def.policy_ref().freezer_pub_key()].key,
+                    );
+                    *remember = true;
+                }
+            }
+            }
+        }
         pending
     }
 
@@ -2365,7 +2365,9 @@ impl<
     {
         Box::pin(async move {
             let KeystoreSharedState { model, .. } = &mut *self.mutex.lock().await;
-            Ok(model.transactions.iter().collect())
+            let mut history = model.transactions.iter().collect::<Vec<_>>();
+            history.sort_by_key(|txn| txn.time().clone());
+            Ok(history)
         })
     }
 

@@ -30,6 +30,11 @@ impl<L: Ledger> PartialEq<Self> for TxnHistoryWithTimeTolerantEq<L> {
         } else {
             self.0.time().clone() - other.0.time().clone() < time_tolerance
         };
+        println!("time eq {}", times_eq);
+        println!("asset: self: {}, other: {}", self.0.asset(), other.0.asset());
+        println!("kind: self: {}, other: {}", self.0.kind(), other.0.kind());
+        println!("receivers: self: {:?}, other: {:?}", self.0.receivers(), other.0.receivers());
+        println!("receipt: self: {:?}, other: {:?}", self.0.receipt(), other.0.receipt());
         times_eq
             && self.0.asset() == other.0.asset()
             && self.0.kind() == other.0.kind()
@@ -193,6 +198,17 @@ pub mod generic_keystore_tests {
     use std::path::{Path, PathBuf};
     use tempdir::TempDir;
 
+    fn same_txn_history<L: Ledger>(txn: &Transaction<L>, other: &Transaction<L>) -> bool {
+        txn.time() == other.time() &&
+        txn.asset() == other.asset() &&
+        txn.kind() == other.kind() &&
+        txn.hash() == other.hash() &&
+        txn.senders() == other.senders() &&
+        txn.receivers() == other.receivers() &&
+        txn.fee_change() == other.fee_change() &&
+        txn.asset_change() == other.asset_change() &&
+        txn.receipt() == other.receipt()
+    }
     /*
      * Test idea: simulate two keystores transferring funds back and forth. After initial
      * setup, the keystores only receive publicly visible information (e.g. block commitment
@@ -3034,9 +3050,10 @@ pub mod generic_keystore_tests {
 
         // The sender's entry should be unchanged...
         // It is wrong becuase the status is different
-        assert_eq!(
-            entry,
-            keystores[0]
+        assert!(
+            same_txn_history(
+            &entry,
+            &keystores[0]
                 .0
                 .transaction_history()
                 .await
@@ -3044,7 +3061,7 @@ pub mod generic_keystore_tests {
                 .last()
                 .unwrap()
                 .clone()
-        );
+        ));
         // ...but the status should be finalized.
         assert_eq!(
             keystores[0]
