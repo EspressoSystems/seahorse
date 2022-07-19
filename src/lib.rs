@@ -91,9 +91,10 @@ use primitive_types::U256;
 use rand_chacha::{rand_core::SeedableRng, ChaChaRng};
 use reef::{
     traits::{
-        Block as _, NullifierSet as _, Transaction as _, ValidationError as _, Validator as _, TransactionKind as _
-    }, TransactionKind,
-    *,
+        Block as _, NullifierSet as _, Transaction as _, TransactionKind as _,
+        ValidationError as _, Validator as _,
+    },
+    TransactionKind, *,
 };
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use snafu::{ResultExt, Snafu};
@@ -700,7 +701,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
             status => {
                 println!("status {}", status);
                 Ok(status)
-            },
+            }
         }
     }
 
@@ -846,7 +847,10 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                                     .filter_map(|((uid, _), memo)| memo.as_ref().map(|_| *uid))
                                     .into_iter()
                                     .collect(),
-                            ).set_status(status).save().unwrap();
+                            )
+                            .set_status(status)
+                            .save()
+                            .unwrap();
                         model
                             .backend
                             .finalize(pending, Some((block_id, txn_id as u64)))
@@ -902,7 +906,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                     model.backend.finalize(txn, None).await;
                 }
                 println!("done commit");
-            },
+            }
             LedgerEvent::Memos {
                 outputs,
                 transaction,
@@ -937,7 +941,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                     }
                 }
                 println!("done memo");
-            },
+            }
             LedgerEvent::Reject { block, error } => {
                 println!("rejected");
                 for mut txn in block.txns() {
@@ -989,7 +993,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
             // a warning and move on.
             println!("warning: failed to save keystore state to disk: {}", err);
         }
-        
+
         summary
     }
 
@@ -1200,18 +1204,21 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         // freezable database (for freeze/unfreeze transactions).
         if let Some((_, _, uids)) = res {
             if let Some(pending) = &pending {
-                if pending.kind().clone() == TransactionKind::<L>::freeze() || pending.kind().clone() == TransactionKind::<L>::unfreeze() {
-                // the first uid corresponds to the fee change output, which is not one of the
-                // `freeze_outputs`, so we skip that one
-                for ((uid, remember), ro) in uids.iter_mut().zip(pending.outputs()).skip(1) {
-                    self.txn_state.records.insert_freezable(
-                        ro.clone(),
-                        *uid,
-                        &self.freezing_accounts[ro.asset_def.policy_ref().freezer_pub_key()].key,
-                    );
-                    *remember = true;
+                if pending.kind().clone() == TransactionKind::<L>::freeze()
+                    || pending.kind().clone() == TransactionKind::<L>::unfreeze()
+                {
+                    // the first uid corresponds to the fee change output, which is not one of the
+                    // `freeze_outputs`, so we skip that one
+                    for ((uid, remember), ro) in uids.iter_mut().zip(pending.outputs()).skip(1) {
+                        self.txn_state.records.insert_freezable(
+                            ro.clone(),
+                            *uid,
+                            &self.freezing_accounts[ro.asset_def.policy_ref().freezer_pub_key()]
+                                .key,
+                        );
+                        *remember = true;
+                    }
                 }
-            }
             }
         }
         pending
@@ -2863,7 +2870,7 @@ impl<
                     .push(sender);
             } else {
                 println!("somebody else submitted txn");
-                
+
                 // Transaction uids are unique only to a given keystore, so if we're trying to track
                 // somebody else's transaction, the best we can do is wait for one of its nullifiers
                 // to be published on the ledger.

@@ -607,21 +607,22 @@ mod tests {
             stored.txn_state.records.insert(ro, 0, &user_key);
             storage.store_snapshot(&stored).await.unwrap();
             let txn_uid = TransactionUID(random_txn_hash(&mut rng));
-            transactions.create(TransactionParams {
-                uid: Some(txn_uid),
-                timeout: Some(5000),
-                status: TransactionStatus::Pending,
-                memos: Default::default(),
-                sig: None,
-                inputs: random_ros(&mut rng, &user_key),
-                outputs: random_ros(&mut rng, &user_key),
-                time: Local::now(),
-                asset: AssetCode::native(),
-                kind: TransactionKind::<cap::Ledger>::send(),
-                senders: vec![user_key.address()],
-                receivers: vec![],
-                fee_change: None,
-                asset_change: None,
+            transactions
+                .create(TransactionParams {
+                    uid: Some(txn_uid),
+                    timeout: Some(5000),
+                    status: TransactionStatus::Pending,
+                    memos: Default::default(),
+                    sig: None,
+                    inputs: random_ros(&mut rng, &user_key),
+                    outputs: random_ros(&mut rng, &user_key),
+                    time: Local::now(),
+                    asset: AssetCode::native(),
+                    kind: TransactionKind::<cap::Ledger>::send(),
+                    senders: vec![user_key.address()],
+                    receivers: vec![],
+                    fee_change: None,
+                    asset_change: None,
                 })
                 .unwrap();
 

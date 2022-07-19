@@ -23,8 +23,8 @@ use jf_cap::{
 use jf_primitives::signatures::{schnorr::SchnorrSignatureScheme, SignatureScheme};
 use jf_utils::tagged_blob;
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
 use std::cmp::min;
+use std::collections::HashSet;
 use std::io::{BufRead, Seek};
 use std::ops::{Deref, DerefMut};
 use std::str::FromStr;

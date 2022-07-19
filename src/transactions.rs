@@ -418,7 +418,6 @@ impl<L: Ledger> Transactions<L> {
                 } else {
                     editor.clear_timeout().save()?;
                 }
-
             }
         }
         self.expiring_txns.remove(&timeout);
@@ -491,7 +490,11 @@ impl<L: Ledger> Transactions<L> {
 }
 
 #[cfg(test)]
-pub fn create_test_txn<L: Ledger>(params: TransactionParams<L>, hash: Option<TransactionHash<L>>, receipt: Option<TransactionReceipt<L>>) -> Transaction<L> {
+pub fn create_test_txn<L: Ledger>(
+    params: TransactionParams<L>,
+    hash: Option<TransactionHash<L>>,
+    receipt: Option<TransactionReceipt<L>>,
+) -> Transaction<L> {
     Transaction::<L> {
         uid: params.uid.unwrap(),
         timeout: params.timeout,
@@ -512,4 +515,3 @@ pub fn create_test_txn<L: Ledger>(params: TransactionParams<L>, hash: Option<Tra
         receipt,
     }
 }
-
