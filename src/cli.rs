@@ -626,10 +626,10 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                                 }
                             };
                             // Try to get a readable name for the asset.
-                            let asset = if txn.asset().clone() == AssetCode::native() {
+                            let asset = if *txn.asset() == AssetCode::native() {
                                 String::from("Native")
                             } else if let Some(asset) = keystore
-                                .asset(txn.asset().clone())
+                                .asset(*txn.asset())
                                 .await
                             {
                                 if let Some(mint_info) = asset.mint_info() {
@@ -649,7 +649,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                             };
                             let senders = if !txn.senders().is_empty() {
                                 txn.senders()
-                                    .into_iter()
+                                    .iter()
                                     .map(|sender| UserAddress(sender.clone()).to_string())
                                     .collect::<Vec<String>>()
                             } else {
@@ -1491,7 +1491,6 @@ mod test {
         )
         .unwrap();
         wait_for_prompt(&mut output);
-        // Asset 0 is the native asset, ours is asset 1.
         writeln!(input, "asset {}", definition.code).unwrap();
         match_output(
             &mut output,

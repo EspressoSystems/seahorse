@@ -54,7 +54,7 @@ use crate::{
     key_scan::{receive_history_entry, BackgroundKeyScan, ScanOutputs},
     loader::KeystoreLoader,
     persistence::AtomicKeystoreStorage,
-    transactions::{Transaction, TransactionEditor, TransactionParams, Transactions},
+    transactions::{Transaction, TransactionParams, Transactions},
     txn_builder::*,
 };
 use arbitrary::Arbitrary;
@@ -334,22 +334,6 @@ impl<
         }
     }
 
-    // !REPLACE with just using transactions model
-    // async fn store_transaction(
-    //     &mut self,
-    //     transaction: Transaction<L>,
-    // ) -> Result<(), KeystoreError<L>> {
-    //     if !self.cancelled {
-    //         let res = self.storage().await.store_transaction(transaction).await;
-    //         if res.is_err() {
-    //             self.cancel().await;
-    //         }
-    //         res
-    //     } else {
-    //         Ok(())
-    //     }
-    // }
-
     async fn cancel(&mut self) {
         if !self.cancelled {
             self.cancelled = true;
@@ -526,7 +510,7 @@ impl<'a, L: Ledger, Backend: KeystoreBackend<'a, L>, Meta: Serialize + Deseriali
         &mut self.assets
     }
 
-    /// Get all assets
+    /// Get the list of assets.
     pub fn assets(&self) -> Vec<Asset> {
         self.assets.iter().collect()
     }
@@ -670,9 +654,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                     Ok(TransactionStatus::Rejected)
                 }
             }
-            status => {
-                Ok(status)
-            }
+            status => Ok(status),
         }
     }
 
@@ -1067,6 +1049,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn add_receive_history<Meta: Serialize + DeserializeOwned + Send>(
         &mut self,
         model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
@@ -1077,7 +1060,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         uid: TransactionUID<L>,
         records: &[RecordOpening],
     ) {
-        let history = receive_history_entry(kind, uid.clone(), records);
+        let history = receive_history_entry(kind, uid, records);
 
         if let Err(err) = model
             .transactions
@@ -1412,7 +1395,6 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
             }
         };
 
-
         let (scan, events) = if let Some(scan_from) = scan_from {
             // Get the stream of events for the background scan worker task to process.
             let (frontier, next_event) = model.backend.get_initial_scan_state(scan_from).await?;
@@ -1639,20 +1621,18 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         'a: 'b,
     {
         async move {
-            let stored_txn = if info.is_some() {
+            let stored_txn = if let Some(info) = info {
                 // Persist the pending transaction.
-                let t = self.txn_state.add_pending_transaction(
-                    &mut model.transactions,
-                    &txn,
-                    info.unwrap(),
-                );
+                let t = self
+                    .txn_state
+                    .add_pending_transaction(&mut model.transactions, &txn, info);
                 if let Err(err) = model.transactions.commit() {
                     // If we failed to persist the pending transaction, we cannot submit it, because if
                     // we then exit and reload the process from storage, there will be an in-flight
                     // transaction which is not accounted for in our pending transaction data
                     // structures. Instead, we remove the pending transaction from our in-memory data
                     // structures and return the error.
-                    model.transactions.revert();
+                    model.transactions.revert()?;
                     self.clear_pending_transaction(model, &txn, None).await;
                     return Err(err);
                 }
@@ -1664,7 +1644,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
             // If we succeeded in creating and persisting the pending transaction, submit it to the
             // validators.
             if let Err(err) = model.backend.submit(txn.clone(), stored_txn).await {
-                model.transactions.revert();
+                model.transactions.revert()?;
                 self.clear_pending_transaction(model, &txn, None).await;
                 return Err(err);
             }
@@ -1823,6 +1803,7 @@ impl<
         Meta: 'a + Serialize + DeserializeOwned + Send + Clone + PartialEq,
     > Keystore<'a, Backend, L, Meta>
 {
+    #[allow(clippy::type_complexity)]
     pub fn create_stores(
         loader: &mut impl KeystoreLoader<L, Meta = Meta>,
     ) -> Result<
@@ -2010,7 +1991,6 @@ impl<
         // Start the event loop.
         {
             let mutex = mutex.clone();
-            let mut i = 0;
             scope.spawn_cancellable(
                 async move {
                     let mut foreign_txns_awaiting_memos = HashMap::new();
@@ -2323,7 +2303,7 @@ impl<
         Box::pin(async move {
             let KeystoreSharedState { model, .. } = &mut *self.mutex.lock().await;
             let mut history = model.transactions.iter().collect::<Vec<_>>();
-            history.sort_by_key(|txn| txn.time().clone());
+            history.sort_by_key(|txn| *txn.time());
             Ok(history)
         })
     }

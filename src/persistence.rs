@@ -12,7 +12,7 @@ use crate::{
 };
 use arbitrary::{Arbitrary, Unstructured};
 use async_std::sync::Arc;
-use atomic_store::{load_store::BincodeLoadStore, AppendLog, AtomicStoreLoader, RollingLog};
+use atomic_store::{load_store::BincodeLoadStore, AtomicStoreLoader, RollingLog};
 use espresso_macros::ser_test;
 use jf_cap::keys::{FreezerKeyPair, UserKeyPair, ViewerKeyPair};
 use key_set::{OrderByOutputs, ProverKeySet};
@@ -333,7 +333,7 @@ mod tests {
         loader::KeystoreLoader,
         sparse_merkle_tree::SparseMerkleTree,
         testing::{assert_keystore_states_eq, mocks::MockBackend},
-        transactions::{Transaction, TransactionEditor, TransactionParams, Transactions},
+        transactions::TransactionParams,
         txn_builder::{TransactionStatus, TransactionUID},
         Keystore,
     };

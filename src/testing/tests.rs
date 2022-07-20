@@ -10,7 +10,6 @@ use super::*;
 use chrono::Duration;
 use commit::Commitment;
 use espresso_macros::generic_tests;
-use std::collections::HashSet;
 use std::env;
 
 #[derive(Clone, Debug)]
@@ -203,7 +202,6 @@ pub mod generic_keystore_tests {
     use jf_cap::KeyPair;
     use num_traits::identities::One;
     use proptest::{collection::vec, strategy::Strategy, test_runner, test_runner::TestRunner};
-    use reef::traits::TransactionKind as _;
     use std::fs::File;
     use std::io::{BufReader, Cursor};
     use std::iter::once;

@@ -8,7 +8,7 @@
 use crate::{
     events::{EventIndex, EventSource, LedgerEvent},
     sparse_merkle_tree::SparseMerkleTree,
-    transactions::{Transaction, TransactionParams},
+    transactions::TransactionParams,
     txn_builder::{TransactionStatus, TransactionUID},
 };
 use arbitrary::{Arbitrary, Unstructured};
