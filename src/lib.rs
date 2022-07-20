@@ -519,7 +519,6 @@ impl<'a, L: Ledger, Backend: KeystoreBackend<'a, L>, Meta: Serialize + Deseriali
 
     /// Access the persistence storage layer
     pub async fn persistence(&mut self) -> MutexGuard<'_, AtomicKeystoreStorage<'a, L, Meta>> {
-     
         self.persistence.lock().await
     }
     /// Get the mutable assets.
@@ -2953,7 +2952,7 @@ impl<
             || (),
         );
     }
-    
+
     /// Insert an asset for testing purposes.
     #[cfg(any(test, feature = "testing"))]
     pub async fn insert_asset(&mut self, asset: Asset) -> Result<(), KeystoreError<L>> {
