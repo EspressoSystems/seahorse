@@ -24,7 +24,6 @@ use jf_primitives::signatures::{schnorr::SchnorrSignatureScheme, SignatureScheme
 use jf_utils::tagged_blob;
 use serde::{Deserialize, Serialize};
 use std::cmp::min;
-use std::collections::HashSet;
 use std::io::{BufRead, Seek};
 use std::ops::{Deref, DerefMut};
 use std::str::FromStr;
@@ -682,7 +681,7 @@ pub struct Assets {
     store: AssetsStore,
 
     /// A set of asset codes loaded from verified asset libraries.
-    verified_assets: HashSet<AssetCode>,
+    verified_assets: PersistableHashSet<AssetCode>,
 }
 
 impl Assets {
@@ -694,7 +693,7 @@ impl Assets {
     pub fn new<L: Ledger>(store: AssetsStore) -> Result<Self, KeystoreError<L>> {
         Ok(Self {
             store,
-            verified_assets: HashSet::new(),
+            verified_assets: Persistable::new(),
         })
     }
 
@@ -703,7 +702,7 @@ impl Assets {
         let mut assets = Vec::new();
         for mut asset in self.store.iter().cloned() {
             // The asset is verified if it's in the verified set.
-            if self.verified_assets.contains(&asset.code()) {
+            if self.verified_assets.index().contains(&asset.code()) {
                 asset.verified = true;
             }
             assets.push(asset.clone());
@@ -715,7 +714,7 @@ impl Assets {
     pub fn get<L: Ledger>(&self, code: &AssetCode) -> Result<Asset, KeystoreError<L>> {
         let mut asset = self.store.load(code)?;
         // The asset is verified if it's in the verified set.
-        if self.verified_assets.contains(code) {
+        if self.verified_assets.index().contains(code) {
             asset.verified = true
         }
         Ok(asset)
@@ -728,7 +727,7 @@ impl Assets {
     ) -> Result<AssetEditor<'_>, KeystoreError<L>> {
         let mut asset = self.get(code)?;
         // The asset is verified if it's in the verified set.
-        if self.verified_assets.contains(code) {
+        if self.verified_assets.index().contains(code) {
             asset.verified = true
         }
         Ok(AssetEditor::new(&mut self.store, asset))
@@ -736,11 +735,13 @@ impl Assets {
 
     /// Commit the store version.
     pub fn commit<L: Ledger>(&mut self) -> Result<(), KeystoreError<L>> {
+        self.verified_assets.commit();
         Ok(self.store.commit_version()?)
     }
 
     /// Revert the store version.
     pub fn revert<L: Ledger>(&mut self) -> Result<(), KeystoreError<L>> {
+        self.verified_assets.revert();
         Ok(self.store.revert_version()?)
     }
 
@@ -755,7 +756,11 @@ impl Assets {
         mut asset: Asset,
     ) -> Result<AssetEditor<'_>, KeystoreError<L>> {
         // The asset is verified if it's in the verified set.
-        if self.verified_assets.contains(&asset.definition.code) {
+        if self
+            .verified_assets
+            .index()
+            .contains(&asset.definition.code)
+        {
             asset.verified = true
         }
         let store_asset = self.store.load(&asset.definition.code);
