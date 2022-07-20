@@ -412,9 +412,7 @@ impl<L: Ledger> Transactions<L> {
                 // transactions did not actually expire.  We still remove all transactions
                 // from they index becuase we'll never lookup for this timeout again.
                 // Also update the status of the expired transactions
-                if editor.transaction.status() == TransactionStatus::Pending
-                    || editor.transaction.status() == TransactionStatus::AwaitingMemos
-                {
+                if editor.transaction.status() == TransactionStatus::Pending {
                     removed.push(editor.transaction.clone());
                     editor
                         .set_status(TransactionStatus::Rejected)
