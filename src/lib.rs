@@ -646,10 +646,8 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
         receipt: &TransactionReceipt<L>,
     ) -> Result<TransactionStatus, KeystoreError<L>> {
-        println!("getting transacrtion status");
         match model.transactions.get(&receipt.uid)?.status() {
             TransactionStatus::Unknown => {
-                println!("unknown");
                 // If the transactions database returns Unknown, it means the transaction is not in-
                 // flight (the database only tracks in-flight transactions). So it must be retired,
                 // rejected, or a foreign transaction that we were never tracking to begin with.
@@ -673,7 +671,6 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                 }
             }
             status => {
-                println!("status {}", status);
                 Ok(status)
             }
         }
@@ -687,14 +684,12 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
     ) -> EventSummary<L> {
         self.txn_state.now += EventIndex::from_source(source, 1);
         let mut summary = EventSummary::default();
-        println!("handling event");
         match event {
             LedgerEvent::Commit {
                 block,
                 block_id,
                 state_comm,
             } => {
-                println!("commit");
                 // Don't trust the network connection that provided us this event; validate it
                 // against our local mirror of the ledger and bail out if it is invalid.
                 let mut uids = match self.txn_state.validator.validate_and_apply(block.clone()) {
@@ -761,7 +756,6 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                 }
 
                 for (txn_id, txn) in block.txns().into_iter().enumerate() {
-                    println!("handling block txn");
                     // Split the uids corresponding to this transaction off the front of `uids`.
                     let mut this_txn_uids = uids;
                     uids = this_txn_uids.split_off(txn.output_len());
@@ -873,19 +867,16 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                     .txn_state
                     .clear_expired_transactions(&mut model.transactions)
                 {
-                    println!("expired txn rejected");
                     summary
                         .updated_txns
                         .push((txn.uid().clone(), TransactionStatus::Rejected));
                     model.backend.finalize(txn, None).await;
                 }
-                println!("done commit");
             }
             LedgerEvent::Memos {
                 outputs,
                 transaction,
             } => {
-                println!("memos");
                 let completed = self
                     .txn_state
                     .received_memos(outputs.iter().map(|info| info.2), &mut model.transactions);
@@ -914,10 +905,8 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                         println!("error saving received records: {}", err);
                     }
                 }
-                println!("done memo");
             }
             LedgerEvent::Reject { block, error } => {
-                println!("rejected");
                 for mut txn in block.txns() {
                     summary
                         .rejected_nullifiers
@@ -937,14 +926,12 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                                 // `updated_txns`.
                             } else {
                                 // If we failed to resubmit, then the rejection is final.
-                                println!("failed resubmit rejected");
                                 summary
                                     .updated_txns
                                     .push((uid.clone(), TransactionStatus::Rejected));
                                 model.backend.finalize(pending, None).await;
                             }
                         } else {
-                            println!("rejected rejected");
                             summary
                                 .updated_txns
                                 .push((uid.clone(), TransactionStatus::Rejected));
@@ -1425,7 +1412,6 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
             }
         };
 
-        println!("One");
 
         let (scan, events) = if let Some(scan_from) = scan_from {
             // Get the stream of events for the background scan worker task to process.
@@ -1445,8 +1431,6 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
             (None, None)
         };
 
-        println!("2");
-
         let mut account = Account::new(user_key.clone(), description);
         account.scan = scan;
 
@@ -1455,18 +1439,14 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         self.sending_accounts.insert(user_key.address(), account);
         if let Err(err) = model
             .store(|mut t| async {
-                println!("Storing callback");
                 t.store_snapshot(self).await?;
-                println!("completed stnapshot");
                 // If we successfully updated our data structures, register the key with the
                 // network. The storage transaction will revert if this fails.
                 t.backend.register_user_key(&user_key).await?;
-                println!("registered user key");
                 Ok(t)
             })
             .await
         {
-            println!("Something went wrong storing model");
             // If anything went wrong, no storage transaction was committed. Revert our changes to
             // in-memory data structures before returning the error.
             if let Some(old_key_state) = revert_key_state {
@@ -1475,7 +1455,6 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
             self.sending_accounts.remove(&user_key.address());
             return Err(err);
         }
-        println!("three");
         Ok((user_key, events))
     }
 
@@ -2036,7 +2015,6 @@ impl<
                 async move {
                     let mut foreign_txns_awaiting_memos = HashMap::new();
                     while let Some((event, source)) = events.next().await {
-                        println!("in event loop");
                         let KeystoreSharedState {
                             state,
                             model,
@@ -2050,7 +2028,6 @@ impl<
                         for (txn_uid, status) in summary.updated_txns {
                             // signal any await_transaction() futures which should complete due to a
                             // transaction having been completed.
-                            println!("updated txn status {}", status);
                             if status.is_final() {
                                 for sender in txn_subscribers.remove(&txn_uid).into_iter().flatten()
                                 {
@@ -2079,7 +2056,6 @@ impl<
                         // nullifiers.
                         for n in summary.rejected_nullifiers {
                             for sender in pending_foreign_txns.remove(&n).into_iter().flatten() {
-                                println!("rejected nullifier rejected");
                                 sender.send(TransactionStatus::Rejected).ok();
                             }
                         }
@@ -2807,7 +2783,6 @@ impl<
                 .iter()
                 .all(|key| state.sending_accounts.contains_key(key))
             {
-                println!("we submitted txn");
                 // If we submitted this transaction, we have all the information we need to track it
                 // through the lifecycle based on its uid alone.
                 txn_subscribers
@@ -2815,8 +2790,6 @@ impl<
                     .or_insert_with(Vec::new)
                     .push(sender);
             } else {
-                println!("somebody else submitted txn");
-
                 // Transaction uids are unique only to a given keystore, so if we're trying to track
                 // somebody else's transaction, the best we can do is wait for one of its nullifiers
                 // to be published on the ledger.

@@ -368,7 +368,6 @@ impl RecordDatabase {
     }
 
     pub fn insert_freezable(&mut self, ro: RecordOpening, uid: u64, key_pair: &FreezerKeyPair) {
-        println!("insert freezable");
         let nullifier = key_pair.nullify(&ro.pub_key.address(), uid, &RecordCommitment::from(&ro));
         self.insert_with_nullifier(ro, uid, nullifier)
     }
@@ -1102,7 +1101,6 @@ impl<L: Ledger> TransactionState<L> {
     ) -> Transaction<L> {
         let now = self.validator.now();
         let timeout = now + (L::record_root_history() as u64);
-        println!("adding pending txn with timeout {}", timeout);
         let hash = txn.hash();
         info.uid = Some(TransactionUID(hash.clone()));
 

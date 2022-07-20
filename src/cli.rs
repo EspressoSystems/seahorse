@@ -1088,7 +1088,7 @@ async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
     Ok(())
 }
 
-#[cfg(all(test))]
+#[cfg(all(test, feature = "slow-tests"))]
 mod test {
     use super::*;
     use crate::{
@@ -1470,7 +1470,6 @@ mod test {
             create_keystore(ledger.clone(), PathBuf::from(tmp_dir.path()));
 
         // Load without mint info.
-        println!("load 1");
         writeln!(input, "import_asset definition:{}", definition).unwrap();
         wait_for_prompt(&mut output);
         writeln!(input, "asset {}", definition.code).unwrap();
@@ -1484,7 +1483,6 @@ mod test {
             ],
         );
 
-        println!("load 2");
         // Update later with mint info.
         writeln!(
             input,

@@ -37,7 +37,6 @@ pub fn match_output(output: &mut impl BufRead, patterns: &[impl AsRef<str>]) -> 
         if n == 0 || line.trim() == ">" {
             break;
         }
-        // println!("output: {}", line);
         lines.push(std::mem::take(&mut line));
     }
 
