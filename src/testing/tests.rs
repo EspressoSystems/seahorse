@@ -4,7 +4,7 @@
 // This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
 // This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 // You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
-// #![deny(warnings)]
+#![deny(warnings)]
 
 use super::*;
 use chrono::Duration;
@@ -1409,8 +1409,6 @@ pub mod generic_keystore_tests {
                             // Ignore the change information when comparing. It's difficult to
                             // predict what the change should be without knowing exactly which
                             // input records the wallet chooses for the transaction.
-                            // entry.fee_change = None;
-                            // entry.asset_change = None;
                             TxnHistoryWithTimeTolerantEq(entry)
                         })
                         .collect::<Vec<_>>();

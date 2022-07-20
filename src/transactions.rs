@@ -23,7 +23,7 @@ use jf_cap::{
     Signature,
 };
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::HashSet;
 use std::ops::{Deref, DerefMut};
 
 /// A Transaction<L>with its UID as the primary key.
@@ -271,10 +271,10 @@ impl<L: Ledger> PartialEq<Self> for TransactionParams<L> {
 pub struct Transactions<L: Ledger> {
     /// A key-value store for transactions.
     store: TransactionsStore<L>,
-    txn_by_hash: HashMap<TransactionHash<L>, TransactionUID<L>>,
-    expiring_txns: BTreeMap<u64, HashSet<TransactionUID<L>>>,
+    txn_by_hash: PersistableHashMap<TransactionHash<L>, TransactionUID<L>>,
+    expiring_txns: PersistableBTreeMultiMap<u64, TransactionUID<L>>,
     /// Maps pending memo UIDs to the Transaction<L>they come from
-    uids_awaiting_memos: HashMap<u64, TransactionUID<L>>,
+    uids_awaiting_memos: PersistableHashMap<u64, TransactionUID<L>>,
 }
 
 impl<L: Ledger> Transactions<L> {
@@ -290,9 +290,9 @@ impl<L: Ledger> Transactions<L> {
         let store = TransactionsStore::<L>::new(log)?;
         let mut transactions = Self {
             store,
-            txn_by_hash: Default::default(),
-            expiring_txns: Default::default(),
-            uids_awaiting_memos: Default::default(),
+            txn_by_hash: Persistable::new(),
+            expiring_txns: Persistable::new(),
+            uids_awaiting_memos: Persistable::new(),
         };
         transactions.reload();
         Ok(transactions)
@@ -300,23 +300,20 @@ impl<L: Ledger> Transactions<L> {
 
     /// Reload from disc to, rebuilds the indices
     pub fn reload(&mut self) {
-        self.txn_by_hash = self
-            .store
-            .iter()
-            .filter(|txn| txn.hash.is_some())
-            .map(|txn| (txn.hash.as_ref().unwrap().clone(), txn.uid().clone()))
-            .collect();
-        self.expiring_txns = BTreeMap::new();
-        self.uids_awaiting_memos = HashMap::new();
+        self.txn_by_hash = Persistable::new();
+        self.expiring_txns = Persistable::new();
+        self.uids_awaiting_memos = Persistable::new();
         for txn in self.store.iter() {
+            if txn.hash.is_some() {
+                self.txn_by_hash
+                    .insert((txn.hash.as_ref().unwrap().clone(), txn.uid().clone()));
+            }
             if let Some(timeout) = txn.timeout() {
-                self.expiring_txns
-                    .entry(timeout)
-                    .or_insert_with(HashSet::default)
-                    .insert(txn.uid().clone());
+                self.expiring_txns.insert((timeout, txn.uid().clone()));
             }
             for pending in &txn.pending_uids {
-                self.uids_awaiting_memos.insert(*pending, txn.uid().clone());
+                self.uids_awaiting_memos
+                    .insert((*pending, txn.uid().clone()));
             }
         }
     }
@@ -354,6 +351,7 @@ impl<L: Ledger> Transactions<L> {
     pub fn with_memo_id(&self, id: u64) -> Result<Transaction<L>, KeystoreError<L>> {
         let uid = self
             .uids_awaiting_memos
+            .index()
             .get(&id)
             .ok_or(KeyValueStoreError::KeyNotFound)?;
         Ok(self.get(uid).unwrap())
@@ -372,6 +370,7 @@ impl<L: Ledger> Transactions<L> {
     pub fn with_hash(&self, hash: &TransactionHash<L>) -> Result<Transaction<L>, KeystoreError<L>> {
         let uid = self
             .txn_by_hash
+            .index()
             .get(hash)
             .ok_or(KeyValueStoreError::KeyNotFound)?;
         Ok(self.get(uid).unwrap())
@@ -393,6 +392,7 @@ impl<L: Ledger> Transactions<L> {
     ) -> Result<impl Iterator<Item = Transaction<L>> + '_, KeystoreError<L>> {
         let uids = self
             .expiring_txns
+            .index()
             .get(&timeout)
             .ok_or(KeyValueStoreError::KeyNotFound)?;
 
@@ -405,10 +405,13 @@ impl<L: Ledger> Transactions<L> {
         timeout: u64,
     ) -> Result<Vec<Transaction<L>>, KeystoreError<L>> {
         let mut removed = vec![];
-        if let Some(expiring_uids) = self.expiring_txns.get_mut(&timeout).cloned() {
+        if let Some(expiring_uids) = self.expiring_txns.index().get(&timeout).cloned() {
             for uid in expiring_uids.iter() {
                 let editor = self.get_mut(uid)?;
-                // Only return transactions that actually expried
+                // Only return transactions that are not completed because other
+                // transactions did not actually expire.  We still remove all transactions
+                // from they index becuase we'll never lookup for this timeout again.
+                // Also update the status of the expired transactions
                 if editor.transaction.status() == TransactionStatus::Pending {
                     removed.push(editor.transaction.clone());
                     editor
@@ -418,19 +421,25 @@ impl<L: Ledger> Transactions<L> {
                 } else {
                     editor.clear_timeout().save()?;
                 }
+                self.expiring_txns.remove((timeout, uid.clone()));
             }
         }
-        self.expiring_txns.remove(&timeout);
         Ok(removed)
     }
 
     /// Commit the store version.
     pub fn commit(&mut self) -> Result<(), KeystoreError<L>> {
+        self.txn_by_hash.commit();
+        self.expiring_txns.commit();
+        self.uids_awaiting_memos.commit();
         Ok(self.store.commit_version()?)
     }
 
     /// Revert the store version.
     pub fn revert(&mut self) -> Result<(), KeystoreError<L>> {
+        self.txn_by_hash.revert();
+        self.expiring_txns.revert();
+        self.uids_awaiting_memos.revert();
         Ok(self.store.revert_version()?)
     }
 
@@ -467,10 +476,7 @@ impl<L: Ledger> Transactions<L> {
             receipt: None,
         };
         if let Some(timeout) = params.timeout {
-            self.expiring_txns
-                .entry(timeout)
-                .or_insert_with(HashSet::default)
-                .insert(txn.uid().clone());
+            self.expiring_txns.insert((timeout, txn.uid().clone()));
         }
 
         let mut editor = TransactionEditor::new(self, txn);

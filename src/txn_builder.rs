@@ -734,7 +734,6 @@ impl<L: Ledger> TransactionState<L> {
     ) -> Option<Transaction<L>> {
         let now = self.validator.now();
 
-        // Remove the transaction from pending transaction data structures.
         let txn_hash = txn.hash();
         let pending = transactions.with_hash(&txn_hash).ok();
 
@@ -1037,7 +1036,7 @@ impl<L: Ledger> TransactionState<L> {
             .map(|key_pair| key_pair.address())
             .collect::<Vec<UserAddress>>();
         let txn_params = TransactionParams {
-            uid: Default::default(),
+            uid: None,
             timeout: None,
             status: TransactionStatus::Pending,
             memos,

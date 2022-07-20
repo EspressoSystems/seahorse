@@ -961,14 +961,12 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
 
         if add_to_history && !records.is_empty() {
             if let Some((block_id, txn_id, hash, kind)) = transaction {
-                let uid = TransactionUID::<L>(hash.clone());
                 self.add_receive_history(
                     model,
                     block_id,
                     txn_id,
                     kind,
                     hash,
-                    uid,
                     &records
                         .iter()
                         .map(|(ro, _, _)| ro.clone())
@@ -1040,7 +1038,6 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                 txn_id,
                 txn.kind(),
                 txn.hash().clone(),
-                TransactionUID::<L>(txn.hash().clone()),
                 &my_records,
             )
             .await;
@@ -1049,7 +1046,6 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         Ok(())
     }
 
-    #[allow(clippy::too_many_arguments)]
     async fn add_receive_history<Meta: Serialize + DeserializeOwned + Send>(
         &mut self,
         model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
@@ -1057,9 +1053,9 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         txn_id: u64,
         kind: TransactionKind<L>,
         hash: TransactionHash<L>,
-        uid: TransactionUID<L>,
         records: &[RecordOpening],
     ) {
+        let uid = TransactionUID::<L>(hash.clone());
         let history = receive_history_entry(kind, uid, records);
 
         if let Err(err) = model
@@ -1648,7 +1644,6 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                 self.clear_pending_transaction(model, &txn, None).await;
                 return Err(err);
             }
-
             Ok(receipt)
         }
     }
@@ -2892,7 +2887,6 @@ impl<
                     } else {
                         false
                     };
-                    // model.transactions.commit()?;
                     model
                         .store(|mut t| async {
                             t.store_snapshot(state).await?;
