@@ -412,7 +412,9 @@ impl<L: Ledger> Transactions<L> {
                 // transactions did not actually expire.  We still remove all transactions
                 // from they index becuase we'll never lookup for this timeout again.
                 // Also update the status of the expired transactions
-                if editor.transaction.status() == TransactionStatus::Pending {
+                if editor.transaction.status() == TransactionStatus::Pending
+                    || editor.transaction.status() == TransactionStatus::AwaitingMemos
+                {
                     removed.push(editor.transaction.clone());
                     editor
                         .set_status(TransactionStatus::Rejected)
@@ -495,7 +497,7 @@ impl<L: Ledger> Transactions<L> {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "testing"))]
 pub fn create_test_txn<L: Ledger>(
     params: TransactionParams<L>,
     hash: Option<TransactionHash<L>>,
