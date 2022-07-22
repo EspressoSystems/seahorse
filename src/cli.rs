@@ -18,8 +18,8 @@
 //! [cli_main] can be used to run the CLI interactively.
 use crate::{
     assets::Asset, events::EventIndex, io::SharedIO, loader::KeystoreLoader, reader::Reader,
-    BincodeSnafu, IoSnafu, KeystoreBackend, KeystoreError, RecordAmount, TransactionReceipt,
-    TransactionStatus,
+    txn_builder::TransactionUID, BincodeSnafu, IoSnafu, KeystoreBackend, KeystoreError,
+    RecordAmount, TransactionStatus,
 };
 use async_std::task::block_on;
 use async_trait::async_trait;
@@ -175,7 +175,7 @@ cli_input_from_str! {
     RecordAmount, RecordCommitment, String, UserAddress, UserPubKey, ViewerPubKey
 }
 
-impl<'a, C: CLI<'a>, L: Ledger> CLIInput<'a, C> for TransactionReceipt<L> {
+impl<'a, C: CLI<'a>, L: Ledger> CLIInput<'a, C> for TransactionUID<L> {
     fn parse_for_keystore(_keystore: &mut Keystore<'a, C>, s: &str) -> Option<Self> {
         Self::from_str(s).ok()
     }
@@ -613,23 +613,15 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                     Ok(txns) => {
                         cli_writeln!(io, "Submitted Status Asset Type Sender Receiver Amount ...");
                         for txn in txns {
-                            let status = match &txn.receipt {
-                                Some(receipt) => keystore
-                                    .transaction_status(receipt)
+                            let status = keystore
+                                    .transaction_status(txn.uid())
                                     .await
-                                    .unwrap_or(TransactionStatus::Unknown),
-                                None => {
-                                    // Transaction history entries lack a receipt only if they are
-                                    // received transactions from someone else. We only receive
-                                    // transactions once they have been retired.
-                                    TransactionStatus::Retired
-                                }
-                            };
+                                    .unwrap_or(TransactionStatus::Unknown);
                             // Try to get a readable name for the asset.
-                            let asset = if txn.asset == AssetCode::native() {
+                            let asset = if *txn.asset() == AssetCode::native() {
                                 String::from("Native")
                             } else if let Some(asset) = keystore
-                                .asset(txn.asset)
+                                .asset(*txn.asset())
                                 .await
                             {
                                 if let Some(mint_info) = asset.mint_info() {
@@ -642,15 +634,15 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                                             .to_string(),
                                     }
                                 } else {
-                                    txn.asset.to_string()
+                                    txn.asset().to_string()
                                 }
                             } else {
-                                txn.asset.to_string()
+                                txn.asset().to_string()
                             };
-                            let senders = if !txn.senders.is_empty() {
-                                txn.senders
-                                    .into_iter()
-                                    .map(|sender| UserAddress(sender).to_string())
+                            let senders = if !txn.senders().is_empty() {
+                                txn.senders()
+                                    .iter()
+                                    .map(|sender| UserAddress(sender.clone()).to_string())
                                     .collect::<Vec<String>>()
                             } else {
                                 vec![String::from("unknown")]
@@ -658,18 +650,16 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                             cli_write!(
                                 io,
                                 "{} {} {} {} {:?} ",
-                                txn.time,
+                                txn.time(),
                                 status,
                                 asset,
-                                txn.kind,
+                                txn.kind(),
                                 senders
                             );
-                            for (receiver, amount) in txn.receivers {
-                                cli_write!(io, "{} {} ", UserAddress(receiver), amount);
+                            for (receiver, amount) in txn.receivers() {
+                                cli_write!(io, "{} {} ", UserAddress(receiver.clone()), amount);
                             }
-                            if let Some(receipt) = txn.receipt {
-                                cli_write!(io, "{}", receipt);
-                            }
+                            cli_write!(io, "{}", txn.uid());
                             cli_writeln!(io);
                         }
                     }
@@ -681,8 +671,8 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             transaction,
             "print the status of a transaction",
             C,
-            |io, keystore, receipt: TransactionReceipt<C::Ledger>| {
-                match keystore.transaction_status(&receipt).await {
+            |io, keystore, uid: TransactionUID<C::Ledger>| {
+                match keystore.transaction_status(&uid).await {
                     Ok(status) => cli_writeln!(io, "{}", status),
                     Err(err) => cli_writeln!(io, "Error getting transaction status: {}", err),
                 }
@@ -692,8 +682,8 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             wait,
             "wait for a transaction to complete",
             C,
-            |io, keystore, receipt: TransactionReceipt<C::Ledger>| {
-                match keystore.await_transaction(&receipt).await {
+            |io, keystore, uid: TransactionUID<C::Ledger>| {
+                match keystore.await_transaction(&uid).await {
                     Ok(status) => cli_writeln!(io, "{}", status),
                     Err(err) => cli_writeln!(io, "Error waiting for transaction: {}", err),
                 }
@@ -940,14 +930,14 @@ impl<'a, C: CLI<'a>> CLIInput<'a, C> for KeyType {
 pub async fn finish_transaction<'a, C: CLI<'a>>(
     io: &mut SharedIO,
     keystore: &Keystore<'a, C>,
-    result: Result<TransactionReceipt<C::Ledger>, KeystoreError<C::Ledger>>,
+    result: Result<TransactionUID<C::Ledger>, KeystoreError<C::Ledger>>,
     wait: Option<bool>,
     success_state: &str,
 ) {
     match result {
-        Ok(receipt) => {
+        Ok(uid) => {
             if wait == Some(true) {
-                match keystore.await_transaction(&receipt).await {
+                match keystore.await_transaction(&uid).await {
                     Err(err) => {
                         cli_writeln!(io, "Error waiting for transaction to complete: {}", err);
                     }
@@ -959,7 +949,7 @@ pub async fn finish_transaction<'a, C: CLI<'a>>(
                     }
                 }
             } else {
-                cli_writeln!(io, "{}", receipt);
+                cli_writeln!(io, "{}", uid);
             }
         }
         Err(err) => {
@@ -1330,7 +1320,7 @@ mod test {
             asset_code, sender_pub_key, viewer_address,
         )
         .unwrap();
-        let matches = match_output(&mut viewer_output, &["(?P<txn>TXN~.*)"]);
+        let matches = match_output(&mut viewer_output, &["(?P<txn>TXUID~.*)"]);
         let receipt = matches.get("txn");
         await_transaction(
             &receipt,
@@ -1348,7 +1338,7 @@ mod test {
             asset_code, receiver_pub_key, sender_address,
         )
         .unwrap();
-        let matches = match_output(&mut sender_output, &["(?P<txn>TXN~.*)"]);
+        let matches = match_output(&mut sender_output, &["(?P<txn>TXUID~.*)"]);
         let receipt = matches.get("txn");
         await_transaction(
             &receipt,
@@ -1401,7 +1391,7 @@ mod test {
             asset_code, sender_address, viewer_address,
         )
         .unwrap();
-        let matches = match_output(&mut viewer_output, &["(?P<txn>TXN~.*)"]);
+        let matches = match_output(&mut viewer_output, &["(?P<txn>TXUID~.*)"]);
         let receipt = matches.get("txn");
         await_transaction(
             &receipt,
@@ -1438,7 +1428,7 @@ mod test {
             asset_code, sender_address, viewer_address,
         )
         .unwrap();
-        let matches = match_output(&mut viewer_output, &["(?P<txn>TXN~.*)"]);
+        let matches = match_output(&mut viewer_output, &["(?P<txn>TXUID~.*)"]);
         let receipt = matches.get("txn");
         await_transaction(
             &receipt,

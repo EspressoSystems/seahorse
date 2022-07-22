@@ -27,9 +27,9 @@ struct BenchLedgerScannerConfig {
 #[derive(Clone)]
 struct BenchLedgerScannerTransactions<L: Ledger> {
     // Mint transactions which must be submitted before the transfers.
-    mints: Vec<(MintNote, TransactionInfo<L>)>,
+    mints: Vec<(MintNote, TransactionParams<L>)>,
     // Independent transfers, one for each asset type.
-    transfers: Vec<(TransferNote, TransactionInfo<L>)>,
+    transfers: Vec<(TransferNote, TransactionParams<L>)>,
     // Receiver of transfers.
     receiver: UserKeyPair,
     // Asset types used in the transactions.

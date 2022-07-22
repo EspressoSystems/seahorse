@@ -8,7 +8,8 @@
 use crate::{
     events::{EventIndex, EventSource, LedgerEvent},
     sparse_merkle_tree::SparseMerkleTree,
-    txn_builder::TransactionHistoryEntry,
+    transactions::TransactionParams,
+    txn_builder::{TransactionStatus, TransactionUID},
 };
 use arbitrary::{Arbitrary, Unstructured};
 use arbitrary_wrappers::ArbitraryUserKeyPair;
@@ -36,7 +37,7 @@ pub type ScannedRecord = (RecordOpening, u64, MerklePath);
 #[derive(Debug)]
 pub struct ScanOutputs<L: Ledger> {
     pub records: Vec<ScannedRecord>,
-    pub history: Vec<TransactionHistoryEntry<L>>,
+    pub history: Vec<(TransactionUID<L>, TransactionParams<L>)>,
 }
 
 /// An in-progress scan of past ledger events.
@@ -90,7 +91,7 @@ pub struct BackgroundKeyScan<L: Ledger> {
     // keystore's balance.
     records: HashMap<Nullifier, (RecordOpening, u64)>,
     // New history entries for transactions we received during the scan.
-    history: Vec<TransactionHistoryEntry<L>>,
+    history: Vec<(TransactionUID<L>, TransactionParams<L>)>,
     // Sparse Merkle tree containing paths for the commitments of each record in `records`. This
     // allows us to update the paths as we scan so that at the end of the scan, we have a path for
     // each record relative to the current Merkle root.
@@ -119,7 +120,7 @@ where
             from_event: u.arbitrary()?,
             to_event: u.arbitrary()?,
             records: Default::default(),
-            history: u.arbitrary()?,
+            history: Default::default(),
             records_mt: u.arbitrary()?,
         })
     }
@@ -254,10 +255,9 @@ impl<L: Ledger> BackgroundKeyScan<L> {
                             uid += 1;
                         }
                         if !received_records.is_empty() {
-                            self.history.push(receive_history_entry(
-                                txn.kind(),
-                                txn.hash(),
-                                &received_records,
+                            self.history.push((
+                                TransactionUID::<L>(txn.hash().clone()),
+                                receive_history_entry(txn.kind(), &received_records),
                             ));
                         }
                     } else {
@@ -309,10 +309,12 @@ impl<L: Ledger> BackgroundKeyScan<L> {
                 if !records.is_empty() {
                     // Add a history entry for the received transaction.
                     if let Some((_, _, hash, txn_kind)) = transaction {
-                        self.history.push(receive_history_entry(
-                            txn_kind,
-                            hash,
-                            &records.into_iter().map(|(ro, _, _)| ro).collect::<Vec<_>>(),
+                        self.history.push((
+                            TransactionUID::<L>(hash),
+                            receive_history_entry(
+                                txn_kind,
+                                &records.into_iter().map(|(ro, _, _)| ro).collect::<Vec<_>>(),
+                            ),
                         ));
                     }
                 }
@@ -355,9 +357,8 @@ impl<L: Ledger> BackgroundKeyScan<L> {
 
 pub fn receive_history_entry<L: Ledger>(
     kind: TransactionKind<L>,
-    hash: TransactionHash<L>,
     records: &[RecordOpening],
-) -> TransactionHistoryEntry<L> {
+) -> TransactionParams<L> {
     // The last record is guaranteed not to be the fee change record. It contains useful
     // information about asset type and freeze state.
     let last_record = records.last().unwrap();
@@ -372,11 +373,15 @@ pub fn receive_history_entry<L: Ledger>(
     };
 
     let txn_asset = last_record.asset_def.code;
-    TransactionHistoryEntry {
+    TransactionParams::<L> {
+        timeout: None,
+        status: TransactionStatus::Retired,
+        signed_memos: None,
+        inputs: Default::default(),
+        outputs: records.to_vec(),
         time: Local::now(),
         asset: txn_asset,
         kind,
-        hash: Some(hash),
         // When we receive transactions, we can't tell from the protocol who sent it to us.
         senders: Vec::new(),
         receivers: records
@@ -393,6 +398,5 @@ pub fn receive_history_entry<L: Ledger>(
             .collect(),
         fee_change: None,
         asset_change: None,
-        receipt: None,
     }
 }
