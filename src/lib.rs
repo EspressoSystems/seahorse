@@ -2736,15 +2736,14 @@ impl<
         &self,
         uid: &TransactionUID<L>,
     ) -> Result<TransactionStatus, KeystoreError<L>> {
-        let status = self.transaction_status(uid).await?;
         let mut guard = self.mutex.lock().await;
         let KeystoreSharedState {
             state: _,
-            model: _,
+            model,
             txn_subscribers,
             ..
         } = &mut *guard;
-
+        let status = model.transactions.get(uid)?.status();
         if status.is_final() {
             Ok(status)
         } else {
