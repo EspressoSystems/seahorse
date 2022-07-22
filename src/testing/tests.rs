@@ -41,11 +41,7 @@ impl<L: Ledger> PartialEq<Self> for TxnHistoryWithTimeTolerantEq<L> {
             self.0.receivers(),
             other.0.receivers()
         );
-        println!(
-            "uid: self: {:?}, other: {:?}",
-            self.0.uid(),
-            other.0.uid()
-        );
+        println!("uid: self: {:?}, other: {:?}", self.0.uid(), other.0.uid());
         times_eq
             && self.0.asset() == other.0.asset()
             && self.0.kind() == other.0.kind()

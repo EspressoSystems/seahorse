@@ -507,9 +507,7 @@ mod tests {
             fee_change: None,
             asset_change: None,
         };
-        let stored_txn = transactions
-            .create(txn_uid, txn)
-            .unwrap();
+        let stored_txn = transactions.create(txn_uid, txn).unwrap();
         stored_txn.add_pending_uids(&vec![1, 2, 3]).save().unwrap();
 
         // Snapshot the modified dynamic state and then reload.

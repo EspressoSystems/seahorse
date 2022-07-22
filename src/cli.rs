@@ -614,7 +614,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                         cli_writeln!(io, "Submitted Status Asset Type Sender Receiver Amount ...");
                         for txn in txns {
                             let status = keystore
-                                    .transaction_status(&txn.uid())
+                                    .transaction_status(txn.uid())
                                     .await
                                     .unwrap_or(TransactionStatus::Unknown);
                             // Try to get a readable name for the asset.

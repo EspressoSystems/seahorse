@@ -37,7 +37,7 @@ pub type ScannedRecord = (RecordOpening, u64, MerklePath);
 #[derive(Debug)]
 pub struct ScanOutputs<L: Ledger> {
     pub records: Vec<ScannedRecord>,
-    pub history: Vec<(TransactionUID<L>, TransactionHash<L>, TransactionParams<L>)>,
+    pub history: Vec<(TransactionUID<L>, TransactionParams<L>)>,
 }
 
 /// An in-progress scan of past ledger events.
@@ -91,7 +91,7 @@ pub struct BackgroundKeyScan<L: Ledger> {
     // keystore's balance.
     records: HashMap<Nullifier, (RecordOpening, u64)>,
     // New history entries for transactions we received during the scan.
-    history: Vec<(TransactionUID<L>, TransactionHash<L>, TransactionParams<L>)>,
+    history: Vec<(TransactionUID<L>, TransactionParams<L>)>,
     // Sparse Merkle tree containing paths for the commitments of each record in `records`. This
     // allows us to update the paths as we scan so that at the end of the scan, we have a path for
     // each record relative to the current Merkle root.
@@ -257,7 +257,6 @@ impl<L: Ledger> BackgroundKeyScan<L> {
                         if !received_records.is_empty() {
                             self.history.push((
                                 TransactionUID::<L>(txn.hash().clone()),
-                                txn.hash(),
                                 receive_history_entry(txn.kind(), &received_records),
                             ));
                         }
@@ -311,8 +310,7 @@ impl<L: Ledger> BackgroundKeyScan<L> {
                     // Add a history entry for the received transaction.
                     if let Some((_, _, hash, txn_kind)) = transaction {
                         self.history.push((
-                            TransactionUID::<L>(hash.clone()),
-                            hash,
+                            TransactionUID::<L>(hash),
                             receive_history_entry(
                                 txn_kind,
                                 &records.into_iter().map(|(ro, _, _)| ro).collect::<Vec<_>>(),

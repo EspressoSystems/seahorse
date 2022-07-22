@@ -1049,7 +1049,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         hash: TransactionHash<L>,
         records: &[RecordOpening],
     ) {
-        let uid = TransactionUID::<L>(hash.clone());
+        let uid = TransactionUID::<L>(hash);
         let history = receive_history_entry(kind, records);
 
         if let Err(err) = model.transactions.create(uid, history) {
@@ -1607,9 +1607,9 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         async move {
             let stored_txn = if let Some(info) = info {
                 // Persist the pending transaction.
-                let transaction = self
-                    .txn_state
-                    .add_pending_transaction(&mut model.transactions, &txn, info)?;
+                let transaction =
+                    self.txn_state
+                        .add_pending_transaction(&mut model.transactions, &txn, info)?;
                 if let Err(err) = model
                     .store(|mut t| async {
                         t.store_snapshot(self).await?;
@@ -2848,7 +2848,7 @@ impl<
                         if let Err(err) = state.add_records(model, &key, records).await {
                             println!("Error saving records from key scan {}: {}", address, err);
                         }
-                        history.iter().cloned().for_each(|(uid, hash, t)| {
+                        history.iter().cloned().for_each(|(uid, t)| {
                             if let Err(err) = model.transactions.create(uid, t) {
                                 println!(
                                     "Error saving tranaction history from key scan {}: {}",

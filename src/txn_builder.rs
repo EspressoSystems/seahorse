@@ -12,7 +12,8 @@
 use crate::{
     events::EventIndex,
     sparse_merkle_tree::SparseMerkleTree,
-    transactions::{SignedMemos, Transaction, TransactionParams, Transactions}, KeystoreError,
+    transactions::{SignedMemos, Transaction, TransactionParams, Transactions},
+    KeystoreError,
 };
 use arbitrary::{Arbitrary, Unstructured};
 use arbitrary_wrappers::*;
@@ -644,8 +645,7 @@ impl<L: Ledger> TransactionState<L> {
     ) -> Result<Transaction<L>, KeystoreError<L>> {
         let now = self.validator.now();
         let timeout = now + (L::record_root_history() as u64);
-        let hash = txn.hash();
-        let uid = TransactionUID(hash.clone());
+        let uid = TransactionUID(txn.hash());
 
         for nullifier in txn.input_nullifiers() {
             // hold the record corresponding to this nullifier until the transaction is committed,
@@ -656,8 +656,7 @@ impl<L: Ledger> TransactionState<L> {
             }
         }
         info.timeout = Some(timeout);
-        let stored_txn = transactions
-            .create(uid, info);
+        let stored_txn = transactions.create(uid, info);
         Ok(stored_txn?.clone())
     }
 
