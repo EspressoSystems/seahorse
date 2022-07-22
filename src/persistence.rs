@@ -508,7 +508,7 @@ mod tests {
             asset_change: None,
         };
         let stored_txn = transactions
-            .create(txn_uid, random_txn_hash(&mut rng), txn)
+            .create(txn_uid, txn)
             .unwrap();
         stored_txn.add_pending_uids(&vec![1, 2, 3]).save().unwrap();
 
@@ -584,11 +584,10 @@ mod tests {
             stored.txn_state.records.insert(ro, 0, &user_key);
             storage.store_snapshot(&stored).await.unwrap();
             let hash = random_txn_hash(&mut rng);
-            let txn_uid = TransactionUID(hash.clone());
+            let txn_uid = TransactionUID(hash);
             transactions
                 .create(
                     txn_uid,
-                    hash,
                     TransactionParams {
                         timeout: Some(5000),
                         status: TransactionStatus::Pending,

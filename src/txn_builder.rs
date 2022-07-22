@@ -12,7 +12,7 @@
 use crate::{
     events::EventIndex,
     sparse_merkle_tree::SparseMerkleTree,
-    transactions::{SignedMemos, Transaction, TransactionParams, Transactions},
+    transactions::{SignedMemos, Transaction, TransactionParams, Transactions}, KeystoreError,
 };
 use arbitrary::{Arbitrary, Unstructured};
 use arbitrary_wrappers::*;
@@ -524,39 +524,6 @@ impl TransactionStatus {
 }
 
 #[ser_test(arbitrary, types(cap::Ledger))]
-#[tagged_blob("TXN")]
-#[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
-pub struct TransactionReceipt<L: Ledger> {
-    pub uid: TransactionUID<L>,
-    pub fee_nullifier: Nullifier,
-    pub submitters: Vec<UserAddress>,
-}
-
-impl<L: Ledger> PartialEq<Self> for TransactionReceipt<L> {
-    fn eq(&self, other: &Self) -> bool {
-        self.uid == other.uid
-            && self.fee_nullifier == other.fee_nullifier
-            && self.submitters == other.submitters
-    }
-}
-
-impl<'a, L: Ledger> Arbitrary<'a> for TransactionReceipt<L>
-where
-    TransactionHash<L>: Arbitrary<'a>,
-{
-    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
-        Ok(Self {
-            uid: u.arbitrary()?,
-            fee_nullifier: u.arbitrary::<ArbitraryNullifier>()?.into(),
-            submitters: u
-                .arbitrary_iter::<ArbitraryUserAddress>()?
-                .map(|a| Ok(a?.into()))
-                .collect::<Result<_, _>>()?,
-        })
-    }
-}
-
-#[ser_test(arbitrary, types(cap::Ledger))]
 #[tagged_blob("TXUID")]
 #[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
 pub struct TransactionUID<L: Ledger>(pub TransactionHash<L>);
@@ -674,7 +641,7 @@ impl<L: Ledger> TransactionState<L> {
         transactions: &mut Transactions<L>,
         txn: &reef::Transaction<L>,
         mut info: TransactionParams<L>,
-    ) -> Transaction<L> {
+    ) -> Result<Transaction<L>, KeystoreError<L>> {
         let now = self.validator.now();
         let timeout = now + (L::record_root_history() as u64);
         let hash = txn.hash();
@@ -689,19 +656,9 @@ impl<L: Ledger> TransactionState<L> {
             }
         }
         info.timeout = Some(timeout);
-        let receipt = TransactionReceipt {
-            uid: uid.clone(),
-            fee_nullifier: txn.input_nullifiers()[0],
-            submitters: info.senders.clone(),
-        };
         let stored_txn = transactions
-            .create(uid, hash, info)
-            .unwrap()
-            .with_receipt(receipt)
-            .with_hash(txn.hash())
-            .save()
-            .unwrap();
-        stored_txn
+            .create(uid, info);
+        Ok(stored_txn?.clone())
     }
 
     pub fn clear_pending_transaction<'t>(
@@ -712,9 +669,7 @@ impl<L: Ledger> TransactionState<L> {
     ) -> Option<Transaction<L>> {
         let now = self.validator.now();
 
-        let txn_hash = txn.hash();
-        let pending = transactions.with_hash(&txn_hash).ok();
-
+        let pending = transactions.get(&TransactionUID::<L>(txn.hash())).ok();
         for nullifier in txn.input_nullifiers() {
             if let Some(record) = self.records.record_with_nullifier_mut(&nullifier) {
                 if pending.is_some() {

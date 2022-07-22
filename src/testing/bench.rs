@@ -141,7 +141,7 @@ async fn generate_independent_transactions<
                     .submit_cap(mint_note.clone().into(), mint_info.clone())
                     .await
                     .unwrap();
-                keystore.await_transaction(&receipt.uid).await.unwrap();
+                keystore.await_transaction(&receipt).await.unwrap();
                 (
                     keystore.asset(asset.code).await.unwrap(),
                     (mint_note, mint_info),
@@ -227,7 +227,7 @@ async fn bench_ledger_scanner_setup<
                 .submit_cap(mint_note.into(), mint_info)
                 .await
                 .unwrap();
-            keystore.await_transaction(&receipt.uid).await.unwrap();
+            keystore.await_transaction(&receipt).await.unwrap();
         },
     ))
     .await;
@@ -252,7 +252,7 @@ async fn bench_ledger_scanner_setup<
                             .submit_cap(xfr_note.clone().into(), xfr_info.clone())
                             .await
                             .unwrap();
-                        keystore.await_transaction(&receipt.uid).await.unwrap();
+                        keystore.await_transaction(&receipt).await.unwrap();
                     },
                 ),
         )

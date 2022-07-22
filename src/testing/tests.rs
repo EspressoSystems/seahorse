@@ -42,15 +42,15 @@ impl<L: Ledger> PartialEq<Self> for TxnHistoryWithTimeTolerantEq<L> {
             other.0.receivers()
         );
         println!(
-            "receipt: self: {:?}, other: {:?}",
-            self.0.receipt(),
-            other.0.receipt()
+            "uid: self: {:?}, other: {:?}",
+            self.0.uid(),
+            other.0.uid()
         );
         times_eq
             && self.0.asset() == other.0.asset()
             && self.0.kind() == other.0.kind()
             && self.0.receivers() == other.0.receivers()
-            && self.0.receipt() == other.0.receipt()
+            && self.0.uid() == other.0.uid()
     }
 }
 
@@ -212,12 +212,10 @@ pub mod generic_keystore_tests {
         txn.time() == other.time()
             && txn.asset() == other.asset()
             && txn.kind() == other.kind()
-            && txn.hash() == other.hash()
             && txn.senders() == other.senders()
             && txn.receivers() == other.receivers()
             && txn.fee_change() == other.fee_change()
             && txn.asset_change() == other.asset_change()
-            && txn.receipt() == other.receipt()
     }
     /*
      * Test idea: simulate two keystores transferring funds back and forth. After initial
@@ -1056,7 +1054,7 @@ pub mod generic_keystore_tests {
         // Check that the history properly accounts for freezes and unfreezes.
         let expected_history = vec![
             transactions::create_test_txn(
-                r1.uid,
+                r1,
                 TransactionParams {
                     timeout: None,
                     status: TransactionStatus::Unknown,
@@ -1071,11 +1069,9 @@ pub mod generic_keystore_tests {
                     fee_change: None,
                     asset_change: None,
                 },
-                None,
-                None,
             ),
             transactions::create_test_txn(
-                r2.uid,
+                r2,
                 TransactionParams {
                     timeout: None,
                     status: TransactionStatus::Unknown,
@@ -1090,11 +1086,9 @@ pub mod generic_keystore_tests {
                     fee_change: None,
                     asset_change: None,
                 },
-                None,
-                None,
             ),
             transactions::create_test_txn(
-                r3.uid,
+                r3,
                 TransactionParams {
                     timeout: None,
                     status: TransactionStatus::Unknown,
@@ -1109,11 +1103,9 @@ pub mod generic_keystore_tests {
                     fee_change: None,
                     asset_change: None,
                 },
-                None,
-                None,
             ),
             transactions::create_test_txn(
-                xfr_receipt.uid.clone(),
+                xfr_receipt,
                 TransactionParams {
                     timeout: None,
                     status: TransactionStatus::Unknown,
@@ -1133,8 +1125,6 @@ pub mod generic_keystore_tests {
                     fee_change: Some(1.into()),
                     asset_change: Some(2.into()),
                 },
-                None,
-                Some(xfr_receipt),
             ),
         ]
         .into_iter()
@@ -1312,7 +1302,7 @@ pub mod generic_keystore_tests {
                 (owner % nkeystores) as usize,
                 &mut histories,
                 transactions::create_test_txn(
-                    receipt.uid,
+                    receipt,
                     TransactionParams {
                         timeout: None,
                         status: TransactionStatus::Unknown,
@@ -1327,8 +1317,6 @@ pub mod generic_keystore_tests {
                         fee_change: None,
                         asset_change: None,
                     },
-                    None,
-                    None,
                 ),
             );
             t.sync(&ledger, keystores.as_slice()).await;
@@ -1503,7 +1491,7 @@ pub mod generic_keystore_tests {
                         sender_ix,
                         &mut histories,
                         transactions::create_test_txn(
-                            receipt.uid,
+                            receipt,
                             TransactionParams {
                                 timeout: None,
                                 status: TransactionStatus::Unknown,
@@ -1518,8 +1506,6 @@ pub mod generic_keystore_tests {
                                 fee_change: None,
                                 asset_change: None,
                             },
-                            None,
-                            None,
                         ),
                     );
 
@@ -1629,7 +1615,7 @@ pub mod generic_keystore_tests {
                     sender_ix,
                     &mut histories,
                     transactions::create_test_txn(
-                        receipt.uid.clone(),
+                        receipt.clone(),
                         TransactionParams {
                             timeout: None,
                             status: TransactionStatus::Unknown,
@@ -1644,8 +1630,6 @@ pub mod generic_keystore_tests {
                             fee_change: None,
                             asset_change: None,
                         },
-                        None,
-                        Some(receipt.clone()),
                     ),
                 );
                 if receiver_ix != sender_ix {
@@ -1653,7 +1637,7 @@ pub mod generic_keystore_tests {
                         receiver_ix,
                         &mut histories,
                         transactions::create_test_txn(
-                            receipt.uid.clone(),
+                            receipt,
                             TransactionParams {
                                 timeout: None,
                                 status: TransactionStatus::Unknown,
@@ -1668,8 +1652,6 @@ pub mod generic_keystore_tests {
                                 fee_change: None,
                                 asset_change: None,
                             },
-                            None,
-                            None,
                         ),
                     );
                 }
@@ -2089,7 +2071,7 @@ pub mod generic_keystore_tests {
             .await
             .unwrap()
             .clone();
-        await_transaction(&receipt.uid, &keystore1, &[]).await;
+        await_transaction(&receipt, &keystore1, &[]).await;
         assert_eq!(
             keystore1
                 .balance_breakdown(&pub_keys1[0].address(), &AssetCode::native())
@@ -2118,7 +2100,7 @@ pub mod generic_keystore_tests {
             .await
             .unwrap()
             .clone();
-        await_transaction(&receipt.uid, &keystore1, &[&keystore2]).await;
+        await_transaction(&receipt, &keystore1, &[&keystore2]).await;
         assert_eq!(
             keystore1
                 .balance_breakdown(&pub_keys1[0].address(), &AssetCode::native())
@@ -2143,7 +2125,7 @@ pub mod generic_keystore_tests {
             .await
             .unwrap()
             .clone();
-        await_transaction(&receipt.uid, &keystore2, &[&keystore1]).await;
+        await_transaction(&receipt, &keystore2, &[&keystore1]).await;
         assert_eq!(
             keystore1
                 .balance_breakdown(&pub_keys1[0].address(), &AssetCode::native())
@@ -2609,7 +2591,7 @@ pub mod generic_keystore_tests {
             .transfer(None, &AssetCode::native(), &[(pub_key.clone(), 2i32)], 1i32)
             .await
             .unwrap();
-        await_transaction(&receipt.uid, &keystores[0].0, &[]).await;
+        await_transaction(&receipt, &keystores[0].0, &[]).await;
         {
             let account = keystores[0].0.sending_account(&address).await.unwrap();
             assert!(account.used);
@@ -2770,7 +2752,7 @@ pub mod generic_keystore_tests {
             )
             .await
             .unwrap();
-        await_transaction(&receipt.uid, &keystores[0].0, &[&keystores[1].0]).await;
+        await_transaction(&receipt, &keystores[0].0, &[&keystores[1].0]).await;
         t.check_storage(&keystores).await;
 
         // Mint the freezable asset.
@@ -2785,7 +2767,7 @@ pub mod generic_keystore_tests {
             )
             .await
             .unwrap();
-        await_transaction(&receipt.uid, &keystores[0].0, &[&keystores[1].0]).await;
+        await_transaction(&receipt, &keystores[0].0, &[&keystores[1].0]).await;
         {
             let account = keystores[0].0.viewing_account(&viewing_key).await.unwrap();
             assert_eq!(
@@ -2999,7 +2981,7 @@ pub mod generic_keystore_tests {
 
         // The history entry should be added immediately.
         let expected_entry = TxnHistoryWithTimeTolerantEq(transactions::create_test_txn(
-            receipt.uid.clone(),
+            receipt.clone(),
             TransactionParams {
                 timeout: None,
                 status: TransactionStatus::Unknown,
@@ -3014,8 +2996,6 @@ pub mod generic_keystore_tests {
                 fee_change: Some(1.into()),
                 asset_change: Some(0.into()),
             },
-            None,
-            Some(receipt.clone()),
         ));
         let entry = keystores[0]
             .0
@@ -3031,7 +3011,7 @@ pub mod generic_keystore_tests {
         assert_eq!(
             keystores[0]
                 .0
-                .transaction_status(&entry.receipt().as_ref().unwrap().uid)
+                .transaction_status(entry.uid())
                 .await
                 .unwrap(),
             TransactionStatus::Pending
@@ -3039,11 +3019,11 @@ pub mod generic_keystore_tests {
 
         // Release the transfer so it can finalize.
         ledger.lock().await.release_held_transaction();
-        await_transaction(&receipt.uid, &keystores[0].0, &[&keystores[1].0]).await;
+        await_transaction(&receipt, &keystores[0].0, &[&keystores[1].0]).await;
 
         // The receiver should have a new entry.
         let expected_entry = TxnHistoryWithTimeTolerantEq(transactions::create_test_txn(
-            receipt.uid.clone(),
+            receipt.clone(),
             TransactionParams {
                 timeout: None,
                 status: TransactionStatus::Unknown,
@@ -3058,8 +3038,6 @@ pub mod generic_keystore_tests {
                 fee_change: None,
                 asset_change: None,
             },
-            None,
-            None,
         ));
         assert_eq!(
             TxnHistoryWithTimeTolerantEq(
@@ -3092,7 +3070,7 @@ pub mod generic_keystore_tests {
         assert_eq!(
             keystores[0]
                 .0
-                .transaction_status(&entry.receipt().as_ref().unwrap().uid)
+                .transaction_status(entry.uid())
                 .await
                 .unwrap(),
             TransactionStatus::Retired
@@ -3303,7 +3281,7 @@ pub mod generic_keystore_tests {
             .transfer(None, &AssetCode::native(), &[(accounts[1].clone(), 1)], 0)
             .await
             .unwrap();
-        await_transaction(&txn.uid, &keystores[0].0, &[&sender]).await;
+        await_transaction(&txn, &keystores[0].0, &[&sender]).await;
         assert_eq!(
             sender
                 .balance_breakdown(&accounts[0].address(), &AssetCode::native())
@@ -3327,7 +3305,7 @@ pub mod generic_keystore_tests {
             .mint(None, 0, &asset.code, 1, accounts[0].clone())
             .await
             .unwrap();
-        await_transaction(&txn.uid, &sender, &[]).await;
+        await_transaction(&txn, &sender, &[]).await;
         assert_eq!(sender.balance(&asset.code).await, 1u64.into());
 
         // Now do a non-native transfer with a 0 fee.
@@ -3335,7 +3313,7 @@ pub mod generic_keystore_tests {
             .transfer(None, &asset.code, &[(keystores[0].1[0].clone(), 1)], 0)
             .await
             .unwrap();
-        await_transaction(&txn.uid, &sender, &[&keystores[0].0]).await;
+        await_transaction(&txn, &sender, &[&keystores[0].0]).await;
         assert_eq!(sender.balance(&AssetCode::native()).await, 1u64.into());
         assert_eq!(sender.balance(&asset.code).await, 0u64.into());
         assert_eq!(keystores[0].0.balance(&asset.code).await, 1u64.into());

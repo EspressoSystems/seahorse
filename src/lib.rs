@@ -1052,7 +1052,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         let uid = TransactionUID::<L>(hash.clone());
         let history = receive_history_entry(kind, records);
 
-        if let Err(err) = model.transactions.create(uid, hash, history) {
+        if let Err(err) = model.transactions.create(uid, history) {
             println!(
                 "Failed to create transaction ({}, {}) in history: {}.",
                 block_id, txn_id, err
@@ -1565,7 +1565,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
         note: TransactionNote,
         info: TransactionParams<L>,
-    ) -> Result<TransactionReceipt<L>, KeystoreError<L>> {
+    ) -> Result<TransactionUID<L>, KeystoreError<L>> {
         let mut nullifier_pfs = Vec::new();
         for n in note.nullifiers() {
             let (spent, proof) = model
@@ -1600,16 +1600,16 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         model: &'b mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
         txn: reef::Transaction<L>,
         info: Option<TransactionParams<L>>,
-    ) -> impl 'b + Captures<'a> + Future<Output = Result<TransactionReceipt<L>, KeystoreError<L>>> + Send
+    ) -> impl 'b + Captures<'a> + Future<Output = Result<TransactionUID<L>, KeystoreError<L>>> + Send
     where
         'a: 'b,
     {
         async move {
             let stored_txn = if let Some(info) = info {
                 // Persist the pending transaction.
-                let t = self
+                let transaction = self
                     .txn_state
-                    .add_pending_transaction(&mut model.transactions, &txn, info);
+                    .add_pending_transaction(&mut model.transactions, &txn, info)?;
                 if let Err(err) = model
                     .store(|mut t| async {
                         t.store_snapshot(self).await?;
@@ -1627,11 +1627,11 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                     model.transactions.revert()?;
                     return Err(err);
                 }
-                t
+                transaction
             } else {
-                model.transactions.with_hash(&txn.hash())?
+                model.transactions.get(&TransactionUID::<L>(txn.hash()))?
             };
-            let receipt = stored_txn.receipt().as_ref().unwrap().clone();
+            let uid = stored_txn.uid().clone();
             // If we succeeded in creating and persisting the pending transaction, submit it to the
             // validators.
             if let Err(err) = model.backend.submit(txn.clone(), stored_txn).await {
@@ -1639,7 +1639,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                 self.clear_pending_transaction(model, &txn, None).await;
                 return Err(err);
             }
-            Ok(receipt)
+            Ok(uid)
         }
     }
 
@@ -2313,7 +2313,7 @@ impl<
         asset: &AssetCode,
         receivers: &[(UserPubKey, impl Clone + Into<RecordAmount>)],
         fee: impl Into<RecordAmount>,
-    ) -> Result<TransactionReceipt<L>, KeystoreError<L>> {
+    ) -> Result<TransactionUID<L>, KeystoreError<L>> {
         let receivers = receivers
             .iter()
             .map(|(addr, amount)| (addr.clone(), amount.clone().into(), false))
@@ -2368,7 +2368,7 @@ impl<
         &mut self,
         txn: reef::Transaction<L>,
         info: TransactionParams<L>,
-    ) -> Result<TransactionReceipt<L>, KeystoreError<L>> {
+    ) -> Result<TransactionUID<L>, KeystoreError<L>> {
         let KeystoreSharedState { state, model, .. } = &mut *self.mutex.lock().await;
         state
             .submit_elaborated_transaction(model, txn, Some(info))
@@ -2380,7 +2380,7 @@ impl<
         &mut self,
         txn: TransactionNote,
         info: TransactionParams<L>,
-    ) -> Result<TransactionReceipt<L>, KeystoreError<L>> {
+    ) -> Result<TransactionUID<L>, KeystoreError<L>> {
         let KeystoreSharedState { state, model, .. } = &mut *self.mutex.lock().await;
         state.submit_transaction(model, txn, info).await
     }
@@ -2608,7 +2608,7 @@ impl<
         asset_code: &AssetCode,
         amount: impl Into<RecordAmount>,
         receiver: UserPubKey,
-    ) -> Result<TransactionReceipt<L>, KeystoreError<L>> {
+    ) -> Result<TransactionUID<L>, KeystoreError<L>> {
         let (note, info) = self
             .build_mint(minter, fee.into(), asset_code, amount.into(), receiver)
             .await?;
@@ -2667,7 +2667,7 @@ impl<
         asset: &AssetCode,
         amount: impl Into<U256>,
         owner: UserAddress,
-    ) -> Result<TransactionReceipt<L>, KeystoreError<L>> {
+    ) -> Result<TransactionUID<L>, KeystoreError<L>> {
         let (note, info) = self
             .build_freeze(freezer, fee.into(), asset, amount.into(), owner)
             .await?;
@@ -2711,7 +2711,7 @@ impl<
         asset: &AssetCode,
         amount: impl Into<U256>,
         owner: UserAddress,
-    ) -> Result<TransactionReceipt<L>, KeystoreError<L>> {
+    ) -> Result<TransactionUID<L>, KeystoreError<L>> {
         let (note, info) = self
             .build_unfreeze(freezer, fee.into(), asset, amount.into(), owner)
             .await?;
@@ -2730,53 +2730,21 @@ impl<
         Ok(model.transactions.get(uid)?.status())
     }
 
-    /// A future which completes when a transaction we didn't submit completes
-    pub async fn await_foreign_transaction(
-        &self,
-        receipt: TransactionReceipt<L>,
-    ) -> Result<TransactionStatus, KeystoreError<L>> {
-        let mut guard = self.mutex.lock().await;
-        let KeystoreSharedState {
-            state: _,
-            model: _,
-            txn_subscribers: _,
-            pending_foreign_txns,
-            ..
-        } = &mut *guard;
-
-        let status = self.transaction_status(&receipt.uid).await?;
-        if status.is_final() {
-            Ok(status)
-        } else {
-            let (sender, receiver) = oneshot::channel();
-            // Transaction uids are unique only to a given keystore, so if we're trying to track
-            // somebody else's transaction, the best we can do is wait for one of its nullifiers
-            // to be published on the ledger.
-            pending_foreign_txns
-                .entry(receipt.fee_nullifier)
-                .or_insert_with(Vec::new)
-                .push(sender);
-            drop(guard);
-            receiver.await.map_err(|_| KeystoreError::<L>::Cancelled {})
-        }
-    }
-
     /// A future which completes when the transaction is finalized (committed or rejected).
     /// Works only for transactions we submitted
     pub async fn await_transaction(
         &self,
         uid: &TransactionUID<L>,
     ) -> Result<TransactionStatus, KeystoreError<L>> {
+        let status = self.transaction_status(uid).await?;
         let mut guard = self.mutex.lock().await;
         let KeystoreSharedState {
             state: _,
             model: _,
             txn_subscribers,
-            pending_foreign_txns: _,
             ..
         } = &mut *guard;
 
-        let status = self.transaction_status(uid).await?;
         if status.is_final() {
             Ok(status)
         } else {
@@ -2881,7 +2849,7 @@ impl<
                             println!("Error saving records from key scan {}: {}", address, err);
                         }
                         history.iter().cloned().for_each(|(uid, hash, t)| {
-                            if let Err(err) = model.transactions.create(uid, hash, t) {
+                            if let Err(err) = model.transactions.create(uid, t) {
                                 println!(
                                     "Error saving tranaction history from key scan {}: {}",
                                     address, err

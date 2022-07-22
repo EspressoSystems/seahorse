@@ -12,7 +12,7 @@
 
 use crate::{
     key_value_store::*, AssetCode, EncryptingResourceAdapter, KeystoreError, Ledger, RecordAmount,
-    TransactionHash, TransactionKind, TransactionReceipt, TransactionStatus, TransactionUID,
+    TransactionKind, TransactionStatus, TransactionUID,
 };
 use atomic_store::{AppendLog, AtomicStoreLoader};
 use chrono::{DateTime, Local};
@@ -43,7 +43,6 @@ pub struct Transaction<L: Ledger> {
     /// Time when this transaction will expire if it's not completed, None if we recieved it
     timeout: Option<u64>,
     /// Hash which appears in the commited block for this transaction
-    hash: Option<TransactionHash<L>>,
     status: TransactionStatus,
     /// The uids of the outputs of this transaction for which memos have not yet been posted.
     pending_uids: HashSet<u64>,
@@ -94,8 +93,6 @@ pub struct Transaction<L: Ledger> {
     /// example, this is a transaction we received from someone else, and we do not hold the
     /// necessary viewing keys to inspect the change outputs of the transaction.
     asset_change: Option<RecordAmount>,
-    /// If we sent this transaction, a receipt to track its progress.
-    receipt: Option<TransactionReceipt<L>>,
 }
 
 impl<L: Ledger> Transaction<L> {
@@ -105,9 +102,6 @@ impl<L: Ledger> Transaction<L> {
     }
     pub fn timeout(&self) -> Option<u64> {
         self.timeout
-    }
-    pub fn hash(&self) -> Option<&TransactionHash<L>> {
-        self.hash.as_ref()
     }
     pub fn memos(&self) -> Option<&SignedMemos> {
         self.signed_memos.as_ref()
@@ -138,9 +132,6 @@ impl<L: Ledger> Transaction<L> {
     }
     pub fn asset_change(&self) -> &Option<RecordAmount> {
         &self.asset_change
-    }
-    pub fn receipt(&self) -> &Option<TransactionReceipt<L>> {
-        &self.receipt
     }
     pub fn status(&self) -> TransactionStatus {
         self.status
@@ -183,18 +174,6 @@ impl<'a, L: Ledger> TransactionEditor<'a, L> {
     /// Add asset change record to the transaction once it is certain
     pub fn with_asset_change(mut self, amount: RecordAmount) -> Self {
         self.transaction.asset_change = Some(amount);
-        self
-    }
-
-    /// Add the transaction receipt when it is recieved
-    pub fn with_receipt(mut self, receipt: TransactionReceipt<L>) -> Self {
-        self.transaction.receipt = Some(receipt);
-        self
-    }
-
-    /// Add the transaction hash, should be called after this transaction is committed
-    pub fn with_hash(mut self, hash: TransactionHash<L>) -> Self {
-        self.transaction.hash = Some(hash);
         self
     }
 
@@ -259,7 +238,6 @@ pub struct TransactionParams<L: Ledger> {
 pub struct Transactions<L: Ledger> {
     /// A key-value store for transactions.
     store: TransactionsStore<L>,
-    txn_by_hash: PersistableHashMap<TransactionHash<L>, TransactionUID<L>>,
     expiring_txns: PersistableBTreeMultiMap<u64, TransactionUID<L>>,
     /// Maps pending memo UIDs to the Transaction<L>they come from
     uids_awaiting_memos: PersistableHashMap<u64, TransactionUID<L>>,
@@ -278,7 +256,6 @@ impl<L: Ledger> Transactions<L> {
         let store = TransactionsStore::<L>::new(log)?;
         let mut transactions = Self {
             store,
-            txn_by_hash: Persistable::new(),
             expiring_txns: Persistable::new(),
             uids_awaiting_memos: Persistable::new(),
         };
@@ -288,14 +265,9 @@ impl<L: Ledger> Transactions<L> {
 
     /// Reload from disc to, rebuilds the indices
     pub fn reload(&mut self) {
-        self.txn_by_hash = Persistable::new();
         self.expiring_txns = Persistable::new();
         self.uids_awaiting_memos = Persistable::new();
         for txn in self.store.iter() {
-            if txn.hash.is_some() {
-                self.txn_by_hash
-                    .insert((txn.hash.as_ref().unwrap().clone(), txn.uid().clone()));
-            }
             if let Some(timeout) = txn.timeout() {
                 self.expiring_txns.insert((timeout, txn.uid().clone()));
             }
@@ -354,25 +326,6 @@ impl<L: Ledger> Transactions<L> {
         Ok(TransactionEditor::new(self, txn))
     }
 
-    /// Get a Transaction for a given TransactionHash
-    pub fn with_hash(&self, hash: &TransactionHash<L>) -> Result<Transaction<L>, KeystoreError<L>> {
-        let uid = self
-            .txn_by_hash
-            .index()
-            .get(hash)
-            .ok_or(KeyValueStoreError::KeyNotFound)?;
-        Ok(self.get(uid).unwrap())
-    }
-
-    /// Get a TransactionEditor for a given TransactionHash
-    pub fn with_hash_mut(
-        &mut self,
-        hash: &TransactionHash<L>,
-    ) -> Result<TransactionEditor<'_, L>, KeystoreError<L>> {
-        let txn = self.with_hash(hash)?;
-        Ok(TransactionEditor::new(self, txn))
-    }
-
     /// Get all the transactions timing out at the provided time.  
     pub fn with_timeout(
         &self,
@@ -417,7 +370,6 @@ impl<L: Ledger> Transactions<L> {
 
     /// Commit the store version.
     pub fn commit(&mut self) -> Result<(), KeystoreError<L>> {
-        self.txn_by_hash.commit();
         self.expiring_txns.commit();
         self.uids_awaiting_memos.commit();
         Ok(self.store.commit_version()?)
@@ -425,7 +377,6 @@ impl<L: Ledger> Transactions<L> {
 
     /// Revert the store version.
     pub fn revert(&mut self) -> Result<(), KeystoreError<L>> {
-        self.txn_by_hash.revert();
         self.expiring_txns.revert();
         self.uids_awaiting_memos.revert();
         Ok(self.store.revert_version()?)
@@ -443,13 +394,11 @@ impl<L: Ledger> Transactions<L> {
     pub fn create(
         &mut self,
         uid: TransactionUID<L>,
-        hash: TransactionHash<L>,
         params: TransactionParams<L>,
     ) -> Result<TransactionEditor<'_, L>, KeystoreError<L>> {
         let txn = Transaction::<L> {
             uid,
             timeout: params.timeout,
-            hash: Some(hash),
             status: params.status,
             pending_uids: HashSet::new(),
             signed_memos: params.signed_memos,
@@ -462,7 +411,6 @@ impl<L: Ledger> Transactions<L> {
             receivers: params.receivers,
             fee_change: params.fee_change,
             asset_change: params.asset_change,
-            receipt: None,
         };
         if let Some(timeout) = params.timeout {
             self.expiring_txns.insert((timeout, txn.uid().clone()));
@@ -488,13 +436,10 @@ impl<L: Ledger> Transactions<L> {
 pub fn create_test_txn<L: Ledger>(
     uid: TransactionUID<L>,
     params: TransactionParams<L>,
-    hash: Option<TransactionHash<L>>,
-    receipt: Option<TransactionReceipt<L>>,
 ) -> Transaction<L> {
     Transaction::<L> {
         uid,
         timeout: params.timeout,
-        hash: hash,
         status: params.status,
         pending_uids: HashSet::new(),
         signed_memos: params.signed_memos,
@@ -507,6 +452,5 @@ pub fn create_test_txn<L: Ledger>(
         receivers: params.receivers,
         fee_change: params.fee_change,
         asset_change: params.asset_change,
-        receipt,
     }
 }
