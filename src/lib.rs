@@ -2724,7 +2724,9 @@ impl<
         &self,
         uid: &TransactionUID<L>,
     ) -> Result<TransactionStatus, KeystoreError<L>> {
-        let KeystoreSharedState { state, model, .. } = &mut *self.mutex.lock().await;
+        let KeystoreSharedState {
+            state: _, model, ..
+        } = &mut *self.mutex.lock().await;
         Ok(model.transactions.get(uid)?.status())
     }
 
@@ -2735,9 +2737,9 @@ impl<
     ) -> Result<TransactionStatus, KeystoreError<L>> {
         let mut guard = self.mutex.lock().await;
         let KeystoreSharedState {
-            state,
-            model,
-            txn_subscribers,
+            state: _,
+            model: _,
+            txn_subscribers: _,
             pending_foreign_txns,
             ..
         } = &mut *guard;
@@ -2767,10 +2769,10 @@ impl<
     ) -> Result<TransactionStatus, KeystoreError<L>> {
         let mut guard = self.mutex.lock().await;
         let KeystoreSharedState {
-            state,
-            model,
+            state: _,
+            model: _,
             txn_subscribers,
-            pending_foreign_txns,
+            pending_foreign_txns: _,
             ..
         } = &mut *guard;
 
