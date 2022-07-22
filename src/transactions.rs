@@ -28,7 +28,9 @@ use std::ops::{Deref, DerefMut};
 
 #[derive(Clone, Debug, Derivative, Deserialize, Serialize)]
 #[derivative(PartialEq(bound = ""))]
+
 pub struct SignedMemos {
+    /// A receiver memo for each output, except for burned outputs.
     pub memos: Vec<Option<ReceiverMemo>>,
     pub sig: Signature,
 }
@@ -46,7 +48,7 @@ pub struct Transaction<L: Ledger> {
     status: TransactionStatus,
     /// The uids of the outputs of this transaction for which memos have not yet been posted.
     pending_uids: HashSet<u64>,
-    /// A receiver memo for each output, except for burned outputs.
+    /// If this transaction has memos, the collection of memos and signatures.
     signed_memos: Option<SignedMemos>,
     inputs: Vec<RecordOpening>,
     outputs: Vec<RecordOpening>,
