@@ -623,39 +623,24 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         }
     }
 
-    pub async fn transaction_status<
-        Meta: Serialize + DeserializeOwned + Send + Clone + PartialEq,
-    >(
+    // Inform the database that we have received memos for the given record UIDs. Return a list of
+    // the transactions that are completed as a result.
+    pub fn received_memos(
         &mut self,
-        model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
-        receipt: &TransactionReceipt<L>,
-    ) -> Result<TransactionStatus, KeystoreError<L>> {
-        match model.transactions.get(&receipt.uid)?.status() {
-            TransactionStatus::Unknown => {
-                // If the transactions database returns Unknown, it means the transaction is not in-
-                // flight (the database only tracks in-flight transactions). So it must be retired,
-                // rejected, or a foreign transaction that we were never tracking to begin with.
-                // Check if it has been accepted by seeing if its fee nullifier is spent.
-                let (spent, _) = model
-                    .backend
-                    .get_nullifier_proof(&mut self.txn_state.nullifiers, receipt.fee_nullifier)
-                    .await?;
-                if spent {
-                    Ok(TransactionStatus::Retired)
-                } else {
-                    // If the transaction isn't in our pending data structures, but its fee record
-                    // has not been spent, then either it was rejected, or it's someone else's
-                    // transaction that we haven't been tracking through the lifecycle.
-                    for submitter in &receipt.submitters {
-                        if !self.sending_accounts.contains_key(submitter) {
-                            return Ok(TransactionStatus::Unknown);
-                        }
-                    }
-                    Ok(TransactionStatus::Rejected)
+        uids: impl Iterator<Item = u64>,
+        transactions: &mut Transactions<L>,
+    ) -> Vec<TransactionUID<L>> {
+        let mut completed = Vec::new();
+        for uid in uids {
+            if let Ok(txn) = transactions.with_memo_id_mut(uid) {
+                let mut txn = txn.remove_pending_uid(uid);
+                let transaction = txn.save().unwrap();
+                if transaction.pending_uids().is_empty() {
+                    completed.push((*txn).uid().clone());
                 }
             }
-            status => Ok(status),
         }
+        completed
     }
 
     async fn handle_event<Meta: Serialize + DeserializeOwned + Send>(
@@ -791,12 +776,12 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                             .get_mut(pending.uid())
                             .unwrap()
                             .add_pending_uids(
-                                this_txn_uids
+                                &this_txn_uids
                                     .iter()
-                                    .zip(pending.memos().iter())
+                                    .zip(pending.memos().unwrap().memos.iter())
                                     .filter_map(|((uid, _), memo)| memo.as_ref().map(|_| *uid))
                                     .into_iter()
-                                    .collect(),
+                                    .collect::<Vec<u64>>(),
                             )
                             .set_status(status)
                             .save()
@@ -845,23 +830,32 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                 // This maintains the invariant that everything in `pending_transactions` must
                 // correspond to an on-hold record, because everything which corresponds to a record
                 // whose hold just expired will be removed from the set now.
-                for txn in self
-                    .txn_state
-                    .clear_expired_transactions(&mut model.transactions)
+                match model
+                    .transactions
+                    .remove_expired(self.txn_state.block_height())
                 {
-                    summary
-                        .updated_txns
-                        .push((txn.uid().clone(), TransactionStatus::Rejected));
-                    model.backend.finalize(txn, None).await;
+                    Ok(txns) => {
+                        for txn in txns {
+                            summary
+                                .updated_txns
+                                .push((txn.uid().clone(), TransactionStatus::Rejected));
+                            model.backend.finalize(txn, None).await;
+                        }
+                    }
+                    Err(err) => {
+                        println!(
+                            "Error removing expired transaction from storage.  Block: {},  Error: {}",
+                            block_id, err
+                        );
+                    }
                 }
             }
             LedgerEvent::Memos {
                 outputs,
                 transaction,
             } => {
-                let completed = self
-                    .txn_state
-                    .received_memos(outputs.iter().map(|info| info.2), &mut model.transactions);
+                let completed =
+                    self.received_memos(outputs.iter().map(|info| info.2), &mut model.transactions);
                 let self_published = !completed.is_empty();
                 summary.updated_txns.extend(
                     completed
@@ -1056,17 +1050,11 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         records: &[RecordOpening],
     ) {
         let uid = TransactionUID::<L>(hash.clone());
-        let history = receive_history_entry(kind, uid, records);
+        let history = receive_history_entry(kind, records);
 
-        if let Err(err) = model
-            .transactions
-            .create(history)
-            .unwrap()
-            .with_hash(hash)
-            .save()
-        {
+        if let Err(err) = model.transactions.create(uid, hash, history) {
             println!(
-                "Failed to store transaction ({}, {}) in history: {}.",
+                "Failed to create transaction ({}, {}) in history: {}.",
                 block_id, txn_id, err
             );
         }
@@ -1622,21 +1610,28 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                 let t = self
                     .txn_state
                     .add_pending_transaction(&mut model.transactions, &txn, info);
-                if let Err(err) = model.transactions.commit() {
+                if let Err(err) = model
+                    .store(|mut t| async {
+                        t.store_snapshot(self).await?;
+
+                        Ok(t)
+                    })
+                    .await
+                {
                     // If we failed to persist the pending transaction, we cannot submit it, because if
                     // we then exit and reload the process from storage, there will be an in-flight
                     // transaction which is not accounted for in our pending transaction data
                     // structures. Instead, we remove the pending transaction from our in-memory data
                     // structures and return the error.
-                    model.transactions.revert()?;
                     self.clear_pending_transaction(model, &txn, None).await;
+                    model.transactions.revert()?;
                     return Err(err);
                 }
                 t
             } else {
                 model.transactions.with_hash(&txn.hash())?
             };
-            let receipt = stored_txn.receipt().clone().unwrap();
+            let receipt = stored_txn.receipt().as_ref().unwrap().clone();
             // If we succeeded in creating and persisting the pending transaction, submit it to the
             // validators.
             if let Err(err) = model.backend.submit(txn.clone(), stored_txn).await {
@@ -2727,16 +2722,16 @@ impl<
     /// Get the status of a transaction.
     pub async fn transaction_status(
         &self,
-        receipt: &TransactionReceipt<L>,
+        uid: &TransactionUID<L>,
     ) -> Result<TransactionStatus, KeystoreError<L>> {
         let KeystoreSharedState { state, model, .. } = &mut *self.mutex.lock().await;
-        state.transaction_status(model, receipt).await
+        Ok(model.transactions.get(uid)?.status())
     }
 
-    /// A future which completes when the transaction is finalized (committed or rejected).
-    pub async fn await_transaction(
+    /// A future which completes when a transaction we didn't submit completes
+    pub async fn await_foreign_transaction(
         &self,
-        receipt: &TransactionReceipt<L>,
+        receipt: TransactionReceipt<L>,
     ) -> Result<TransactionStatus, KeystoreError<L>> {
         let mut guard = self.mutex.lock().await;
         let KeystoreSharedState {
@@ -2747,33 +2742,49 @@ impl<
             ..
         } = &mut *guard;
 
-        let status = state.transaction_status(model, receipt).await?;
+        let status = self.transaction_status(&receipt.uid).await?;
         if status.is_final() {
             Ok(status)
         } else {
             let (sender, receiver) = oneshot::channel();
+            // Transaction uids are unique only to a given keystore, so if we're trying to track
+            // somebody else's transaction, the best we can do is wait for one of its nullifiers
+            // to be published on the ledger.
+            pending_foreign_txns
+                .entry(receipt.fee_nullifier)
+                .or_insert_with(Vec::new)
+                .push(sender);
+            drop(guard);
+            receiver.await.map_err(|_| KeystoreError::<L>::Cancelled {})
+        }
+    }
 
-            if receipt
-                .submitters
-                .iter()
-                .all(|key| state.sending_accounts.contains_key(key))
-            {
-                // If we submitted this transaction, we have all the information we need to track it
-                // through the lifecycle based on its uid alone.
-                txn_subscribers
-                    .entry(receipt.uid.clone())
-                    .or_insert_with(Vec::new)
-                    .push(sender);
-            } else {
-                // Transaction uids are unique only to a given keystore, so if we're trying to track
-                // somebody else's transaction, the best we can do is wait for one of its nullifiers
-                // to be published on the ledger.
-                pending_foreign_txns
-                    .entry(receipt.fee_nullifier)
-                    .or_insert_with(Vec::new)
-                    .push(sender);
-            }
-            // assert!(false);
+    /// A future which completes when the transaction is finalized (committed or rejected).
+    /// Works only for transactions we submitted
+    pub async fn await_transaction(
+        &self,
+        uid: &TransactionUID<L>,
+    ) -> Result<TransactionStatus, KeystoreError<L>> {
+        let mut guard = self.mutex.lock().await;
+        let KeystoreSharedState {
+            state,
+            model,
+            txn_subscribers,
+            pending_foreign_txns,
+            ..
+        } = &mut *guard;
+
+        let status = self.transaction_status(uid).await?;
+        if status.is_final() {
+            Ok(status)
+        } else {
+            let (sender, receiver) = oneshot::channel();
+            // If we submitted this transaction, we have all the information we need to track it
+            // through the lifecycle based on its uid alone.
+            txn_subscribers
+                .entry(uid.clone())
+                .or_insert_with(Vec::new)
+                .push(sender);
             drop(guard);
             receiver.await.map_err(|_| KeystoreError::<L>::Cancelled {})
         }
@@ -2867,8 +2878,8 @@ impl<
                         if let Err(err) = state.add_records(model, &key, records).await {
                             println!("Error saving records from key scan {}: {}", address, err);
                         }
-                        history.iter().cloned().for_each(|t| {
-                            if let Err(err) = model.transactions.create(t) {
+                        history.iter().cloned().for_each(|(uid, hash, t)| {
+                            if let Err(err) = model.transactions.create(uid, hash, t) {
                                 println!(
                                     "Error saving tranaction history from key scan {}: {}",
                                     address, err

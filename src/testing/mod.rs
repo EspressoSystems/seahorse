@@ -666,7 +666,7 @@ pub async fn await_transaction<
     Backend: KeystoreBackend<'a, L> + Sync + 'a,
     Meta: 'a + Serialize + DeserializeOwned + Send + Clone + PartialEq,
 >(
-    receipt: &TransactionReceipt<L>,
+    receipt: &TransactionUID<L>,
     sender: &Keystore<'a, Backend, L, Meta>,
     receivers: &[&Keystore<'a, Backend, L, Meta>],
 ) {

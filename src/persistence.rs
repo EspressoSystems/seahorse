@@ -271,26 +271,6 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicKeystoreSto
         Ok(())
     }
 
-    // pub async fn store_transaction(
-    //     &mut self,
-    //     txn: TransactionHistoryEntry<L>,
-    // ) -> Result<(), KeystoreError<L>> {
-    //     self.txn_history
-    //         .store_resource(&txn)
-    //         .context(crate::PersistenceSnafu)?;
-    //     self.txn_history_dirty = true;
-    //     Ok(())
-    // }
-
-    // pub async fn transaction_history(
-    //     &mut self,
-    // ) -> Result<Vec<TransactionHistoryEntry<L>>, KeystoreError<L>> {
-    //     self.txn_history
-    //         .iter()
-    //         .map(|res| res.context(crate::PersistenceSnafu))
-    //         .collect()
-    // }
-
     pub async fn commit(&mut self) {
         {
             if self.meta_dirty {
@@ -333,7 +313,7 @@ mod tests {
         loader::KeystoreLoader,
         sparse_merkle_tree::SparseMerkleTree,
         testing::{assert_keystore_states_eq, mocks::MockBackend},
-        transactions::TransactionParams,
+        transactions::{SignedMemos, TransactionParams},
         txn_builder::{TransactionStatus, TransactionUID},
         Keystore,
     };
@@ -514,11 +494,9 @@ mod tests {
         let (memos, sig) = random_memos(&mut rng, &user_key);
         let txn_uid = TransactionUID(random_txn_hash(&mut rng));
         let txn = TransactionParams::<cap::Ledger> {
-            uid: Some(txn_uid.clone()),
             timeout: Some(5000),
             status: TransactionStatus::Pending,
-            memos,
-            sig: Some(sig),
+            signed_memos: Some(SignedMemos { memos, sig }),
             inputs: random_ros(&mut rng, &user_key),
             outputs: random_ros(&mut rng, &user_key),
             time: Local::now(),
@@ -530,10 +508,9 @@ mod tests {
             asset_change: None,
         };
         let stored_txn = transactions
-            .create(txn)
-            .unwrap()
-            .with_hash(random_txn_hash(&mut rng));
-        stored_txn.add_pending_uids(vec![1, 2, 3]).save().unwrap();
+            .create(txn_uid, random_txn_hash(&mut rng), txn)
+            .unwrap();
+        stored_txn.add_pending_uids(&vec![1, 2, 3]).save().unwrap();
 
         // Snapshot the modified dynamic state and then reload.
         {
@@ -606,24 +583,27 @@ mod tests {
             // Store some data.
             stored.txn_state.records.insert(ro, 0, &user_key);
             storage.store_snapshot(&stored).await.unwrap();
-            let txn_uid = TransactionUID(random_txn_hash(&mut rng));
+            let hash = random_txn_hash(&mut rng);
+            let txn_uid = TransactionUID(hash.clone());
             transactions
-                .create(TransactionParams {
-                    uid: Some(txn_uid),
-                    timeout: Some(5000),
-                    status: TransactionStatus::Pending,
-                    memos: Default::default(),
-                    sig: None,
-                    inputs: random_ros(&mut rng, &user_key),
-                    outputs: random_ros(&mut rng, &user_key),
-                    time: Local::now(),
-                    asset: AssetCode::native(),
-                    kind: TransactionKind::<cap::Ledger>::send(),
-                    senders: vec![user_key.address()],
-                    receivers: vec![],
-                    fee_change: None,
-                    asset_change: None,
-                })
+                .create(
+                    txn_uid,
+                    hash,
+                    TransactionParams {
+                        timeout: Some(5000),
+                        status: TransactionStatus::Pending,
+                        signed_memos: None,
+                        inputs: random_ros(&mut rng, &user_key),
+                        outputs: random_ros(&mut rng, &user_key),
+                        time: Local::now(),
+                        asset: AssetCode::native(),
+                        kind: TransactionKind::<cap::Ledger>::send(),
+                        senders: vec![user_key.address()],
+                        receivers: vec![],
+                        fee_change: None,
+                        asset_change: None,
+                    },
+                )
                 .unwrap();
 
             // Revert the changes.

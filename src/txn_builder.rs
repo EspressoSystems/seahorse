@@ -12,7 +12,7 @@
 use crate::{
     events::EventIndex,
     sparse_merkle_tree::SparseMerkleTree,
-    transactions::{Transaction, TransactionParams, Transactions},
+    transactions::{SignedMemos, Transaction, TransactionParams, Transactions},
 };
 use arbitrary::{Arbitrary, Unstructured};
 use arbitrary_wrappers::*;
@@ -653,32 +653,10 @@ impl<L: Ledger> TransactionState<L> {
             .fold(U256::zero(), |sum, record| sum + record.amount())
     }
 
-    pub fn clear_expired_transactions(
-        &mut self,
-        transactions: &mut Transactions<L>,
-    ) -> Vec<Transaction<L>> {
-        transactions.remove_expired(self.validator.now()).unwrap()
+    pub fn block_height(&self) -> u64 {
+        self.validator.now()
     }
 
-    // Inform the database that we have received memos for the given record UIDs. Return a list of
-    // the transactions that are completed as a result.
-    pub fn received_memos(
-        &mut self,
-        uids: impl Iterator<Item = u64>,
-        transactions: &mut Transactions<L>,
-    ) -> Vec<TransactionUID<L>> {
-        let mut completed = Vec::new();
-        for uid in uids {
-            if let Ok(txn) = transactions.with_memo_id_mut(uid) {
-                let mut txn = txn.remove_pending_uid(uid);
-                let transaction = txn.save().unwrap();
-                if transaction.pending_uids().is_empty() {
-                    completed.push(txn.transaction().uid().clone());
-                }
-            }
-        }
-        completed
-    }
     pub fn define_asset<'b>(
         &'b mut self,
         rng: &mut ChaChaRng,
@@ -700,7 +678,7 @@ impl<L: Ledger> TransactionState<L> {
         let now = self.validator.now();
         let timeout = now + (L::record_root_history() as u64);
         let hash = txn.hash();
-        info.uid = Some(TransactionUID(hash));
+        let uid = TransactionUID(hash.clone());
 
         for nullifier in txn.input_nullifiers() {
             // hold the record corresponding to this nullifier until the transaction is committed,
@@ -712,12 +690,12 @@ impl<L: Ledger> TransactionState<L> {
         }
         info.timeout = Some(timeout);
         let receipt = TransactionReceipt {
-            uid: info.uid.as_ref().unwrap().clone(),
+            uid: uid.clone(),
             fee_nullifier: txn.input_nullifiers()[0],
             submitters: info.senders.clone(),
         };
         let stored_txn = transactions
-            .create(info)
+            .create(uid, hash, info)
             .unwrap()
             .with_receipt(receipt)
             .with_hash(txn.hash())
@@ -877,11 +855,9 @@ impl<L: Ledger> TransactionState<L> {
             .map(|key_pair| key_pair.address())
             .collect::<Vec<UserAddress>>();
         let txn_params = TransactionParams {
-            uid: None,
             timeout: None,
             status: TransactionStatus::Pending,
-            memos,
-            sig: Some(sig),
+            signed_memos: Some(SignedMemos { memos, sig }),
             inputs: input_ros,
             outputs,
             time: Local::now(),
@@ -1036,11 +1012,9 @@ impl<L: Ledger> TransactionState<L> {
             .map(|key_pair| key_pair.address())
             .collect::<Vec<UserAddress>>();
         let txn_params = TransactionParams {
-            uid: None,
             timeout: None,
             status: TransactionStatus::Pending,
-            memos,
-            sig: Some(sig),
+            signed_memos: Some(SignedMemos { memos, sig }),
             inputs: input_ros,
             outputs,
             time: Local::now(),
@@ -1128,11 +1102,9 @@ impl<L: Ledger> TransactionState<L> {
 
         // Build auxiliary info.
         let txn_params = TransactionParams {
-            uid: Default::default(),
             timeout: None,
             status: TransactionStatus::Pending,
-            memos,
-            sig: Some(sig),
+            signed_memos: Some(SignedMemos { memos, sig }),
             inputs: vec![fee_rec.clone()],
             outputs,
             time: Local::now(),
@@ -1203,11 +1175,9 @@ impl<L: Ledger> TransactionState<L> {
 
         // Build auxiliary info.
         let txn_params = TransactionParams {
-            uid: Default::default(),
             timeout: None,
             status: TransactionStatus::Pending,
-            memos,
-            sig: Some(sig),
+            signed_memos: Some(SignedMemos { memos, sig }),
             inputs: input_records.iter().cloned().map(|(ro, _)| ro).collect(),
             outputs,
             time: Local::now(),

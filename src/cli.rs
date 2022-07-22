@@ -18,8 +18,8 @@
 //! [cli_main] can be used to run the CLI interactively.
 use crate::{
     assets::Asset, events::EventIndex, io::SharedIO, loader::KeystoreLoader, reader::Reader,
-    BincodeSnafu, IoSnafu, KeystoreBackend, KeystoreError, RecordAmount, TransactionReceipt,
-    TransactionStatus,
+    txn_builder::TransactionReceipt, BincodeSnafu, IoSnafu, KeystoreBackend, KeystoreError,
+    RecordAmount, TransactionStatus,
 };
 use async_std::task::block_on;
 use async_trait::async_trait;
@@ -615,7 +615,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                         for txn in txns {
                             let status = match &txn.receipt() {
                                 Some(receipt) => keystore
-                                    .transaction_status(receipt)
+                                    .transaction_status(&receipt.uid)
                                     .await
                                     .unwrap_or(TransactionStatus::Unknown),
                                 None => {
@@ -682,7 +682,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             "print the status of a transaction",
             C,
             |io, keystore, receipt: TransactionReceipt<C::Ledger>| {
-                match keystore.transaction_status(&receipt).await {
+                match keystore.transaction_status(&receipt.uid).await {
                     Ok(status) => cli_writeln!(io, "{}", status),
                     Err(err) => cli_writeln!(io, "Error getting transaction status: {}", err),
                 }
@@ -693,7 +693,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             "wait for a transaction to complete",
             C,
             |io, keystore, receipt: TransactionReceipt<C::Ledger>| {
-                match keystore.await_transaction(&receipt).await {
+                match keystore.await_transaction(&receipt.uid).await {
                     Ok(status) => cli_writeln!(io, "{}", status),
                     Err(err) => cli_writeln!(io, "Error waiting for transaction: {}", err),
                 }
@@ -947,7 +947,7 @@ pub async fn finish_transaction<'a, C: CLI<'a>>(
     match result {
         Ok(receipt) => {
             if wait == Some(true) {
-                match keystore.await_transaction(&receipt).await {
+                match keystore.await_transaction(&receipt.uid).await {
                     Err(err) => {
                         cli_writeln!(io, "Error waiting for transaction to complete: {}", err);
                     }

@@ -37,7 +37,7 @@ pub type ScannedRecord = (RecordOpening, u64, MerklePath);
 #[derive(Debug)]
 pub struct ScanOutputs<L: Ledger> {
     pub records: Vec<ScannedRecord>,
-    pub history: Vec<TransactionParams<L>>,
+    pub history: Vec<(TransactionUID<L>, TransactionHash<L>, TransactionParams<L>)>,
 }
 
 /// An in-progress scan of past ledger events.
@@ -91,7 +91,7 @@ pub struct BackgroundKeyScan<L: Ledger> {
     // keystore's balance.
     records: HashMap<Nullifier, (RecordOpening, u64)>,
     // New history entries for transactions we received during the scan.
-    history: Vec<TransactionParams<L>>,
+    history: Vec<(TransactionUID<L>, TransactionHash<L>, TransactionParams<L>)>,
     // Sparse Merkle tree containing paths for the commitments of each record in `records`. This
     // allows us to update the paths as we scan so that at the end of the scan, we have a path for
     // each record relative to the current Merkle root.
@@ -255,10 +255,10 @@ impl<L: Ledger> BackgroundKeyScan<L> {
                             uid += 1;
                         }
                         if !received_records.is_empty() {
-                            self.history.push(receive_history_entry(
-                                txn.kind(),
-                                TransactionUID::<L>(txn.hash()),
-                                &received_records,
+                            self.history.push((
+                                TransactionUID::<L>(txn.hash().clone()),
+                                txn.hash(),
+                                receive_history_entry(txn.kind(), &received_records),
                             ));
                         }
                     } else {
@@ -310,10 +310,13 @@ impl<L: Ledger> BackgroundKeyScan<L> {
                 if !records.is_empty() {
                     // Add a history entry for the received transaction.
                     if let Some((_, _, hash, txn_kind)) = transaction {
-                        self.history.push(receive_history_entry(
-                            txn_kind,
-                            TransactionUID::<L>(hash),
-                            &records.into_iter().map(|(ro, _, _)| ro).collect::<Vec<_>>(),
+                        self.history.push((
+                            TransactionUID::<L>(hash.clone()),
+                            hash,
+                            receive_history_entry(
+                                txn_kind,
+                                &records.into_iter().map(|(ro, _, _)| ro).collect::<Vec<_>>(),
+                            ),
                         ));
                     }
                 }
@@ -356,7 +359,6 @@ impl<L: Ledger> BackgroundKeyScan<L> {
 
 pub fn receive_history_entry<L: Ledger>(
     kind: TransactionKind<L>,
-    uid: TransactionUID<L>,
     records: &[RecordOpening],
 ) -> TransactionParams<L> {
     // The last record is guaranteed not to be the fee change record. It contains useful
@@ -374,13 +376,11 @@ pub fn receive_history_entry<L: Ledger>(
 
     let txn_asset = last_record.asset_def.code;
     TransactionParams::<L> {
-        uid: Some(uid),
         timeout: None,
-        status: TransactionStatus::Unknown,
-        memos: Default::default(),
-        sig: None,
+        status: TransactionStatus::Retired,
+        signed_memos: None,
         inputs: Default::default(),
-        outputs: Default::default(),
+        outputs: records.to_vec(),
         time: Local::now(),
         asset: txn_asset,
         kind,

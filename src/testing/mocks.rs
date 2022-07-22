@@ -315,16 +315,18 @@ impl<'a, const H: u8> KeystoreBackend<'a, cap::LedgerWithHeight<H>>
         txn_id: Option<(u64, u64)>,
     ) {
         if let Some((block_id, txn_id)) = txn_id {
-            self.ledger
-                .lock()
-                .await
-                .post_memos(
-                    block_id,
-                    txn_id,
-                    txn.memos().iter().cloned().flatten().collect(),
-                    txn.sig().as_ref().unwrap().clone(),
-                )
-                .unwrap();
+            if let Some(signed_memos) = txn.memos() {
+                self.ledger
+                    .lock()
+                    .await
+                    .post_memos(
+                        block_id,
+                        txn_id,
+                        signed_memos.memos.iter().cloned().flatten().collect(),
+                        signed_memos.sig.clone(),
+                    )
+                    .unwrap();
+            }
         }
     }
 }

@@ -26,6 +26,13 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::ops::{Deref, DerefMut};
 
+#[derive(Clone, Debug, Derivative, Deserialize, Serialize)]
+#[derivative(PartialEq(bound = ""))]
+pub struct SignedMemos {
+    pub memos: Vec<Option<ReceiverMemo>>,
+    pub sig: Signature,
+}
+
 /// A Transaction<L>with its UID as the primary key.
 #[derive(Clone, Debug, Derivative, Deserialize, Serialize)]
 #[serde(bound = "")]
@@ -41,8 +48,7 @@ pub struct Transaction<L: Ledger> {
     /// The uids of the outputs of this transaction for which memos have not yet been posted.
     pending_uids: HashSet<u64>,
     /// A receiver memo for each output, except for burned outputs.
-    memos: Vec<Option<ReceiverMemo>>,
-    sig: Option<Signature>,
+    signed_memos: Option<SignedMemos>,
     inputs: Vec<RecordOpening>,
     outputs: Vec<RecordOpening>,
     /// Time when this transaction was created in the transaction builder or time when it was received
@@ -100,14 +106,11 @@ impl<L: Ledger> Transaction<L> {
     pub fn timeout(&self) -> Option<u64> {
         self.timeout
     }
-    pub fn hash(&self) -> &Option<TransactionHash<L>> {
-        &self.hash
+    pub fn hash(&self) -> Option<&TransactionHash<L>> {
+        self.hash.as_ref()
     }
-    pub fn memos(&self) -> &Vec<Option<ReceiverMemo>> {
-        &self.memos
-    }
-    pub fn sig(&self) -> &Option<Signature> {
-        &self.sig
+    pub fn memos(&self) -> Option<&SignedMemos> {
+        self.signed_memos.as_ref()
     }
     pub fn inputs(&self) -> &Vec<RecordOpening> {
         &self.inputs
@@ -161,10 +164,6 @@ impl<'a, L: Ledger> TransactionEditor<'a, L> {
         Self { transaction, store }
     }
 
-    pub fn transaction(&self) -> &Transaction<L> {
-        &self.transaction
-    }
-
     pub fn set_status(mut self, status: TransactionStatus) -> Self {
         self.transaction.status = status;
         self
@@ -200,9 +199,9 @@ impl<'a, L: Ledger> TransactionEditor<'a, L> {
     }
 
     /// Add the UIDs of memos we are waiting on to complete the transaction
-    pub fn add_pending_uids(mut self, uids: Vec<u64>) -> Self {
+    pub fn add_pending_uids(mut self, uids: &[u64]) -> Self {
         for uid in uids {
-            self.transaction.pending_uids.insert(uid);
+            self.transaction.pending_uids.insert(*uid);
         }
         self
     }
@@ -239,14 +238,13 @@ impl<'a, L: Ledger> DerefMut for TransactionEditor<'a, L> {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Derivative)]
+#[derivative(PartialEq(bound = "L: Ledger"))]
 #[serde(bound = "")]
 pub struct TransactionParams<L: Ledger> {
-    pub uid: Option<TransactionUID<L>>,
     pub timeout: Option<u64>,
     pub status: TransactionStatus,
-    pub memos: Vec<Option<ReceiverMemo>>,
-    pub sig: Option<Signature>,
+    pub signed_memos: Option<SignedMemos>,
     pub inputs: Vec<RecordOpening>,
     pub outputs: Vec<RecordOpening>,
     pub time: DateTime<Local>,
@@ -258,16 +256,6 @@ pub struct TransactionParams<L: Ledger> {
     pub asset_change: Option<RecordAmount>,
 }
 
-impl<L: Ledger> PartialEq<Self> for TransactionParams<L> {
-    fn eq(&self, other: &Self) -> bool {
-        self.uid == other.uid
-            && self.kind == other.kind
-            && self.timeout == other.timeout
-            && self.time == other.time
-    }
-}
-
-/// Transactions stored in an transactions store.
 pub struct Transactions<L: Ledger> {
     /// A key-value store for transactions.
     store: TransactionsStore<L>,
@@ -454,16 +442,17 @@ impl<L: Ledger> Transactions<L> {
     #[allow(clippy::too_many_arguments)]
     pub fn create(
         &mut self,
+        uid: TransactionUID<L>,
+        hash: TransactionHash<L>,
         params: TransactionParams<L>,
     ) -> Result<TransactionEditor<'_, L>, KeystoreError<L>> {
         let txn = Transaction::<L> {
-            uid: params.uid.unwrap(),
+            uid,
             timeout: params.timeout,
-            hash: None,
+            hash: Some(hash),
             status: params.status,
             pending_uids: HashSet::new(),
-            memos: params.memos,
-            sig: params.sig,
+            signed_memos: params.signed_memos,
             inputs: params.inputs,
             outputs: params.outputs,
             time: params.time,
@@ -497,18 +486,18 @@ impl<L: Ledger> Transactions<L> {
 
 #[cfg(any(test, feature = "testing"))]
 pub fn create_test_txn<L: Ledger>(
+    uid: TransactionUID<L>,
     params: TransactionParams<L>,
     hash: Option<TransactionHash<L>>,
     receipt: Option<TransactionReceipt<L>>,
 ) -> Transaction<L> {
     Transaction::<L> {
-        uid: params.uid.unwrap(),
+        uid,
         timeout: params.timeout,
         hash: hash,
         status: params.status,
         pending_uids: HashSet::new(),
-        memos: params.memos,
-        sig: params.sig,
+        signed_memos: params.signed_memos,
         inputs: params.inputs,
         outputs: params.outputs,
         time: params.time,
