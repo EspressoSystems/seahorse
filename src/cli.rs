@@ -1320,7 +1320,7 @@ mod test {
             asset_code, sender_pub_key, viewer_address,
         )
         .unwrap();
-        let matches = match_output(&mut viewer_output, &["(?P<txn>TXN~.*)"]);
+        let matches = match_output(&mut viewer_output, &["(?P<txn>TXUID~.*)"]);
         let receipt = matches.get("txn");
         await_transaction(
             &receipt,
@@ -1338,7 +1338,7 @@ mod test {
             asset_code, receiver_pub_key, sender_address,
         )
         .unwrap();
-        let matches = match_output(&mut sender_output, &["(?P<txn>TXN~.*)"]);
+        let matches = match_output(&mut sender_output, &["(?P<txn>TXUID~.*)"]);
         let receipt = matches.get("txn");
         await_transaction(
             &receipt,
@@ -1391,7 +1391,7 @@ mod test {
             asset_code, sender_address, viewer_address,
         )
         .unwrap();
-        let matches = match_output(&mut viewer_output, &["(?P<txn>TXN~.*)"]);
+        let matches = match_output(&mut viewer_output, &["(?P<txn>TXUID~.*)"]);
         let receipt = matches.get("txn");
         await_transaction(
             &receipt,
@@ -1428,7 +1428,7 @@ mod test {
             asset_code, sender_address, viewer_address,
         )
         .unwrap();
-        let matches = match_output(&mut viewer_output, &["(?P<txn>TXN~.*)"]);
+        let matches = match_output(&mut viewer_output, &["(?P<txn>TXUID~.*)"]);
         let receipt = matches.get("txn");
         await_transaction(
             &receipt,
