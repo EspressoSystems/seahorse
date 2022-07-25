@@ -1740,7 +1740,6 @@ pub struct KeystoreSharedState<
     model: KeystoreModel<'a, L, Backend, Meta>,
     sync_handles: Vec<(EventIndex, oneshot::Sender<()>)>,
     txn_subscribers: HashMap<TransactionUID<L>, Vec<oneshot::Sender<TransactionStatus>>>,
-    pending_foreign_txns: HashMap<Nullifier, Vec<oneshot::Sender<TransactionStatus>>>,
     pending_key_scans: HashMap<UserAddress, Vec<oneshot::Sender<()>>>,
 }
 
@@ -1954,13 +1953,11 @@ impl<
 
         let sync_handles = Vec::new();
         let txn_subscribers = HashMap::new();
-        let pending_foreign_txns = HashMap::new();
         let mutex = Arc::new(Mutex::new(KeystoreSharedState {
             state,
             model,
             sync_handles,
             txn_subscribers,
-            pending_foreign_txns,
             pending_key_scans: Default::default(),
         }));
 
@@ -1983,14 +1980,12 @@ impl<
             let mutex = mutex.clone();
             scope.spawn_cancellable(
                 async move {
-                    let mut foreign_txns_awaiting_memos = HashMap::new();
                     while let Some((event, source)) = events.next().await {
                         let KeystoreSharedState {
                             state,
                             model,
                             sync_handles,
                             txn_subscribers,
-                            pending_foreign_txns,
                             ..
                         } = &mut *mutex.lock().await;
                         // handle an event
@@ -2005,39 +2000,6 @@ impl<
                                     // has disconnected.
                                     sender.send(status).ok();
                                 }
-                            }
-                        }
-                        // For any await_transaction() futures waiting on foreign transactions which
-                        // were just accepted, move them to the retired or awaiting memos state.
-                        for n in summary.retired_nullifiers {
-                            for sender in pending_foreign_txns.remove(&n).into_iter().flatten() {
-                                sender.send(TransactionStatus::Retired).ok();
-                            }
-                        }
-                        for (n, uid) in summary.spent_nullifiers {
-                            if let Some(subscribers) = pending_foreign_txns.remove(&n) {
-                                foreign_txns_awaiting_memos
-                                    .entry(uid)
-                                    .or_insert_with(Vec::new)
-                                    .extend(subscribers);
-                            }
-                        }
-                        // Signal await_transaction() futures with a Rejected state for all rejected
-                        // nullifiers.
-                        for n in summary.rejected_nullifiers {
-                            for sender in pending_foreign_txns.remove(&n).into_iter().flatten() {
-                                sender.send(TransactionStatus::Rejected).ok();
-                            }
-                        }
-                        // Signal any await_transaction() futures that are waiting on foreign
-                        // transactions whose memos just arrived.
-                        for (_, uid) in summary.received_memos {
-                            for sender in foreign_txns_awaiting_memos
-                                .remove(&uid)
-                                .into_iter()
-                                .flatten()
-                            {
-                                sender.send(TransactionStatus::Retired).ok();
                             }
                         }
 
