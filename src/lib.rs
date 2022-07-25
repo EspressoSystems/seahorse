@@ -59,6 +59,7 @@ use crate::{
         KeystoreSharedState, KeystoreSharedStateReadGuard, KeystoreSharedStateRwLock,
         KeystoreSharedStateWriteGuard,
     },
+    transactions::{Transaction, TransactionParams, Transactions},
     txn_builder::*,
 };
 use arbitrary::Arbitrary;
@@ -93,9 +94,10 @@ use primitive_types::U256;
 use rand_chacha::{rand_core::SeedableRng, ChaChaRng};
 use reef::{
     traits::{
-        Block as _, NullifierSet as _, Transaction as _, ValidationError as _, Validator as _,
+        Block as _, NullifierSet as _, Transaction as _, TransactionKind as _,
+        ValidationError as _, Validator as _,
     },
-    *,
+    TransactionKind, *,
 };
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use snafu::{ResultExt, Snafu};
@@ -345,8 +347,8 @@ pub trait KeystoreBackend<'a, L: Ledger>: Send {
     /// Submit a transaction to a validator.
     async fn submit(
         &mut self,
-        note: Transaction<L>,
-        info: TransactionInfo<L>,
+        note: reef::Transaction<L>,
+        info: Transaction<L>,
     ) -> Result<(), KeystoreError<L>>;
 
     /// Record a finalized transaction.
@@ -355,7 +357,7 @@ pub trait KeystoreBackend<'a, L: Ledger>: Send {
     ///
     /// This function is optional and does nothing by default. The backend can override it to
     /// perform cleanup or post-processing on completed transactions.
-    async fn finalize(&mut self, _txn: PendingTransaction<L>, _txn_id: Option<(u64, u64)>)
+    async fn finalize(&mut self, _txn: Transaction<L>, _txn_id: Option<(u64, u64)>)
     where
         L: 'static,
     {
@@ -373,6 +375,7 @@ pub struct KeystoreModel<
     atomic_store: AtomicStore,
     persistence: AtomicKeystoreStorage<'a, L, Meta>,
     assets: Assets,
+    transactions: Transactions<L>,
     rng: ChaChaRng,
     viewer_key_stream: hd::KeyTree,
     user_key_stream: hd::KeyTree,
@@ -504,40 +507,24 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         }
     }
 
-    pub async fn transaction_status<
-        Meta: Serialize + DeserializeOwned + Send + Clone + PartialEq,
-    >(
+    // Inform the database that we have received memos for the given record UIDs. Return a list of
+    // the transactions that are completed as a result.
+    pub fn received_memos(
         &mut self,
-        model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
-        receipt: &TransactionReceipt<L>,
-    ) -> Result<TransactionStatus, KeystoreError<L>> {
-        match self.txn_state.transactions.status(&receipt.uid) {
-            TransactionStatus::Unknown => {
-                // If the transactions database returns Unknown, it means the transaction is not in-
-                // flight (the database only tracks in-flight transactions). So it must be retired,
-                // rejected, or a foreign transaction that we were never tracking to begin with.
-                // Check if it has been accepted by seeing if its fee nullifier is spent.
-                let (spent, _) = model
-                    .backend
-                    .get_nullifier_proof(&mut self.txn_state.nullifiers, receipt.fee_nullifier)
-                    .await?;
-                if spent {
-                    Ok(TransactionStatus::Retired)
-                } else {
-                    // If the transaction isn't in our pending data structures, but its fee record
-                    // has not been spent, then either it was rejected, or it's someone else's
-                    // transaction that we haven't been tracking through the lifecycle.
-                    for submitter in &receipt.submitters {
-                        if !self.sending_accounts.contains_key(submitter) {
-                            return Ok(TransactionStatus::Unknown);
-                        }
-                    }
-                    Ok(TransactionStatus::Rejected)
+        uids: impl Iterator<Item = u64>,
+        transactions: &mut Transactions<L>,
+    ) -> Vec<TransactionUID<L>> {
+        let mut completed = Vec::new();
+        for uid in uids {
+            if let Ok(txn) = transactions.with_memo_id_mut(uid) {
+                let mut txn = txn.remove_pending_uid(uid);
+                let transaction = txn.save().unwrap();
+                if transaction.pending_uids().is_empty() {
+                    completed.push((*txn).uid().clone());
                 }
             }
-
-            state => Ok(state),
         }
+        completed
     }
 
     async fn handle_event<Meta: Serialize + DeserializeOwned + Send>(
@@ -656,6 +643,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                     let mut self_published = false;
                     if let Some(pending) = self
                         .clear_pending_transaction(
+                            model,
                             &txn,
                             Some((block_id, txn_id as u64, &mut this_txn_uids)),
                         )
@@ -666,14 +654,22 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                         } else {
                             TransactionStatus::AwaitingMemos
                         };
-                        summary.updated_txns.push((pending.uid(), status));
-                        self.txn_state.transactions.await_memos(
-                            pending.uid(),
-                            this_txn_uids
-                                .iter()
-                                .zip(&pending.info.memos)
-                                .filter_map(|((uid, _), memo)| memo.as_ref().map(|_| *uid)),
-                        );
+                        summary.updated_txns.push((pending.uid().clone(), status));
+                        model
+                            .transactions
+                            .get_mut(pending.uid())
+                            .unwrap()
+                            .add_pending_uids(
+                                &this_txn_uids
+                                    .iter()
+                                    .zip(pending.memos().unwrap().memos.iter())
+                                    .filter_map(|((uid, _), memo)| memo.as_ref().map(|_| *uid))
+                                    .into_iter()
+                                    .collect::<Vec<u64>>(),
+                            )
+                            .set_status(status)
+                            .save()
+                            .unwrap();
                         model
                             .backend
                             .finalize(pending, Some((block_id, txn_id as u64)))
@@ -718,22 +714,32 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                 // This maintains the invariant that everything in `pending_transactions` must
                 // correspond to an on-hold record, because everything which corresponds to a record
                 // whose hold just expired will be removed from the set now.
-                for txn in self.txn_state.clear_expired_transactions() {
-                    summary
-                        .updated_txns
-                        .push((txn.uid(), TransactionStatus::Rejected));
-                    model.backend.finalize(txn, None).await;
+                match model
+                    .transactions
+                    .remove_expired(self.txn_state.block_height())
+                {
+                    Ok(txns) => {
+                        for txn in txns {
+                            summary
+                                .updated_txns
+                                .push((txn.uid().clone(), TransactionStatus::Rejected));
+                            model.backend.finalize(txn, None).await;
+                        }
+                    }
+                    Err(err) => {
+                        println!(
+                            "Error removing expired transaction from storage.  Block: {},  Error: {}",
+                            block_id, err
+                        );
+                    }
                 }
             }
-
             LedgerEvent::Memos {
                 outputs,
                 transaction,
             } => {
-                let completed = self
-                    .txn_state
-                    .transactions
-                    .received_memos(outputs.iter().map(|info| info.2));
+                let completed =
+                    self.received_memos(outputs.iter().map(|info| info.2), &mut model.transactions);
                 let self_published = !completed.is_empty();
                 summary.updated_txns.extend(
                     completed
@@ -760,19 +766,18 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                     }
                 }
             }
-
             LedgerEvent::Reject { block, error } => {
                 for mut txn in block.txns() {
                     summary
                         .rejected_nullifiers
                         .append(&mut txn.input_nullifiers());
-                    if let Some(pending) = self.clear_pending_transaction(&txn, None).await {
+                    if let Some(pending) = self.clear_pending_transaction(model, &txn, None).await {
                         // Try to resubmit if the error is recoverable.
                         let uid = pending.uid();
                         if error.is_bad_nullifier_proof() {
                             if self.update_nullifier_proofs(model, &mut txn).await.is_ok()
                                 && self
-                                    .submit_elaborated_transaction(model, txn, pending.info.clone())
+                                    .submit_elaborated_transaction(model, txn, None)
                                     .await
                                     .is_ok()
                             {
@@ -841,7 +846,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
     async fn receive_attached_records<Meta: Serialize + DeserializeOwned + Send>(
         &mut self,
         model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
-        txn: &Transaction<L>,
+        txn: &reef::Transaction<L>,
         uids: &mut [(u64, bool)],
         add_to_history: bool,
     ) -> Result<(), KeystoreError<L>> {
@@ -889,7 +894,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         }
 
         if add_to_history && !my_records.is_empty() {
-            self.add_receive_history(model, txn.kind(), txn.hash(), &my_records)
+            self.add_receive_history(model, txn.kind(), txn.hash().clone(), &my_records)
                 .await?;
         }
 
@@ -900,11 +905,13 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         &mut self,
         model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
         kind: TransactionKind<L>,
-        txn_hash: TransactionHash<L>,
+        hash: TransactionHash<L>,
         records: &[RecordOpening],
     ) -> Result<(), KeystoreError<L>> {
-        let history = receive_history_entry(kind, txn_hash, records);
-        model.persistence.store_transaction(history).await
+        let uid = TransactionUID::<L>(hash);
+        let history = receive_history_entry(kind, records);
+        model.transactions.create(uid, history)?;
+        Ok(())
     }
 
     async fn add_records<Meta: Serialize + DeserializeOwned + Send>(
@@ -965,39 +972,44 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         Err(KeystoreError::<L>::CannotDecryptMemo {})
     }
 
-    async fn clear_pending_transaction<'t>(
+    async fn clear_pending_transaction<'t, Meta: Serialize + DeserializeOwned + Send>(
         &mut self,
-        txn: &Transaction<L>,
+        model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
+        txn: &reef::Transaction<L>,
         res: Option<CommittedTxn<'t>>,
-    ) -> Option<PendingTransaction<L>> {
-        let pending = self.txn_state.clear_pending_transaction(txn, &res);
+    ) -> Option<Transaction<L>> {
+        let pending = self
+            .txn_state
+            .clear_pending_transaction(&mut model.transactions, txn, &res);
 
         // If this was a successful transaction, add all of its frozen/unfrozen outputs to our
         // freezable database (for freeze/unfreeze transactions).
         if let Some((_, _, uids)) = res {
             if let Some(pending) = &pending {
-                // the first uid corresponds to the fee change output, which is not one of the
-                // `freeze_outputs`, so we skip that one
-                for ((uid, remember), ro) in
-                    uids.iter_mut().skip(1).zip(&pending.info.freeze_outputs)
+                if pending.kind().clone() == TransactionKind::<L>::freeze()
+                    || pending.kind().clone() == TransactionKind::<L>::unfreeze()
                 {
-                    self.txn_state.records.insert_freezable(
-                        ro.clone(),
-                        *uid,
-                        &self.freezing_accounts[ro.asset_def.policy_ref().freezer_pub_key()].key,
-                    );
-                    *remember = true;
+                    // the first uid corresponds to the fee change output, which is not one of the
+                    // `freeze_outputs`, so we skip that one
+                    for ((uid, remember), ro) in uids.iter_mut().zip(pending.outputs()).skip(1) {
+                        self.txn_state.records.insert_freezable(
+                            ro.clone(),
+                            *uid,
+                            &self.freezing_accounts[ro.asset_def.policy_ref().freezer_pub_key()]
+                                .key,
+                        );
+                        *remember = true;
+                    }
                 }
             }
         }
-
         pending
     }
 
     async fn view_transaction<Meta: Serialize + DeserializeOwned + Send>(
         &mut self,
         model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
-        txn: &Transaction<L>,
+        txn: &reef::Transaction<L>,
         uids: &mut [(u64, bool)],
     ) {
         // Try to decrypt viewer memos.
@@ -1074,7 +1086,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
     async fn update_nullifier_proofs<Meta: Serialize + DeserializeOwned + Send>(
         &mut self,
         model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
-        txn: &mut Transaction<L>,
+        txn: &mut reef::Transaction<L>,
     ) -> Result<(), KeystoreError<L>> {
         let mut proofs = Vec::new();
         for n in txn.input_nullifiers() {
@@ -1223,7 +1235,6 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         // If we successfully updated our data structures, register the key with the
         // network. The storage transaction will revert if this fails.
         model.backend.register_user_key(&user_key).await?;
-
         Ok((user_key, events))
     }
 
@@ -1266,7 +1277,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         &mut self,
         model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
         spec: TransferSpec<'k>,
-    ) -> Result<(TransferNote, TransactionInfo<L>), KeystoreError<L>> {
+    ) -> Result<(TransferNote, TransactionParams<L>), KeystoreError<L>> {
         self.txn_state
             .transfer(spec, &self.proving_keys.xfr, &mut model.rng)
             .context(TransactionSnafu)
@@ -1280,7 +1291,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         asset_code: &AssetCode,
         amount: RecordAmount,
         receiver: UserPubKey,
-    ) -> Result<(MintNote, TransactionInfo<L>), KeystoreError<L>> {
+    ) -> Result<(MintNote, TransactionParams<L>), KeystoreError<L>> {
         let asset = model
             .assets
             .get::<L>(asset_code)
@@ -1318,7 +1329,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         amount: U256,
         owner: UserAddress,
         outputs_frozen: FreezeFlag,
-    ) -> Result<(FreezeNote, TransactionInfo<L>), KeystoreError<L>> {
+    ) -> Result<(FreezeNote, TransactionParams<L>), KeystoreError<L>> {
         let asset = model
             .assets
             .get::<L>(asset)
@@ -1356,8 +1367,8 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         &mut self,
         model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
         note: TransactionNote,
-        info: TransactionInfo<L>,
-    ) -> Result<TransactionReceipt<L>, KeystoreError<L>> {
+        info: TransactionParams<L>,
+    ) -> Result<TransactionUID<L>, KeystoreError<L>> {
         let mut nullifier_pfs = Vec::new();
         for n in note.nullifiers() {
             let (spent, proof) = model
@@ -1370,8 +1381,9 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
             nullifier_pfs.push(proof);
         }
 
-        let txn = Transaction::<L>::cap(note, nullifier_pfs);
-        self.submit_elaborated_transaction(model, txn, info).await
+        let txn = reef::Transaction::<L>::cap(note, nullifier_pfs);
+        self.submit_elaborated_transaction(model, txn, Some(info))
+            .await
     }
 
     // For reasons that are not clearly understood, the default async desugaring for this function
@@ -1389,36 +1401,28 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
     fn submit_elaborated_transaction<'b, Meta: Serialize + DeserializeOwned + Send + Send>(
         &'b mut self,
         model: &'b mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
-        txn: Transaction<L>,
-        mut info: TransactionInfo<L>,
-    ) -> impl 'b + Captures<'a> + Future<Output = Result<TransactionReceipt<L>, KeystoreError<L>>> + Send
+        txn: reef::Transaction<L>,
+        info: Option<TransactionParams<L>>,
+    ) -> impl 'b + Captures<'a> + Future<Output = Result<TransactionUID<L>, KeystoreError<L>>> + Send
     where
         'a: 'b,
     {
         async move {
-            let receipt = self.txn_state.add_pending_transaction(&txn, info.clone());
-
-            // Ensure `info.uid` is set, in the case where `add_pending_transaction` established a
-            // new UID.
-            info.uid = Some(receipt.uid.clone());
-
-            // Persist the pending transaction.
-            let history = info.history.clone();
-            model.persistence.store_snapshot(self).await?;
-
-            // If we're submitting this transaction for the first time (as opposed to
-            // updating and resubmitting a failed transaction) add it to the history.
-            if let Some(mut history) = history {
-                history.receipt = Some(receipt.clone());
-                history.hash = Some(txn.hash());
-                model.persistence.store_transaction(history).await?;
-            }
-
+            let stored_txn = if let Some(info) = info {
+                // Persist the pending transaction.
+                let transaction =
+                    self.txn_state
+                        .add_pending_transaction(&mut model.transactions, &txn, info)?;
+                model.persistence.store_snapshot(self).await?;
+                transaction
+            } else {
+                model.transactions.get(&TransactionUID::<L>(txn.hash()))?
+            };
+            let uid = stored_txn.uid().clone();
             // If we succeeded in creating and persisting the pending transaction, submit it to the
             // validators.
-            model.backend.submit(txn.clone(), info).await?;
-
-            Ok(receipt)
+            model.backend.submit(txn.clone(), stored_txn).await?;
+            Ok(uid)
         }
     }
 
@@ -1537,20 +1541,31 @@ impl<
         Meta: 'a + Serialize + DeserializeOwned + Send + Sync + Clone + PartialEq,
     > Keystore<'a, Backend, L, Meta>
 {
+    #[allow(clippy::type_complexity)]
     pub fn create_stores(
         loader: &mut impl KeystoreLoader<L, Meta = Meta>,
-    ) -> Result<(AtomicStore, AtomicKeystoreStorage<'a, L, Meta>, Assets), KeystoreError<L>> {
+    ) -> Result<
+        (
+            AtomicStore,
+            AtomicKeystoreStorage<'a, L, Meta>,
+            Assets,
+            Transactions<L>,
+        ),
+        KeystoreError<L>,
+    > {
         let mut atomic_loader = AtomicStoreLoader::load(&loader.location(), "keystore").unwrap();
         let file_fill_size = 1024;
         let persistence = AtomicKeystoreStorage::new(loader, &mut atomic_loader, file_fill_size)?;
+        let adaptor = persistence.encrypting_storage_adapter::<()>();
         let assets = Assets::new::<L>(AssetsStore::new(AppendLog::load(
             &mut atomic_loader,
-            persistence.encrypting_storage_adapter(),
+            adaptor.cast(),
             "keystore_assets",
             file_fill_size,
         )?)?)?;
+        let transactions = Transactions::new(&mut atomic_loader, adaptor.cast(), file_fill_size)?;
         let atomic_store = AtomicStore::open(atomic_loader)?;
-        Ok((atomic_store, persistence, assets))
+        Ok((atomic_store, persistence, assets, transactions))
     }
 
     // This function suffers from github.com/rust-lang/rust/issues/89657, in which, if we define it
@@ -1568,7 +1583,8 @@ impl<
         mut backend: Backend,
         loader: &mut impl KeystoreLoader<L, Meta = Meta>,
     ) -> BoxFuture<'a, Result<Keystore<'a, Backend, L, Meta>, KeystoreError<L>>> {
-        let (mut atomic_store, mut persistence, mut assets) = Self::create_stores(loader).unwrap();
+        let (mut atomic_store, mut persistence, mut assets, mut transactions) =
+            Self::create_stores(loader).unwrap();
         Box::pin(async move {
             let state = if persistence.exists() {
                 persistence.load().await?
@@ -1579,8 +1595,17 @@ impl<
             };
             persistence.commit().await;
             assets.commit()?;
+            transactions.commit()?;
             atomic_store.commit_version()?;
-            Self::new_impl(backend, atomic_store, persistence, assets, state).await
+            Self::new_impl(
+                backend,
+                atomic_store,
+                persistence,
+                assets,
+                transactions,
+                state,
+            )
+            .await
         })
     }
 
@@ -1590,13 +1615,23 @@ impl<
         loader: &mut (impl 'a + KeystoreLoader<L, Meta = Meta>),
         state: KeystoreState<'a, L>,
     ) -> BoxFuture<'a, Result<Keystore<'a, Backend, L, Meta>, KeystoreError<L>>> {
-        let (mut atomic_store, mut persistence, mut assets) = Self::create_stores(loader).unwrap();
+        let (mut atomic_store, mut persistence, mut assets, mut transactions) =
+            Self::create_stores(loader).unwrap();
         Box::pin(async move {
             persistence.create(&state).await?;
             persistence.commit().await;
             assets.commit()?;
+            transactions.commit()?;
             atomic_store.commit_version()?;
-            Self::new_impl(backend, atomic_store, persistence, assets, state).await
+            Self::new_impl(
+                backend,
+                atomic_store,
+                persistence,
+                assets,
+                transactions,
+                state,
+            )
+            .await
         })
     }
 
@@ -1605,6 +1640,7 @@ impl<
         atomic_store: AtomicStore,
         persistence: AtomicKeystoreStorage<'a, L, Meta>,
         assets: Assets,
+        transactions: Transactions<L>,
         state: KeystoreState<'a, L>,
     ) -> Result<Keystore<'a, Backend, L, Meta>, KeystoreError<L>> {
         let mut events = backend.subscribe(state.txn_state.now, None).await;
@@ -1623,6 +1659,7 @@ impl<
             atomic_store,
             persistence,
             assets,
+            transactions,
             rng: ChaChaRng::from_entropy(),
             viewer_key_stream: key_tree.derive_sub_tree("viewer".as_bytes()),
             freezer_key_stream: key_tree.derive_sub_tree("freezer".as_bytes()),
@@ -1657,20 +1694,11 @@ impl<
             let mutex = mutex.clone();
             scope.spawn_cancellable(
                 async move {
-                    let mut foreign_txns_awaiting_memos = HashMap::new();
                     while let Some((event, source)) = events.next().await {
                         while let Err(err) = mutex
                             .write()
                             .await
-                            .update(|state| {
-                                update_ledger(
-                                    event.clone(),
-                                    source,
-                                    state,
-                                    &mut foreign_txns_awaiting_memos,
-                                )
-                                .boxed()
-                            })
+                            .update(|state| update_ledger(event.clone(), source, state).boxed())
                             .await
                         {
                             tracing::error!("error while scanning ledger, retrying: {}", err);
@@ -1920,12 +1948,13 @@ impl<
     #[allow(clippy::type_complexity)]
     pub fn transaction_history<'l>(
         &'l self,
-    ) -> std::pin::Pin<
-        Box<dyn SendFuture<'a, Result<Vec<TransactionHistoryEntry<L>>, KeystoreError<L>>> + 'l>,
-    > {
+    ) -> std::pin::Pin<Box<dyn SendFuture<'a, Result<Vec<Transaction<L>>, KeystoreError<L>>> + 'l>>
+    {
         Box::pin(async move {
             let KeystoreSharedState { model, .. } = &*self.read().await;
-            model.persistence.transaction_history().await
+            let mut history = model.transactions.iter().collect::<Vec<_>>();
+            history.sort_by_key(|txn| *txn.time());
+            Ok(history)
         })
     }
 
@@ -1944,7 +1973,7 @@ impl<
         asset: &AssetCode,
         receivers: &[(UserPubKey, impl Clone + Into<RecordAmount>)],
         fee: impl Into<RecordAmount>,
-    ) -> Result<TransactionReceipt<L>, KeystoreError<L>> {
+    ) -> Result<TransactionUID<L>, KeystoreError<L>> {
         let receivers = receivers
             .iter()
             .map(|(addr, amount)| (addr.clone(), amount.clone().into(), false))
@@ -1967,7 +1996,7 @@ impl<
         fee: impl Into<RecordAmount>,
         bound_data: Vec<u8>,
         xfr_size_requirement: Option<(usize, usize)>,
-    ) -> Result<(TransferNote, TransactionInfo<L>), KeystoreError<L>> {
+    ) -> Result<(TransferNote, TransactionParams<L>), KeystoreError<L>> {
         // Convert amounts to `RecordAmount`.
         let fee = fee.into();
         let receivers = receivers
@@ -2006,14 +2035,14 @@ impl<
     /// transaction types that are not part of the base CAP protocol.
     pub async fn submit(
         &mut self,
-        txn: Transaction<L>,
-        info: TransactionInfo<L>,
-    ) -> Result<TransactionReceipt<L>, KeystoreError<L>> {
+        txn: reef::Transaction<L>,
+        info: TransactionParams<L>,
+    ) -> Result<TransactionUID<L>, KeystoreError<L>> {
         self.write()
             .await
             .update(|KeystoreSharedState { state, model, .. }| {
                 state
-                    .submit_elaborated_transaction(model, txn, info)
+                    .submit_elaborated_transaction(model, txn, Some(info))
                     .boxed()
             })
             .await
@@ -2023,8 +2052,8 @@ impl<
     pub async fn submit_cap(
         &mut self,
         txn: TransactionNote,
-        info: TransactionInfo<L>,
-    ) -> Result<TransactionReceipt<L>, KeystoreError<L>> {
+        info: TransactionParams<L>,
+    ) -> Result<TransactionUID<L>, KeystoreError<L>> {
         self.write()
             .await
             .update(|KeystoreSharedState { state, model, .. }| {
@@ -2291,7 +2320,7 @@ impl<
         asset_code: &AssetCode,
         amount: impl Into<RecordAmount>,
         receiver: UserPubKey,
-    ) -> Result<(MintNote, TransactionInfo<L>), KeystoreError<L>> {
+    ) -> Result<(MintNote, TransactionParams<L>), KeystoreError<L>> {
         self.write()
             .await
             .update(|KeystoreSharedState { state, model, .. }| {
@@ -2317,7 +2346,7 @@ impl<
         asset_code: &AssetCode,
         amount: impl Into<RecordAmount>,
         receiver: UserPubKey,
-    ) -> Result<TransactionReceipt<L>, KeystoreError<L>> {
+    ) -> Result<TransactionUID<L>, KeystoreError<L>> {
         let (note, info) = self
             .build_mint(minter, fee.into(), asset_code, amount.into(), receiver)
             .await?;
@@ -2351,7 +2380,7 @@ impl<
         asset: &AssetCode,
         amount: impl Into<U256>,
         owner: UserAddress,
-    ) -> Result<(FreezeNote, TransactionInfo<L>), KeystoreError<L>> {
+    ) -> Result<(FreezeNote, TransactionParams<L>), KeystoreError<L>> {
         self.write()
             .await
             .update(|KeystoreSharedState { state, model, .. }| {
@@ -2378,7 +2407,7 @@ impl<
         asset: &AssetCode,
         amount: impl Into<U256>,
         owner: UserAddress,
-    ) -> Result<TransactionReceipt<L>, KeystoreError<L>> {
+    ) -> Result<TransactionUID<L>, KeystoreError<L>> {
         let (note, info) = self
             .build_freeze(freezer, fee.into(), asset, amount.into(), owner)
             .await?;
@@ -2397,7 +2426,7 @@ impl<
         asset: &AssetCode,
         amount: impl Into<U256>,
         owner: UserAddress,
-    ) -> Result<(FreezeNote, TransactionInfo<L>), KeystoreError<L>> {
+    ) -> Result<(FreezeNote, TransactionParams<L>), KeystoreError<L>> {
         self.write()
             .await
             .update(|KeystoreSharedState { state, model, .. }| {
@@ -2424,7 +2453,7 @@ impl<
         asset: &AssetCode,
         amount: impl Into<U256>,
         owner: UserAddress,
-    ) -> Result<TransactionReceipt<L>, KeystoreError<L>> {
+    ) -> Result<TransactionUID<L>, KeystoreError<L>> {
         let (note, info) = self
             .build_unfreeze(freezer, fee.into(), asset, amount.into(), owner)
             .await?;
@@ -2435,20 +2464,17 @@ impl<
     /// Get the status of a transaction.
     pub async fn transaction_status(
         &self,
-        receipt: &TransactionReceipt<L>,
+        uid: &TransactionUID<L>,
     ) -> Result<TransactionStatus, KeystoreError<L>> {
-        self.write()
-            .await
-            .update(|KeystoreSharedState { state, model, .. }| {
-                state.transaction_status(model, receipt)
-            })
-            .await
+        let KeystoreSharedState { model, .. } = &*self.read().await;
+        Ok(model.transactions.get(uid)?.status())
     }
 
     /// A future which completes when the transaction is finalized (committed or rejected).
+    /// Works only for transactions we submitted
     pub async fn await_transaction(
         &self,
-        receipt: &TransactionReceipt<L>,
+        uid: &TransactionUID<L>,
     ) -> Result<TransactionStatus, KeystoreError<L>> {
         // Check the status of the transaction. `res` will be `Ok(status)` if the transaction has
         // already completed, or `Err(receiver)` with a `oneshot::Receiver` to wait on if the
@@ -2458,37 +2484,19 @@ impl<
                 .await
                 .update(
                     |KeystoreSharedState {
-                         state,
                          model,
                          txn_subscribers,
-                         pending_foreign_txns,
                          ..
                      }| async move {
-                        let status = state.transaction_status(model, receipt).await?;
+                        let status = model.transactions.get(uid)?.status();
                         if status.is_final() {
                             Ok(Ok(status))
                         } else {
                             let (sender, receiver) = oneshot::channel();
-                            if receipt
-                                .submitters
-                                .iter()
-                                .all(|key| state.sending_accounts.contains_key(key))
-                            {
-                                // If we submitted this transaction, we have all the information we
-                                // need to track it through the lifecycle based on its uid alone.
-                                txn_subscribers
-                                    .entry(receipt.uid.clone())
-                                    .or_insert_with(Vec::new)
-                                    .push(sender);
-                            } else {
-                                // Transaction uids are unique only to a given keystore, so if we're
-                                // trying to track somebody else's transaction, the best we can do
-                                // is wait for one of its nullifiers to be published on the ledger.
-                                pending_foreign_txns
-                                    .entry(receipt.fee_nullifier)
-                                    .or_insert_with(Vec::new)
-                                    .push(sender);
-                            }
+                            txn_subscribers
+                                .entry(uid.clone())
+                                .or_insert_with(Vec::new)
+                                .push(sender);
                             Ok(Err(receiver))
                         }
                     },
@@ -2676,14 +2684,12 @@ async fn update_ledger<
     event: LedgerEvent<L>,
     source: EventSource,
     shared_state: &mut KeystoreSharedState<'a, L, Backend, Meta>,
-    foreign_txns_awaiting_memos: &mut HashMap<u64, Vec<oneshot::Sender<TransactionStatus>>>,
 ) -> Result<(), KeystoreError<L>> {
     let KeystoreSharedState {
         state,
         model,
         sync_handles,
         txn_subscribers,
-        pending_foreign_txns,
         ..
     } = shared_state;
     // handle an event
@@ -2697,39 +2703,6 @@ async fn update_ledger<
                 // has disconnected.
                 sender.send(status).ok();
             }
-        }
-    }
-    // For any await_transaction() futures waiting on foreign transactions which
-    // were just accepted, move them to the retired or awaiting memos state.
-    for n in summary.retired_nullifiers {
-        for sender in pending_foreign_txns.remove(&n).into_iter().flatten() {
-            sender.send(TransactionStatus::Retired).ok();
-        }
-    }
-    for (n, uid) in summary.spent_nullifiers {
-        if let Some(subscribers) = pending_foreign_txns.remove(&n) {
-            foreign_txns_awaiting_memos
-                .entry(uid)
-                .or_insert_with(Vec::new)
-                .extend(subscribers);
-        }
-    }
-    // Signal await_transaction() futures with a Rejected state for all rejected
-    // nullifiers.
-    for n in summary.rejected_nullifiers {
-        for sender in pending_foreign_txns.remove(&n).into_iter().flatten() {
-            sender.send(TransactionStatus::Rejected).ok();
-        }
-    }
-    // Signal any await_transaction() futures that are waiting on foreign
-    // transactions whose memos just arrived.
-    for (_, uid) in summary.received_memos {
-        for sender in foreign_txns_awaiting_memos
-            .remove(&uid)
-            .into_iter()
-            .flatten()
-        {
-            sender.send(TransactionStatus::Retired).ok();
         }
     }
 
@@ -2773,8 +2746,8 @@ async fn update_key_scan<
         if let Err(err) = state.add_records(model, &key, records).await {
             tracing::error!("Error saving records from key scan {}: {}", address, err);
         }
-        for h in history {
-            model.persistence.store_transaction(h).await?;
+        for (uid, t) in history {
+            model.transactions.create(uid, t)?;
         }
 
         // Signal anyone waiting for a notification that this scan finished.

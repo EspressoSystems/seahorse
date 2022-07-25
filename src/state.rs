@@ -4,7 +4,7 @@ use crate::{
 };
 use async_std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use futures::{channel::oneshot, TryFuture, TryFutureExt};
-use jf_cap::{keys::UserAddress, structs::Nullifier};
+use jf_cap::keys::UserAddress;
 use rand_chacha::ChaChaRng;
 use reef::Ledger;
 use serde::{de::DeserializeOwned, Serialize};
@@ -21,7 +21,6 @@ pub struct KeystoreSharedState<
     pub(crate) model: KeystoreModel<'a, L, Backend, Meta>,
     pub(crate) sync_handles: Vec<(EventIndex, oneshot::Sender<()>)>,
     pub(crate) txn_subscribers: HashMap<TransactionUID<L>, Vec<oneshot::Sender<TransactionStatus>>>,
-    pub(crate) pending_foreign_txns: HashMap<Nullifier, Vec<oneshot::Sender<TransactionStatus>>>,
     pub(crate) pending_key_scans: HashMap<UserAddress, Vec<oneshot::Sender<()>>>,
 }
 
@@ -31,6 +30,7 @@ impl<'a, L: Ledger, Backend: KeystoreBackend<'a, L>, Meta: Serialize + Deseriali
     async fn commit(&mut self) -> Result<(), KeystoreError<L>> {
         self.model.persistence.commit().await;
         self.model.assets.commit()?;
+        self.model.transactions.commit()?;
         self.model
             .atomic_store
             .commit_version()
@@ -39,6 +39,7 @@ impl<'a, L: Ledger, Backend: KeystoreBackend<'a, L>, Meta: Serialize + Deseriali
 
     async fn revert(&mut self) -> Result<(), KeystoreError<L>> {
         self.model.assets.revert()?;
+        self.model.transactions.revert()?;
         self.model.persistence.revert().await;
         // Reload in-memory state after the revert.
         self.state = self.model.persistence.load().await?;
@@ -60,7 +61,6 @@ impl<'a, L: Ledger, Backend: KeystoreBackend<'a, L>, Meta: Serialize + Deseriali
             pending_key_scans: key_scans.into_iter().map(|key| (key, vec![])).collect(),
             sync_handles: Default::default(),
             txn_subscribers: Default::default(),
-            pending_foreign_txns: Default::default(),
         }
     }
 
