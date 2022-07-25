@@ -624,34 +624,6 @@
 <span id="624">624</span>
 <span id="625">625</span>
 <span id="626">626</span>
-<span id="627">627</span>
-<span id="628">628</span>
-<span id="629">629</span>
-<span id="630">630</span>
-<span id="631">631</span>
-<span id="632">632</span>
-<span id="633">633</span>
-<span id="634">634</span>
-<span id="635">635</span>
-<span id="636">636</span>
-<span id="637">637</span>
-<span id="638">638</span>
-<span id="639">639</span>
-<span id="640">640</span>
-<span id="641">641</span>
-<span id="642">642</span>
-<span id="643">643</span>
-<span id="644">644</span>
-<span id="645">645</span>
-<span id="646">646</span>
-<span id="647">647</span>
-<span id="648">648</span>
-<span id="649">649</span>
-<span id="650">650</span>
-<span id="651">651</span>
-<span id="652">652</span>
-<span id="653">653</span>
-<span id="654">654</span>
 </pre><pre class="rust"><code><span class="comment">// Copyright (c) 2022 Espresso Systems (espressosys.com)</span>
 <span class="comment">// This file is part of the Seahorse library.</span>
 
@@ -662,11 +634,11 @@
 <span class="doccomment">//! Ledger-agnostic implementation of [KeystoreStorage].</span>
 <span class="kw">use</span> <span class="kw">crate</span>::{
     <span class="ident">accounts::Account</span>, <span class="ident">hd::KeyTree</span>, <span class="ident">txn_builder::TransactionState</span>, <span class="ident">EncryptingResourceAdapter</span>,
-    <span class="ident">KeyStreamState</span>, <span class="ident">KeystoreError</span>, <span class="ident">KeystoreState</span>, <span class="ident">TransactionHistoryEntry</span>,
+    <span class="ident">KeyStreamState</span>, <span class="ident">KeystoreError</span>, <span class="ident">KeystoreState</span>,
 };
 <span class="kw">use</span> <span class="ident">arbitrary</span>::{<span class="ident">Arbitrary</span>, <span class="ident">Unstructured</span>};
 <span class="kw">use</span> <span class="ident">async_std::sync::Arc</span>;
-<span class="kw">use</span> <span class="ident">atomic_store</span>::{<span class="ident">load_store::BincodeLoadStore</span>, <span class="ident">AppendLog</span>, <span class="ident">AtomicStoreLoader</span>, <span class="ident">RollingLog</span>};
+<span class="kw">use</span> <span class="ident">atomic_store</span>::{<span class="ident">load_store::BincodeLoadStore</span>, <span class="ident">AtomicStoreLoader</span>, <span class="ident">RollingLog</span>};
 <span class="kw">use</span> <span class="ident">espresso_macros::ser_test</span>;
 <span class="kw">use</span> <span class="ident">jf_cap::keys</span>::{<span class="ident">FreezerKeyPair</span>, <span class="ident">UserKeyPair</span>, <span class="ident">ViewerKeyPair</span>};
 <span class="kw">use</span> <span class="ident">key_set</span>::{<span class="ident">OrderByOutputs</span>, <span class="ident">ProverKeySet</span>};
@@ -780,8 +752,6 @@
     <span class="ident">static_dirty</span>: <span class="ident">bool</span>,
     <span class="ident">dynamic_state</span>: <span class="ident">RollingLog</span><span class="op">&lt;</span><span class="ident">EncryptingResourceAdapter</span><span class="op">&lt;</span><span class="ident">KeystoreSnapshot</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span><span class="op">&gt;</span>,
     <span class="ident">dynamic_state_dirty</span>: <span class="ident">bool</span>,
-    <span class="ident">txn_history</span>: <span class="ident">AppendLog</span><span class="op">&lt;</span><span class="ident">EncryptingResourceAdapter</span><span class="op">&lt;</span><span class="ident">TransactionHistoryEntry</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span><span class="op">&gt;</span>,
-    <span class="ident">txn_history_dirty</span>: <span class="ident">bool</span>,
     <span class="ident">keystore_key_tree</span>: <span class="ident">KeyTree</span>,
 }
 
@@ -814,14 +784,6 @@
         .<span class="ident">context</span>(<span class="ident"><span class="kw">crate</span>::PersistenceSnafu</span>)<span class="question-mark">?</span>;
         <span class="ident">dynamic_state</span>.<span class="ident">set_retained_entries</span>(<span class="ident">ATOMIC_STORE_RETAINED_ENTRIES</span>);
 
-        <span class="kw">let</span> <span class="ident">txn_history</span> <span class="op">=</span> <span class="ident">AppendLog::load</span>(
-            <span class="ident">atomic_loader</span>,
-            <span class="ident">adapter</span>.<span class="ident">cast</span>(),
-            <span class="string">&quot;keystore_txns&quot;</span>,
-            <span class="ident">file_fill_size</span>,
-        )
-        .<span class="ident">context</span>(<span class="ident"><span class="kw">crate</span>::PersistenceSnafu</span>)<span class="question-mark">?</span>;
-
         <span class="prelude-val">Ok</span>(<span class="self">Self</span> {
             <span class="ident">meta</span>,
             <span class="ident">persisted_meta</span>,
@@ -830,8 +792,6 @@
             <span class="ident">static_dirty</span>: <span class="bool-val">false</span>,
             <span class="ident">dynamic_state</span>,
             <span class="ident">dynamic_state_dirty</span>: <span class="bool-val">false</span>,
-            <span class="ident">txn_history</span>,
-            <span class="ident">txn_history_dirty</span>: <span class="bool-val">false</span>,
             <span class="ident">keystore_key_tree</span>: <span class="ident">key</span>.<span class="ident">derive_sub_tree</span>(<span class="string">&quot;keystore&quot;</span>.<span class="ident">as_bytes</span>()),
         })
     }
@@ -937,26 +897,6 @@
         <span class="prelude-val">Ok</span>(())
     }
 
-    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">store_transaction</span>(
-        <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>,
-        <span class="ident">txn</span>: <span class="ident">TransactionHistoryEntry</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span>,
-    ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(), <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
-        <span class="self">self</span>.<span class="ident">txn_history</span>
-            .<span class="ident">store_resource</span>(<span class="kw-2">&amp;</span><span class="ident">txn</span>)
-            .<span class="ident">context</span>(<span class="ident"><span class="kw">crate</span>::PersistenceSnafu</span>)<span class="question-mark">?</span>;
-        <span class="self">self</span>.<span class="ident">txn_history_dirty</span> <span class="op">=</span> <span class="bool-val">true</span>;
-        <span class="prelude-val">Ok</span>(())
-    }
-
-    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">transaction_history</span>(
-        <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>,
-    ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">TransactionHistoryEntry</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span>, <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
-        <span class="self">self</span>.<span class="ident">txn_history</span>
-            .<span class="ident">iter</span>()
-            .<span class="ident">map</span>(<span class="op">|</span><span class="ident">res</span><span class="op">|</span> <span class="ident">res</span>.<span class="ident">context</span>(<span class="ident"><span class="kw">crate</span>::PersistenceSnafu</span>))
-            .<span class="ident">collect</span>()
-    }
-
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">commit</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>) {
         {
             <span class="kw">if</span> <span class="self">self</span>.<span class="ident">meta_dirty</span> {
@@ -977,25 +917,17 @@
             } <span class="kw">else</span> {
                 <span class="self">self</span>.<span class="ident">dynamic_state</span>.<span class="ident">skip_version</span>().<span class="ident">unwrap</span>();
             }
-
-            <span class="kw">if</span> <span class="self">self</span>.<span class="ident">txn_history_dirty</span> {
-                <span class="self">self</span>.<span class="ident">txn_history</span>.<span class="ident">commit_version</span>().<span class="ident">unwrap</span>();
-            } <span class="kw">else</span> {
-                <span class="self">self</span>.<span class="ident">txn_history</span>.<span class="ident">skip_version</span>().<span class="ident">unwrap</span>();
-            }
         }
 
         <span class="self">self</span>.<span class="ident">meta_dirty</span> <span class="op">=</span> <span class="bool-val">false</span>;
         <span class="self">self</span>.<span class="ident">static_dirty</span> <span class="op">=</span> <span class="bool-val">false</span>;
         <span class="self">self</span>.<span class="ident">dynamic_state_dirty</span> <span class="op">=</span> <span class="bool-val">false</span>;
-        <span class="self">self</span>.<span class="ident">txn_history_dirty</span> <span class="op">=</span> <span class="bool-val">false</span>;
     }
 
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">revert</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>) {
         <span class="self">self</span>.<span class="ident">persisted_meta</span>.<span class="ident">revert_version</span>().<span class="ident">unwrap</span>();
         <span class="self">self</span>.<span class="ident">static_data</span>.<span class="ident">revert_version</span>().<span class="ident">unwrap</span>();
         <span class="self">self</span>.<span class="ident">dynamic_state</span>.<span class="ident">revert_version</span>().<span class="ident">unwrap</span>();
-        <span class="self">self</span>.<span class="ident">txn_history</span>.<span class="ident">revert_version</span>().<span class="ident">unwrap</span>();
     }
 }
 
@@ -1007,7 +939,8 @@
         <span class="ident">loader::KeystoreLoader</span>,
         <span class="ident">sparse_merkle_tree::SparseMerkleTree</span>,
         <span class="ident">testing</span>::{<span class="ident">assert_keystore_states_eq</span>, <span class="ident">mocks::MockBackend</span>},
-        <span class="ident">txn_builder</span>::{<span class="ident">PendingTransaction</span>, <span class="ident">TransactionInfo</span>, <span class="ident">TransactionUID</span>},
+        <span class="ident">transactions</span>::{<span class="ident">SignedMemos</span>, <span class="ident">TransactionParams</span>},
+        <span class="ident">txn_builder</span>::{<span class="ident">TransactionStatus</span>, <span class="ident">TransactionUID</span>},
         <span class="ident">Keystore</span>,
     };
     <span class="kw">use</span> <span class="ident">chrono::Local</span>;
@@ -1134,7 +1067,6 @@
                 <span class="ident">records</span>: <span class="ident">Default::default</span>(),
                 <span class="ident">nullifiers</span>: <span class="ident">Default::default</span>(),
                 <span class="ident">record_mt</span>: <span class="ident">record_merkle_tree</span>,
-                <span class="ident">transactions</span>: <span class="ident">Default::default</span>(),
             },
             <span class="ident">key_state</span>: <span class="ident">Default::default</span>(),
             <span class="ident">viewing_accounts</span>: <span class="ident">Default::default</span>(),
@@ -1147,11 +1079,12 @@
             <span class="ident">key</span>: <span class="ident">KeyTree::random</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">rng</span>).<span class="number">0</span>,
         };
         {
-            <span class="kw">let</span> (<span class="kw-2">mut</span> <span class="ident">atomic_store</span>, <span class="kw-2">mut</span> <span class="ident">storage</span>, <span class="kw-2">mut</span> <span class="ident">assets</span>) <span class="op">=</span>
+            <span class="kw">let</span> (<span class="kw-2">mut</span> <span class="ident">atomic_store</span>, <span class="kw-2">mut</span> <span class="ident">storage</span>, <span class="kw-2">mut</span> <span class="ident">assets</span>, <span class="kw-2">mut</span> <span class="ident">transactions</span>) <span class="op">=</span>
                 <span class="ident">Keystore</span>::<span class="op">&lt;</span><span class="ident">MockBackend</span>, <span class="ident">cap::Ledger</span>, ()<span class="op">&gt;</span><span class="ident">::create_stores</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">loader</span>).<span class="ident">unwrap</span>();
             <span class="ident">storage</span>.<span class="ident">create</span>(<span class="kw-2">&amp;</span><span class="ident">state</span>).<span class="kw">await</span>.<span class="ident">unwrap</span>();
             <span class="macro">assert!</span>(<span class="ident">storage</span>.<span class="ident">exists</span>());
             <span class="ident">assets</span>.<span class="ident">commit</span>::<span class="op">&lt;</span><span class="ident">cap::Ledger</span><span class="op">&gt;</span>().<span class="ident">unwrap</span>();
+            <span class="ident">transactions</span>.<span class="ident">commit</span>().<span class="ident">unwrap</span>();
             <span class="ident">atomic_store</span>.<span class="ident">commit_version</span>().<span class="ident">unwrap</span>();
         }
 
@@ -1165,13 +1098,14 @@
         <span class="comment">// Create a new storage instance to load the keystore back from disk, to ensure that what we</span>
         <span class="comment">// load comes only from persistent storage and not from any in-memory state of the first</span>
         <span class="comment">// instance.</span>
-        <span class="kw">let</span> <span class="ident">loaded</span> <span class="op">=</span> {
-            <span class="kw">let</span> (<span class="kw-2">mut</span> <span class="ident">atomic_store</span>, <span class="kw-2">mut</span> <span class="ident">storage</span>, <span class="kw-2">mut</span> <span class="ident">assets</span>) <span class="op">=</span>
+        <span class="kw">let</span> (<span class="ident">loaded</span>, <span class="kw-2">mut</span> <span class="ident">transactions</span>) <span class="op">=</span> {
+            <span class="kw">let</span> (<span class="kw-2">mut</span> <span class="ident">atomic_store</span>, <span class="kw-2">mut</span> <span class="ident">storage</span>, <span class="kw-2">mut</span> <span class="ident">assets</span>, <span class="kw-2">mut</span> <span class="ident">transactions</span>) <span class="op">=</span>
                 <span class="ident">Keystore</span>::<span class="op">&lt;</span><span class="ident">MockBackend</span>, <span class="ident">cap::Ledger</span>, ()<span class="op">&gt;</span><span class="ident">::create_stores</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">loader</span>).<span class="ident">unwrap</span>();
             <span class="kw">let</span> <span class="ident">state</span> <span class="op">=</span> <span class="ident">storage</span>.<span class="ident">load</span>().<span class="kw">await</span>.<span class="ident">unwrap</span>();
             <span class="ident">assets</span>.<span class="ident">commit</span>::<span class="op">&lt;</span><span class="ident">cap::Ledger</span><span class="op">&gt;</span>().<span class="ident">unwrap</span>();
+            <span class="ident">transactions</span>.<span class="ident">commit</span>().<span class="ident">unwrap</span>();
             <span class="ident">atomic_store</span>.<span class="ident">commit_version</span>().<span class="ident">unwrap</span>();
-            <span class="ident">state</span>
+            (<span class="ident">state</span>, <span class="ident">transactions</span>)
         };
         <span class="ident">assert_keystore_states_eq</span>(<span class="kw-2">&amp;</span><span class="ident">stored</span>, <span class="kw-2">&amp;</span><span class="ident">loaded</span>);
 
@@ -1185,40 +1119,39 @@
         <span class="ident">stored</span>.<span class="ident">txn_state</span>.<span class="ident">records</span>.<span class="ident">insert</span>(<span class="ident">ro</span>, <span class="number">0</span>, <span class="kw-2">&amp;</span><span class="ident">user_key</span>);
         <span class="kw">let</span> (<span class="ident">memos</span>, <span class="ident">sig</span>) <span class="op">=</span> <span class="ident">random_memos</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">rng</span>, <span class="kw-2">&amp;</span><span class="ident">user_key</span>);
         <span class="kw">let</span> <span class="ident">txn_uid</span> <span class="op">=</span> <span class="ident">TransactionUID</span>(<span class="ident">random_txn_hash</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">rng</span>));
-        <span class="kw">let</span> <span class="ident">txn</span> <span class="op">=</span> <span class="ident">PendingTransaction</span> {
-            <span class="ident">info</span>: <span class="ident">TransactionInfo</span> {
-                <span class="ident">accounts</span>: <span class="macro">vec!</span>[<span class="ident">user_key</span>.<span class="ident">address</span>()],
-                <span class="ident">memos</span>,
-                <span class="ident">sig</span>,
-                <span class="ident">freeze_outputs</span>: <span class="ident">random_ros</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">rng</span>, <span class="kw-2">&amp;</span><span class="ident">user_key</span>),
-                <span class="ident">uid</span>: <span class="prelude-val">Some</span>(<span class="ident">txn_uid</span>.<span class="ident">clone</span>()),
-                <span class="ident">history</span>: <span class="prelude-val">None</span>,
-                <span class="ident">inputs</span>: <span class="ident">random_ros</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">rng</span>, <span class="kw-2">&amp;</span><span class="ident">user_key</span>),
-                <span class="ident">outputs</span>: <span class="ident">random_ros</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">rng</span>, <span class="kw-2">&amp;</span><span class="ident">user_key</span>),
-            },
-            <span class="ident">timeout</span>: <span class="number">5000</span>,
-            <span class="ident">hash</span>: <span class="ident">random_txn_hash</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">rng</span>),
+        <span class="kw">let</span> <span class="ident">txn</span> <span class="op">=</span> <span class="ident">TransactionParams</span>::<span class="op">&lt;</span><span class="ident">cap::Ledger</span><span class="op">&gt;</span> {
+            <span class="ident">timeout</span>: <span class="prelude-val">Some</span>(<span class="number">5000</span>),
+            <span class="ident">status</span>: <span class="ident">TransactionStatus::Pending</span>,
+            <span class="ident">signed_memos</span>: <span class="prelude-val">Some</span>(<span class="ident">SignedMemos</span> { <span class="ident">memos</span>, <span class="ident">sig</span> }),
+            <span class="ident">inputs</span>: <span class="ident">random_ros</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">rng</span>, <span class="kw-2">&amp;</span><span class="ident">user_key</span>),
+            <span class="ident">outputs</span>: <span class="ident">random_ros</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">rng</span>, <span class="kw-2">&amp;</span><span class="ident">user_key</span>),
+            <span class="ident">time</span>: <span class="ident">Local::now</span>(),
+            <span class="ident">asset</span>: <span class="ident">AssetCode::native</span>(),
+            <span class="ident">kind</span>: <span class="ident">TransactionKind</span>::<span class="op">&lt;</span><span class="ident">cap::Ledger</span><span class="op">&gt;</span><span class="ident">::send</span>(),
+            <span class="ident">senders</span>: <span class="macro">vec!</span>[],
+            <span class="ident">receivers</span>: <span class="macro">vec!</span>[],
+            <span class="ident">fee_change</span>: <span class="prelude-val">None</span>,
+            <span class="ident">asset_change</span>: <span class="prelude-val">None</span>,
         };
-        <span class="ident">stored</span>.<span class="ident">txn_state</span>.<span class="ident">transactions</span>.<span class="ident">insert_pending</span>(<span class="ident">txn</span>);
-        <span class="ident">stored</span>
-            .<span class="ident">txn_state</span>
-            .<span class="ident">transactions</span>
-            .<span class="ident">await_memos</span>(<span class="ident">txn_uid</span>, <span class="macro">vec!</span>[<span class="number">1</span>, <span class="number">2</span>, <span class="number">3</span>]);
+        <span class="kw">let</span> <span class="ident">stored_txn</span> <span class="op">=</span> <span class="ident">transactions</span>.<span class="ident">create</span>(<span class="ident">txn_uid</span>, <span class="ident">txn</span>).<span class="ident">unwrap</span>();
+        <span class="ident">stored_txn</span>.<span class="ident">add_pending_uids</span>(<span class="kw-2">&amp;</span><span class="macro">vec!</span>[<span class="number">1</span>, <span class="number">2</span>, <span class="number">3</span>]).<span class="ident">save</span>().<span class="ident">unwrap</span>();
 
         <span class="comment">// Snapshot the modified dynamic state and then reload.</span>
         {
-            <span class="kw">let</span> (<span class="kw-2">mut</span> <span class="ident">atomic_store</span>, <span class="kw-2">mut</span> <span class="ident">storage</span>, <span class="kw-2">mut</span> <span class="ident">assets</span>) <span class="op">=</span>
+            <span class="kw">let</span> (<span class="kw-2">mut</span> <span class="ident">atomic_store</span>, <span class="kw-2">mut</span> <span class="ident">storage</span>, <span class="kw-2">mut</span> <span class="ident">assets</span>, <span class="kw-2">mut</span> <span class="ident">transactions</span>) <span class="op">=</span>
                 <span class="ident">Keystore</span>::<span class="op">&lt;</span><span class="ident">MockBackend</span>, <span class="ident">cap::Ledger</span>, ()<span class="op">&gt;</span><span class="ident">::create_stores</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">loader</span>).<span class="ident">unwrap</span>();
             <span class="ident">storage</span>.<span class="ident">store_snapshot</span>(<span class="kw-2">&amp;</span><span class="ident">stored</span>).<span class="kw">await</span>.<span class="ident">unwrap</span>();
             <span class="ident">storage</span>.<span class="ident">commit</span>().<span class="kw">await</span>;
             <span class="ident">assets</span>.<span class="ident">commit</span>::<span class="op">&lt;</span><span class="ident">cap::Ledger</span><span class="op">&gt;</span>().<span class="ident">unwrap</span>();
+            <span class="ident">transactions</span>.<span class="ident">commit</span>().<span class="ident">unwrap</span>();
             <span class="ident">atomic_store</span>.<span class="ident">commit_version</span>().<span class="ident">unwrap</span>();
         }
         <span class="kw">let</span> <span class="ident">loaded</span> <span class="op">=</span> {
-            <span class="kw">let</span> (<span class="kw-2">mut</span> <span class="ident">atomic_store</span>, <span class="kw-2">mut</span> <span class="ident">storage</span>, <span class="kw-2">mut</span> <span class="ident">assets</span>) <span class="op">=</span>
+            <span class="kw">let</span> (<span class="kw-2">mut</span> <span class="ident">atomic_store</span>, <span class="kw-2">mut</span> <span class="ident">storage</span>, <span class="kw-2">mut</span> <span class="ident">assets</span>, <span class="kw-2">mut</span> <span class="ident">transactions</span>) <span class="op">=</span>
                 <span class="ident">Keystore</span>::<span class="op">&lt;</span><span class="ident">MockBackend</span>, <span class="ident">cap::Ledger</span>, ()<span class="op">&gt;</span><span class="ident">::create_stores</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">loader</span>).<span class="ident">unwrap</span>();
             <span class="kw">let</span> <span class="ident">state</span> <span class="op">=</span> <span class="ident">storage</span>.<span class="ident">load</span>().<span class="kw">await</span>.<span class="ident">unwrap</span>();
             <span class="ident">assets</span>.<span class="ident">commit</span>::<span class="op">&lt;</span><span class="ident">cap::Ledger</span><span class="op">&gt;</span>().<span class="ident">unwrap</span>();
+            <span class="ident">transactions</span>.<span class="ident">commit</span>().<span class="ident">unwrap</span>();
             <span class="ident">atomic_store</span>.<span class="ident">commit_version</span>().<span class="ident">unwrap</span>();
             <span class="ident">state</span>
         };
@@ -1232,18 +1165,20 @@
             <span class="ident">Account::new</span>(<span class="ident">viewing_key</span>, <span class="string">&quot;viewing_account&quot;</span>.<span class="ident">into</span>()),
         );
         {
-            <span class="kw">let</span> (<span class="kw-2">mut</span> <span class="ident">atomic_store</span>, <span class="kw-2">mut</span> <span class="ident">storage</span>, <span class="kw-2">mut</span> <span class="ident">assets</span>) <span class="op">=</span>
+            <span class="kw">let</span> (<span class="kw-2">mut</span> <span class="ident">atomic_store</span>, <span class="kw-2">mut</span> <span class="ident">storage</span>, <span class="kw-2">mut</span> <span class="ident">assets</span>, <span class="kw-2">mut</span> <span class="ident">transactions</span>) <span class="op">=</span>
                 <span class="ident">Keystore</span>::<span class="op">&lt;</span><span class="ident">MockBackend</span>, <span class="ident">cap::Ledger</span>, ()<span class="op">&gt;</span><span class="ident">::create_stores</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">loader</span>).<span class="ident">unwrap</span>();
             <span class="ident">storage</span>.<span class="ident">store_snapshot</span>(<span class="kw-2">&amp;</span><span class="ident">stored</span>).<span class="kw">await</span>.<span class="ident">unwrap</span>();
             <span class="ident">storage</span>.<span class="ident">commit</span>().<span class="kw">await</span>;
             <span class="ident">assets</span>.<span class="ident">commit</span>::<span class="op">&lt;</span><span class="ident">cap::Ledger</span><span class="op">&gt;</span>().<span class="ident">unwrap</span>();
+            <span class="ident">transactions</span>.<span class="ident">commit</span>().<span class="ident">unwrap</span>();
             <span class="ident">atomic_store</span>.<span class="ident">commit_version</span>().<span class="ident">unwrap</span>();
         }
         <span class="kw">let</span> <span class="ident">loaded</span> <span class="op">=</span> {
-            <span class="kw">let</span> (<span class="kw-2">mut</span> <span class="ident">atomic_store</span>, <span class="kw-2">mut</span> <span class="ident">storage</span>, <span class="kw-2">mut</span> <span class="ident">assets</span>) <span class="op">=</span>
+            <span class="kw">let</span> (<span class="kw-2">mut</span> <span class="ident">atomic_store</span>, <span class="kw-2">mut</span> <span class="ident">storage</span>, <span class="kw-2">mut</span> <span class="ident">assets</span>, <span class="kw-2">mut</span> <span class="ident">transactions</span>) <span class="op">=</span>
                 <span class="ident">Keystore</span>::<span class="op">&lt;</span><span class="ident">MockBackend</span>, <span class="ident">cap::Ledger</span>, ()<span class="op">&gt;</span><span class="ident">::create_stores</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">loader</span>).<span class="ident">unwrap</span>();
             <span class="kw">let</span> <span class="ident">state</span> <span class="op">=</span> <span class="ident">storage</span>.<span class="ident">load</span>().<span class="kw">await</span>.<span class="ident">unwrap</span>();
             <span class="ident">assets</span>.<span class="ident">commit</span>::<span class="op">&lt;</span><span class="ident">cap::Ledger</span><span class="op">&gt;</span>().<span class="ident">unwrap</span>();
+            <span class="ident">transactions</span>.<span class="ident">commit</span>().<span class="ident">unwrap</span>();
             <span class="ident">atomic_store</span>.<span class="ident">commit_version</span>().<span class="ident">unwrap</span>();
             <span class="ident">state</span>
         };
@@ -1258,7 +1193,7 @@
 
         <span class="comment">// Change multiple data structures and revert.</span>
         <span class="kw">let</span> <span class="ident">loaded</span> <span class="op">=</span> {
-            <span class="kw">let</span> (<span class="kw-2">mut</span> <span class="ident">atomic_store</span>, <span class="kw-2">mut</span> <span class="ident">storage</span>, <span class="kw-2">mut</span> <span class="ident">assets</span>) <span class="op">=</span>
+            <span class="kw">let</span> (<span class="kw-2">mut</span> <span class="ident">atomic_store</span>, <span class="kw-2">mut</span> <span class="ident">storage</span>, <span class="kw-2">mut</span> <span class="ident">assets</span>, <span class="kw-2">mut</span> <span class="ident">transactions</span>) <span class="op">=</span>
                 <span class="ident">Keystore</span>::<span class="op">&lt;</span><span class="ident">MockBackend</span>, <span class="ident">cap::Ledger</span>, ()<span class="op">&gt;</span><span class="ident">::create_stores</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">loader</span>).<span class="ident">unwrap</span>();
 
             <span class="kw">let</span> <span class="ident">user_key</span> <span class="op">=</span> <span class="ident">UserKeyPair::generate</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">rng</span>);
@@ -1272,19 +1207,26 @@
             <span class="comment">// Store some data.</span>
             <span class="ident">stored</span>.<span class="ident">txn_state</span>.<span class="ident">records</span>.<span class="ident">insert</span>(<span class="ident">ro</span>, <span class="number">0</span>, <span class="kw-2">&amp;</span><span class="ident">user_key</span>);
             <span class="ident">storage</span>.<span class="ident">store_snapshot</span>(<span class="kw-2">&amp;</span><span class="ident">stored</span>).<span class="kw">await</span>.<span class="ident">unwrap</span>();
-            <span class="ident">storage</span>
-                .<span class="ident">store_transaction</span>(<span class="ident">TransactionHistoryEntry</span> {
-                    <span class="ident">time</span>: <span class="ident">Local::now</span>(),
-                    <span class="ident">asset</span>: <span class="ident">AssetCode::native</span>(),
-                    <span class="ident">kind</span>: <span class="ident">TransactionKind</span>::<span class="op">&lt;</span><span class="ident">cap::Ledger</span><span class="op">&gt;</span><span class="ident">::send</span>(),
-                    <span class="ident">hash</span>: <span class="prelude-val">None</span>,
-                    <span class="ident">senders</span>: <span class="macro">vec!</span>[<span class="ident">user_key</span>.<span class="ident">address</span>()],
-                    <span class="ident">receivers</span>: <span class="macro">vec!</span>[],
-                    <span class="ident">fee_change</span>: <span class="prelude-val">None</span>,
-                    <span class="ident">asset_change</span>: <span class="prelude-val">None</span>,
-                    <span class="ident">receipt</span>: <span class="prelude-val">None</span>,
-                })
-                .<span class="kw">await</span>
+            <span class="kw">let</span> <span class="ident">hash</span> <span class="op">=</span> <span class="ident">random_txn_hash</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">rng</span>);
+            <span class="kw">let</span> <span class="ident">txn_uid</span> <span class="op">=</span> <span class="ident">TransactionUID</span>(<span class="ident">hash</span>);
+            <span class="ident">transactions</span>
+                .<span class="ident">create</span>(
+                    <span class="ident">txn_uid</span>,
+                    <span class="ident">TransactionParams</span> {
+                        <span class="ident">timeout</span>: <span class="prelude-val">Some</span>(<span class="number">5000</span>),
+                        <span class="ident">status</span>: <span class="ident">TransactionStatus::Pending</span>,
+                        <span class="ident">signed_memos</span>: <span class="prelude-val">None</span>,
+                        <span class="ident">inputs</span>: <span class="ident">random_ros</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">rng</span>, <span class="kw-2">&amp;</span><span class="ident">user_key</span>),
+                        <span class="ident">outputs</span>: <span class="ident">random_ros</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">rng</span>, <span class="kw-2">&amp;</span><span class="ident">user_key</span>),
+                        <span class="ident">time</span>: <span class="ident">Local::now</span>(),
+                        <span class="ident">asset</span>: <span class="ident">AssetCode::native</span>(),
+                        <span class="ident">kind</span>: <span class="ident">TransactionKind</span>::<span class="op">&lt;</span><span class="ident">cap::Ledger</span><span class="op">&gt;</span><span class="ident">::send</span>(),
+                        <span class="ident">senders</span>: <span class="macro">vec!</span>[<span class="ident">user_key</span>.<span class="ident">address</span>()],
+                        <span class="ident">receivers</span>: <span class="macro">vec!</span>[],
+                        <span class="ident">fee_change</span>: <span class="prelude-val">None</span>,
+                        <span class="ident">asset_change</span>: <span class="prelude-val">None</span>,
+                    },
+                )
                 .<span class="ident">unwrap</span>();
 
             <span class="comment">// Revert the changes.</span>
@@ -1294,10 +1236,12 @@
                 .<span class="ident">remove_by_nullifier</span>(<span class="ident">nullifier</span>)
                 .<span class="ident">unwrap</span>();
             <span class="ident">storage</span>.<span class="ident">revert</span>().<span class="kw">await</span>;
+            <span class="ident">transactions</span>.<span class="ident">revert</span>().<span class="ident">unwrap</span>();
 
             <span class="comment">// Loading after revert should be a no-op.</span>
             <span class="kw">let</span> <span class="ident">state</span> <span class="op">=</span> <span class="ident">storage</span>.<span class="ident">load</span>().<span class="kw">await</span>.<span class="ident">unwrap</span>();
             <span class="ident">assets</span>.<span class="ident">commit</span>::<span class="op">&lt;</span><span class="ident">cap::Ledger</span><span class="op">&gt;</span>().<span class="ident">unwrap</span>();
+            <span class="ident">transactions</span>.<span class="ident">commit</span>().<span class="ident">unwrap</span>();
             <span class="ident">atomic_store</span>.<span class="ident">commit_version</span>().<span class="ident">unwrap</span>();
             <span class="ident">state</span>
         };
