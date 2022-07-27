@@ -201,31 +201,16 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicKeystoreSto
         mut self: &mut Self,
         w: &KeystoreState<'a, L>,
     ) -> Result<(), KeystoreError<L>> {
-        // Store the initial static and dynamic state, and the metadata. We do this in a closure so
-        // that if any operation fails, it will exit the closure but not this function, and we can
-        // then commit or revert based on the results of the closure.
-        let store = &mut self;
-        match (|| async move {
-            store
-                .persisted_meta
-                .store_resource(&store.meta)
-                .context(crate::PersistenceSnafu)?;
-            store.meta_dirty = true;
-            store
-                .static_data
-                .store_resource(&KeystoreStaticState::from(w))
-                .context(crate::PersistenceSnafu)?;
-            store.static_dirty = true;
-            store.store_snapshot(w).await
-        })()
-        .await
-        {
-            Ok(()) => Ok(()),
-            Err(err) => {
-                self.revert().await;
-                Err(err)
-            }
-        }
+        // Store the initial static and dynamic state, and the metadata.
+        self.persisted_meta
+            .store_resource(&self.meta)
+            .context(crate::PersistenceSnafu)?;
+        self.meta_dirty = true;
+        self.static_data
+            .store_resource(&KeystoreStaticState::from(w))
+            .context(crate::PersistenceSnafu)?;
+        self.static_dirty = true;
+        self.store_snapshot(w).await
     }
 
     pub fn key_stream(&self) -> KeyTree {
