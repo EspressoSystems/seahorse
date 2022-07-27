@@ -1550,7 +1550,7 @@
     <span class="doccomment">/// The [KeystoreLoader] implementation to use to create or load the keystore.</span>
     <span class="kw">type</span> <span class="ident">Loader</span>: <span class="ident">KeystoreLoader</span><span class="op">&lt;</span><span class="ident"><span class="self">Self</span>::Ledger</span>, <span class="ident">Meta</span> <span class="op">=</span> <span class="ident"><span class="self">Self</span>::Meta</span><span class="op">&gt;</span>;
     <span class="doccomment">/// The type of metadata used by [Self::Loader].</span>
-    <span class="kw">type</span> <span class="ident">Meta</span>: <span class="lifetime">&#39;a</span> <span class="op">+</span> <span class="ident">Send</span> <span class="op">+</span> <span class="ident">Serialize</span> <span class="op">+</span> <span class="ident">DeserializeOwned</span> <span class="op">+</span> <span class="ident">Clone</span> <span class="op">+</span> <span class="ident">PartialEq</span>;
+    <span class="kw">type</span> <span class="ident">Meta</span>: <span class="lifetime">&#39;a</span> <span class="op">+</span> <span class="ident">Send</span> <span class="op">+</span> <span class="ident">Sync</span> <span class="op">+</span> <span class="ident">Serialize</span> <span class="op">+</span> <span class="ident">DeserializeOwned</span> <span class="op">+</span> <span class="ident">Clone</span> <span class="op">+</span> <span class="ident">PartialEq</span>;
     <span class="doccomment">/// The type of command line options for use when configuring the CLI.</span>
     <span class="kw">type</span> <span class="ident">Args</span>: <span class="ident">CLIArgs</span>;
 
