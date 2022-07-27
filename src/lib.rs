@@ -2511,6 +2511,9 @@ impl<
 
     /// A future which completes when the keystore has processed events at least including `t`.
     pub async fn sync(&self, t: EventIndex) -> Result<(), KeystoreError<L>> {
+        // Check the current event index. `receiver` will be `None` if the event index `t` has
+        // already passed, or `Some(receiver)` with a `oneshot::Receiver` to wait on if `t` is in
+        // the future.
         let receiver = {
             self.write()
                 .await
