@@ -7,8 +7,8 @@
 
 //! Ledger-agnostic implementation of [KeystoreStorage].
 use crate::{
-    accounts::Account, hd::KeyTree, txn_builder::TransactionState, EncryptingResourceAdapter,
-    KeyStreamState, KeystoreError, KeystoreState,
+    accounts::Account, hd::KeyTree, loader::KeystoreLoader, txn_builder::TransactionState,
+    EncryptingResourceAdapter, KeyStreamState, KeystoreError, KeystoreState,
 };
 use arbitrary::{Arbitrary, Unstructured};
 use async_std::sync::Arc;
@@ -126,21 +126,46 @@ pub struct AtomicKeystoreStorage<'a, L: Ledger, Meta: Serialize + DeserializeOwn
     static_dirty: bool,
     dynamic_state: RollingLog<EncryptingResourceAdapter<KeystoreSnapshot<L>>>,
     dynamic_state_dirty: bool,
-    keystore_key_tree: KeyTree,
+    root_key_tree: KeyTree,
 }
 
 impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned + Clone + PartialEq>
     AtomicKeystoreStorage<'a, L, Meta>
 {
-    pub fn new<T>(
-        adapter: EncryptingResourceAdapter<T>,
+    pub fn new(
+        loader: &mut impl KeystoreLoader<L, Meta = Meta>,
         atomic_loader: &mut AtomicStoreLoader,
         file_fill_size: u64,
-        meta: Meta,
-        persisted_meta: RollingLog<BincodeLoadStore<Meta>>,
-        meta_dirty: bool,
-        key: KeyTree,
     ) -> Result<Self, KeystoreError<L>> {
+        // Load the metadata first so the loader can use it to generate the encryption key needed to
+        // read the rest of the data.
+        let mut persisted_meta = RollingLog::load(
+            atomic_loader,
+            BincodeLoadStore::<Meta>::default(),
+            "keystore_meta",
+            1024,
+        )?;
+        let (meta, key, meta_dirty) = match persisted_meta.load_latest() {
+            Ok(mut meta) => {
+                let old_meta = meta.clone();
+                let key = loader.load(&mut meta)?;
+
+                // Store the new metadata if the loader changed it
+                if meta != old_meta {
+                    persisted_meta.store_resource(&meta)?;
+                    (meta, key, true)
+                } else {
+                    (meta, key, false)
+                }
+            }
+            Err(_) => {
+                // If there is no persisted metadata, ask the loader to generate a new keystore.
+                let (meta, key) = loader.create()?;
+                (meta, key, false)
+            }
+        };
+        let adapter = EncryptingResourceAdapter::<()>::new(key.derive_sub_tree("enc".as_bytes()));
+
         let static_data = RollingLog::load(
             atomic_loader,
             adapter.cast(),
@@ -166,7 +191,7 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned + Clone + PartialE
             static_dirty: false,
             dynamic_state,
             dynamic_state_dirty: false,
-            keystore_key_tree: key.derive_sub_tree("keystore".as_bytes()),
+            root_key_tree: key,
         })
     }
 }
@@ -176,38 +201,24 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicKeystoreSto
         mut self: &mut Self,
         w: &KeystoreState<'a, L>,
     ) -> Result<(), KeystoreError<L>> {
-        // Store the initial static and dynamic state, and the metadata. We do this in a closure so
-        // that if any operation fails, it will exit the closure but not this function, and we can
-        // then commit or revert based on the results of the closure.
-        let store = &mut self;
-        match (|| async move {
-            store
-                .persisted_meta
-                .store_resource(&store.meta)
-                .context(crate::PersistenceSnafu)?;
-            store.meta_dirty = true;
-            store
-                .static_data
-                .store_resource(&KeystoreStaticState::from(w))
-                .context(crate::PersistenceSnafu)?;
-            store.static_dirty = true;
-            store.store_snapshot(w).await
-        })()
-        .await
-        {
-            Ok(()) => {
-                self.commit().await;
-                Ok(())
-            }
-            Err(err) => {
-                self.revert().await;
-                Err(err)
-            }
-        }
+        // Store the initial static and dynamic state, and the metadata.
+        self.persisted_meta
+            .store_resource(&self.meta)
+            .context(crate::PersistenceSnafu)?;
+        self.meta_dirty = true;
+        self.static_data
+            .store_resource(&KeystoreStaticState::from(w))
+            .context(crate::PersistenceSnafu)?;
+        self.static_dirty = true;
+        self.store_snapshot(w).await
     }
 
     pub fn key_stream(&self) -> KeyTree {
-        self.keystore_key_tree.clone()
+        self.root_key_tree.derive_sub_tree("keystore".as_bytes())
+    }
+
+    pub fn encrypting_storage_adapter<T>(&self) -> EncryptingResourceAdapter<T> {
+        EncryptingResourceAdapter::<T>::new(self.root_key_tree.derive_sub_tree("enc".as_bytes()))
     }
 
     pub fn meta(&self) -> &Meta {
@@ -220,11 +231,7 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicKeystoreSto
         self.persisted_meta.load_latest().is_ok()
     }
 
-    pub async fn load(&mut self) -> Result<KeystoreState<'a, L>, KeystoreError<L>> {
-        // This function is called once, when the keystore is loaded. It is a good place to persist
-        // changes to the metadata that happened during loading.
-        self.commit().await;
-
+    pub async fn load(&self) -> Result<KeystoreState<'a, L>, KeystoreError<L>> {
         let static_state = self
             .static_data
             .load_latest()
@@ -312,28 +319,20 @@ mod tests {
         events::{EventIndex, EventSource},
         loader::KeystoreLoader,
         sparse_merkle_tree::SparseMerkleTree,
-        testing::{assert_keystore_states_eq, mocks::MockBackend},
-        transactions::{SignedMemos, TransactionParams},
-        txn_builder::{TransactionStatus, TransactionUID},
-        Keystore,
+        testing::assert_keystore_states_eq,
     };
-    use chrono::Local;
-    use commit::Commitment;
+    use atomic_store::AtomicStore;
     use jf_cap::{
         keys::{UserKeyPair, ViewerKeyPair},
-        sign_receiver_memos,
-        structs::{
-            AssetCode, AssetDefinition, FreezeFlag, ReceiverMemo, RecordCommitment, RecordOpening,
-        },
-        KeyPair, Signature, TransactionVerifyingKey,
+        structs::{AssetDefinition, FreezeFlag, RecordCommitment, RecordOpening},
+        TransactionVerifyingKey,
     };
     use key_set::KeySet;
     use rand_chacha::{
         rand_core::{RngCore, SeedableRng},
         ChaChaRng,
     };
-    use reef::{cap, traits::TransactionKind as _};
-    use std::iter::repeat_with;
+    use reef::cap;
     use std::path::PathBuf;
     use tempdir::TempDir;
 
@@ -367,32 +366,6 @@ mod tests {
             key_pair.pub_key(),
             FreezeFlag::Unfrozen,
         )
-    }
-
-    fn random_ros(rng: &mut ChaChaRng, key_pair: &UserKeyPair) -> Vec<RecordOpening> {
-        repeat_with(|| random_ro(rng, key_pair)).take(3).collect()
-    }
-
-    fn random_memos(
-        rng: &mut ChaChaRng,
-        key_pair: &UserKeyPair,
-    ) -> (Vec<Option<ReceiverMemo>>, Signature) {
-        let memos = repeat_with(|| {
-            let ro = random_ro(rng, key_pair);
-            ReceiverMemo::from_ro(rng, &ro, &[]).unwrap()
-        })
-        .take(3)
-        .collect::<Vec<_>>();
-        let sig = sign_receiver_memos(&KeyPair::generate(rng), &memos).unwrap();
-        (memos.into_iter().map(|memo| Some(memo)).collect(), sig)
-    }
-
-    fn random_txn_hash(rng: &mut ChaChaRng) -> Commitment<cap::Transaction> {
-        let mut hash = [0; 64];
-        rng.fill_bytes(&mut hash);
-        commit::RawCommitmentBuilder::<cap::Transaction>::new("random_txn_hash")
-            .fixed_size_bytes(&hash)
-            .finalize()
     }
 
     async fn get_test_state(
@@ -453,13 +426,23 @@ mod tests {
             key: KeyTree::random(&mut rng).0,
         };
         {
-            let (mut atomic_store, mut storage, mut assets, mut transactions) =
-                Keystore::<MockBackend, cap::Ledger, ()>::create_stores(&mut loader).unwrap();
-            storage.create(&state).await.unwrap();
-            assert!(storage.exists());
-            assets.commit::<cap::Ledger>().unwrap();
-            transactions.commit().unwrap();
+            let mut atomic_loader = AtomicStoreLoader::load(
+                &KeystoreLoader::<cap::Ledger>::location(&loader),
+                "keystore",
+            )
+            .unwrap();
+            let mut storage =
+                AtomicKeystoreStorage::new(&mut loader, &mut atomic_loader, 1024).unwrap();
+            let mut atomic_store = AtomicStore::open(atomic_loader).unwrap();
+
+            storage.commit().await;
             atomic_store.commit_version().unwrap();
+            assert!(!storage.exists());
+
+            storage.create(&state).await.unwrap();
+            storage.commit().await;
+            atomic_store.commit_version().unwrap();
+            assert!(storage.exists());
         }
 
         (state, loader, rng)
@@ -472,14 +455,19 @@ mod tests {
         // Create a new storage instance to load the keystore back from disk, to ensure that what we
         // load comes only from persistent storage and not from any in-memory state of the first
         // instance.
-        let (loaded, mut transactions) = {
-            let (mut atomic_store, mut storage, mut assets, mut transactions) =
-                Keystore::<MockBackend, cap::Ledger, ()>::create_stores(&mut loader).unwrap();
+        let loaded = {
+            let mut atomic_loader = AtomicStoreLoader::load(
+                &KeystoreLoader::<cap::Ledger>::location(&loader),
+                "keystore",
+            )
+            .unwrap();
+            let mut storage =
+                AtomicKeystoreStorage::new(&mut loader, &mut atomic_loader, 1024).unwrap();
+            let mut atomic_store = AtomicStore::open(atomic_loader).unwrap();
             let state = storage.load().await.unwrap();
-            assets.commit::<cap::Ledger>().unwrap();
-            transactions.commit().unwrap();
+            storage.commit().await;
             atomic_store.commit_version().unwrap();
-            (state, transactions)
+            state
         };
         assert_keystore_states_eq(&stored, &loaded);
 
@@ -491,41 +479,32 @@ mod tests {
         stored.txn_state.validator.now += 1;
         stored.txn_state.now += EventIndex::from_source(EventSource::QueryService, 1);
         stored.txn_state.records.insert(ro, 0, &user_key);
-        let (memos, sig) = random_memos(&mut rng, &user_key);
-        let txn_uid = TransactionUID(random_txn_hash(&mut rng));
-        let txn = TransactionParams::<cap::Ledger> {
-            timeout: Some(5000),
-            status: TransactionStatus::Pending,
-            signed_memos: Some(SignedMemos { memos, sig }),
-            inputs: random_ros(&mut rng, &user_key),
-            outputs: random_ros(&mut rng, &user_key),
-            time: Local::now(),
-            asset: AssetCode::native(),
-            kind: TransactionKind::<cap::Ledger>::send(),
-            senders: vec![],
-            receivers: vec![],
-            fee_change: None,
-            asset_change: None,
-        };
-        let stored_txn = transactions.create(txn_uid, txn).unwrap();
-        stored_txn.add_pending_uids(&vec![1, 2, 3]).save().unwrap();
 
         // Snapshot the modified dynamic state and then reload.
         {
-            let (mut atomic_store, mut storage, mut assets, mut transactions) =
-                Keystore::<MockBackend, cap::Ledger, ()>::create_stores(&mut loader).unwrap();
+            let mut atomic_loader = AtomicStoreLoader::load(
+                &KeystoreLoader::<cap::Ledger>::location(&loader),
+                "keystore",
+            )
+            .unwrap();
+            let mut storage =
+                AtomicKeystoreStorage::new(&mut loader, &mut atomic_loader, 1024).unwrap();
+            let mut atomic_store = AtomicStore::open(atomic_loader).unwrap();
             storage.store_snapshot(&stored).await.unwrap();
             storage.commit().await;
-            assets.commit::<cap::Ledger>().unwrap();
-            transactions.commit().unwrap();
             atomic_store.commit_version().unwrap();
         }
         let loaded = {
-            let (mut atomic_store, mut storage, mut assets, mut transactions) =
-                Keystore::<MockBackend, cap::Ledger, ()>::create_stores(&mut loader).unwrap();
+            let mut atomic_loader = AtomicStoreLoader::load(
+                &KeystoreLoader::<cap::Ledger>::location(&loader),
+                "keystore",
+            )
+            .unwrap();
+            let mut storage =
+                AtomicKeystoreStorage::new(&mut loader, &mut atomic_loader, 1024).unwrap();
+            let mut atomic_store = AtomicStore::open(atomic_loader).unwrap();
             let state = storage.load().await.unwrap();
-            assets.commit::<cap::Ledger>().unwrap();
-            transactions.commit().unwrap();
+            storage.commit().await;
             atomic_store.commit_version().unwrap();
             state
         };
@@ -539,20 +518,29 @@ mod tests {
             Account::new(viewing_key, "viewing_account".into()),
         );
         {
-            let (mut atomic_store, mut storage, mut assets, mut transactions) =
-                Keystore::<MockBackend, cap::Ledger, ()>::create_stores(&mut loader).unwrap();
+            let mut atomic_loader = AtomicStoreLoader::load(
+                &KeystoreLoader::<cap::Ledger>::location(&loader),
+                "keystore",
+            )
+            .unwrap();
+            let mut storage =
+                AtomicKeystoreStorage::new(&mut loader, &mut atomic_loader, 1024).unwrap();
+            let mut atomic_store = AtomicStore::open(atomic_loader).unwrap();
             storage.store_snapshot(&stored).await.unwrap();
             storage.commit().await;
-            assets.commit::<cap::Ledger>().unwrap();
-            transactions.commit().unwrap();
             atomic_store.commit_version().unwrap();
         }
         let loaded = {
-            let (mut atomic_store, mut storage, mut assets, mut transactions) =
-                Keystore::<MockBackend, cap::Ledger, ()>::create_stores(&mut loader).unwrap();
+            let mut atomic_loader = AtomicStoreLoader::load(
+                &KeystoreLoader::<cap::Ledger>::location(&loader),
+                "keystore",
+            )
+            .unwrap();
+            let mut storage =
+                AtomicKeystoreStorage::new(&mut loader, &mut atomic_loader, 1024).unwrap();
+            let mut atomic_store = AtomicStore::open(atomic_loader).unwrap();
             let state = storage.load().await.unwrap();
-            assets.commit::<cap::Ledger>().unwrap();
-            transactions.commit().unwrap();
+            storage.commit().await;
             atomic_store.commit_version().unwrap();
             state
         };
@@ -565,10 +553,42 @@ mod tests {
     async fn test_revert() -> std::io::Result<()> {
         let (mut stored, mut loader, mut rng) = get_test_state("test_revert").await;
 
+        // Make a change to one of the data structures, but revert it.
+        let loaded = {
+            let mut atomic_loader = AtomicStoreLoader::load(
+                &KeystoreLoader::<cap::Ledger>::location(&loader),
+                "keystore",
+            )
+            .unwrap();
+            let mut storage =
+                AtomicKeystoreStorage::new(&mut loader, &mut atomic_loader, 1024).unwrap();
+            let mut atomic_store = AtomicStore::open(atomic_loader).unwrap();
+            let user_key = UserKeyPair::generate(&mut rng);
+            let ro = random_ro(&mut rng, &user_key);
+
+            let mut updated = stored.clone();
+            updated.txn_state.records.insert(ro, 0, &user_key);
+            storage.store_snapshot(&updated).await.unwrap();
+            storage.revert().await;
+            storage.commit().await;
+            atomic_store.commit_version().unwrap();
+
+            // Make sure loading after a revert does not return the reverted changes.
+            let state = storage.load().await.unwrap();
+            state
+        };
+        assert_keystore_states_eq(&stored, &loaded);
+
         // Change multiple data structures and revert.
         let loaded = {
-            let (mut atomic_store, mut storage, mut assets, mut transactions) =
-                Keystore::<MockBackend, cap::Ledger, ()>::create_stores(&mut loader).unwrap();
+            let mut atomic_loader = AtomicStoreLoader::load(
+                &KeystoreLoader::<cap::Ledger>::location(&loader),
+                "keystore",
+            )
+            .unwrap();
+            let mut storage =
+                AtomicKeystoreStorage::new(&mut loader, &mut atomic_loader, 1024).unwrap();
+            let mut atomic_store = AtomicStore::open(atomic_loader).unwrap();
 
             let user_key = UserKeyPair::generate(&mut rng);
             let ro = random_ro(&mut rng, &user_key);
@@ -581,27 +601,6 @@ mod tests {
             // Store some data.
             stored.txn_state.records.insert(ro, 0, &user_key);
             storage.store_snapshot(&stored).await.unwrap();
-            let hash = random_txn_hash(&mut rng);
-            let txn_uid = TransactionUID(hash);
-            transactions
-                .create(
-                    txn_uid,
-                    TransactionParams {
-                        timeout: Some(5000),
-                        status: TransactionStatus::Pending,
-                        signed_memos: None,
-                        inputs: random_ros(&mut rng, &user_key),
-                        outputs: random_ros(&mut rng, &user_key),
-                        time: Local::now(),
-                        asset: AssetCode::native(),
-                        kind: TransactionKind::<cap::Ledger>::send(),
-                        senders: vec![user_key.address()],
-                        receivers: vec![],
-                        fee_change: None,
-                        asset_change: None,
-                    },
-                )
-                .unwrap();
 
             // Revert the changes.
             stored
@@ -610,12 +609,10 @@ mod tests {
                 .remove_by_nullifier(nullifier)
                 .unwrap();
             storage.revert().await;
-            transactions.revert().unwrap();
 
             // Loading after revert should be a no-op.
             let state = storage.load().await.unwrap();
-            assets.commit::<cap::Ledger>().unwrap();
-            transactions.commit().unwrap();
+            storage.commit().await;
             atomic_store.commit_version().unwrap();
             state
         };
