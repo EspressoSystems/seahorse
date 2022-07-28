@@ -100,10 +100,10 @@ async fn generate_independent_transactions<
 
     // Add the key to a fresh keystore to force it to be registered in the address book. We
     // will not use this keystore again.
-    let (mut w, _tmp_dir) = t
+    let mut w = t
         .create_keystore(KeyTree::random(&mut rng).0, &ledger)
         .await;
-    w.add_user_key(receiver.clone(), "key".into(), EventIndex::default())
+    w.0.add_user_key(receiver.clone(), "key".into(), EventIndex::default())
         .await
         .unwrap();
 
@@ -213,10 +213,10 @@ async fn bench_ledger_scanner_setup<
 
     // Add the receiver key to a fresh keystore to force it to be registered in the address
     // book. We will not use this keystore again.
-    let (mut w, _tmp_dir) = t
+    let mut w = t
         .create_keystore(KeyTree::random(&mut rng).0, &ledger)
         .await;
-    w.add_user_key(txns.receiver.clone(), "key".into(), EventIndex::default())
+    w.0.add_user_key(txns.receiver.clone(), "key".into(), EventIndex::default())
         .await
         .unwrap();
 
@@ -235,12 +235,18 @@ async fn bench_ledger_scanner_setup<
     // Wait for the keystores to catch up to the state before we snapshot the `initial_state`
     // keystore.
     t.sync(&ledger, &keystores).await;
+    // Snapshot the state from which we want the benchmark keystores to start scanning the ledger.
+    // Clear out any existing keys so that when we run the benchmark, we have full control over
+    // which keys are in the keystore and whether it can receive, view, or freeze certain assets.
+    let mut initial_state = keystores[0].0.read().await.state().clone();
+    initial_state.viewing_accounts = Default::default();
+    initial_state.freezing_accounts = Default::default();
+    initial_state.sending_accounts = Default::default();
 
     // Create events by making a number of transfers. We transfer from a number of different
     // keystores so we can easily parallelize the transfers, which speeds things up and allows
     // them all to be included in the same block.
     let start_time = ledger.lock().await.now();
-    let initial_state = keystores[0].0.read().await.state().clone();
     for i in 0..blocks {
         join_all(
             keystores
@@ -337,6 +343,9 @@ fn bench_ledger_scanner_run<
                         .unwrap();
                     w.await_key_scan(&scan_key.address()).await.unwrap();
                     dur += start.elapsed();
+
+                    // Ensure the wallet gets dropped before `_tmp_dir`.
+                    drop(w);
                 }
                 dur
             }
@@ -370,6 +379,9 @@ fn bench_ledger_scanner_run<
                     // Wait for the keystore to scan all the events.
                     w.sync(bench.end_time).await.unwrap();
                     dur += start.elapsed();
+
+                    // Ensure the wallet gets dropped before `_tmp_dir`.
+                    drop(w);
                 }
                 dur
             }
