@@ -96,7 +96,6 @@ impl<
         self.index.insert(key.clone(), value.clone());
         self.store
             .store_resource(&(key.clone(), Some(value.clone())))?;
-        self.commit_version()?;
         Ok(())
     }
 
@@ -109,7 +108,6 @@ impl<
             .remove(key)
             .ok_or(KeyValueStoreError::KeyNotFound);
         self.store.store_resource(&(key.clone(), None))?;
-        self.revert_version()?;
         value
     }
 }
