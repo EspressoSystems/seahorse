@@ -1,3 +1,0 @@
-(function() {var implementors = {};
-implementors["seahorse"] = [{"text":"impl <a class=\"trait\" href=\"https://doc.rust-lang.org/1.56.1/core/iter/traits/collect/trait.IntoIterator.html\" title=\"trait core::iter::traits::collect::IntoIterator\">IntoIterator</a> for <a class=\"struct\" href=\"seahorse/asset_library/struct.AssetLibrary.html\" title=\"struct seahorse::asset_library::AssetLibrary\">AssetLibrary</a>","synthetic":false,"types":["seahorse::asset_library::AssetLibrary"]}];
-if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()
