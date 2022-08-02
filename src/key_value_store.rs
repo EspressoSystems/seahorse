@@ -45,7 +45,7 @@ pub struct KeyValueStore<
     V: DeserializeOwned + Serialize,
 > {
     store: AppendLog<EncryptingResourceAdapter<(K, Option<V>)>>,
-    index: HashMap<K, V>,
+    persistable_index: PersistableHashMap<K, V>,
 }
 
 impl<
@@ -57,63 +57,71 @@ impl<
     pub fn new(
         store: AppendLog<EncryptingResourceAdapter<(K, Option<V>)>>,
     ) -> Result<Self, KeyValueStoreError> {
-        let mut index = HashMap::new();
+        let mut persistable_index = PersistableHashMap::new();
         for key_value in store.iter() {
             let (key, value) = key_value?;
             match value {
-                Some(val) => index.insert(key, val),
-                None => index.remove(&key),
+                Some(val) => persistable_index.insert((key, val)),
+                None => {
+                    if let Some(val) = persistable_index.index.get(&key).cloned() {
+                        persistable_index.remove((key, val));
+                    }
+                }
             };
         }
-        Ok(Self { store, index })
+        Ok(Self {
+            store,
+            persistable_index,
+        })
     }
 
     /// Iterate through the index table.
     pub fn iter(&self) -> impl Iterator<Item = &V> {
-        self.index.values()
+        self.persistable_index.index.values()
     }
 
     /// Load the value associated with the key from the index table.
     pub fn load(&self, key: &K) -> Result<V, KeyValueStoreError> {
-        self.index
+        self.persistable_index
+            .index
             .get(key)
             .cloned()
             .ok_or(KeyValueStoreError::KeyNotFound)
     }
 
-    /// Commit the store version.
+    /// Commit the persistable index and the store version.
     pub fn commit_version(&mut self) -> Result<(), KeyValueStoreError> {
+        self.persistable_index.commit();
         Ok(self.store.commit_version()?)
     }
 
-    /// Revert the store version.
+    /// Revert the persistable index and the store version.
     pub fn revert_version(&mut self) -> Result<(), KeyValueStoreError> {
+        self.persistable_index.revert();
         Ok(self.store.revert_version()?)
     }
 
-    /// Store a key-value pair to the index table and update the store version.
+    /// Store a key-value pair to the persistable index and update the store version.
     pub fn store(&mut self, key: &K, value: &V) -> Result<(), KeyValueStoreError> {
-        self.index.insert(key.clone(), value.clone());
+        self.persistable_index.insert((key.clone(), value.clone()));
         self.store
             .store_resource(&(key.clone(), Some(value.clone())))?;
         Ok(())
     }
 
-    /// Delete a key from the index table and update the store version.
+    /// Delete a key from the persistable index and update the store version.
     ///
     /// Returns the value associated with the deleted key.
     pub fn delete(&mut self, key: &K) -> Result<V, KeyValueStoreError> {
-        let value = self
-            .index
-            .remove(key)
-            .ok_or(KeyValueStoreError::KeyNotFound);
+        let value = self.load(key)?;
+        self.persistable_index.remove((key.clone(), value.clone()));
         self.store.store_resource(&(key.clone(), None))?;
-        value
+        Ok(value)
     }
 }
 
 /// Changes for in-memory state.
-pub enum IndexChange<C: Eq> {
+pub enum IndexChange<C> {
     Add(C),
     Remove(C),
 }
@@ -131,14 +139,14 @@ pub trait Persist<C> {
 }
 
 /// A persistable in-memory state.
-pub struct Persistable<I, C: Eq> {
+pub struct Persistable<I, C> {
     /// In-memory index, including both committed and uncommitted changes.
     index: I,
     /// Changes that haven't been committed.
     pending_changes: Vec<IndexChange<C>>,
 }
 
-impl<I, C: Eq> Persistable<I, C> {
+impl<I, C> Persistable<I, C> {
     /// Get the index.
     pub fn index(&self) -> &I {
         &self.index
@@ -188,7 +196,7 @@ impl<K: Copy + Eq + Hash> Persist<K> for PersistableHashSet<K> {
     }
 }
 
-impl<K: Clone + Eq + Hash, V: Clone + Eq + Hash> Persist<(K, V)> for PersistableHashMap<K, V> {
+impl<K: Clone + Eq + Hash, V: Clone> Persist<(K, V)> for PersistableHashMap<K, V> {
     fn new() -> Self {
         Self {
             index: HashMap::new(),
