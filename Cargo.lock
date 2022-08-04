@@ -588,9 +588,9 @@ checksum = "30696a84d817107fc028e049980e09d5e140e8da8f1caeb17e8e950658a3cea9"
 
 [[package]]
 name = "async-trait"
-version = "0.1.53"
+version = "0.1.57"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ed6aa3524a2dfcf9fe180c51eae2b58738348d819517ceadf95789c51fff7600"
+checksum = "76464446b8bc32758d7e88ee1a804d9914cd9b1cb264c029899680b0be29826f"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2249,7 +2249,7 @@ dependencies = [
  "jf-plonk",
  "jf-primitives",
  "jf-rescue",
- "jf-utils",
+ "jf-utils 0.1.1",
  "num_cpus",
  "percentage",
  "rand 0.8.5",
@@ -2283,7 +2283,7 @@ dependencies = [
  "downcast-rs",
  "itertools",
  "jf-rescue",
- "jf-utils",
+ "jf-utils 0.1.1",
  "merlin",
  "num-bigint 0.4.3",
  "rand_chacha 0.3.1",
@@ -2313,7 +2313,7 @@ dependencies = [
  "itertools",
  "jf-plonk",
  "jf-rescue",
- "jf-utils",
+ "jf-utils 0.1.1",
  "rand_chacha 0.3.1",
  "rayon",
  "serde",
@@ -2340,7 +2340,7 @@ dependencies = [
  "derivative",
  "displaydoc",
  "generic-array",
- "jf-utils",
+ "jf-utils 0.1.1",
  "rayon",
  "serde",
  "zeroize",
@@ -2357,7 +2357,25 @@ dependencies = [
  "ark-serialize",
  "ark-std",
  "digest 0.10.3",
- "jf-utils-derive",
+ "jf-utils-derive 0.1.1",
+ "serde",
+ "sha2 0.10.2",
+ "snafu",
+ "tagged-base64",
+]
+
+[[package]]
+name = "jf-utils"
+version = "0.1.2"
+source = "git+https://github.com/EspressoSystems/jellyfish.git?tag=0.1.2#190213ac89c92118f1ed01421f427b83eed6d3d0"
+dependencies = [
+ "anyhow",
+ "ark-ec",
+ "ark-ff",
+ "ark-serialize",
+ "ark-std",
+ "digest 0.10.3",
+ "jf-utils-derive 0.1.2",
  "serde",
  "sha2 0.10.2",
  "snafu",
@@ -2368,6 +2386,16 @@ dependencies = [
 name = "jf-utils-derive"
 version = "0.1.1"
 source = "git+https://github.com/EspressoSystems/jellyfish.git?tag=0.1.1#fbbe665698ae5d55c3c2f8ab66f8f3bd722f3a17"
+dependencies = [
+ "ark-std",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "jf-utils-derive"
+version = "0.1.2"
+source = "git+https://github.com/EspressoSystems/jellyfish.git?tag=0.1.2#190213ac89c92118f1ed01421f427b83eed6d3d0"
 dependencies = [
  "ark-std",
  "quote",
@@ -2569,7 +2597,7 @@ dependencies = [
  "generic-array",
  "itertools",
  "jf-cap",
- "jf-utils",
+ "jf-utils 0.1.1",
  "serde",
  "serde_json",
  "snafu",
@@ -3564,7 +3592,7 @@ dependencies = [
  "itertools",
  "jf-cap",
  "jf-primitives",
- "jf-utils",
+ "jf-utils 0.1.2",
  "key-set",
  "lazy_static",
  "net",
@@ -4058,9 +4086,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "1.0.95"
+version = "1.0.99"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fbaf6116ab8924f39d52792136fb74fd60a80194cf1b1c6ffa6453eef1c3f942"
+checksum = "58dbef6ec655055e20b86b15a8cc6d439cca19b667537ac6a1369572d151ab13"
 dependencies = [
  "proc-macro2",
  "quote",
