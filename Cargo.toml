@@ -41,7 +41,7 @@ sha3 = "^0.9"
 snafu = { version = "0.7", features = ["backtraces"] }
 structopt = "0.3"
 strum = "0.24"
-strum_macros = "0.20.1"
+strum_macros = "0.24.2"
 surf = "2.3.1"
 tempdir = "0.3.7"
 tracing = "0.1.35"
