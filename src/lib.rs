@@ -19,6 +19,7 @@
 //! Users should also be familiar with [reef], which provides traits to adapt a particular CAP
 //! ledger to the ledger-agnostic interfaces defined here.
 pub mod accounts;
+pub mod accounts_refactor;
 pub mod assets;
 pub mod cli;
 pub mod encryption;
@@ -189,6 +190,7 @@ pub enum KeystoreError<L: Ledger> {
     InvalidViewerKey {
         key: ViewerPubKey,
     },
+    ScanNotFound,
 }
 
 impl<L: Ledger> From<ASPersistenceError> for KeystoreError<L> {
