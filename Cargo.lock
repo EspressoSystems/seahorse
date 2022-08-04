@@ -3611,7 +3611,7 @@ dependencies = [
  "rust-argon2",
  "rustyline",
  "serde",
- "sha3 0.9.1",
+ "sha3 0.10.1",
  "snafu",
  "structopt",
  "strum",
