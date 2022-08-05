@@ -2249,7 +2249,7 @@ dependencies = [
  "jf-plonk",
  "jf-primitives",
  "jf-rescue",
- "jf-utils",
+ "jf-utils 0.1.1",
  "num_cpus",
  "percentage",
  "rand 0.8.5",
@@ -2283,7 +2283,7 @@ dependencies = [
  "downcast-rs",
  "itertools",
  "jf-rescue",
- "jf-utils",
+ "jf-utils 0.1.1",
  "merlin",
  "num-bigint 0.4.3",
  "rand_chacha 0.3.1",
@@ -2313,7 +2313,7 @@ dependencies = [
  "itertools",
  "jf-plonk",
  "jf-rescue",
- "jf-utils",
+ "jf-utils 0.1.1",
  "rand_chacha 0.3.1",
  "rayon",
  "serde",
@@ -2340,7 +2340,7 @@ dependencies = [
  "derivative",
  "displaydoc",
  "generic-array",
- "jf-utils",
+ "jf-utils 0.1.1",
  "rayon",
  "serde",
  "zeroize",
@@ -2357,7 +2357,25 @@ dependencies = [
  "ark-serialize",
  "ark-std",
  "digest 0.10.3",
- "jf-utils-derive",
+ "jf-utils-derive 0.1.1",
+ "serde",
+ "sha2 0.10.2",
+ "snafu",
+ "tagged-base64",
+]
+
+[[package]]
+name = "jf-utils"
+version = "0.1.2"
+source = "git+https://github.com/EspressoSystems/jellyfish.git?tag=0.1.2#190213ac89c92118f1ed01421f427b83eed6d3d0"
+dependencies = [
+ "anyhow",
+ "ark-ec",
+ "ark-ff",
+ "ark-serialize",
+ "ark-std",
+ "digest 0.10.3",
+ "jf-utils-derive 0.1.2",
  "serde",
  "sha2 0.10.2",
  "snafu",
@@ -2368,6 +2386,16 @@ dependencies = [
 name = "jf-utils-derive"
 version = "0.1.1"
 source = "git+https://github.com/EspressoSystems/jellyfish.git?tag=0.1.1#fbbe665698ae5d55c3c2f8ab66f8f3bd722f3a17"
+dependencies = [
+ "ark-std",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "jf-utils-derive"
+version = "0.1.2"
+source = "git+https://github.com/EspressoSystems/jellyfish.git?tag=0.1.2#190213ac89c92118f1ed01421f427b83eed6d3d0"
 dependencies = [
  "ark-std",
  "quote",
@@ -2569,7 +2597,7 @@ dependencies = [
  "generic-array",
  "itertools",
  "jf-cap",
- "jf-utils",
+ "jf-utils 0.1.1",
  "serde",
  "serde_json",
  "snafu",
@@ -3321,7 +3349,7 @@ dependencies = [
  "rand_chacha 0.3.1",
  "serde",
  "snafu",
- "strum_macros",
+ "strum_macros 0.20.1",
 ]
 
 [[package]]
@@ -3564,7 +3592,7 @@ dependencies = [
  "itertools",
  "jf-cap",
  "jf-primitives",
- "jf-utils",
+ "jf-utils 0.1.2",
  "key-set",
  "lazy_static",
  "net",
@@ -3587,7 +3615,7 @@ dependencies = [
  "snafu",
  "structopt",
  "strum",
- "strum_macros",
+ "strum_macros 0.24.2",
  "surf",
  "tagged-base64",
  "tempdir",
@@ -4015,6 +4043,19 @@ dependencies = [
  "heck 0.3.3",
  "proc-macro2",
  "quote",
+ "syn",
+]
+
+[[package]]
+name = "strum_macros"
+version = "0.24.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4faebde00e8ff94316c01800f9054fd2ba77d30d9e922541913051d1d978918b"
+dependencies = [
+ "heck 0.4.0",
+ "proc-macro2",
+ "quote",
+ "rustversion",
  "syn",
 ]
 
