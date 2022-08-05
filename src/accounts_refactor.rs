@@ -1,4 +1,15 @@
-/// Keys and associated data.
+// Copyright (c) 2022 Espresso Systems (espressosys.com)
+// This file is part of the Seahorse library.
+
+// This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+// You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+//! The accounts module.
+//!
+//! This module defines [Account], [AccountEditor], and [Accounts], which provide CURD (create, read,
+//! update, and delete) operations, with the use of [KeyValueStore] to control the accounts resource.
+
 use crate::{
     events::{EventSource, LedgerEvent},
     key_scan::BackgroundKeyScan,
@@ -55,19 +66,20 @@ impl KeyPair for UserKeyPair {
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(bound = "Key: DeserializeOwned + Serialize")]
 pub struct Account<L: Ledger, Key: KeyPair> {
+    /// The account key.
     key: Key,
     /// The account description.
     pub description: String,
     /// Whether the account is used.
     pub used: bool,
     /// Optional ledger scan.
-    pub scan: Option<BackgroundKeyScan<L>>,
+    scan: Option<BackgroundKeyScan<L>>,
     /// The list of asset codes of the account.
-    pub assets: Vec<AssetCode>,
-    /// Records of the account.
-    pub records: Vec<RecordInfo>,
+    assets: Vec<AssetCode>,
+    /// The list of records of the account.
+    records: Vec<RecordInfo>,
     /// The table of balances with corresponding asset code.
-    pub balances: HashMap<AssetCode, U256>,
+    balances: HashMap<AssetCode, U256>,
     /// The time when the account was created.
     created_time: DateTime<Local>,
     /// The last time when the account was modified.
@@ -167,14 +179,14 @@ impl<'a, L: Ledger, Key: KeyPair + DeserializeOwned + Serialize> AccountEditor<'
     }
 
     /// Set the ledger scan.
-    pub fn with_name(mut self, scan: BackgroundKeyScan<L>) -> Self {
+    pub fn with_scan(mut self, scan: BackgroundKeyScan<L>) -> Self {
         self.account.scan = Some(scan);
         self.account.modified_time = Local::now();
         self
     }
 
     /// Clear the leger scan.
-    pub fn clear_name(mut self) -> Self {
+    pub fn clear_scan(mut self) -> Self {
         self.account.scan = None;
         self.account.modified_time = Local::now();
         self
