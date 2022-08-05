@@ -53,8 +53,8 @@ impl KeyPair for UserKeyPair {
 }
 
 #[derive(Clone, Deserialize, Serialize)]
-#[serde(bound = "L: Ledger, Key: Serialize + DeserializeOwned")]
-pub struct Account<L: Ledger, Key: KeyPair + DeserializeOwned + Serialize> {
+#[serde(bound = "Key: DeserializeOwned + Serialize")]
+pub struct Account<L: Ledger, Key: KeyPair> {
     key: Key,
     /// The account description.
     pub description: String,
@@ -74,7 +74,7 @@ pub struct Account<L: Ledger, Key: KeyPair + DeserializeOwned + Serialize> {
     modified_time: DateTime<Local>,
 }
 
-impl<L: Ledger, Key: KeyPair + DeserializeOwned + Serialize> Account<L, Key> {
+impl<L: Ledger, Key: KeyPair> Account<L, Key> {
     #![allow(dead_code)]
 
     /// Get the account key.
@@ -297,7 +297,7 @@ impl<L: Ledger, Key: KeyPair + DeserializeOwned + Serialize> Accounts<L, Key> {
             created_time: time,
             modified_time: time,
         };
-        let mut editor = AccountEditor::new(&mut self.store, account.clone());
+        let mut editor = AccountEditor::new(&mut self.store, account);
         editor.save()?;
         Ok(editor)
     }
