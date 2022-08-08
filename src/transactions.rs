@@ -392,7 +392,6 @@ impl<L: Ledger> Transactions<L> {
     /// Fee and Asset Change records.
     ///
     /// Returns the editor for the created transaction.
-    #[allow(clippy::too_many_arguments)]
     pub fn create(
         &mut self,
         uid: TransactionUID<L>,

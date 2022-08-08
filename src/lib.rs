@@ -30,6 +30,7 @@ pub mod key_value_store;
 pub mod loader;
 pub mod persistence;
 pub mod reader;
+pub mod records;
 mod secret;
 pub mod sparse_merkle_tree;
 mod state;
