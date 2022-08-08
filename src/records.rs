@@ -16,20 +16,25 @@ use crate::{
 use atomic_store::{AppendLog, AtomicStoreLoader};
 use jf_cap::{
     keys::UserAddress,
-    structs::{FreezeFlag, Nullifier, RecordOpening},
+    structs::{AssetDefinition, FreezeFlag, Nullifier, RecordOpening},
 };
+use net::UserPubKey;
 use primitive_types::U256;
 use serde::{Deserialize, Serialize};
 use std::convert::TryInto;
 use std::ops::{Deref, DerefMut};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+/// A Record with it's uid (u64) as the key
 pub struct Record {
+    /// All the information required to create commitments/proofs for this record
     ro: RecordOpening,
+    /// Identifier for this record and its primary key in storage
     uid: u64,
+    /// The nullifier that represent the consumption of this asset record
     nullifier: Nullifier,
-    // if Some(t), this record is on hold until the validator timestamp surpasses `t`, because this
-    // record has been used as an input to a transaction that is not yet confirmed.
+    /// if Some(t), this record is on hold until the validator timestamp surpasses `t`, because this
+    /// record has been used as an input to a transaction that is not yet confirmed.
     hold_until: Option<u64>,
 }
 
@@ -38,19 +43,32 @@ impl Record {
         &self.ro
     }
 
-    pub fn on_hold(&self, now: u64) -> bool {
-        matches!(self.hold_until, Some(t) if t > now)
-    }
-
     pub fn amount(&self) -> RecordAmount {
         self.ro.amount.into()
+    }
+
+    pub fn asset_definition(&self) -> &AssetDefinition {
+        &self.ro.asset_def
+    }
+
+    pub fn pub_key(&self) -> &UserPubKey {
+        &self.ro.pub_key
+    }
+
+    pub fn freeze_flag(&self) -> FreezeFlag {
+        self.ro.freeze_flag
     }
 
     pub fn nullifier(&self) -> &Nullifier {
         &self.nullifier
     }
+
+    pub fn on_hold(&self, now: u64) -> bool {
+        matches!(self.hold_until, Some(t) if t > now)
+    }
 }
 
+/// An editor to update a record or records store
 pub struct RecordEditor<'a> {
     record: Record,
     store: &'a mut Records,
@@ -61,15 +79,19 @@ impl<'a> RecordEditor<'a> {
         Self { record, store }
     }
 
+    /// Update when this record will be on hold until if it is pending
+    /// Set this when the record is part of a transaction that isn't confirmed
     pub fn hold_until(mut self, until: u64) -> Self {
         self.record.hold_until = Some(until);
         self
     }
 
+    /// Update the record to no longer be on hold
     pub fn unhold(mut self) -> Self {
         self.record.hold_until = None;
         self
     }
+
     /// Save the record to the store.
     ///
     /// Returns the stored record.
@@ -97,12 +119,12 @@ type RecordsStore = KeyValueStore<u64, Record>;
 
 pub struct Records {
     store: RecordsStore,
-    // record (size, uid) indexed by asset type, owner, and freeze status, for easy allocation as
-    // transfer or freeze inputs. The records for each asset are ordered by increasing size, which
-    // makes it easy to implement a worst-fit allocator that minimizes fragmentation.
+    /// Record (size, uid) indexed by asset type, owner, and freeze status, for easy allocation as
+    /// transfer or freeze inputs. The records for each asset are ordered by increasing size, which
+    /// makes it easy to implement a worst-fit allocator that minimizes fragmentation.
     asset_records:
         PersistableHashMapBTreeMultiMap<(AssetCode, UserAddress, FreezeFlag), (RecordAmount, u64)>,
-    // record uids indexed by nullifier, for easy removal when confirmed as transfer inputs
+    /// Record uids indexed by nullifier, for easy removal when confirmed as transfer inputs
     nullifier_records: PersistableHashMap<Nullifier, u64>,
 }
 
@@ -125,6 +147,9 @@ impl Records {
         Ok(records)
     }
 
+    /// Create a Record
+    ///
+    /// Returns an editor to the newly created Record
     pub fn create<L: Ledger>(
         &mut self,
         uid: u64,
@@ -142,7 +167,7 @@ impl Records {
         self.asset_records.insert((
             (
                 ro.asset_def.code,
-                ro.pub_key.address().clone(),
+                ro.pub_key.address(),
                 ro.freeze_flag,
             ),
             (record.ro.amount.into(), record.uid),
@@ -154,6 +179,7 @@ impl Records {
         Ok(editor)
     }
 
+    /// Rebuild the indices for this store
     fn reload(&mut self) {
         self.asset_records = Persistable::new();
         self.nullifier_records = Persistable::new();
@@ -178,18 +204,24 @@ impl Records {
         Ok(())
     }
 
+    /// Returns an Iterator to all the Records in the store
     pub fn iter(&self) -> impl Iterator<Item = Record> + '_ {
         self.store.iter().cloned()
     }
 
+    /// Get a record from a uid from the store
     pub fn get<L: Ledger>(&self, uid: u64) -> Result<Record, KeystoreError<L>> {
         Ok(self.store.load(&uid)?)
     }
+
+    /// get a Record Editor by uid from storage
     pub fn get_mut<L: Ledger>(&mut self, uid: u64) -> Result<RecordEditor, KeystoreError<L>> {
         let record = self.store.load(&uid)?;
         Ok(RecordEditor::new(self, record))
     }
 
+    /// Get records associated with an asset and account which are either frozen or unfrozen
+    /// Useful for finding records for transaction inputs
     pub fn with_asset<L: Ledger>(
         &self,
         asset: &AssetCode,
@@ -216,28 +248,48 @@ impl Records {
         amount: U256,
         now: u64,
     ) -> Result<Option<Record>, KeystoreError<L>> {
-        let unspent_records = self
-            .asset_records
-            .index()
-            .get(&(*asset, owner.clone(), frozen))
-            .ok_or(KeyValueStoreError::KeyNotFound)?;
-        // If we have a record with the exact size required, use it to avoid
-        // fragmenting big records into smaller change records. First make
-        // sure the amount can be converted to a RecordAmount, since if it is
-        // too big for a single record, then of course we don not have a
-        // record of exactly the right size.
-        if let Ok(amount) = amount.try_into() {
-            let exact_matches = unspent_records.range((amount, 0)..(amount + 1u64.into(), 0));
-            for (match_amount, uid) in exact_matches {
-                assert_eq!(*match_amount, amount);
-                let record = self.get(*uid)?;
-                assert_eq!(record.amount(), amount);
-                if record.on_hold(now) {
-                    continue;
+        if let Some(unspent_records) =
+            self.asset_records
+                .index()
+                .get(&(*asset, owner.clone(), frozen))
+        {
+            if let Ok(amount) = amount.try_into() {
+                let exact_matches = unspent_records.range((amount, 0)..(amount + 1u64.into(), 0));
+                for (match_amount, uid) in exact_matches {
+                    assert_eq!(*match_amount, amount);
+                    let record = self.get(*uid)?;
+                    assert_eq!(record.amount(), amount);
+                    if record.on_hold(now) {
+                        continue;
+                    }
+                    return Ok(Some(record));
                 }
-                return Ok(Some(record));
             }
         }
         Ok(None)
+    }
+
+    /// Commit the store version.
+    pub fn commit<L: Ledger>(&mut self) -> Result<(), KeystoreError<L>> {
+        self.asset_records.commit();
+        self.nullifier_records.commit();
+        Ok(self.store.commit_version()?)
+    }
+
+    /// Revert the store version.
+    pub fn revert<L: Ledger>(&mut self) -> Result<(), KeystoreError<L>> {
+        self.asset_records.revert();
+        self.nullifier_records.revert();
+        Ok(self.store.revert_version()?)
+    }
+
+    /// Deletes an record from the store.
+    ///
+    /// Returns the deleted record.
+    pub fn delete<L: Ledger>(&mut self, uid: u64) -> Result<Record, KeystoreError<L>> {
+        let txn = self.store.delete(&uid)?;
+        // Rebuild the indices
+        self.reload();
+        Ok(txn)
     }
 }
