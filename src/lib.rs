@@ -2629,7 +2629,7 @@ impl<
         self.write()
             .await
             .update(|KeystoreSharedState { model, .. }| async move {
-                model.assets_mut().insert(asset)?;
+                model.assets_mut().insert(asset)?.save()?;
                 Ok(())
             })
             .await
