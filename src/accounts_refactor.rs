@@ -12,27 +12,24 @@
 
 use crate::{
     events::{EventSource, LedgerEvent},
-    key_scan::BackgroundKeyScan,
+    key_scan::{BackgroundKeyScan, ScanStatus},
     key_value_store::KeyValueStore,
-    txn_builder::RecordInfo,
     KeystoreError,
 };
 use chrono::{DateTime, Local};
 use jf_cap::{
     keys::{FreezerKeyPair, FreezerPubKey, UserAddress, UserKeyPair, ViewerKeyPair, ViewerPubKey},
-    structs::AssetCode,
     MerkleCommitment,
 };
-use primitive_types::U256;
 use reef::Ledger;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use std::collections::HashMap;
+use std::fmt::Display;
 use std::hash::Hash;
 use std::ops::{Deref, DerefMut};
 
 /// Keys with a public part.
 pub trait KeyPair: Clone + Send + Sync {
-    type PubKey: Clone + DeserializeOwned + Hash + Eq + Serialize;
+    type PubKey: Clone + DeserializeOwned + Display + Eq + Hash + Serialize;
     fn pub_key(&self) -> Self::PubKey;
 }
 
@@ -71,15 +68,9 @@ pub struct Account<L: Ledger, Key: KeyPair> {
     /// The account description.
     pub description: String,
     /// Whether the account is used.
-    pub used: bool,
+    used: bool,
     /// Optional ledger scan.
     scan: Option<BackgroundKeyScan<L>>,
-    /// The list of asset codes of the account.
-    assets: Vec<AssetCode>,
-    /// The list of records of the account.
-    records: Vec<RecordInfo>,
-    /// The table of balances with corresponding asset code.
-    balances: HashMap<AssetCode, U256>,
     /// The time when the account was created.
     created_time: DateTime<Local>,
     /// The last time when the account was modified.
@@ -114,21 +105,6 @@ impl<L: Ledger, Key: KeyPair> Account<L, Key> {
         self.scan.clone()
     }
 
-    /// Get the list of asset codes.
-    pub fn assets(&self) -> Vec<AssetCode> {
-        self.assets.clone()
-    }
-
-    /// Get the list of records.
-    pub fn records(&self) -> Vec<RecordInfo> {
-        self.records.clone()
-    }
-
-    /// Get the table of balances.
-    pub fn balances(&self) -> HashMap<AssetCode, U256> {
-        self.balances.clone()
-    }
-
     /// Get the created time.
     pub fn created_time(&self) -> DateTime<Local> {
         self.created_time
@@ -149,6 +125,8 @@ pub struct AccountEditor<'a, L: Ledger, Key: KeyPair + DeserializeOwned + Serial
 }
 
 impl<'a, L: Ledger, Key: KeyPair + DeserializeOwned + Serialize> AccountEditor<'a, L, Key> {
+    #![allow(dead_code)]
+
     /// Create an account editor.
     fn new(
         store: &'a mut AccountsStore<L, Key, Key::PubKey>,
@@ -160,55 +138,50 @@ impl<'a, L: Ledger, Key: KeyPair + DeserializeOwned + Serialize> AccountEditor<'
     /// Set the account as used.
     pub fn set_used(mut self) -> Self {
         self.account.used = true;
-        self.account.modified_time = Local::now();
-        self
-    }
-
-    /// Set the account as unused.
-    pub fn set_unused(mut self) -> Self {
-        self.account.used = false;
-        self.account.modified_time = Local::now();
         self
     }
 
     /// Set the optional ledger scan.
-    pub fn set_scan(mut self, scan: Option<BackgroundKeyScan<L>>) -> Self {
+    pub(crate) fn set_scan(mut self, scan: Option<BackgroundKeyScan<L>>) -> Self {
         self.account.scan = scan;
-        self.account.modified_time = Local::now();
         self
     }
 
     /// Set the ledger scan.
-    pub fn with_scan(mut self, scan: BackgroundKeyScan<L>) -> Self {
+    pub(crate) fn with_scan(mut self, scan: BackgroundKeyScan<L>) -> Self {
         self.account.scan = Some(scan);
-        self.account.modified_time = Local::now();
         self
     }
 
     /// Clear the leger scan.
-    pub fn clear_scan(mut self) -> Self {
+    pub(crate) fn clear_scan(mut self) -> Self {
         self.account.scan = None;
-        self.account.modified_time = Local::now();
         self
     }
 
     /// Update the ledger scan.
+    ///
+    /// Returns
+    /// * `Err` if the scan isn't found, or
+    /// * `Ok((self, scan_status))`, where `scan_status` provides the scanned information if the
+    /// scan is complete, or the scan itself if it's in progress.
     pub(crate) async fn update_scan(
         mut self,
         event: LedgerEvent<L>,
         source: EventSource,
         records_commitment: MerkleCommitment,
-    ) -> Result<AccountEditor<'a, L, Key>, KeystoreError<L>> {
+    ) -> Result<(AccountEditor<'a, L, Key>, ScanStatus<L>), KeystoreError<L>> {
         let mut scan = match self.account.scan.take() {
             Some(scan) => scan,
             None => return Err(KeystoreError::ScanNotFound),
         };
         scan.handle_event(event, source);
         // Check if the scan is complete.
-        if let Err(scan) = scan.finalize(records_commitment) {
+        let scan_status = scan.finalize(records_commitment);
+        if let ScanStatus::InProgress(scan) = scan_status.clone() {
             self.account.scan = Some(scan);
         }
-        Ok(self)
+        Ok((self, scan_status))
     }
 
     /// Save the account to the store.
@@ -216,6 +189,7 @@ impl<'a, L: Ledger, Key: KeyPair + DeserializeOwned + Serialize> AccountEditor<'
     /// Returns the stored account.
     pub fn save(&mut self) -> Result<Account<L, Key>, KeystoreError<L>> {
         self.store.store(&self.account.pub_key(), &self.account)?;
+        self.account.modified_time = Local::now();
         Ok(self.account.clone())
     }
 }
@@ -281,51 +255,24 @@ impl<L: Ledger, Key: KeyPair + DeserializeOwned + Serialize> Accounts<L, Key> {
         Ok(self.store.revert_version()?)
     }
 
-    /// Create an account.
+    /// Create an account with the given or default description.
     ///
     /// Returns the editor for the created account.
     pub fn create(
         &mut self,
         key: Key,
-        description: String,
-        assets: Vec<AssetCode>,
-        records: Vec<RecordInfo>,
+        description: Option<String>,
     ) -> Result<AccountEditor<L, Key>, KeystoreError<L>> {
-        let mut balances = HashMap::new();
-        for rec in &records {
-            *balances
-                .entry(rec.ro.asset_def.code)
-                .or_insert_with(U256::zero) += rec.amount().into();
-        }
         let time = Local::now();
         let account = Account {
-            key,
-            description,
+            key: key.clone(),
+            description: description.map_or(key.pub_key().to_string(), |k| k),
             used: false,
             scan: None,
-            assets,
-            records,
-            balances,
             created_time: time,
             modified_time: time,
         };
         let mut editor = AccountEditor::new(&mut self.store, account);
-        editor.save()?;
-        Ok(editor)
-    }
-
-    /// Update the ledger scan of an account.
-    pub(crate) async fn update_scan(
-        &mut self,
-        pub_key: &Key::PubKey,
-        event: LedgerEvent<L>,
-        source: EventSource,
-        records_commitment: MerkleCommitment,
-    ) -> Result<AccountEditor<'_, L, Key>, KeystoreError<L>> {
-        let mut editor = self.get_mut(pub_key)?;
-        editor = editor
-            .update_scan(event, source, records_commitment)
-            .await?;
         editor.save()?;
         Ok(editor)
     }

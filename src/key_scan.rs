@@ -40,6 +40,21 @@ pub struct ScanOutputs<L: Ledger> {
     pub history: Vec<(TransactionUID<L>, TransactionParams<L>)>,
 }
 
+/// The status of a ledger scan.
+#[derive(Clone)]
+pub enum ScanStatus<L: Ledger> {
+    Finished {
+        /// The scanned key.
+        key: UserKeyPair,
+        /// The list of records discovered by the scan.
+        records: Vec<ScannedRecord>,
+        /// The list of transaction history entries corresponding to transactions received by the
+        /// scan.
+        history: Vec<(TransactionUID<L>, TransactionParams<L>)>,
+    },
+    InProgress(BackgroundKeyScan<L>),
+}
+
 /// An in-progress scan of past ledger events.
 ///
 /// When a key is added to a keystore, the keystore can optionally trigger a [BackgroundKeyScan] to
@@ -147,17 +162,14 @@ impl<L: Ledger> BackgroundKeyScan<L> {
 
     /// Attempt to finalize a key scan.
     ///
-    /// If the key scan is up-to-date with the given Merkle commitment, it will return all of the
-    /// records it has discovered with Merkle paths relative to that commitment, as well as all of
-    /// the transaction history entries added during the scan. This consumes the scan so it can not
-    /// be used once it is finalized.
+    /// If the key scan is up-to-date with the given Merkle commitment, it will return its keypair,
+    /// all of the records it has discovered with Merkle paths relative to that commitment, as well
+    /// as all of the transaction history entries added during the scan. This consumes the scan so
+    /// it can not be used once it is finalized.
     ///
-    /// If `merkle_commitment` does not match the scan's Merkle tree, it returns `Err(self)` so that
-    /// the scan can continue to be used.
-    pub fn finalize(
-        self,
-        merkle_commitment: MerkleCommitment,
-    ) -> Result<(UserKeyPair, ScanOutputs<L>), Self> {
+    /// If `merkle_commitment` does not match the scan's Merkle tree, meaning the scan is
+    /// in progress, it returns `self` so that the scan can continue to be used.
+    pub fn finalize(self, merkle_commitment: MerkleCommitment) -> ScanStatus<L> {
         if merkle_commitment == self.records_mt.commitment() {
             let mt = self.records_mt;
             let records = self
@@ -165,15 +177,13 @@ impl<L: Ledger> BackgroundKeyScan<L> {
                 .into_values()
                 .map(|(ro, uid)| (ro, uid, mt.get_leaf(uid).expect_ok().unwrap().1.path))
                 .collect();
-            Ok((
-                self.key,
-                ScanOutputs {
-                    records,
-                    history: self.history,
-                },
-            ))
+            ScanStatus::Finished {
+                key: self.key,
+                records,
+                history: self.history,
+            }
         } else {
-            Err(self)
+            ScanStatus::InProgress(self)
         }
     }
 

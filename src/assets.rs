@@ -516,42 +516,36 @@ impl<'a> AssetEditor<'a> {
     /// Set the optional asset name.
     pub fn set_name(mut self, name: Option<String>) -> Self {
         self.asset.name = name;
-        self.asset.modified_time = Local::now();
         self
     }
 
     /// Set the asset name.
     pub fn with_name(mut self, name: String) -> Self {
         self.asset.name = Some(name);
-        self.asset.modified_time = Local::now();
         self
     }
 
     /// Clear the asset name.
     pub fn clear_name(mut self) -> Self {
         self.asset.name = None;
-        self.asset.modified_time = Local::now();
         self
     }
 
     /// Set the optional asset description.
     pub fn set_description(mut self, description: Option<String>) -> Self {
         self.asset.description = description;
-        self.asset.modified_time = Local::now();
         self
     }
 
     /// Set the asset description.
     pub fn with_description(mut self, description: String) -> Self {
         self.asset.description = Some(description);
-        self.asset.modified_time = Local::now();
         self
     }
 
     /// Clear the asset description.
     pub fn clear_description(mut self) -> Self {
         self.asset.description = None;
-        self.asset.modified_time = Local::now();
         self
     }
 
@@ -565,7 +559,6 @@ impl<'a> AssetEditor<'a> {
             }
             None => None,
         };
-        self.asset.modified_time = Local::now();
         self
     }
 
@@ -574,14 +567,12 @@ impl<'a> AssetEditor<'a> {
         // Resize the icon to the default value.
         icon.resize(ICON_WIDTH, ICON_HEIGHT);
         self.asset.icon = Some(icon);
-        self.asset.modified_time = Local::now();
         self
     }
 
     /// Clear the asset icon.
     pub fn clear_icon(mut self) -> Self {
         self.asset.icon = None;
-        self.asset.modified_time = Local::now();
         self
     }
 
@@ -590,6 +581,7 @@ impl<'a> AssetEditor<'a> {
     /// Returns the stored asset.
     pub fn save<L: Ledger>(&mut self) -> Result<Asset, KeystoreError<L>> {
         self.store.store(&self.asset.definition.code, &self.asset)?;
+        self.asset.modified_time = Local::now();
         Ok(self.asset.clone())
     }
 
@@ -621,7 +613,6 @@ impl<'a> AssetEditor<'a> {
         }
         self.asset.verified |= other.verified;
         self.asset.created_time = min(self.asset.created_time, other.created_time);
-        self.asset.modified_time = Local::now();
         Ok(self)
     }
 
@@ -656,7 +647,6 @@ impl<'a> AssetEditor<'a> {
         }
         self.asset.verified |= other.verified;
         self.asset.created_time = min(self.asset.created_time, other.created_time);
-        self.asset.modified_time = Local::now();
         Ok(self)
     }
 }
