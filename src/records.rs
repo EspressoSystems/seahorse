@@ -159,6 +159,8 @@ impl Records {
                 .nullifier_records
                 .insert((record.nullifier, record.uid));
         }
+        records.asset_records.commit();
+        records.nullifier_records.commit();
         Ok(records)
     }
 
