@@ -39,6 +39,9 @@ pub struct Record {
 }
 
 impl Record {
+    pub fn uid(&self) -> u64 {
+        self.uid
+    }
     pub fn record_opening(&self) -> &RecordOpening {
         &self.ro
     }
@@ -283,9 +286,18 @@ impl Records {
     ///
     /// Returns the deleted record.
     pub fn delete<L: Ledger>(&mut self, uid: u64) -> Result<Record, KeystoreError<L>> {
-        let txn = self.store.delete(&uid)?;
-        // Rebuild the indices
-        self.reload();
-        Ok(txn)
+        let record = self.store.delete(&uid)?;
+        // Remove the record from  indices
+        self.asset_records.remove((
+            (
+                record.asset_definition().code,
+                record.pub_key().address(),
+                record.freeze_flag(),
+            ),
+            (record.amount(), record.uid()),
+        ));
+        self.nullifier_records
+            .remove((record.nullifier, record.uid));
+        Ok(record)
     }
 }
