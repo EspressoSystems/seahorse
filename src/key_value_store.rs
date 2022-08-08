@@ -14,7 +14,7 @@ use crate::{EncryptingResourceAdapter, KeystoreError, Ledger};
 use atomic_store::AppendLog;
 use serde::{de::DeserializeOwned, Serialize};
 use snafu::Snafu;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::hash::Hash;
 
 /// Errors happening during key-value store operations.
@@ -162,6 +162,7 @@ impl<I, C> Persistable<I, C> {
 pub type PersistableHashSet<K> = Persistable<HashSet<K>, K>;
 pub type PersistableHashMap<K, V> = Persistable<HashMap<K, V>, (K, V)>;
 pub type PersistableBTreeMultiMap<K, V> = Persistable<BTreeMap<K, HashSet<V>>, (K, V)>;
+pub type PersistableHashMapBTreeMultiMap<K, V> = Persistable<HashMap<K, BTreeSet<V>>, (K, V)>;
 
 impl<K: Copy + Eq + Hash> Persist<K> for PersistableHashSet<K> {
     fn new() -> Self {
@@ -270,6 +271,55 @@ impl<K: Copy + Eq + Hash + Ord, V: Clone + Eq + Hash> Persist<(K, V)>
                     self.index
                         .entry(*key)
                         .or_insert_with(HashSet::new)
+                        .insert(value.clone());
+                }
+            }
+        }
+        self.pending_changes = Vec::new();
+    }
+}
+
+impl<K: Clone + Eq + Hash, V: Clone + Eq + Hash + Ord> Persist<(K, V)>
+    for PersistableHashMapBTreeMultiMap<K, V>
+{
+    fn new() -> Self {
+        Self {
+            index: HashMap::new(),
+            pending_changes: Vec::new(),
+        }
+    }
+
+    fn insert(&mut self, change: (K, V)) {
+        self.index
+            .entry(change.0.clone())
+            .or_insert_with(BTreeSet::new)
+            .insert(change.1.clone());
+        self.pending_changes.push(IndexChange::Add(change));
+    }
+
+    fn remove(&mut self, change: (K, V)) {
+        let values = self.index.entry(change.0.clone()).or_default();
+        values.remove(&change.1);
+        if values.is_empty() {
+            self.index.remove(&change.0);
+        }
+        self.pending_changes.push(IndexChange::Remove(change));
+    }
+
+    fn revert(&mut self) {
+        for change in &self.pending_changes {
+            match change {
+                IndexChange::Add((key, value)) => {
+                    let values = self.index.entry(key.clone()).or_default();
+                    values.remove(value);
+                    if values.is_empty() {
+                        self.index.remove(key);
+                    }
+                }
+                IndexChange::Remove((key, value)) => {
+                    self.index
+                        .entry(key.clone())
+                        .or_insert_with(BTreeSet::new)
                         .insert(value.clone());
                 }
             }
