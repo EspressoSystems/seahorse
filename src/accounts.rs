@@ -2,7 +2,7 @@
 use crate::{
     assets::Asset,
     events::{EventIndex, EventSource, LedgerEvent},
-    key_scan::{BackgroundKeyScan, ScanOutputs},
+    key_scan::{BackgroundKeyScan, ScanOutputs, ScanStatus},
     txn_builder::RecordInfo,
 };
 use arbitrary::{Arbitrary, Unstructured};
@@ -61,8 +61,12 @@ impl<L: Ledger, Key> Account<L, Key> {
         scan.handle_event(event, source);
         // Check if the scan is complete.
         match scan.finalize(records_commitment) {
-            Ok(result) => Some(result),
-            Err(scan) => {
+            ScanStatus::Finished {
+                key,
+                records,
+                history,
+            } => Some((key, ScanOutputs { records, history })),
+            ScanStatus::InProgress(scan) => {
                 self.scan = Some(scan);
                 None
             }
