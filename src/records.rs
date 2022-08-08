@@ -165,11 +165,7 @@ impl Records {
         };
         let ro = &record.ro;
         self.asset_records.insert((
-            (
-                ro.asset_def.code,
-                ro.pub_key.address(),
-                ro.freeze_flag,
-            ),
+            (ro.asset_def.code, ro.pub_key.address(), ro.freeze_flag),
             (record.ro.amount.into(), record.uid),
         ));
         self.nullifier_records
