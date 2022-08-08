@@ -19,9 +19,7 @@ use jf_cap::{
     structs::{AssetDefinition, FreezeFlag, Nullifier, RecordOpening},
 };
 use net::UserPubKey;
-use primitive_types::U256;
 use serde::{Deserialize, Serialize};
-use std::convert::TryInto;
 use std::ops::{Deref, DerefMut};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -77,6 +75,7 @@ pub struct RecordEditor<'a> {
     store: &'a mut Records,
 }
 impl<'a> RecordEditor<'a> {
+    #![allow(dead_code)]
     /// Create a record editor.
     fn new(store: &'a mut Records, record: Record) -> Self {
         Self { record, store }
@@ -84,13 +83,13 @@ impl<'a> RecordEditor<'a> {
 
     /// Update when this record will be on hold until if it is pending
     /// Set this when the record is part of a transaction that isn't confirmed
-    pub fn hold_until(mut self, until: u64) -> Self {
+    pub(crate) fn hold_until(mut self, until: u64) -> Self {
         self.record.hold_until = Some(until);
         self
     }
 
     /// Update the record to no longer be on hold
-    pub fn unhold(mut self) -> Self {
+    pub(crate) fn unhold(mut self) -> Self {
         self.record.hold_until = None;
         self
     }
@@ -146,7 +145,20 @@ impl Records {
             asset_records: Persistable::new(),
             nullifier_records: Persistable::new(),
         };
-        records.reload();
+        for record in records.store.iter() {
+            let ro = &record.ro;
+            records.asset_records.insert((
+                (
+                    ro.asset_def.code,
+                    ro.pub_key.address().clone(),
+                    ro.freeze_flag,
+                ),
+                (record.ro.amount.into(), record.uid),
+            ));
+            records
+                .nullifier_records
+                .insert((record.nullifier, record.uid));
+        }
         Ok(records)
     }
 
@@ -158,13 +170,12 @@ impl Records {
         uid: u64,
         ro: RecordOpening,
         nullifier: Nullifier,
-        hold_until: Option<u64>,
     ) -> Result<RecordEditor<'_>, KeystoreError<L>> {
         let record = Record {
             ro,
             uid,
             nullifier,
-            hold_until,
+            hold_until: None,
         };
         let ro = &record.ro;
         self.asset_records.insert((
@@ -178,28 +189,8 @@ impl Records {
         Ok(editor)
     }
 
-    /// Rebuild the indices for this store
-    fn reload(&mut self) {
-        self.asset_records = Persistable::new();
-        self.nullifier_records = Persistable::new();
-        for record in self.store.iter() {
-            let ro = &record.ro;
-            self.asset_records.insert((
-                (
-                    ro.asset_def.code,
-                    ro.pub_key.address().clone(),
-                    ro.freeze_flag,
-                ),
-                (record.ro.amount.into(), record.uid),
-            ));
-            self.nullifier_records
-                .insert((record.nullifier, record.uid));
-        }
-    }
-
     fn store<L: Ledger>(&mut self, uid: u64, record: &Record) -> Result<(), KeystoreError<L>> {
         self.store.store(&uid, record)?;
-        self.reload();
         Ok(())
     }
 
@@ -221,7 +212,7 @@ impl Records {
 
     /// Get records associated with an asset and account which are either frozen or unfrozen
     /// Useful for finding records for transaction inputs
-    pub fn with_asset<L: Ledger>(
+    pub fn get_spendable<L: Ledger>(
         &self,
         asset: &AssetCode,
         owner: &UserAddress,
@@ -239,12 +230,12 @@ impl Records {
     }
 
     /// Get one record with the exact amount or return None.  
-    pub fn with_asset_and_amount<L: Ledger>(
+    pub fn get_spendable_with_amount<L: Ledger>(
         &self,
         asset: &AssetCode,
         owner: &UserAddress,
         frozen: FreezeFlag,
-        amount: U256,
+        amount: RecordAmount,
         now: u64,
     ) -> Result<Option<Record>, KeystoreError<L>> {
         if let Some(unspent_records) =
@@ -252,17 +243,15 @@ impl Records {
                 .index()
                 .get(&(*asset, owner.clone(), frozen))
         {
-            if let Ok(amount) = amount.try_into() {
-                let exact_matches = unspent_records.range((amount, 0)..(amount + 1u64.into(), 0));
-                for (match_amount, uid) in exact_matches {
-                    assert_eq!(*match_amount, amount);
-                    let record = self.get(*uid)?;
-                    assert_eq!(record.amount(), amount);
-                    if record.on_hold(now) {
-                        continue;
-                    }
-                    return Ok(Some(record));
+            let exact_matches = unspent_records.range((amount, 0)..(amount + 1u64.into(), 0));
+            for (match_amount, uid) in exact_matches {
+                assert_eq!(*match_amount, amount);
+                let record = self.get(*uid)?;
+                assert_eq!(record.amount(), amount);
+                if record.on_hold(now) {
+                    continue;
                 }
+                return Ok(Some(record));
             }
         }
         Ok(None)
