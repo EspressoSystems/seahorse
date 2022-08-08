@@ -12,7 +12,7 @@
 
 use crate::{
     events::{EventSource, LedgerEvent},
-    key_scan::{BackgroundKeyScan, ScanStatus},
+    key_scan::{BackgroundKeyScan, ScanOutputs, ScanStatus},
     key_value_store::KeyValueStore,
     KeystoreError,
 };
@@ -135,6 +135,12 @@ impl<'a, L: Ledger, Key: KeyPair + DeserializeOwned + Serialize> AccountEditor<'
         Self { account, store }
     }
 
+    /// Set the account description.
+    pub(crate) fn with_description(mut self, description: String) -> Self {
+        self.account.description = description;
+        self
+    }
+
     /// Set the account as used.
     pub fn set_used(mut self) -> Self {
         self.account.used = true;
@@ -163,25 +169,37 @@ impl<'a, L: Ledger, Key: KeyPair + DeserializeOwned + Serialize> AccountEditor<'
     ///
     /// Returns
     /// * `Err` if the scan isn't found, or
-    /// * `Ok((self, scan_status))`, where `scan_status` provides the scanned information if the
-    /// scan is complete, or the scan itself if it's in progress.
+    /// * `Ok((self, scan_info))`, where `scan_info` contains the scanned information if and only
+    /// if the scan is complete.
     pub(crate) async fn update_scan(
         mut self,
         event: LedgerEvent<L>,
         source: EventSource,
         records_commitment: MerkleCommitment,
-    ) -> Result<(AccountEditor<'a, L, Key>, ScanStatus<L>), KeystoreError<L>> {
+    ) -> Result<
+        (
+            AccountEditor<'a, L, Key>,
+            Option<(UserKeyPair, ScanOutputs<L>)>,
+        ),
+        KeystoreError<L>,
+    > {
         let mut scan = match self.account.scan.take() {
             Some(scan) => scan,
             None => return Err(KeystoreError::ScanNotFound),
         };
         scan.handle_event(event, source);
         // Check if the scan is complete.
-        let scan_status = scan.finalize(records_commitment);
-        if let ScanStatus::InProgress(scan) = scan_status.clone() {
-            self.account.scan = Some(scan);
+        match scan.finalize(records_commitment) {
+            ScanStatus::Finished {
+                key,
+                records,
+                history,
+            } => Ok((self, Some((key, ScanOutputs { records, history })))),
+            ScanStatus::InProgress(scan) => {
+                self.account.scan = Some(scan);
+                Ok((self, None))
+            }
         }
-        Ok((self, scan_status))
     }
 
     /// Save the account to the store.
@@ -255,18 +273,14 @@ impl<L: Ledger, Key: KeyPair + DeserializeOwned + Serialize> Accounts<L, Key> {
         Ok(self.store.revert_version()?)
     }
 
-    /// Create an account with the given or default description.
+    /// Create an account with the default description.
     ///
     /// Returns the editor for the created account.
-    pub fn create(
-        &mut self,
-        key: Key,
-        description: Option<String>,
-    ) -> Result<AccountEditor<L, Key>, KeystoreError<L>> {
+    pub fn create(&mut self, key: Key) -> Result<AccountEditor<L, Key>, KeystoreError<L>> {
         let time = Local::now();
         let account = Account {
             key: key.clone(),
-            description: description.map_or(key.pub_key().to_string(), |k| k),
+            description: key.pub_key().to_string(),
             used: false,
             scan: None,
             created_time: time,
