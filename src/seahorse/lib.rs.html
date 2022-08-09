@@ -2773,6 +2773,8 @@
 <span id="2773">2773</span>
 <span id="2774">2774</span>
 <span id="2775">2775</span>
+<span id="2776">2776</span>
+<span id="2777">2777</span>
 </pre><pre class="rust"><code><span class="comment">// Copyright (c) 2022 Espresso Systems (espressosys.com)</span>
 <span class="comment">// This file is part of the Seahorse library.</span>
 
@@ -2794,6 +2796,7 @@
 <span class="doccomment">//! Users should also be familiar with [reef], which provides traits to adapt a particular CAP</span>
 <span class="doccomment">//! ledger to the ledger-agnostic interfaces defined here.</span>
 <span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">accounts</span>;
+<span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">accounts_refactor</span>;
 <span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">assets</span>;
 <span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">cli</span>;
 <span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">encryption</span>;
@@ -2965,6 +2968,7 @@
     <span class="ident">InvalidViewerKey</span> {
         <span class="ident">key</span>: <span class="ident">ViewerPubKey</span>,
     },
+    <span class="ident">ScanNotFound</span>,
 }
 
 <span class="kw">impl</span><span class="op">&lt;</span><span class="ident">L</span>: <span class="ident">Ledger</span><span class="op">&gt;</span> <span class="ident">From</span><span class="op">&lt;</span><span class="ident">ASPersistenceError</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span> {
@@ -5403,7 +5407,7 @@
         <span class="self">self</span>.<span class="ident">write</span>()
             .<span class="kw">await</span>
             .<span class="ident">update</span>(<span class="op">|</span><span class="ident">KeystoreSharedState</span> { <span class="ident">model</span>, .. }<span class="op">|</span> <span class="kw">async</span> <span class="kw">move</span> {
-                <span class="ident">model</span>.<span class="ident">assets_mut</span>().<span class="ident">insert</span>(<span class="ident">asset</span>)<span class="question-mark">?</span>;
+                <span class="ident">model</span>.<span class="ident">assets_mut</span>().<span class="ident">insert</span>(<span class="ident">asset</span>)<span class="question-mark">?</span>.<span class="ident">save</span>()<span class="question-mark">?</span>;
                 <span class="prelude-val">Ok</span>(())
             })
             .<span class="kw">await</span>

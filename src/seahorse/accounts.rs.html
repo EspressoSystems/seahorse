@@ -210,11 +210,15 @@
 <span id="210">210</span>
 <span id="211">211</span>
 <span id="212">212</span>
+<span id="213">213</span>
+<span id="214">214</span>
+<span id="215">215</span>
+<span id="216">216</span>
 </pre><pre class="rust"><code><span class="doccomment">/// Keys and associated data.</span>
 <span class="kw">use</span> <span class="kw">crate</span>::{
     <span class="ident">assets::Asset</span>,
     <span class="ident">events</span>::{<span class="ident">EventIndex</span>, <span class="ident">EventSource</span>, <span class="ident">LedgerEvent</span>},
-    <span class="ident">key_scan</span>::{<span class="ident">BackgroundKeyScan</span>, <span class="ident">ScanOutputs</span>},
+    <span class="ident">key_scan</span>::{<span class="ident">BackgroundKeyScan</span>, <span class="ident">ScanOutputs</span>, <span class="ident">ScanStatus</span>},
     <span class="ident">txn_builder::RecordInfo</span>,
 };
 <span class="kw">use</span> <span class="ident">arbitrary</span>::{<span class="ident">Arbitrary</span>, <span class="ident">Unstructured</span>};
@@ -273,8 +277,12 @@
         <span class="ident">scan</span>.<span class="ident">handle_event</span>(<span class="ident">event</span>, <span class="ident">source</span>);
         <span class="comment">// Check if the scan is complete.</span>
         <span class="kw">match</span> <span class="ident">scan</span>.<span class="ident">finalize</span>(<span class="ident">records_commitment</span>) {
-            <span class="prelude-val">Ok</span>(<span class="ident">result</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Some</span>(<span class="ident">result</span>),
-            <span class="prelude-val">Err</span>(<span class="ident">scan</span>) <span class="op">=</span><span class="op">&gt;</span> {
+            <span class="ident">ScanStatus::Finished</span> {
+                <span class="ident">key</span>,
+                <span class="ident">records</span>,
+                <span class="ident">history</span>,
+            } <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Some</span>((<span class="ident">key</span>, <span class="ident">ScanOutputs</span> { <span class="ident">records</span>, <span class="ident">history</span> })),
+            <span class="ident">ScanStatus::InProgress</span>(<span class="ident">scan</span>) <span class="op">=</span><span class="op">&gt;</span> {
                 <span class="self">self</span>.<span class="ident">scan</span> <span class="op">=</span> <span class="prelude-val">Some</span>(<span class="ident">scan</span>);
                 <span class="prelude-val">None</span>
             }
