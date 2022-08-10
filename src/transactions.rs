@@ -261,23 +261,22 @@ impl<L: Ledger> Transactions<L> {
             expiring_txns: Persistable::new(),
             uids_awaiting_memos: Persistable::new(),
         };
-        transactions.reload();
-        Ok(transactions)
-    }
-
-    /// Reload from disc to, rebuilds the indices
-    pub fn reload(&mut self) {
-        self.expiring_txns = Persistable::new();
-        self.uids_awaiting_memos = Persistable::new();
-        for txn in self.store.iter() {
+        // Build the indices from what's loaded from storage
+        for txn in transactions.store.iter() {
             if let Some(timeout) = txn.timeout() {
-                self.expiring_txns.insert((timeout, txn.uid().clone()));
+                transactions
+                    .expiring_txns
+                    .insert((timeout, txn.uid().clone()));
             }
             for pending in &txn.pending_uids {
-                self.uids_awaiting_memos
+                transactions
+                    .uids_awaiting_memos
                     .insert((*pending, txn.uid().clone()));
             }
         }
+        transactions.expiring_txns.commit();
+        transactions.uids_awaiting_memos.commit();
+        Ok(transactions)
     }
 
     fn store(
@@ -286,7 +285,13 @@ impl<L: Ledger> Transactions<L> {
         txn: &Transaction<L>,
     ) -> Result<(), KeystoreError<L>> {
         self.store.store(uid, txn)?;
-        self.reload();
+        if let Some(timeout) = txn.timeout() {
+            self.expiring_txns.insert((timeout, txn.uid().clone()));
+        }
+        for pending in &txn.pending_uids {
+            self.uids_awaiting_memos
+                .insert((*pending, txn.uid().clone()));
+        }
         Ok(())
     }
 
@@ -427,8 +432,14 @@ impl<L: Ledger> Transactions<L> {
     /// Returns the deleted transaction.
     pub fn delete(&mut self, uid: &TransactionUID<L>) -> Result<Transaction<L>, KeystoreError<L>> {
         let txn = self.store.delete(uid)?;
-        // Rebuild the indices
-        self.reload();
+        // Remove from indices
+        if let Some(timeout) = txn.timeout() {
+            self.expiring_txns.remove((timeout, txn.uid().clone()));
+        }
+        for pending in &txn.pending_uids {
+            self.uids_awaiting_memos
+                .remove((*pending, txn.uid().clone()));
+        }
         Ok(txn)
     }
 }
