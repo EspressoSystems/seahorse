@@ -83,12 +83,12 @@ pub async fn test_keystore_freeze_unregistered() -> std::io::Result<()> {
             .unwrap();
         keystores[2]
             .0
-            .add_viewing_key(viewing_key, "viewing_key".into())
+            .add_viewing_account(viewing_key, "viewing_key".into())
             .await
             .unwrap();
         keystores[2]
             .0
-            .add_freeze_key(freeze_key, "freeze_key".into())
+            .add_viewing_account(freeze_key, "freeze_key".into())
             .await
             .unwrap();
         let asset = keystores[2]
@@ -536,7 +536,7 @@ pub mod generic_keystore_tests {
                 .unwrap();
             keystores[0]
                 .0
-                .add_viewing_key(viewing_key, "viewing_key".into())
+                .add_viewing_account(viewing_key, "viewing_key".into())
                 .await
                 .unwrap();
             keystores[0]
@@ -876,7 +876,7 @@ pub mod generic_keystore_tests {
                 .unwrap();
             keystores[2]
                 .0
-                .add_viewing_key(viewing_key, "viewing_key".into())
+                .add_viewing_accounts(viewing_key, "viewing_key".into())
                 .await
                 .unwrap();
             keystores[2]
@@ -2550,7 +2550,7 @@ pub mod generic_keystore_tests {
         for pub_key in &keystores[0].1 {
             let address = pub_key.address();
             let account = keystores[0].0.sending_account(&address).await.unwrap();
-            assert!(account.used);
+            assert!(account.used());
             assert_eq!(account.address, address);
             assert_eq!(account.description, "");
             assert_eq!(
@@ -2573,13 +2573,10 @@ pub mod generic_keystore_tests {
         let address = pub_key.address();
         assert_eq!(
             keystores[0].0.sending_account(&address).await.unwrap(),
-            AccountInfo {
+            Account {
                 address: address.clone(),
                 description: "sending_account".into(),
                 used: false,
-                assets: vec![],
-                records: vec![],
-                balances: HashMap::<AssetCode, U256>::new(),
                 scan_status: None,
             }
         );
@@ -2595,7 +2592,7 @@ pub mod generic_keystore_tests {
         await_transaction(&receipt, &keystores[0].0, &[]).await;
         {
             let account = keystores[0].0.sending_account(&address).await.unwrap();
-            assert!(account.used);
+            assert!(account.used());
             assert_eq!(
                 account.balances,
                 HashMap::from([(AssetCode::native(), 2u64.into())])
@@ -2621,13 +2618,10 @@ pub mod generic_keystore_tests {
             .unwrap();
         assert_eq!(
             keystores[0].0.viewing_account(&viewing_key).await.unwrap(),
-            AccountInfo {
+            Account {
                 address: viewing_key.clone(),
                 description: "viewing_account".into(),
                 used: false,
-                assets: vec![],
-                records: vec![],
-                balances: HashMap::<AssetCode, U256>::new(),
                 scan_status: None,
             }
         );
@@ -2637,13 +2631,10 @@ pub mod generic_keystore_tests {
                 .freezing_account(&freezing_key)
                 .await
                 .unwrap(),
-            AccountInfo {
+            Account {
                 address: freezing_key.clone(),
                 description: "freezing_account".into(),
                 used: false,
-                assets: vec![],
-                records: vec![],
-                balances: HashMap::<AssetCode, U256>::new(),
                 scan_status: None,
             }
         );
@@ -2662,22 +2653,18 @@ pub mod generic_keystore_tests {
             )
             .await
             .unwrap();
-        assert!(
-            keystores[0]
-                .0
-                .viewing_account(&viewing_key)
-                .await
-                .unwrap()
-                .used
-        );
-        assert!(
-            !keystores[0]
-                .0
-                .freezing_account(&freezing_key)
-                .await
-                .unwrap()
-                .used
-        );
+        assert!(keystores[0]
+            .0
+            .viewing_account(&viewing_key)
+            .await
+            .unwrap()
+            .used());
+        assert!(!keystores[0]
+            .0
+            .freezing_account(&freezing_key)
+            .await
+            .unwrap()
+            .used());
         let freezable_asset = keystores[0]
             .0
             .define_asset(
@@ -2691,22 +2678,18 @@ pub mod generic_keystore_tests {
             )
             .await
             .unwrap();
-        assert!(
-            keystores[0]
-                .0
-                .viewing_account(&viewing_key)
-                .await
-                .unwrap()
-                .used
-        );
-        assert!(
-            keystores[0]
-                .0
-                .freezing_account(&freezing_key)
-                .await
-                .unwrap()
-                .used
-        );
+        assert!(keystores[0]
+            .0
+            .viewing_account(&viewing_key)
+            .await
+            .unwrap()
+            .used());
+        assert!(keystores[0]
+            .0
+            .freezing_account(&freezing_key)
+            .await
+            .unwrap()
+            .used());
         // Check that the new assets appear in the proper accounts.
         assert_eq!(
             keystores[0]

@@ -7,7 +7,10 @@
 
 //! Ledger-agnostic implementation of [KeystoreStorage].
 use crate::{
-    accounts::Account, hd::KeyTree, loader::KeystoreLoader, txn_builder::TransactionState,
+    accounts::{Account, Accounts},
+    hd::KeyTree,
+    loader::KeystoreLoader,
+    txn_builder::TransactionState,
     EncryptingResourceAdapter, KeyStreamState, KeystoreError, KeystoreState,
 };
 use arbitrary::{Arbitrary, Unstructured};
@@ -64,53 +67,53 @@ mod serde_ark_unchecked {
 
 // Serialization intermediate for the dynamic part of a KeystoreState.
 #[ser_test(arbitrary, types(cap::Ledger), ark(false))]
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(bound = "")]
 struct KeystoreSnapshot<L: Ledger> {
     txn_state: TransactionState<L>,
     key_state: KeyStreamState,
-    viewing_accounts: Vec<Account<L, ViewerKeyPair>>,
-    freezing_accounts: Vec<Account<L, FreezerKeyPair>>,
-    sending_accounts: Vec<Account<L, UserKeyPair>>,
+    viewing_accounts: Accounts<L, ViewerKeyPair>,
+    freezing_accounts: Accounts<L, FreezerKeyPair>,
+    sending_accounts: Accounts<L, UserKeyPair>,
 }
 
-impl<L: Ledger> PartialEq<Self> for KeystoreSnapshot<L> {
-    fn eq(&self, other: &Self) -> bool {
-        self.txn_state == other.txn_state
-            && self.key_state == other.key_state
-            && self.viewing_accounts == other.viewing_accounts
-            && self.freezing_accounts == other.freezing_accounts
-            && self.sending_accounts == other.sending_accounts
-    }
-}
+// impl<L: Ledger> PartialEq<Self> for KeystoreSnapshot<L> {
+//     fn eq(&self, other: &Self) -> bool {
+//         self.txn_state == other.txn_state
+//             && self.key_state == other.key_state
+//             && self.viewing_accounts == other.viewing_accounts
+//             && self.freezing_accounts == other.freezing_accounts
+//             && self.sending_accounts == other.sending_accounts
+//     }
+// }
 
 impl<'a, L: Ledger> From<&KeystoreState<'a, L>> for KeystoreSnapshot<L> {
     fn from(w: &KeystoreState<'a, L>) -> Self {
         Self {
             txn_state: w.txn_state.clone(),
             key_state: w.key_state.clone(),
-            viewing_accounts: w.viewing_accounts.values().cloned().collect(),
-            freezing_accounts: w.freezing_accounts.values().cloned().collect(),
-            sending_accounts: w.sending_accounts.values().cloned().collect(),
+            viewing_accounts: w.viewing_accounts,
+            freezing_accounts: w.freezing_accounts,
+            sending_accounts: w.sending_accounts,
         }
     }
 }
 
-impl<'a, L: Ledger> Arbitrary<'a> for KeystoreSnapshot<L>
-where
-    TransactionState<L>: Arbitrary<'a>,
-    TransactionHash<L>: Arbitrary<'a>,
-{
-    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
-        Ok(Self {
-            txn_state: u.arbitrary()?,
-            key_state: u.arbitrary()?,
-            viewing_accounts: u.arbitrary()?,
-            freezing_accounts: u.arbitrary()?,
-            sending_accounts: u.arbitrary()?,
-        })
-    }
-}
+// impl<'a, L: Ledger> Arbitrary<'a> for KeystoreSnapshot<L>
+// where
+//     TransactionState<L>: Arbitrary<'a>,
+//     TransactionHash<L>: Arbitrary<'a>,
+// {
+//     fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
+//         Ok(Self {
+//             txn_state: u.arbitrary()?,
+//             key_state: u.arbitrary()?,
+//             viewing_accounts: u.arbitrary()?,
+//             freezing_accounts: u.arbitrary()?,
+//             sending_accounts: u.arbitrary()?,
+//         })
+//     }
+// }
 
 pub struct AtomicKeystoreStorage<'a, L: Ledger, Meta: Serialize + DeserializeOwned> {
     // Metadata given at initialization time that may not have been written to disk yet.
@@ -249,21 +252,9 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicKeystoreSto
             // Dynamic state
             txn_state: dynamic_state.txn_state,
             key_state: dynamic_state.key_state,
-            viewing_accounts: dynamic_state
-                .viewing_accounts
-                .into_iter()
-                .map(|account| (account.key.pub_key(), account))
-                .collect(),
-            freezing_accounts: dynamic_state
-                .freezing_accounts
-                .into_iter()
-                .map(|account| (account.key.pub_key(), account))
-                .collect(),
-            sending_accounts: dynamic_state
-                .sending_accounts
-                .into_iter()
-                .map(|account| (account.key.address(), account))
-                .collect(),
+            viewing_accounts: dynamic_state.viewing_accounts,
+            freezing_accounts: dynamic_state.freezing_accounts,
+            sending_accounts: dynamic_state.sending_accounts,
         })
     }
 
@@ -513,10 +504,12 @@ mod tests {
         // Append to monotonic state and then reload.
         let viewing_key = ViewerKeyPair::generate(&mut rng);
         // viewing keys for the asset library get persisted with the viewing accounts.
-        stored.viewing_accounts.insert(
-            viewing_key.pub_key(),
-            Account::new(viewing_key, "viewing_account".into()),
-        );
+        stored
+            .viewing_accounts
+            .create(viewing_key)
+            .with_description("viewing_account".into())
+            .save()
+            .unwrap();
         {
             let mut atomic_loader = AtomicStoreLoader::load(
                 &KeystoreLoader::<cap::Ledger>::location(&loader),
