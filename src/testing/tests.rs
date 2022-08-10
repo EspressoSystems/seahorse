@@ -24,10 +24,10 @@ impl<L: Ledger> PartialEq<Self> for TxnHistoryWithTimeTolerantEq<L> {
             Err(_) => 5,
         };
         let time_tolerance = Duration::minutes(time_tolerance_minutes);
-        let times_eq = if self.0.time() < other.0.time() {
-            other.0.time().clone() - self.0.time().clone() < time_tolerance
+        let times_eq = if self.0.created_time() < other.0.created_time() {
+            other.0.created_time().clone() - self.0.created_time().clone() < time_tolerance
         } else {
-            self.0.time().clone() - other.0.time().clone() < time_tolerance
+            self.0.created_time().clone() - other.0.created_time().clone() < time_tolerance
         };
         println!("time eq {}", times_eq);
         println!(
@@ -205,7 +205,7 @@ pub mod generic_keystore_tests {
     use tempdir::TempDir;
 
     fn same_txn_history<L: Ledger>(txn: &Transaction<L>, other: &Transaction<L>) -> bool {
-        txn.time() == other.time()
+        txn.created_time() == other.created_time()
             && txn.asset() == other.asset()
             && txn.kind() == other.kind()
             && txn.senders() == other.senders()

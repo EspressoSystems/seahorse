@@ -1956,7 +1956,7 @@ impl<
         Box::pin(async move {
             let KeystoreSharedState { model, .. } = &*self.read().await;
             let mut history = model.transactions.iter().collect::<Vec<_>>();
-            history.sort_by_key(|txn| *txn.time());
+            history.sort_by_key(|txn| *txn.created_time());
             Ok(history)
         })
     }

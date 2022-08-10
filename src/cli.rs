@@ -650,7 +650,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                             cli_write!(
                                 io,
                                 "{} {} {} {} {:?} ",
-                                txn.time(),
+                                txn.created_time(),
                                 status,
                                 asset,
                                 txn.kind(),
