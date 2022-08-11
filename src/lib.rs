@@ -1026,7 +1026,8 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
             &self
                 .viewing_accounts
                 .iter()
-                .map(|account| (account.pub_key(), account.key())),
+                .map(|account| (account.pub_key(), account.key().clone()))
+                .collect(),
         ) {
             // Mark the viewing account used.
             self.viewing_accounts

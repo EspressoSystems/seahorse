@@ -7,11 +7,8 @@
 
 //! Ledger-agnostic implementation of [KeystoreStorage].
 use crate::{
-    accounts::{Account, Accounts},
-    hd::KeyTree,
-    loader::KeystoreLoader,
-    txn_builder::TransactionState,
-    EncryptingResourceAdapter, KeyStreamState, KeystoreError, KeystoreState,
+    hd::KeyTree, loader::KeystoreLoader, txn_builder::TransactionState, EncryptingResourceAdapter,
+    KeyStreamState, KeystoreError, KeystoreState,
 };
 use arbitrary::{Arbitrary, Unstructured};
 use async_std::sync::Arc;
@@ -72,48 +69,35 @@ mod serde_ark_unchecked {
 struct KeystoreSnapshot<L: Ledger> {
     txn_state: TransactionState<L>,
     key_state: KeyStreamState,
-    viewing_accounts: Accounts<L, ViewerKeyPair>,
-    freezing_accounts: Accounts<L, FreezerKeyPair>,
-    sending_accounts: Accounts<L, UserKeyPair>,
 }
 
-// impl<L: Ledger> PartialEq<Self> for KeystoreSnapshot<L> {
-//     fn eq(&self, other: &Self) -> bool {
-//         self.txn_state == other.txn_state
-//             && self.key_state == other.key_state
-//             && self.viewing_accounts == other.viewing_accounts
-//             && self.freezing_accounts == other.freezing_accounts
-//             && self.sending_accounts == other.sending_accounts
-//     }
-// }
+impl<L: Ledger> PartialEq<Self> for KeystoreSnapshot<L> {
+    fn eq(&self, other: &Self) -> bool {
+        self.txn_state == other.txn_state && self.key_state == other.key_state
+    }
+}
 
 impl<'a, L: Ledger> From<&KeystoreState<'a, L>> for KeystoreSnapshot<L> {
     fn from(w: &KeystoreState<'a, L>) -> Self {
         Self {
             txn_state: w.txn_state.clone(),
             key_state: w.key_state.clone(),
-            viewing_accounts: w.viewing_accounts,
-            freezing_accounts: w.freezing_accounts,
-            sending_accounts: w.sending_accounts,
         }
     }
 }
 
-// impl<'a, L: Ledger> Arbitrary<'a> for KeystoreSnapshot<L>
-// where
-//     TransactionState<L>: Arbitrary<'a>,
-//     TransactionHash<L>: Arbitrary<'a>,
-// {
-//     fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
-//         Ok(Self {
-//             txn_state: u.arbitrary()?,
-//             key_state: u.arbitrary()?,
-//             viewing_accounts: u.arbitrary()?,
-//             freezing_accounts: u.arbitrary()?,
-//             sending_accounts: u.arbitrary()?,
-//         })
-//     }
-// }
+impl<'a, L: Ledger> Arbitrary<'a> for KeystoreSnapshot<L>
+where
+    TransactionState<L>: Arbitrary<'a>,
+    TransactionHash<L>: Arbitrary<'a>,
+{
+    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
+        Ok(Self {
+            txn_state: u.arbitrary()?,
+            key_state: u.arbitrary()?,
+        })
+    }
+}
 
 pub struct AtomicKeystoreStorage<'a, L: Ledger, Meta: Serialize + DeserializeOwned> {
     // Metadata given at initialization time that may not have been written to disk yet.
@@ -252,9 +236,6 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicKeystoreSto
             // Dynamic state
             txn_state: dynamic_state.txn_state,
             key_state: dynamic_state.key_state,
-            viewing_accounts: dynamic_state.viewing_accounts,
-            freezing_accounts: dynamic_state.freezing_accounts,
-            sending_accounts: dynamic_state.sending_accounts,
         })
     }
 
@@ -407,9 +388,6 @@ mod tests {
                 record_mt: record_merkle_tree,
             },
             key_state: Default::default(),
-            viewing_accounts: Default::default(),
-            freezing_accounts: Default::default(),
-            sending_accounts: Default::default(),
         };
 
         let mut loader = MockKeystoreLoader {
