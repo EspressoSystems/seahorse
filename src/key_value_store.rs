@@ -124,6 +124,8 @@ impl<
 pub enum IndexChange<C> {
     Add(C),
     Remove(C),
+    // Takes the previous K,V pair and the updated value
+    Update(C, C),
 }
 
 /// An interface for persisting in-memory state.
@@ -173,13 +175,15 @@ impl<K: Copy + Eq + Hash> Persist<K> for PersistableHashSet<K> {
     }
 
     fn insert(&mut self, change: K) {
-        self.index.insert(change);
-        self.pending_changes.push(IndexChange::Add(change));
+        if self.index.insert(change) {
+            self.pending_changes.push(IndexChange::Add(change));
+        }
     }
 
     fn remove(&mut self, change: K) {
-        self.index.remove(&change);
-        self.pending_changes.push(IndexChange::Remove(change));
+        if self.index.remove(&change) {
+            self.pending_changes.push(IndexChange::Remove(change));
+        }
     }
 
     fn revert(&mut self) {
@@ -190,6 +194,9 @@ impl<K: Copy + Eq + Hash> Persist<K> for PersistableHashSet<K> {
                 }
                 IndexChange::Remove(key) => {
                     self.index.insert(*key);
+                }
+                IndexChange::Update(..) => {
+                    panic!("Unreachable");
                 }
             }
         }
@@ -206,8 +213,12 @@ impl<K: Clone + Eq + Hash, V: Clone> Persist<(K, V)> for PersistableHashMap<K, V
     }
 
     fn insert(&mut self, change: (K, V)) {
-        self.index.insert(change.0.clone(), change.1.clone());
-        self.pending_changes.push(IndexChange::Add(change));
+        if let Some(old) = self.index.insert(change.0.clone(), change.1.clone()) {
+            self.pending_changes
+                .push(IndexChange::Update(change.clone(), (change.0.clone(), old)))
+        } else {
+            self.pending_changes.push(IndexChange::Add(change));
+        }
     }
 
     fn remove(&mut self, change: (K, V)) {
@@ -223,6 +234,9 @@ impl<K: Clone + Eq + Hash, V: Clone> Persist<(K, V)> for PersistableHashMap<K, V
                 }
                 IndexChange::Remove((key, value)) => {
                     self.index.insert(key.clone(), value.clone());
+                }
+                IndexChange::Update((_, _), (old_key, old_val)) => {
+                    self.index.insert(old_key.clone(), old_val.clone());
                 }
             }
         }
@@ -241,11 +255,14 @@ impl<K: Copy + Eq + Hash + Ord, V: Clone + Eq + Hash> Persist<(K, V)>
     }
 
     fn insert(&mut self, change: (K, V)) {
-        self.index
+        if self
+            .index
             .entry(change.0)
             .or_insert_with(HashSet::new)
-            .insert(change.1.clone());
-        self.pending_changes.push(IndexChange::Add(change));
+            .insert(change.1.clone())
+        {
+            self.pending_changes.push(IndexChange::Add(change));
+        }
     }
 
     fn remove(&mut self, change: (K, V)) {
@@ -273,6 +290,7 @@ impl<K: Copy + Eq + Hash + Ord, V: Clone + Eq + Hash> Persist<(K, V)>
                         .or_insert_with(HashSet::new)
                         .insert(value.clone());
                 }
+                IndexChange::Update(..) => {}
             }
         }
         self.pending_changes = Vec::new();
@@ -299,11 +317,13 @@ impl<K: Clone + Eq + Hash, V: Clone + Eq + Hash + Ord> Persist<(K, V)>
 
     fn remove(&mut self, change: (K, V)) {
         let values = self.index.entry(change.0.clone()).or_default();
-        values.remove(&change.1);
+        let removed = values.remove(&change.1);
         if values.is_empty() {
             self.index.remove(&change.0);
         }
-        self.pending_changes.push(IndexChange::Remove(change));
+        if removed {
+            self.pending_changes.push(IndexChange::Remove(change));
+        }
     }
 
     fn revert(&mut self) {
@@ -322,6 +342,7 @@ impl<K: Clone + Eq + Hash, V: Clone + Eq + Hash + Ord> Persist<(K, V)>
                         .or_insert_with(BTreeSet::new)
                         .insert(value.clone());
                 }
+                IndexChange::Update(..) => {}
             }
         }
         self.pending_changes = Vec::new();
