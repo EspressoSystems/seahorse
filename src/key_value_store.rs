@@ -222,8 +222,8 @@ impl<K: Clone + Eq + Hash, V: Clone> Persist<(K, V)> for PersistableHashMap<K, V
     }
 
     fn remove(&mut self, change: (K, V)) {
-        if self.index.remove(&change.0).is_some() {
-            self.pending_changes.push(IndexChange::Remove(change));
+        if let Some(removal) = self.index.remove_entry(&change.0) {
+            self.pending_changes.push(IndexChange::Remove(removal));
         }
     }
 
