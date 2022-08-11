@@ -124,8 +124,8 @@ impl<
 pub enum IndexChange<C> {
     Add(C),
     Remove(C),
-    // Takes the previous K,V pair and the updated value
-    Update(C, C),
+    // Takes the previous K,V pair
+    Update(C),
 }
 
 /// An interface for persisting in-memory state.
@@ -215,15 +215,16 @@ impl<K: Clone + Eq + Hash, V: Clone> Persist<(K, V)> for PersistableHashMap<K, V
     fn insert(&mut self, change: (K, V)) {
         if let Some(old) = self.index.insert(change.0.clone(), change.1.clone()) {
             self.pending_changes
-                .push(IndexChange::Update(change.clone(), (change.0.clone(), old)))
+                .push(IndexChange::Update((change.0.clone(), old)))
         } else {
             self.pending_changes.push(IndexChange::Add(change));
         }
     }
 
     fn remove(&mut self, change: (K, V)) {
-        self.index.remove(&change.0);
-        self.pending_changes.push(IndexChange::Remove(change));
+        if self.index.remove(&change.0).is_some() {
+            self.pending_changes.push(IndexChange::Remove(change));
+        }
     }
 
     fn revert(&mut self) {
@@ -235,7 +236,7 @@ impl<K: Clone + Eq + Hash, V: Clone> Persist<(K, V)> for PersistableHashMap<K, V
                 IndexChange::Remove((key, value)) => {
                     self.index.insert(key.clone(), value.clone());
                 }
-                IndexChange::Update((_, _), (old_key, old_val)) => {
+                IndexChange::Update((old_key, old_val)) => {
                     self.index.insert(old_key.clone(), old_val.clone());
                 }
             }
