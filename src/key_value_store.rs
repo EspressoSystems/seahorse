@@ -215,7 +215,7 @@ impl<K: Clone + Eq + Hash, V: Clone> Persist<(K, V)> for PersistableHashMap<K, V
     fn insert(&mut self, change: (K, V)) {
         if let Some(old) = self.index.insert(change.0.clone(), change.1.clone()) {
             self.pending_changes
-                .push(IndexChange::Update((change.0.clone(), old)))
+                .push(IndexChange::Update((change.0, old)))
         } else {
             self.pending_changes.push(IndexChange::Add(change));
         }
