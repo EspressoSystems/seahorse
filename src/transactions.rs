@@ -188,12 +188,18 @@ impl<'a, L: Ledger> TransactionEditor<'a, L> {
     pub fn add_pending_uids(mut self, uids: &[u64]) -> Self {
         for uid in uids {
             self.transaction.pending_uids.insert(*uid);
+            self.store
+                .uids_awaiting_memos
+                .insert((*uid, self.transaction.uid().clone()));
         }
         self
     }
     /// remove a UID of a memo we were waiting because it was received
     pub fn remove_pending_uid(mut self, uid: u64) -> Self {
         self.transaction.pending_uids.remove(&uid);
+        self.store
+            .uids_awaiting_memos
+            .remove((uid, self.transaction.uid().clone()));
         if self.transaction.pending_uids().is_empty() {
             self.set_status(TransactionStatus::Retired)
         } else {
@@ -293,10 +299,6 @@ impl<L: Ledger> Transactions<L> {
         self.store.store(uid, txn)?;
         if let Some(timeout) = txn.timeout() {
             self.expiring_txns.insert((timeout, txn.uid().clone()));
-        }
-        for pending in &txn.pending_uids {
-            self.uids_awaiting_memos
-                .insert((*pending, txn.uid().clone()));
         }
         Ok(())
     }
