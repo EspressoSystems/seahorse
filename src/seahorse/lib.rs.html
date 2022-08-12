@@ -4733,7 +4733,7 @@
         <span class="ident">Box::pin</span>(<span class="kw">async</span> <span class="kw">move</span> {
             <span class="kw">let</span> <span class="ident">KeystoreSharedState</span> { <span class="ident">model</span>, .. } <span class="op">=</span> <span class="kw-2">&amp;</span><span class="kw-2">*</span><span class="self">self</span>.<span class="ident">read</span>().<span class="kw">await</span>;
             <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">history</span> <span class="op">=</span> <span class="ident">model</span>.<span class="ident">transactions</span>.<span class="ident">iter</span>().<span class="ident">collect</span>::<span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="kw">_</span><span class="op">&gt;</span><span class="op">&gt;</span>();
-            <span class="ident">history</span>.<span class="ident">sort_by_key</span>(<span class="op">|</span><span class="ident">txn</span><span class="op">|</span> <span class="kw-2">*</span><span class="ident">txn</span>.<span class="ident">time</span>());
+            <span class="ident">history</span>.<span class="ident">sort_by_key</span>(<span class="op">|</span><span class="ident">txn</span><span class="op">|</span> <span class="kw-2">*</span><span class="ident">txn</span>.<span class="ident">created_time</span>());
             <span class="prelude-val">Ok</span>(<span class="ident">history</span>)
         })
     }
