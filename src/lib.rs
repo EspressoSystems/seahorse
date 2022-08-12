@@ -49,7 +49,7 @@ pub use reef;
 
 use crate::{
     accounts::{Account, Accounts},
-    assets::{AssetsStore, VerifiedAssetLibrary},
+    assets::VerifiedAssetLibrary,
     encryption::Cipher,
     events::{EventIndex, EventSource, LedgerEvent},
     hd::KeyTree,
@@ -68,7 +68,7 @@ use async_scoped::AsyncScope;
 use async_std::task::sleep;
 use async_trait::async_trait;
 use atomic_store::{
-    error::PersistenceError as ASPersistenceError, load_store::LoadStore, AppendLog, AtomicStore,
+    error::PersistenceError as ASPersistenceError, load_store::LoadStore, AtomicStore,
     AtomicStoreLoader,
 };
 use core::fmt::Debug;
@@ -269,16 +269,6 @@ pub struct KeystoreState<'a, L: Ledger> {
     pub txn_state: TransactionState<L>,
     /// HD key generation state.
     pub key_state: KeyStreamState,
-    /// Viewing accounts.
-    pub viewing_accounts: Accounts<L, ViewerKeyPair>,
-    /// Freezing accounts.
-    pub freezing_accounts: Accounts<L, FreezerKeyPair>,
-    /// Sending accounts, for spending owned records and receiving new records.
-    ///
-    /// Each public key in this set also includes a [UserAddress], which can be used to sign
-    /// outgoing transactions, as well as an encryption public key used by other users to encrypt
-    /// owner memos when sending records to this keystore.
-    pub sending_accounts: Accounts<L, UserKeyPair>,
 }
 
 /// The interface required by the keystore from a specific network/ledger implementation.
@@ -378,10 +368,20 @@ pub struct KeystoreModel<
     persistence: AtomicKeystoreStorage<'a, L, Meta>,
     assets: Assets,
     transactions: Transactions<L>,
-    rng: ChaChaRng,
+    /// Viewing accounts.
+    viewing_accounts: Accounts<L, ViewerKeyPair>,
+    /// Freezing accounts.
+    freezing_accounts: Accounts<L, FreezerKeyPair>,
+    /// Sending accounts, for spending owned records and receiving new records.
+    ///
+    /// Each public key in this set also includes a [UserAddress], which can be used to sign
+    /// outgoing transactions, as well as an encryption public key used by other users to encrypt
+    /// owner memos when sending records to this keystore.
+    sending_accounts: Accounts<L, UserKeyPair>,
     viewer_key_stream: hd::KeyTree,
     user_key_stream: hd::KeyTree,
     freezer_key_stream: hd::KeyTree,
+    rng: ChaChaRng,
     _marker: std::marker::PhantomData<&'a ()>,
     _marker2: std::marker::PhantomData<L>,
 }
@@ -473,40 +473,26 @@ impl<L: Ledger> Default for EventSummary<L> {
 }
 
 impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
-    fn key_pairs(&self) -> Vec<UserKeyPair> {
-        self.sending_accounts
-            .iter()
-            .map(|account| account.key().clone())
-            .collect::<Vec<_>>()
-    }
-
-    pub fn pub_keys(&self) -> Vec<UserPubKey> {
-        self.sending_accounts
-            .iter()
-            .map(|account| account.key().pub_key())
-            .collect()
-    }
-
-    pub fn balance(&self, asset: &AssetCode, frozen: FreezeFlag) -> U256 {
+    pub fn balance(
+        &self,
+        addresses: Vec<UserAddress>,
+        asset: &AssetCode,
+        frozen: FreezeFlag,
+    ) -> U256 {
         let mut balance = U256::zero();
-        for pub_key in self.pub_keys() {
-            balance += self.txn_state.balance(asset, &pub_key, frozen);
+        for address in addresses {
+            balance += self.txn_state.balance(asset, &address, frozen);
         }
         balance
     }
 
     pub fn balance_breakdown(
         &self,
-        address: &UserAddress,
+        address: UserAddress,
         asset: &AssetCode,
         frozen: FreezeFlag,
     ) -> U256 {
-        match self.sending_accounts.get(address) {
-            Ok(account) => self
-                .txn_state
-                .balance(asset, &account.key().pub_key(), frozen),
-            _ => U256::zero(),
-        }
+        self.txn_state.balance(asset, &address, frozen)
     }
 
     // Inform the database that we have received memos for the given record UIDs. Return a list of
@@ -753,11 +739,11 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                 summary
                     .received_memos
                     .extend(outputs.iter().map(|(memo, _, uid, _)| (memo.clone(), *uid)));
-                for key in &self.sending_accounts.keys() {
+                for key in &model.sending_accounts.keys() {
                     let records = self
-                        .try_open_memos(model, &key, &outputs, transaction.clone(), !self_published)
+                        .try_open_memos(model, key, &outputs, transaction.clone(), !self_published)
                         .await?;
-                    if let Err(err) = self.add_records(model, &key, records).await {
+                    if let Err(err) = self.add_records(model, key, records).await {
                         tracing::error!("error saving received records: {}", err);
                     }
                 }
@@ -849,7 +835,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         let records = txn.output_openings().into_iter().flatten().zip(uids);
         let mut my_records = vec![];
         for (ro, (uid, remember)) in records {
-            if let Ok(account) = self.sending_accounts.get(&ro.pub_key.address()) {
+            if let Ok(account) = model.sending_accounts.get(&ro.pub_key.address()) {
                 // If this record is for us, add it to the keystore and include it in the
                 // list of received records for created a received transaction history
                 // entry.
@@ -857,16 +843,17 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                 // Add the asset type if it is not already in the asset library.
                 model.assets_mut().create(ro.asset_def.clone(), None)?;
                 // Mark the account receiving the records used.
-                self.sending_accounts
+                model
+                    .sending_accounts
                     .get_mut(&account.key().address())
                     .unwrap()
                     .set_used();
                 // Add the record.
                 self.txn_state
                     .records
-                    .insert(ro.clone(), *uid, &account.key());
+                    .insert(ro.clone(), *uid, account.key());
                 my_records.push(ro);
-            } else if let Ok(account) = self
+            } else if let Ok(account) = model
                 .freezing_accounts
                 .get(ro.asset_def.policy_ref().freezer_pub_key())
             {
@@ -877,14 +864,15 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                 // Add the asset type if it is not already in the asset library.
                 model.assets_mut().create(ro.asset_def.clone(), None)?;
                 // Mark the freezing account which is tracking the record used.
-                self.freezing_accounts
+                model
+                    .freezing_accounts
                     .get_mut(&account.key().pub_key())
                     .unwrap()
                     .set_used();
                 // Add the record.
                 self.txn_state
                     .records
-                    .insert_freezable(ro, *uid, &account.key());
+                    .insert_freezable(ro, *uid, account.key());
             }
         }
 
@@ -931,7 +919,8 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
             model.assets_mut().create(record.asset_def.clone(), None)?;
 
             // Mark the account receiving the record as used.
-            self.sending_accounts
+            model
+                .sending_accounts
                 .get_mut(&key_pair.address())
                 .unwrap()
                 .set_used();
@@ -949,7 +938,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         uid: u64,
         proof: MerklePath,
     ) -> Result<(), KeystoreError<L>> {
-        for key in self.sending_accounts.keys() {
+        for key in model.sending_accounts.keys() {
             let records = self
                 .try_open_memos(
                     model,
@@ -990,7 +979,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                         self.txn_state.records.insert_freezable(
                             ro.clone(),
                             *uid,
-                            &self
+                            model
                                 .freezing_accounts
                                 .get(ro.asset_def.policy_ref().freezer_pub_key())
                                 .unwrap()
@@ -1013,7 +1002,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         // Try to decrypt viewer memos.
         let mut viewable_assets = HashMap::new();
         for asset in model.assets.iter() {
-            if self
+            if model
                 .viewing_accounts
                 .get(asset.definition().policy_ref().viewer_pub_key())
                 .is_ok()
@@ -1023,14 +1012,15 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         }
         if let Ok(memo) = txn.open_viewing_memo(
             &viewable_assets,
-            &self
+            &model
                 .viewing_accounts
                 .iter()
                 .map(|account| (account.pub_key(), account.key().clone()))
                 .collect(),
         ) {
             // Mark the viewing account used.
-            self.viewing_accounts
+            model
+                .viewing_accounts
                 .get_mut(memo.asset.policy_ref().viewer_pub_key())
                 .unwrap()
                 .set_used()
@@ -1060,7 +1050,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                 {
                     // If the viewing memo contains all the information we need to potentially freeze
                     // this record, save it in our database for later freezing.
-                    if let Ok(account_editor) = self
+                    if let Ok(account_editor) = model
                         .freezing_accounts
                         .get_mut(memo.asset.policy_ref().freezer_pub_key())
                     {
@@ -1077,7 +1067,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                         self.txn_state.records.insert_freezable(
                             record_opening,
                             *uid,
-                            &account.key(),
+                            account.key(),
                         );
                         *remember = true;
                     }
@@ -1140,12 +1130,12 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
             // `used`.
             let policy = definition.policy_ref();
             if policy.is_viewer_pub_key_set() {
-                if let Ok(account) = self.viewing_accounts.get_mut(policy.viewer_pub_key()) {
+                if let Ok(account) = model.viewing_accounts.get_mut(policy.viewer_pub_key()) {
                     account.set_used();
                 }
             }
             if policy.is_freezer_pub_key_set() {
-                if let Ok(account) = self.freezing_accounts.get_mut(policy.freezer_pub_key()) {
+                if let Ok(account) = model.freezing_accounts.get_mut(policy.freezer_pub_key()) {
                     account.set_used();
                 }
             }
@@ -1164,7 +1154,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
     // stream will be returned. Note that the caller is responsible for actually starting the task
     // which processes this scan, since the Keystore (not the KeystoreState) has the data structures
     // needed to manage tasks (the AsyncScope, mutexes, etc.).
-    async fn add_user_key<Meta: Serialize + DeserializeOwned + Send>(
+    async fn add_sending_account<Meta: Serialize + DeserializeOwned + Send>(
         &mut self,
         model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
         user_key: Option<UserKeyPair>,
@@ -1179,7 +1169,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
     > {
         let user_key = match user_key {
             Some(user_key) => {
-                if self.sending_accounts.get(&user_key.address()).is_ok() {
+                if model.sending_accounts.get(&user_key.address()).is_ok() {
                     // For other key types, adding a key that already exists is a no-op. However,
                     // because of the background ledger scans associated with user keys, we want to
                     // report an error, since the user may have attempted to add the same key with
@@ -1203,7 +1193,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                         .user_key_stream
                         .derive_user_key_pair(&self.key_state.user.to_le_bytes());
                     self.key_state.user += 1;
-                    if self.sending_accounts.get(&user_key.address()).is_err() {
+                    if model.sending_accounts.get(&user_key.address()).is_err() {
                         break user_key;
                     }
                 }
@@ -1230,7 +1220,8 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
 
         // Add a new account to our set of accounts and update our persistent data structures and
         // remote services.
-        self.sending_accounts
+        model
+            .sending_accounts
             .create(user_key.clone())?
             .with_description(description)
             .set_scan(scan)
@@ -1242,17 +1233,18 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         Ok((user_key, events))
     }
 
-    async fn add_viewing_key<Meta: Serialize + DeserializeOwned + Send>(
+    async fn add_viewing_account<Meta: Serialize + DeserializeOwned + Send>(
         &mut self,
         model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
         viewing_key: ViewerKeyPair,
         description: String,
     ) -> Result<(), KeystoreError<L>> {
-        if self.viewing_accounts.get(&viewing_key.pub_key()).is_ok() {
+        if model.viewing_accounts.get(&viewing_key.pub_key()).is_ok() {
             return Ok(());
         }
 
-        self.viewing_accounts
+        model
+            .viewing_accounts
             .create(viewing_key.clone())?
             .with_description(description)
             .save()?;
@@ -1260,17 +1252,18 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         Ok(())
     }
 
-    async fn add_freeze_key<Meta: Serialize + DeserializeOwned + Send>(
+    async fn add_freezing_account<Meta: Serialize + DeserializeOwned + Send>(
         &mut self,
         model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
         freeze_key: FreezerKeyPair,
         description: String,
     ) -> Result<(), KeystoreError<L>> {
-        if self.freezing_accounts.get(&freeze_key.pub_key()).is_ok() {
+        if model.freezing_accounts.get(&freeze_key.pub_key()).is_ok() {
             return Ok(());
         }
 
-        self.freezing_accounts
+        model
+            .freezing_accounts
             .create(freeze_key.clone())?
             .with_description(description)
             .save()?;
@@ -1309,8 +1302,8 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                     asset: asset.definition().clone(),
                 })?;
         let sending_keys = match minter {
-            Some(addr) => vec![self.account_key_pair(addr)?.clone()],
-            None => self.key_pairs(),
+            Some(addr) => vec![model.sending_accounts.get(addr)?.key().clone()],
+            None => model.sending_accounts.keys(),
         };
         self.txn_state
             .mint(
@@ -1342,7 +1335,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
             .map_err(|_| KeystoreError::<L>::UndefinedAsset { asset: *asset })?
             .definition()
             .clone();
-        let freeze_key = match self
+        let freeze_key = match model
             .freezing_accounts
             .get(asset.policy_ref().freezer_pub_key())
         {
@@ -1350,8 +1343,8 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
             _ => return Err(KeystoreError::<L>::AssetNotFreezable { asset }),
         };
         let sending_keys = match fee_address {
-            Some(addr) => vec![self.account_key_pair(addr)?.clone()],
-            None => self.key_pairs(),
+            Some(addr) => vec![model.sending_accounts.get(addr)?.key().clone()],
+            None => model.sending_accounts.keys(),
         };
 
         self.txn_state
@@ -1429,18 +1422,6 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
             // validators.
             model.backend.submit(txn.clone(), stored_txn).await?;
             Ok(uid)
-        }
-    }
-
-    fn account_key_pair(
-        &'_ self,
-        address: &UserAddress,
-    ) -> Result<&'_ UserKeyPair, KeystoreError<L>> {
-        match self.sending_accounts.get(address) {
-            Ok(account) => Ok(&account.key()),
-            _ => Err(KeystoreError::<L>::NoSuchAccount {
-                address: address.clone(),
-            }),
         }
     }
 }
@@ -1524,7 +1505,7 @@ impl<T: Serialize + DeserializeOwned> LoadStore for EncryptingResourceAdapter<T>
 type BoxFuture<'a, T> = std::pin::Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
 // `SendFuture` trait is needed for the cape repo to compile when calling key generation functions,
-// `generate_viewing_key`, `generate_freeze_key`, and `generate_user_key`.
+// `generate_viewing_account`, `generate_freezing_account`, and `generate_sending_account`.
 //
 // Workaround:
 // 1. Wrap code of the key generation functions with `async move` to fix the implementation "not
@@ -1556,6 +1537,9 @@ impl<
             AtomicKeystoreStorage<'a, L, Meta>,
             Assets,
             Transactions<L>,
+            Accounts<L, ViewerKeyPair>,
+            Accounts<L, FreezerKeyPair>,
+            Accounts<L, UserKeyPair>,
         ),
         KeystoreError<L>,
     > {
@@ -1563,15 +1547,36 @@ impl<
         let file_fill_size = 1024;
         let persistence = AtomicKeystoreStorage::new(loader, &mut atomic_loader, file_fill_size)?;
         let adaptor = persistence.encrypting_storage_adapter::<()>();
-        let assets = Assets::new::<L>(AssetsStore::new(AppendLog::load(
+        let assets = Assets::new(&mut atomic_loader, adaptor.cast(), file_fill_size)?;
+        let transactions = Transactions::new(&mut atomic_loader, adaptor.cast(), file_fill_size)?;
+        let viewing_accounts = Accounts::new(
             &mut atomic_loader,
             adaptor.cast(),
-            "keystore_assets",
+            "viewing",
             file_fill_size,
-        )?)?)?;
-        let transactions = Transactions::new(&mut atomic_loader, adaptor.cast(), file_fill_size)?;
+        )?;
+        let freezing_accounts = Accounts::new(
+            &mut atomic_loader,
+            adaptor.cast(),
+            "freezing",
+            file_fill_size,
+        )?;
+        let sending_accounts = Accounts::new(
+            &mut atomic_loader,
+            adaptor.cast(),
+            "sending",
+            file_fill_size,
+        )?;
         let atomic_store = AtomicStore::open(atomic_loader)?;
-        Ok((atomic_store, persistence, assets, transactions))
+        Ok((
+            atomic_store,
+            persistence,
+            assets,
+            transactions,
+            viewing_accounts,
+            freezing_accounts,
+            sending_accounts,
+        ))
     }
 
     // This function suffers from github.com/rust-lang/rust/issues/89657, in which, if we define it
@@ -1589,8 +1594,15 @@ impl<
         mut backend: Backend,
         loader: &mut impl KeystoreLoader<L, Meta = Meta>,
     ) -> BoxFuture<'a, Result<Keystore<'a, Backend, L, Meta>, KeystoreError<L>>> {
-        let (mut atomic_store, mut persistence, mut assets, mut transactions) =
-            Self::create_stores(loader).unwrap();
+        let (
+            mut atomic_store,
+            mut persistence,
+            mut assets,
+            mut transactions,
+            mut viewing_accounts,
+            mut freezing_accounts,
+            mut sending_accounts,
+        ) = Self::create_stores(loader).unwrap();
         Box::pin(async move {
             let state = if persistence.exists() {
                 persistence.load().await?
@@ -1602,6 +1614,9 @@ impl<
             persistence.commit().await;
             assets.commit()?;
             transactions.commit()?;
+            viewing_accounts.commit()?;
+            freezing_accounts.commit()?;
+            sending_accounts.commit()?;
             atomic_store.commit_version()?;
             Self::new_impl(
                 backend,
@@ -1609,6 +1624,9 @@ impl<
                 persistence,
                 assets,
                 transactions,
+                viewing_accounts,
+                freezing_accounts,
+                sending_accounts,
                 state,
             )
             .await
@@ -1621,13 +1639,23 @@ impl<
         loader: &mut (impl 'a + KeystoreLoader<L, Meta = Meta>),
         state: KeystoreState<'a, L>,
     ) -> BoxFuture<'a, Result<Keystore<'a, Backend, L, Meta>, KeystoreError<L>>> {
-        let (mut atomic_store, mut persistence, mut assets, mut transactions) =
-            Self::create_stores(loader).unwrap();
+        let (
+            mut atomic_store,
+            mut persistence,
+            mut assets,
+            mut transactions,
+            mut viewing_accounts,
+            mut freezing_accounts,
+            mut sending_accounts,
+        ) = Self::create_stores(loader).unwrap();
         Box::pin(async move {
             persistence.create(&state).await?;
             persistence.commit().await;
             assets.commit()?;
             transactions.commit()?;
+            viewing_accounts.commit()?;
+            freezing_accounts.commit()?;
+            sending_accounts.commit()?;
             atomic_store.commit_version()?;
             Self::new_impl(
                 backend,
@@ -1635,23 +1663,31 @@ impl<
                 persistence,
                 assets,
                 transactions,
+                transactions,
+                viewing_accounts,
+                freezing_accounts,
+                sending_accounts,
                 state,
             )
             .await
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn new_impl(
         backend: Backend,
         atomic_store: AtomicStore,
         persistence: AtomicKeystoreStorage<'a, L, Meta>,
         assets: Assets,
         transactions: Transactions<L>,
+        viewing_accounts: Accounts<L, ViewerKeyPair>,
+        freezing_accounts: Accounts<L, FreezerKeyPair>,
+        sending_accounts: Accounts<L, UserKeyPair>,
         state: KeystoreState<'a, L>,
     ) -> Result<Keystore<'a, Backend, L, Meta>, KeystoreError<L>> {
         let mut events = backend.subscribe(state.txn_state.now, None).await;
         let mut key_scans = vec![];
-        for account in state.viewing_accounts.iter() {
+        for account in viewing_accounts.iter() {
             if let Some(scan) = &account.scan() {
                 key_scans.push((
                     scan.address(),
@@ -1666,10 +1702,13 @@ impl<
             persistence,
             assets,
             transactions,
-            rng: ChaChaRng::from_entropy(),
+            viewing_accounts,
+            freezing_accounts,
+            sending_accounts,
             viewer_key_stream: key_tree.derive_sub_tree("viewer".as_bytes()),
             freezer_key_stream: key_tree.derive_sub_tree("freezer".as_bytes()),
             user_key_stream: key_tree.derive_sub_tree("user".as_bytes()),
+            rng: ChaChaRng::from_entropy(),
             _marker: Default::default(),
             _marker2: Default::default(),
         };
@@ -1742,22 +1781,40 @@ impl<
         self.mutex.read().await
     }
 
-    /// List sending keys.
-    pub async fn pub_keys(&self) -> Vec<UserPubKey> {
-        let KeystoreSharedState { state, .. } = &*self.read().await;
-        state.pub_keys()
+    /// Get viewing accounts.
+    pub async fn viewing_accounts(&self) -> Vec<UserAddress> {
+        let KeystoreSharedState { model, .. } = &*self.read().await;
+        model.viewing_accounts
+    }
+
+    /// Get freezing accounts.
+    pub async fn freezing_accounts(&self) -> Vec<ViewerPubKey> {
+        let KeystoreSharedState { model, .. } = &*self.read().await;
+        model.freezing_accounts
+    }
+
+    /// Get sending accounts.
+    pub async fn sending_accounts(&self) -> Vec<FreezerPubKey> {
+        let KeystoreSharedState { model, .. } = &*self.read().await;
+        model.sending_accounts
+    }
+
+    /// List addresses.
+    pub async fn addresses(&self) -> Vec<UserAddress> {
+        let KeystoreSharedState { model, .. } = &*self.read().await;
+        model.sending_accounts.pub_keys()
     }
 
     /// List viewing keys.
     pub async fn viewer_pub_keys(&self) -> Vec<ViewerPubKey> {
-        let KeystoreSharedState { state, .. } = &*self.read().await;
-        state.viewing_accounts.pub_keys()
+        let KeystoreSharedState { model, .. } = &*self.read().await;
+        model.viewing_accounts.pub_keys()
     }
 
     /// List freezing keys.
     pub async fn freezer_pub_keys(&self) -> Vec<FreezerPubKey> {
-        let KeystoreSharedState { state, .. } = &*self.read().await;
-        state.freezing_accounts.pub_keys()
+        let KeystoreSharedState { model, .. } = &*self.read().await;
+        model.freezing_accounts.pub_keys()
     }
 
     /// Get sending private key
@@ -1765,8 +1822,8 @@ impl<
         &self,
         address: &UserAddress,
     ) -> Result<UserKeyPair, KeystoreError<L>> {
-        let KeystoreSharedState { state, .. } = &*self.read().await;
-        match state.sending_accounts.get(address) {
+        let KeystoreSharedState { model, .. } = &*self.read().await;
+        match model.sending_accounts.get(address) {
             Ok(account) => Ok(account.key().clone()),
             _ => Err(KeystoreError::<L>::InvalidAddress {
                 address: address.clone(),
@@ -1779,8 +1836,8 @@ impl<
         &self,
         pub_key: &FreezerPubKey,
     ) -> Result<FreezerKeyPair, KeystoreError<L>> {
-        let KeystoreSharedState { state, .. } = &*self.read().await;
-        match state.freezing_accounts.get(pub_key) {
+        let KeystoreSharedState { model, .. } = &*self.read().await;
+        match model.freezing_accounts.get(pub_key) {
             Ok(account) => Ok(account.key().clone()),
             _ => Err(KeystoreError::<L>::InvalidFreezerKey {
                 key: pub_key.clone(),
@@ -1793,8 +1850,8 @@ impl<
         &self,
         pub_key: &ViewerPubKey,
     ) -> Result<ViewerKeyPair, KeystoreError<L>> {
-        let KeystoreSharedState { state, .. } = &*self.read().await;
-        match state.viewing_accounts.get(pub_key) {
+        let KeystoreSharedState { model, .. } = &*self.read().await;
+        match model.viewing_accounts.get(pub_key) {
             Ok(account) => Ok(account.key().clone()),
             _ => Err(KeystoreError::<L>::InvalidViewerKey {
                 key: pub_key.clone(),
@@ -1807,8 +1864,8 @@ impl<
         &self,
         address: &UserAddress,
     ) -> Result<Account<L, UserKeyPair>, KeystoreError<L>> {
-        let KeystoreSharedState { state, model, .. } = &*self.read().await;
-        match state.sending_accounts.get(address) {
+        let KeystoreSharedState { model, .. } = &*self.read().await;
+        match model.sending_accounts.get(address) {
             Ok(account) => Ok(account),
             _ => Err(KeystoreError::<L>::InvalidAddress {
                 address: address.clone(),
@@ -1821,8 +1878,8 @@ impl<
         &self,
         address: &ViewerPubKey,
     ) -> Result<Account<L, ViewerKeyPair>, KeystoreError<L>> {
-        let KeystoreSharedState { state, model, .. } = &*self.read().await;
-        match state.viewing_accounts.get(address) {
+        let KeystoreSharedState { model, .. } = &*self.read().await;
+        match model.viewing_accounts.get(address) {
             Ok(account) => Ok(account),
             _ => Err(KeystoreError::<L>::InvalidViewerKey {
                 key: address.clone(),
@@ -1835,8 +1892,8 @@ impl<
         &self,
         address: &FreezerPubKey,
     ) -> Result<Account<L, FreezerKeyPair>, KeystoreError<L>> {
-        let KeystoreSharedState { state, model, .. } = &*self.read().await;
-        match state.freezing_accounts.get(address) {
+        let KeystoreSharedState { model, .. } = &*self.read().await;
+        match model.freezing_accounts.get(address) {
             Ok(account) => Ok(account),
             _ => Err(KeystoreError::<L>::InvalidFreezerKey {
                 key: address.clone(),
@@ -1846,14 +1903,30 @@ impl<
 
     /// Compute the spendable balance of the given asset type owned by all addresses.
     pub async fn balance(&self, asset: &AssetCode) -> U256 {
-        let KeystoreSharedState { state, .. } = &*self.read().await;
-        state.balance(asset, FreezeFlag::Unfrozen)
+        let KeystoreSharedState { state, model, .. } = &*self.read().await;
+        state.balance(
+            model.sending_accounts.pub_keys(),
+            asset,
+            FreezeFlag::Unfrozen,
+        )
     }
 
     /// Compute the spendable balance of the given asset type owned by the given address.
-    pub async fn balance_breakdown(&self, account: &UserAddress, asset: &AssetCode) -> U256 {
-        let KeystoreSharedState { state, .. } = &*self.read().await;
-        state.balance_breakdown(account, asset, FreezeFlag::Unfrozen)
+    pub async fn balance_breakdown(&self, address: &UserAddress, asset: &AssetCode) -> U256 {
+        let KeystoreSharedState { state, model, .. } = &*self.read().await;
+        match model.sending_accounts.get(address) {
+            Ok(account) => state.balance_breakdown(account.pub_key(), asset, FreezeFlag::Unfrozen),
+            _ => U256::zero(),
+        }
+    }
+
+    /// Compute the balance frozen records of the given asset type owned by the given address.
+    pub async fn frozen_balance_breakdown(&self, address: &UserAddress, asset: &AssetCode) -> U256 {
+        let KeystoreSharedState { state, model, .. } = &*self.read().await;
+        match model.sending_accounts.get(address) {
+            Ok(account) => state.balance_breakdown(account.pub_key(), asset, FreezeFlag::Frozen),
+            _ => U256::zero(),
+        }
     }
 
     /// List records owned or viewable by this keystore.
@@ -1866,12 +1939,6 @@ impl<
             .cloned()
             .collect::<Vec<_>>()
             .into_iter()
-    }
-
-    /// Compute the balance frozen records of the given asset type owned by the given address.
-    pub async fn frozen_balance_breakdown(&self, account: &UserAddress, asset: &AssetCode) -> U256 {
-        let KeystoreSharedState { state, .. } = &*self.read().await;
-        state.balance_breakdown(account, asset, FreezeFlag::Frozen)
     }
 
     /// List assets discovered or imported by this keystore.
@@ -1952,9 +2019,9 @@ impl<
                 async move {
                     let sender_key_pairs = match sender {
                         Some(addr) => {
-                            vec![state.account_key_pair(addr)?.clone()]
+                            vec![model.sending_accounts.get(addr)?.key().clone()]
                         }
-                        None => state.key_pairs(),
+                        None => model.sending_accounts.keys(),
                     };
                     let spec = TransferSpec {
                         sender_key_pairs: &sender_key_pairs,
@@ -2057,7 +2124,7 @@ impl<
     }
 
     /// Add a viewing key to the keystore's key set.
-    pub fn add_viewing_key<'l>(
+    pub fn add_viewing_account<'l>(
         &'l mut self,
         viewing_key: ViewerKeyPair,
         description: String,
@@ -2069,17 +2136,17 @@ impl<
             self.write()
                 .await
                 .update(|KeystoreSharedState { state, model, .. }| {
-                    state.add_viewing_key(model, viewing_key, description)
+                    state.add_viewing_account(model, viewing_key, description)
                 })
                 .await
         })
     }
 
     /// Generate a new viewing key and add it to the keystore's key set.
-    pub fn generate_viewing_key<'l>(
+    pub fn generate_viewing_account<'l>(
         &'l mut self,
         description: String,
-    ) -> std::pin::Pin<Box<dyn SendFuture<'a, Result<ViewerPubKey, KeystoreError<L>>> + 'l>>
+    ) -> std::pin::Pin<Box<dyn SendFuture<'a, Result<ViewerKeyPair, KeystoreError<L>>> + 'l>>
     where
         'a: 'l,
     {
@@ -2092,16 +2159,16 @@ impl<
                         .derive_viewer_key_pair(&state.key_state.viewer.to_le_bytes());
                     state.key_state.viewer += 1;
                     state
-                        .add_viewing_key(model, viewing_key.clone(), description)
+                        .add_viewing_account(model, viewing_key.clone(), description)
                         .await?;
-                    Ok(viewing_key.pub_key())
+                    Ok(viewing_key)
                 })
                 .await
         })
     }
 
     /// Add a freezing key to the keystore's key set.
-    pub fn add_freeze_key<'l>(
+    pub fn add_freezing_account<'l>(
         &'l mut self,
         freeze_key: FreezerKeyPair,
         description: String,
@@ -2113,17 +2180,17 @@ impl<
             self.write()
                 .await
                 .update(|KeystoreSharedState { state, model, .. }| {
-                    state.add_freeze_key(model, freeze_key, description)
+                    state.add_freezing_account(model, freeze_key, description)
                 })
                 .await
         })
     }
 
     /// Generate a new freezing key and add it to the keystore's key set.
-    pub fn generate_freeze_key<'l>(
+    pub fn generate_freezing_account<'l>(
         &'l mut self,
         description: String,
-    ) -> std::pin::Pin<Box<dyn SendFuture<'a, Result<FreezerPubKey, KeystoreError<L>>> + 'l>>
+    ) -> std::pin::Pin<Box<dyn SendFuture<'a, Result<FreezerKeyPair, KeystoreError<L>>> + 'l>>
     where
         'a: 'l,
     {
@@ -2136,9 +2203,9 @@ impl<
                         .derive_freezer_key_pair(&state.key_state.freezer.to_le_bytes());
                     state.key_state.freezer += 1;
                     state
-                        .add_freeze_key(model, freeze_key.clone(), description)
+                        .add_freezing_account(model, freeze_key.clone(), description)
                         .await?;
-                    Ok(freeze_key.pub_key())
+                    Ok(freeze_key)
                 })
                 .await
         })
@@ -2149,7 +2216,7 @@ impl<
     /// Since this key was not generated by this keystore, it may have already been used and thus may
     /// own existing records. The keystore will start a scan of the ledger in the background to find
     /// records owned by this key. The scan will start from the event specified by `scan_from`.
-    pub fn add_user_key<'l>(
+    pub fn add_sending_account<'l>(
         &'l mut self,
         user_key: UserKeyPair,
         description: String,
@@ -2170,7 +2237,12 @@ impl<
                          ..
                      }| async move {
                         let (user_key, events) = state
-                            .add_user_key(model, Some(user_key), description, Some(scan_from))
+                            .add_sending_account(
+                                model,
+                                Some(user_key),
+                                description,
+                                Some(scan_from),
+                            )
                             .await?;
                         // Register the key scan in `pending_key_scans` so that `await_key_scan`
                         // will work.
@@ -2195,11 +2267,11 @@ impl<
     /// If this is a recovery of an HD keystore from a mnemonic phrase, `scan_from` can be used to
     /// initiate a background scan of the ledger from the given event index to find records already
     /// belonging to the new key.
-    pub fn generate_user_key<'l>(
+    pub fn generate_sending_account<'l>(
         &'l mut self,
         description: String,
         scan_from: Option<EventIndex>,
-    ) -> std::pin::Pin<Box<dyn SendFuture<'a, Result<UserPubKey, KeystoreError<L>>> + 'l>>
+    ) -> std::pin::Pin<Box<dyn SendFuture<'a, Result<UserKeyPair, KeystoreError<L>>> + 'l>>
     where
         'a: 'l,
     {
@@ -2215,7 +2287,7 @@ impl<
                              ..
                          }| async move {
                             let (user_key, events) = state
-                                .add_user_key(model, None, description, scan_from)
+                                .add_sending_account(model, None, description, scan_from)
                                 .await?;
                             // Register the key scan in `pending_key_scans` so that `await_key_scan`
                             // will work.
@@ -2231,7 +2303,7 @@ impl<
                 self.spawn_key_scan(user_key.address(), events).await;
             }
 
-            Ok(user_key.pub_key())
+            Ok(user_key)
         })
     }
 
@@ -2681,7 +2753,7 @@ async fn update_key_scan<
         ..
     } = shared_state;
 
-    let finished = if let Ok((mut editor, Some((key, ScanOutputs { records, history })))) = state
+    let finished = if let Ok((mut editor, Some((key, ScanOutputs { records, history })))) = model
         .sending_accounts
         .get_mut(address)
         .unwrap()

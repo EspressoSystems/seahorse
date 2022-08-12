@@ -20,7 +20,7 @@ use std::path::PathBuf;
 /// decrypt them, change the keystore's password, and then re-encrypt it. If no files exist, the
 /// loader will create a new keystore using the given mnemonic and password. If the mnemonic used is
 /// in fact the same as the mnemonic used to create a keystore which has been lost, then the caller
-/// can recover their assets using [generate_user_key](crate::Keystore::generate_user_key) with
+/// can recover their assets using [generate_sending_account](crate::Keystore::generate_sending_account) with
 /// `scan_from` set to `Some(EventIndex::default())`. This will result in regenerating the same keys
 /// that belonged to the old keystore and scanning the ledger for records belonging to those keys.
 ///

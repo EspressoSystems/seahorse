@@ -14,7 +14,6 @@ use arbitrary::{Arbitrary, Unstructured};
 use async_std::sync::Arc;
 use atomic_store::{load_store::BincodeLoadStore, AtomicStoreLoader, RollingLog};
 use espresso_macros::ser_test;
-use jf_cap::keys::{FreezerKeyPair, UserKeyPair, ViewerKeyPair};
 use key_set::{OrderByOutputs, ProverKeySet};
 use reef::*;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};

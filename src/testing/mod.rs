@@ -211,9 +211,6 @@ pub fn assert_keystore_states_eq<'a, L: Ledger>(
     assert_eq!(w1.proving_keys, w2.proving_keys);
     assert_eq!(w1.txn_state.records, w2.txn_state.records);
     assert_eq!(w1.key_state, w2.key_state);
-    assert_eq!(w1.viewing_accounts, w2.viewing_accounts);
-    assert_eq!(w1.freezing_accounts, w2.freezing_accounts);
-    assert_eq!(w1.sending_accounts, w2.sending_accounts);
     assert_eq!(w1.txn_state.nullifiers, w2.txn_state.nullifiers);
     assert_eq!(
         w1.txn_state.record_mt.commitment(),
@@ -414,7 +411,7 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
             for key_pair in key_pairs.clone() {
                 assert_eq!(
                     keystore
-                        .generate_user_key("".into(), Some(EventIndex::default()))
+                        .generate_sending_account("".into(), Some(EventIndex::default()))
                         .await
                         .unwrap(),
                     key_pair.pub_key()

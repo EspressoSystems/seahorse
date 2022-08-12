@@ -14,9 +14,9 @@ use crate::{
     events::{EventSource, LedgerEvent},
     key_scan::{BackgroundKeyScan, ScanOutputs, ScanStatus},
     key_value_store::KeyValueStore,
-    KeystoreError,
+    EncryptingResourceAdapter, KeystoreError,
 };
-use arbitrary::Arbitrary;
+use atomic_store::{AppendLog, AtomicStoreLoader};
 use chrono::{DateTime, Local};
 use jf_cap::{
     keys::{FreezerKeyPair, FreezerPubKey, UserAddress, UserKeyPair, ViewerKeyPair, ViewerPubKey},
@@ -51,9 +51,9 @@ impl KeyPair for FreezerKeyPair {
 }
 
 impl KeyPair for UserKeyPair {
-    // The PubKey here is supposed to be a conceptual "primary key" for looking up UserKeyPairs. We
-    // typically want to look up UserKeyPairs by Address, not PubKey, because if we have a PubKey we
-    // can always get an Address to do the lookup.
+    // The `PubKey` here is supposed to be a conceptual "primary key" for looking up
+    // `UserKeyPairs`. We typically want to look up `UserKeyPairs` by `Address`, not `UserPubKey`,
+    // because if we have a `UserPubKey` we can always get an `Address` to do the lookup.
     type PubKey = UserAddress;
 
     fn pub_key(&self) -> Self::PubKey {
@@ -61,7 +61,7 @@ impl KeyPair for UserKeyPair {
     }
 }
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(bound = "Key: DeserializeOwned + Serialize")]
 pub struct Account<L: Ledger, Key: KeyPair> {
     /// The account key.
@@ -115,6 +115,20 @@ impl<L: Ledger, Key: KeyPair> Account<L, Key> {
     pub fn modified_time(&self) -> DateTime<Local> {
         self.modified_time
     }
+
+    /// Create an account for testing purposes.
+    #[cfg(any(test, feature = "testing"))]
+    pub fn from(key: Key) -> Self {
+        let time = Local::now();
+        Account {
+            key: key.clone(),
+            description: key.pub_key().to_string(),
+            used: false,
+            scan: None,
+            created_time: time,
+            modified_time: time,
+        }
+    }
 }
 
 impl<L: Ledger, Key: KeyPair> PartialEq<Self> for Account<L, Key> {
@@ -128,48 +142,6 @@ impl<L: Ledger, Key: KeyPair> PartialEq<Self> for Account<L, Key> {
             && self.modified_time == other.modified_time
     }
 }
-
-// impl<'a, L: Ledger> Arbitrary<'a> for Account<L, ViewerKeyPair>
-// {
-//     fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
-//         Ok(Self {
-//             key: u.arbitrary::<ArbitraryViewerKeyPair>()?.into(),
-//             description: u.arbitrary()?,
-//             used: u.arbitrary()?,
-//             scan: u.arbitrary()?,
-//             created_time: u.arbitrary()?,
-//             modified_time: u.arbitrary()?,
-//         })
-//     }
-// }
-
-// impl<'a, L: Ledger> Arbitrary<'a> for Account<L, FreezerKeyPair>
-// {
-//     fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
-//         Ok(Self {
-//             key: u.arbitrary::<ArbitraryFreezerKeyPair>()?.into(),
-//             description: u.arbitrary()?,
-//             used: u.arbitrary()?,
-//             scan: u.arbitrary()?,
-//             created_time: u.arbitrary()?,
-//             modified_time: u.arbitrary()?,
-//         })
-//     }
-// }
-
-// impl<'a, L: Ledger> Arbitrary<'a> for Account<L, UserKeyPair>
-// {
-//     fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
-//         Ok(Self {
-//             key: u.arbitrary::<ArbitraryUserKeyPair>()?.into(),
-//             description: u.arbitrary()?,
-//             used: u.arbitrary()?,
-//             scan: u.arbitrary()?,
-//             created_time: u.arbitrary()?,
-//             modified_time: u.arbitrary()?,
-//         })
-//     }
-// }
 
 pub type AccountsStore<L, Key, PubKey> = KeyValueStore<PubKey, Account<L, Key>>;
 
@@ -295,7 +267,20 @@ impl<L: Ledger, Key: KeyPair + DeserializeOwned + Serialize> Accounts<L, Key> {
     #![allow(dead_code)]
 
     /// Load an accounts store.
-    pub fn new(store: AccountsStore<L, Key, Key::PubKey>) -> Result<Self, KeystoreError<L>> {
+    #[allow(clippy::type_complexity)]
+    pub fn new(
+        loader: &mut AtomicStoreLoader,
+        adaptor: EncryptingResourceAdapter<(Key::PubKey, Option<Account<L, Key>>)>,
+        pattern: &str,
+        fill_size: u64,
+    ) -> Result<Self, KeystoreError<L>> {
+        let log = AppendLog::load(
+            loader,
+            adaptor,
+            &format!("keystore_{}_accounts", pattern),
+            fill_size,
+        )?;
+        let store = AccountsStore::<L, Key, Key::PubKey>::new(log)?;
         Ok(Self { store })
     }
 

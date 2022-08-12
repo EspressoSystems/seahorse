@@ -402,8 +402,8 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             "print all public addresses of this keystore",
             C,
             |io, keystore| {
-                for pub_key in keystore.pub_keys().await {
-                    cli_writeln!(io, "{}", UserAddress(pub_key.address()));
+                for address in keystore.addresses().await {
+                    cli_writeln!(io, "{}", address);
                 }
             }
         ),
@@ -412,8 +412,8 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             "print all of the public keys of this keystore",
             C,
             |io, keystore| {
-                for pub_key in keystore.pub_keys().await {
-                    cli_writeln!(io, "{:?}", pub_key);
+                for address in keystore.addresses().await {
+                    cli_writeln!(io, "{}", address);
                 }
             }
         ),
@@ -492,12 +492,12 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             C,
             |io, keystore, asset: ListItem<AssetCode>| {
                 cli_writeln!(io, "Address Balance");
-                for pub_key in keystore.pub_keys().await {
+                for address in keystore.addresses().await {
                     cli_writeln!(
                         io,
                         "{} {}",
-                        UserAddress(pub_key.address()),
-                        keystore.balance_breakdown(&pub_key.address(), &asset.item).await
+                        address,
+                        keystore.balance_breakdown(&address, &asset.item).await
                     );
                 }
                 cli_writeln!(
@@ -700,15 +700,15 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
              description: Option<String>, scan_from: Option<EventIndex>, wait: Option<bool>| {
                 let description = description.unwrap_or_default();
                 match key_type {
-                    KeyType::Viewing => match keystore.generate_viewing_key(description).await {
+                    KeyType::Viewing => match keystore.generate_viewing_account(description).await {
                         Ok(pub_key) => cli_writeln!(io, "{}", pub_key),
                         Err(err) => cli_writeln!(io, "Error generating viewing key: {}", err),
                     },
-                    KeyType::Freezing => match keystore.generate_freeze_key(description).await {
+                    KeyType::Freezing => match keystore.generate_freezing_account(description).await {
                         Ok(pub_key) => cli_writeln!(io, "{}", pub_key),
                         Err(err) => cli_writeln!(io, "Error generating freezing key: {}", err),
                     },
-                    KeyType::Sending => match keystore.generate_user_key(description, scan_from).await {
+                    KeyType::Sending => match keystore.generate_sending_account(description, scan_from).await {
                         Ok(pub_key) => {
                             if wait == Some(true) {
                                 if let Err(err) = keystore.await_key_scan(&pub_key.address()).await {
@@ -747,7 +747,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                 let description = description.unwrap_or_default();
                 match key_type {
                     KeyType::Viewing => match bincode::deserialize::<ViewerKeyPair>(&bytes) {
-                        Ok(key) => match keystore.add_viewing_key(key.clone(), description).await {
+                        Ok(key) => match keystore.add_viewing_account(key.clone(), description).await {
                             Ok(()) => cli_writeln!(io, "{}", key.pub_key()),
                             Err(err) => cli_writeln!(io, "Error saving viewing key: {}", err),
                         },
@@ -756,7 +756,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                         }
                     },
                     KeyType::Freezing => match bincode::deserialize::<FreezerKeyPair>(&bytes) {
-                        Ok(key) => match keystore.add_freeze_key(key.clone(), description).await {
+                        Ok(key) => match keystore.add_freezing_account(key.clone(), description).await {
                             Ok(()) => cli_writeln!(io, "{}", key.pub_key()),
                             Err(err) => cli_writeln!(io, "Error saving freezing key: {}", err),
                         },
@@ -765,7 +765,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                         }
                     },
                     KeyType::Sending => match bincode::deserialize::<UserKeyPair>(&bytes) {
-                        Ok(key) => match keystore.add_user_key(
+                        Ok(key) => match keystore.add_sending_account(
                             key.clone(),
                             description,
                             scan_from.unwrap_or_default(),
@@ -818,8 +818,8 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             C,
             |io, keystore| {
                 cli_writeln!(io, "Addresses:");
-                for pub_key in keystore.pub_keys().await {
-                    cli_writeln!(io, "  {}", UserAddress(pub_key.address()));
+                for address in keystore.addresses().await {
+                    cli_writeln!(io, "  {}", address);
                 }
                 print_keys::<C>(io, keystore).await;
             }
@@ -894,9 +894,9 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
 
 async fn print_keys<'a, C: CLI<'a>>(io: &mut SharedIO, keystore: &Keystore<'a, C>) {
     cli_writeln!(io, "Sending keys:");
-    for key in keystore.pub_keys().await {
-        let account = keystore.sending_account(&key.address()).await.unwrap();
-        cli_writeln!(io, "  {} {}", key, account.description);
+    for address in keystore.addresses().await {
+        let account = keystore.sending_account(&address).await.unwrap();
+        cli_writeln!(io, "  {} {}", address, account.description);
     }
     cli_writeln!(io, "Viewing keys:");
     for key in keystore.viewer_pub_keys().await {

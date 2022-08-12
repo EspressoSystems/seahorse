@@ -10,9 +10,10 @@
 //! This module defines [Asset], [AssetEditor], and [Assets], which provide CURD (create, read,
 //! update, and delete) operations, with the use of [KeyValueStore] to control the assets resource.
 
-use crate::{key_value_store::*, KeystoreError, Ledger};
+use crate::{key_value_store::*, EncryptingResourceAdapter, KeystoreError, Ledger};
 use arbitrary::{Arbitrary, Unstructured};
 use ark_serialize::*;
+use atomic_store::{AppendLog, AtomicStoreLoader};
 use chrono::{DateTime, Local};
 use espresso_macros::ser_test;
 use image::{imageops, ImageBuffer, ImageFormat, ImageResult, Pixel, Rgba};
@@ -680,7 +681,13 @@ impl Assets {
     /// Load an assets store.
     ///
     /// None of the loaded assets will be verified until `verify_assets` is called.
-    pub fn new<L: Ledger>(store: AssetsStore) -> Result<Self, KeystoreError<L>> {
+    pub fn new<L: Ledger>(
+        loader: &mut AtomicStoreLoader,
+        adaptor: EncryptingResourceAdapter<(AssetCode, Option<Asset>)>,
+        fill_size: u64,
+    ) -> Result<Self, KeystoreError<L>> {
+        let log = AppendLog::load(loader, adaptor, "keystore_assets", fill_size)?;
+        let store = AssetsStore::new(log)?;
         Ok(Self {
             store,
             verified_assets: Persistable::new(),

@@ -31,6 +31,9 @@ impl<'a, L: Ledger, Backend: KeystoreBackend<'a, L>, Meta: Serialize + Deseriali
         self.model.persistence.commit().await;
         self.model.assets.commit()?;
         self.model.transactions.commit()?;
+        self.model.viewing_accounts.commit()?;
+        self.model.freezing_accounts.commit()?;
+        self.model.sending_accounts.commit()?;
         self.model
             .atomic_store
             .commit_version()
@@ -40,6 +43,9 @@ impl<'a, L: Ledger, Backend: KeystoreBackend<'a, L>, Meta: Serialize + Deseriali
     async fn revert(&mut self) -> Result<(), KeystoreError<L>> {
         self.model.assets.revert()?;
         self.model.transactions.revert()?;
+        self.model.viewing_accounts.revert()?;
+        self.model.freezing_accounts.revert()?;
+        self.model.sending_accounts.revert()?;
         self.model.persistence.revert().await;
         // Reload in-memory state after the revert.
         self.state = self.model.persistence.load().await?;
