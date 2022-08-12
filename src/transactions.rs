@@ -52,8 +52,6 @@ pub struct Transaction<L: Ledger> {
     signed_memos: Option<SignedMemos>,
     inputs: Vec<RecordOpening>,
     outputs: Vec<RecordOpening>,
-    /// Time when this transaction was created in the transaction builder or time when it was received
-    time: DateTime<Local>,
     /// The asset we are transacting
     asset: AssetCode,
     /// Describes the operation this transaction is performing (e.g Mint, Freeze, or Send)
@@ -95,6 +93,10 @@ pub struct Transaction<L: Ledger> {
     /// example, this is a transaction we received from someone else, and we do not hold the
     /// necessary viewing keys to inspect the change outputs of the transaction.
     asset_change: Option<RecordAmount>,
+    /// Time when this transaction was created in the transaction builder or time when it was received
+    created_time: DateTime<Local>,
+    /// The last time when the record was last modified.
+    modified_time: DateTime<Local>,
 }
 
 impl<L: Ledger> Transaction<L> {
@@ -113,9 +115,6 @@ impl<L: Ledger> Transaction<L> {
     }
     pub fn outputs(&self) -> &Vec<RecordOpening> {
         &self.outputs
-    }
-    pub fn time(&self) -> &DateTime<Local> {
-        &self.time
     }
     pub fn asset(&self) -> &AssetCode {
         &self.asset
@@ -140,6 +139,12 @@ impl<L: Ledger> Transaction<L> {
     }
     pub fn pending_uids(&self) -> &HashSet<u64> {
         &self.pending_uids
+    }
+    pub fn created_time(&self) -> &DateTime<Local> {
+        &self.created_time
+    }
+    pub fn modified_time(&self) -> DateTime<Local> {
+        self.modified_time
     }
 }
 
@@ -183,12 +188,18 @@ impl<'a, L: Ledger> TransactionEditor<'a, L> {
     pub fn add_pending_uids(mut self, uids: &[u64]) -> Self {
         for uid in uids {
             self.transaction.pending_uids.insert(*uid);
+            self.store
+                .uids_awaiting_memos
+                .insert((*uid, self.transaction.uid().clone()));
         }
         self
     }
     /// remove a UID of a memo we were waiting because it was received
     pub fn remove_pending_uid(mut self, uid: u64) -> Self {
         self.transaction.pending_uids.remove(&uid);
+        self.store
+            .uids_awaiting_memos
+            .remove((uid, self.transaction.uid().clone()));
         if self.transaction.pending_uids().is_empty() {
             self.set_status(TransactionStatus::Retired)
         } else {
@@ -201,6 +212,7 @@ impl<'a, L: Ledger> TransactionEditor<'a, L> {
     /// Returns the stored transaction.
     pub fn save(&mut self) -> Result<Transaction<L>, KeystoreError<L>> {
         self.store.store(&self.transaction.uid, &self.transaction)?;
+        self.transaction.modified_time = Local::now();
         Ok(self.transaction.clone())
     }
 }
@@ -261,23 +273,22 @@ impl<L: Ledger> Transactions<L> {
             expiring_txns: Persistable::new(),
             uids_awaiting_memos: Persistable::new(),
         };
-        transactions.reload();
-        Ok(transactions)
-    }
-
-    /// Reload from disc to, rebuilds the indices
-    pub fn reload(&mut self) {
-        self.expiring_txns = Persistable::new();
-        self.uids_awaiting_memos = Persistable::new();
-        for txn in self.store.iter() {
+        // Build the indices from what's loaded from storage
+        for txn in transactions.store.iter() {
             if let Some(timeout) = txn.timeout() {
-                self.expiring_txns.insert((timeout, txn.uid().clone()));
+                transactions
+                    .expiring_txns
+                    .insert((timeout, txn.uid().clone()));
             }
             for pending in &txn.pending_uids {
-                self.uids_awaiting_memos
+                transactions
+                    .uids_awaiting_memos
                     .insert((*pending, txn.uid().clone()));
             }
         }
+        transactions.expiring_txns.commit();
+        transactions.uids_awaiting_memos.commit();
+        Ok(transactions)
     }
 
     fn store(
@@ -286,7 +297,9 @@ impl<L: Ledger> Transactions<L> {
         txn: &Transaction<L>,
     ) -> Result<(), KeystoreError<L>> {
         self.store.store(uid, txn)?;
-        self.reload();
+        if let Some(timeout) = txn.timeout() {
+            self.expiring_txns.insert((timeout, txn.uid().clone()));
+        }
         Ok(())
     }
 
@@ -397,6 +410,7 @@ impl<L: Ledger> Transactions<L> {
         uid: TransactionUID<L>,
         params: TransactionParams<L>,
     ) -> Result<TransactionEditor<'_, L>, KeystoreError<L>> {
+        let time = Local::now();
         let txn = Transaction::<L> {
             uid,
             timeout: params.timeout,
@@ -405,13 +419,14 @@ impl<L: Ledger> Transactions<L> {
             signed_memos: params.signed_memos,
             inputs: params.inputs,
             outputs: params.outputs,
-            time: params.time,
             asset: params.asset,
             kind: params.kind,
             senders: params.senders,
             receivers: params.receivers,
             fee_change: params.fee_change,
             asset_change: params.asset_change,
+            created_time: time,
+            modified_time: time,
         };
         if let Some(timeout) = params.timeout {
             self.expiring_txns.insert((timeout, txn.uid().clone()));
@@ -427,8 +442,14 @@ impl<L: Ledger> Transactions<L> {
     /// Returns the deleted transaction.
     pub fn delete(&mut self, uid: &TransactionUID<L>) -> Result<Transaction<L>, KeystoreError<L>> {
         let txn = self.store.delete(uid)?;
-        // Rebuild the indices
-        self.reload();
+        // Remove from indices
+        if let Some(timeout) = txn.timeout() {
+            self.expiring_txns.remove((timeout, txn.uid().clone()));
+        }
+        for pending in &txn.pending_uids {
+            self.uids_awaiting_memos
+                .remove((*pending, txn.uid().clone()));
+        }
         Ok(txn)
     }
 }
@@ -446,12 +467,13 @@ pub fn create_test_txn<L: Ledger>(
         signed_memos: params.signed_memos,
         inputs: params.inputs,
         outputs: params.outputs,
-        time: params.time,
         asset: params.asset,
         kind: params.kind,
         senders: params.senders,
         receivers: params.receivers,
         fee_change: params.fee_change,
         asset_change: params.asset_change,
+        created_time: params.time,
+        modified_time: params.time,
     }
 }

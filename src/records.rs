@@ -14,6 +14,7 @@ use crate::{
     key_value_store::*, AssetCode, EncryptingResourceAdapter, KeystoreError, Ledger, RecordAmount,
 };
 use atomic_store::{AppendLog, AtomicStoreLoader};
+use chrono::{DateTime, Local};
 use jf_cap::{
     keys::UserAddress,
     structs::{AssetDefinition, FreezeFlag, Nullifier, RecordOpening},
@@ -34,6 +35,10 @@ pub struct Record {
     /// if Some(t), this record is on hold until the validator timestamp surpasses `t`, because this
     /// record has been used as an input to a transaction that is not yet confirmed.
     hold_until: Option<u64>,
+    /// The time when the record was created.
+    created_time: DateTime<Local>,
+    /// The last time when the record was last modified.
+    modified_time: DateTime<Local>,
 }
 
 impl Record {
@@ -67,6 +72,14 @@ impl Record {
     pub fn on_hold(&self, now: u64) -> bool {
         matches!(self.hold_until, Some(t) if t > now)
     }
+
+    pub fn created_time(&self) -> DateTime<Local> {
+        self.created_time
+    }
+
+    pub fn modified_time(&self) -> DateTime<Local> {
+        self.modified_time
+    }
 }
 
 /// An editor to update a record or records store
@@ -99,6 +112,7 @@ impl<'a> RecordEditor<'a> {
     /// Returns the stored record.
     pub fn save<L: Ledger>(&mut self) -> Result<Record, KeystoreError<L>> {
         self.store.store(self.record.uid, &self.record)?;
+        self.record.modified_time = Local::now();
         Ok(self.record.clone())
     }
 }
@@ -173,11 +187,14 @@ impl Records {
         ro: RecordOpening,
         nullifier: Nullifier,
     ) -> Result<RecordEditor<'_>, KeystoreError<L>> {
+        let time = Local::now();
         let record = Record {
             ro,
             uid,
             nullifier,
             hold_until: None,
+            created_time: time,
+            modified_time: time,
         };
         let ro = &record.ro;
         self.asset_records.insert((
