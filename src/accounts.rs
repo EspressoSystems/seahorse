@@ -115,20 +115,6 @@ impl<L: Ledger, Key: KeyPair> Account<L, Key> {
     pub fn modified_time(&self) -> DateTime<Local> {
         self.modified_time
     }
-
-    /// Create an account for testing purposes.
-    #[cfg(any(test, feature = "testing"))]
-    pub fn from(key: Key) -> Self {
-        let time = Local::now();
-        Account {
-            key: key.clone(),
-            description: key.pub_key().to_string(),
-            used: false,
-            scan: None,
-            created_time: time,
-            modified_time: time,
-        }
-    }
 }
 
 impl<L: Ledger, Key: KeyPair> PartialEq<Self> for Account<L, Key> {

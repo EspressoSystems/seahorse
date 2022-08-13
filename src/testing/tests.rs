@@ -88,7 +88,7 @@ pub async fn test_keystore_freeze_unregistered() -> std::io::Result<()> {
             .unwrap();
         keystores[2]
             .0
-            .add_viewing_account(freeze_key, "freeze_key".into())
+            .add_freezing_account(freeze_key, "freeze_key".into())
             .await
             .unwrap();
         let asset = keystores[2]
@@ -2005,7 +2005,6 @@ pub mod generic_keystore_tests {
                 .generate_sending_account("sending_key".into(), Some(Default::default()))
                 .await
                 .unwrap()
-                .pub_key()
         );
 
         // Immediately change the Merkle root.
@@ -2089,8 +2088,7 @@ pub mod generic_keystore_tests {
         let pub_key2 = keystore2
             .generate_sending_account("sending_key".into(), None)
             .await
-            .unwrap()
-            .pub_key();
+            .unwrap();
 
         // Transfer to the late keystore.
         let receipt = keystore1
@@ -2362,7 +2360,7 @@ pub mod generic_keystore_tests {
             .define_asset(
                 "defined_asset".into(),
                 "defined_asset description".as_bytes(),
-                AssetPolicy::default().set_viewer_pub_key(viewing_key0.pub_key()),
+                AssetPolicy::default().set_viewer_pub_key(viewing_key0),
             )
             .await
             .unwrap();
@@ -2379,7 +2377,7 @@ pub mod generic_keystore_tests {
             .define_asset(
                 "minted_asset".into(),
                 "minted_asset description".as_bytes(),
-                AssetPolicy::default().set_viewer_pub_key(viewing_key1.pub_key()),
+                AssetPolicy::default().set_viewer_pub_key(viewing_key1),
             )
             .await
             .unwrap();
@@ -2563,12 +2561,13 @@ pub mod generic_keystore_tests {
             .generate_sending_account("sending_account".into(), None)
             .await
             .unwrap();
-        let pub_key = sending_key.pub_key();
+        let pub_key = sending_key;
         let address = pub_key.address();
-        assert_eq!(
-            keystores[0].0.sending_account(&address).await.unwrap(),
-            Account::from(sending_key)
-        );
+        let sending_account = keystores[0].0.sending_account(&address).await.unwrap();
+        assert_eq!(sending_account.pub_key(), address);
+        assert_eq!(sending_account.description(), "sending_account".to_string());
+        assert!(!sending_account.used());
+        assert_eq!(sending_account.scan(), None);
         t.check_storage(&keystores).await;
 
         // Transfer to the new account, make sure it gets marked used and gets the new balance,
@@ -2596,22 +2595,23 @@ pub mod generic_keystore_tests {
             .generate_freezing_account("freezing_account".into())
             .await
             .unwrap();
+        let viewing_account = keystores[0].0.viewing_account(&viewing_key).await.unwrap();
+        assert_eq!(viewing_account.pub_key(), viewing_key);
+        assert_eq!(viewing_account.description(), "viewing_account".to_string());
+        assert!(!viewing_account.used());
+        assert_eq!(viewing_account.scan(), None);
+        let freezing_account = keystores[0]
+            .0
+            .freezing_account(&freezing_key)
+            .await
+            .unwrap();
+        assert_eq!(freezing_account.pub_key(), freezing_key);
         assert_eq!(
-            keystores[0]
-                .0
-                .viewing_account(&viewing_key.pub_key())
-                .await
-                .unwrap(),
-            Account::from(viewing_key.clone())
+            freezing_account.description(),
+            "freezing_account".to_string()
         );
-        assert_eq!(
-            keystores[0]
-                .0
-                .freezing_account(&freezing_key.pub_key())
-                .await
-                .unwrap(),
-            Account::from(freezing_key.clone())
-        );
+        assert!(!freezing_account.used());
+        assert_eq!(freezing_account.scan(), None);
         t.check_storage(&keystores).await;
 
         // Generate one asset that is just viewable and one that is both viewable and freezable.
@@ -2621,7 +2621,7 @@ pub mod generic_keystore_tests {
                 "asset1".into(),
                 "asset1".as_bytes(),
                 AssetPolicy::default()
-                    .set_viewer_pub_key(viewing_key.pub_key().clone())
+                    .set_viewer_pub_key(viewing_key.clone())
                     .reveal_amount()
                     .unwrap(),
             )
@@ -2629,13 +2629,13 @@ pub mod generic_keystore_tests {
             .unwrap();
         assert!(keystores[0]
             .0
-            .viewing_account(&viewing_key.pub_key())
+            .viewing_account(&viewing_key)
             .await
             .unwrap()
             .used());
         assert!(!keystores[0]
             .0
-            .freezing_account(&freezing_key.pub_key())
+            .freezing_account(&freezing_key)
             .await
             .unwrap()
             .used());
@@ -2645,8 +2645,8 @@ pub mod generic_keystore_tests {
                 "asset2".into(),
                 "asset2".as_bytes(),
                 AssetPolicy::default()
-                    .set_viewer_pub_key(viewing_key.pub_key().clone())
-                    .set_freezer_pub_key(freezing_key.pub_key().clone())
+                    .set_viewer_pub_key(viewing_key.clone())
+                    .set_freezer_pub_key(freezing_key.clone())
                     .reveal_record_opening()
                     .unwrap(),
             )
@@ -2654,13 +2654,13 @@ pub mod generic_keystore_tests {
             .unwrap();
         assert!(keystores[0]
             .0
-            .viewing_account(&viewing_key.pub_key())
+            .viewing_account(&viewing_key)
             .await
             .unwrap()
             .used());
         assert!(keystores[0]
             .0
-            .freezing_account(&freezing_key.pub_key())
+            .freezing_account(&freezing_key)
             .await
             .unwrap()
             .used());
@@ -3060,7 +3060,6 @@ pub mod generic_keystore_tests {
         let pub_key0 = keystores[0].1[0].clone();
         let addr0 = pub_key0.address();
         let pub_key1 = keystores[1].1[0].clone();
-        let addr1 = pub_key1.address();
 
         // Define a mintable asset type.
         let asset = keystores[0]
@@ -3152,8 +3151,7 @@ pub mod generic_keystore_tests {
             .generate_sending_account("account1".into(), None)
             .await
             .unwrap();
-        let accounts = sender.sending_accounts();
-        let addresses = sender.addresses().await;
+        let addresses = sender.sending_addresses().await;
 
         // Fund the second account.
         let txn = keystores[0]
@@ -3161,7 +3159,16 @@ pub mod generic_keystore_tests {
             .transfer(
                 None,
                 &AssetCode::native(),
-                &[(accounts[1].pub_key().clone(), 1)],
+                &[(
+                    sender
+                        .sending_account(&addresses[1])
+                        .await
+                        .unwrap()
+                        .key()
+                        .pub_key()
+                        .clone(),
+                    1,
+                )],
                 0,
             )
             .await
@@ -3187,7 +3194,19 @@ pub mod generic_keystore_tests {
             .await
             .unwrap();
         let txn = sender
-            .mint(None, 0, &asset.code, 1, accounts[0].pub_key().clone())
+            .mint(
+                None,
+                0,
+                &asset.code,
+                1,
+                sender
+                    .sending_account(&addresses[0])
+                    .await
+                    .unwrap()
+                    .key()
+                    .pub_key()
+                    .clone(),
+            )
             .await
             .unwrap();
         await_transaction(&txn, &sender, &[]).await;

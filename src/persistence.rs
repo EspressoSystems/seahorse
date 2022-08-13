@@ -63,7 +63,7 @@ mod serde_ark_unchecked {
 
 // Serialization intermediate for the dynamic part of a KeystoreState.
 #[ser_test(arbitrary, types(cap::Ledger), ark(false))]
-#[derive(Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(bound = "")]
 struct KeystoreSnapshot<L: Ledger> {
     txn_state: TransactionState<L>,
@@ -294,7 +294,7 @@ mod tests {
     };
     use atomic_store::AtomicStore;
     use jf_cap::{
-        keys::{UserKeyPair, ViewerKeyPair},
+        keys::UserKeyPair,
         structs::{AssetDefinition, FreezeFlag, RecordCommitment, RecordOpening},
         TransactionVerifyingKey,
     };
@@ -478,15 +478,6 @@ mod tests {
         };
         assert_keystore_states_eq(&stored, &loaded);
 
-        // Append to monotonic state and then reload.
-        let viewing_key = ViewerKeyPair::generate(&mut rng);
-        // viewing keys for the asset library get persisted with the viewing accounts.
-        stored
-            .viewing_accounts
-            .create(viewing_key)
-            .with_description("viewing_account".into())
-            .save()
-            .unwrap();
         {
             let mut atomic_loader = AtomicStoreLoader::load(
                 &KeystoreLoader::<cap::Ledger>::location(&loader),

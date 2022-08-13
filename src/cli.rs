@@ -355,8 +355,8 @@ impl<'a, C: CLI<'a>> Listable<'a, C> for AssetCode {
     async fn list(keystore: &mut Keystore<'a, C>) -> Vec<ListItem<Self>> {
         // Get our viewing and freezing keys so we can check if the asset types are
         // viewable/freezable.
-        let viewing_keys = keystore.viewer_pub_keys().await;
-        let freezing_keys = keystore.freezer_pub_keys().await;
+        let viewing_keys = keystore.viewing_pub_keys().await;
+        let freezing_keys = keystore.freezing_pub_keys().await;
 
         // Get the keystore's asset library and convert to ListItems.
         keystore
@@ -402,7 +402,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             "print all public addresses of this keystore",
             C,
             |io, keystore| {
-                for address in keystore.addresses().await {
+                for address in keystore.sending_addresses().await {
                     cli_writeln!(io, "{}", address);
                 }
             }
@@ -412,7 +412,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             "print all of the public keys of this keystore",
             C,
             |io, keystore| {
-                for address in keystore.addresses().await {
+                for address in keystore.sending_addresses().await {
                     cli_writeln!(io, "{}", address);
                 }
             }
@@ -455,7 +455,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                 let policy = asset.definition().policy_ref();
                 if policy.is_viewer_pub_key_set() {
                     let viewing_key = policy.viewer_pub_key();
-                    if keystore.viewer_pub_keys().await.contains(viewing_key) {
+                    if keystore.viewing_pub_keys().await.contains(viewing_key) {
                         cli_writeln!(io, "Viewer: me");
                     } else {
                         cli_writeln!(io, "Viewer: {}", *viewing_key);
@@ -467,7 +467,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                 // Print the freezer, noting if it is us.
                 if policy.is_freezer_pub_key_set() {
                     let freezer_key = policy.freezer_pub_key();
-                    if keystore.freezer_pub_keys().await.contains(freezer_key) {
+                    if keystore.freezing_pub_keys().await.contains(freezer_key) {
                         cli_writeln!(io, "Freezer: me");
                     } else {
                         cli_writeln!(io, "Freezer: {}", *freezer_key);
@@ -492,11 +492,11 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             C,
             |io, keystore, asset: ListItem<AssetCode>| {
                 cli_writeln!(io, "Address Balance");
-                for address in keystore.addresses().await {
+                for address in keystore.sending_addresses().await {
                     cli_writeln!(
                         io,
                         "{} {}",
-                        address,
+                        UserAddress(address.clone()),
                         keystore.balance_breakdown(&address, &asset.item).await
                     );
                 }
@@ -818,7 +818,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             C,
             |io, keystore| {
                 cli_writeln!(io, "Addresses:");
-                for address in keystore.addresses().await {
+                for address in keystore.sending_addresses().await {
                     cli_writeln!(io, "  {}", address);
                 }
                 print_keys::<C>(io, keystore).await;
@@ -894,17 +894,17 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
 
 async fn print_keys<'a, C: CLI<'a>>(io: &mut SharedIO, keystore: &Keystore<'a, C>) {
     cli_writeln!(io, "Sending keys:");
-    for address in keystore.addresses().await {
+    for address in keystore.sending_addresses().await {
         let account = keystore.sending_account(&address).await.unwrap();
         cli_writeln!(io, "  {} {}", address, account.description);
     }
     cli_writeln!(io, "Viewing keys:");
-    for key in keystore.viewer_pub_keys().await {
+    for key in keystore.viewing_pub_keys().await {
         let account = keystore.viewing_account(&key).await.unwrap();
         cli_writeln!(io, "  {} {}", key, account.description);
     }
     cli_writeln!(io, "Freezing keys:");
-    for key in keystore.freezer_pub_keys().await {
+    for key in keystore.freezing_pub_keys().await {
         let account = keystore.freezing_account(&key).await.unwrap();
         cli_writeln!(io, "  {} {}", key, account.description);
     }
@@ -1176,19 +1176,7 @@ mod test {
         // the keystores we create through the CLI can deterministically generate the keys that own
         // the initial records.
         let key_streams = iter(keystores)
-            .then(|(keystore, _, _)| async move {
-                let mut keys = vec![];
-                let pub_keys = keystore.pub_keys().await;
-                for pub_key in pub_keys {
-                    keys.push(
-                        keystore
-                            .get_user_private_key(&pub_key.address())
-                            .await
-                            .unwrap(),
-                    );
-                }
-                keys
-            })
+            .then(|(keystore, _, _)| async move { keystore.sending_keys().await })
             .collect::<Vec<_>>()
             .await;
         (ledger, key_streams)

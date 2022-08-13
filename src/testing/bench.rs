@@ -297,8 +297,7 @@ fn bench_ledger_scanner_run<
         UserKeyPair::generate(&mut bench.rng)
     };
 
-    // Set up the keystore state for the benchmark.
-    let state = &mut bench.initial_state;
+    let is_viewer = cfg.role == ScannerRole::Viewer;
 
     if cfg.background {
         // To create a background scan, just add a new key to an existing keystore.
@@ -317,16 +316,13 @@ fn bench_ledger_scanner_run<
                         )
                         .await;
 
-                    if cfg.role == ScannerRole::Viewer {
-                        let KeystoreSharedState { model, .. } = &*w.read().await;
-                        model.freezing_accounts.insert(
-                            bench.freezing_key.pub_key(),
-                            Account::new(bench.freezing_key.clone(), "freezing".into()),
-                        );
-                        model.viewing_accounts.insert(
-                            bench.viewing_key.pub_key(),
-                            Account::new(bench.viewing_key.clone(), "viewing".into()),
-                        );
+                    if is_viewer {
+                        w.add_viewing_account(bench.viewing_key.clone(), "viewing".into())
+                            .await
+                            .unwrap();
+                        w.add_freezing_account(bench.freezing_key.clone(), "freezing".into())
+                            .await
+                            .unwrap();
                     }
 
                     // Wait for the main event thread to catch up before starting the timer, so that
@@ -336,7 +332,7 @@ fn bench_ledger_scanner_run<
                     w.sync(bench.end_time).await.unwrap();
 
                     let start = Instant::now();
-                    w.add_sending_account(scan_key.clone(), "key".into(), bench.start_time)
+                    w.add_sending_account(scan_key.clone(), "sending".into(), bench.start_time)
                         .await
                         .unwrap();
                     w.await_key_scan(&scan_key.address()).await.unwrap();
@@ -354,19 +350,12 @@ fn bench_ledger_scanner_run<
             let mut bench = bench.clone();
             let scan_key = scan_key.clone();
             async move {
-                // Add the key directly to the state, ensuring that it is present immediately when
-                // the keystore is created.
-                bench
-                    .initial_state
-                    .sending_accounts
-                    .insert(scan_key.address(), Account::new(scan_key, "key".into()));
-
                 let mut dur = Duration::default();
                 for _ in 0..n {
                     let state = bench.initial_state.clone();
                     let start = Instant::now();
                     // Create the keystore, starting the main event thread.
-                    let (w, _tmp_dir) = bench
+                    let (mut w, _tmp_dir) = bench
                         .t
                         .create_keystore_with_state(
                             KeyTree::random(&mut bench.rng).0,
@@ -375,17 +364,17 @@ fn bench_ledger_scanner_run<
                         )
                         .await;
 
-                    if cfg.role == ScannerRole::Viewer {
-                        let KeystoreSharedState { model, .. } = &*w.read().await;
-                        model.freezing_accounts.insert(
-                            bench.freezing_key.pub_key(),
-                            Account::new(bench.freezing_key.clone(), "freezing".into()),
-                        );
-                        model.viewing_accounts.insert(
-                            bench.viewing_key.pub_key(),
-                            Account::new(bench.viewing_key.clone(), "viewing".into()),
-                        );
+                    if is_viewer {
+                        w.add_viewing_account(bench.viewing_key.clone(), "viewing".into())
+                            .await
+                            .unwrap();
+                        w.add_freezing_account(bench.freezing_key.clone(), "freezing".into())
+                            .await
+                            .unwrap();
                     }
+                    w.add_sending_account(scan_key.clone(), "sending".into(), bench.start_time)
+                        .await
+                        .unwrap();
 
                     // Wait for the keystore to scan all the events.
                     w.sync(bench.end_time).await.unwrap();
