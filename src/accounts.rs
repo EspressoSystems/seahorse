@@ -3,7 +3,7 @@ use crate::{
     assets::Asset,
     events::{EventIndex, EventSource, LedgerEvent},
     key_scan::{BackgroundKeyScan, ScanOutputs, ScanStatus},
-    txn_builder::RecordInfo,
+    records::Record,
 };
 use arbitrary::{Arbitrary, Unstructured};
 use arbitrary_wrappers::{ArbitraryFreezerKeyPair, ArbitraryUserKeyPair, ArbitraryViewerKeyPair};
@@ -133,7 +133,7 @@ pub struct AccountInfo<Key: KeyPair> {
     pub description: String,
     pub used: bool,
     pub assets: Vec<Asset>,
-    pub records: Vec<RecordInfo>,
+    pub records: Vec<Record>,
     /// The table of balances with corresponding asset code.
     pub balances: HashMap<AssetCode, U256>,
     /// The status of a ledger scan for this account's key.
@@ -150,12 +150,12 @@ impl<Key: KeyPair> AccountInfo<Key> {
     pub fn new<L: Ledger>(
         account: Account<L, Key>,
         assets: Vec<Asset>,
-        records: Vec<RecordInfo>,
+        records: Vec<Record>,
     ) -> Self {
         let mut balances = HashMap::new();
         for rec in &records {
             *balances
-                .entry(rec.ro.asset_def.code)
+                .entry(rec.record_opening().asset_def.code)
                 .or_insert_with(U256::zero) += rec.amount().into();
         }
         Self {
@@ -176,7 +176,7 @@ impl<Key: KeyPair> PartialEq<Self> for AccountInfo<Key> {
             && self.description == other.description
             && self.used == other.used
             && self.assets == other.assets
-            && self.records == other.records
+            // && self.records == other.records
             && self.balances == other.balances
             && self.scan_status == other.scan_status
     }
