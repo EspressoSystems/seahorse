@@ -239,19 +239,19 @@ impl Records {
             .index()
             .get(nullifier)
             .ok_or(KeyValueStoreError::KeyNotFound)?;
-        Ok(self.get(*uid)?)
+        self.get(*uid)
     }
     /// Get a RecordEditor from a Nullifier
     pub fn with_nullifier_mut<L: Ledger>(
         &mut self,
         nullifier: &Nullifier,
     ) -> Result<RecordEditor, KeystoreError<L>> {
-        let uid = self
+        let uid = *self
             .nullifier_records
             .index()
             .get(nullifier)
             .ok_or(KeyValueStoreError::KeyNotFound)?;
-        Ok(self.get_mut(*uid)?)
+        self.get_mut(uid)
     }
 
     /// Get records associated with an asset and account which are either frozen or unfrozen
@@ -338,11 +338,11 @@ impl Records {
         &mut self,
         nullifier: &Nullifier,
     ) -> Result<Record, KeystoreError<L>> {
-        let uid = self
+        let uid = *self
             .nullifier_records
             .index()
             .get(nullifier)
             .ok_or(KeyValueStoreError::KeyNotFound)?;
-        self.delete(*uid)
+        self.delete(uid)
     }
 }

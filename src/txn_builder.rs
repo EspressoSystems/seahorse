@@ -14,7 +14,6 @@ use crate::{
     records::{Record, Records},
     sparse_merkle_tree::SparseMerkleTree,
     transactions::{SignedMemos, TransactionParams},
-    KeystoreBackend, KeystoreModel,
 };
 use arbitrary::{Arbitrary, Unstructured};
 use arbitrary_wrappers::*;
@@ -46,18 +45,16 @@ use rand_chacha::ChaChaRng;
 #[cfg(test)]
 use reef::cap;
 use reef::{
-    traits::{Ledger, Transaction as _, TransactionKind as _, Validator as _},
+    traits::{Ledger, TransactionKind as _, Validator as _},
     types::*,
 };
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use snafu::{ResultExt, Snafu};
-use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::convert::TryFrom;
 use std::convert::TryInto;
-use std::fmt::{Debug, Formatter};
+use std::fmt::Debug;
 use std::hash::{Hash, Hasher};
-use std::iter::FromIterator;
-use std::ops::{Index, IndexMut, Mul};
+use std::ops::Mul;
 
 #[derive(
     Debug,
@@ -312,14 +309,7 @@ pub fn input_records<'a, L: Ledger + 'a>(
         .get_spendable::<L>(&*asset, owner, frozen)
         .unwrap()
         .into_iter()
-        .filter_map(move |record| {
-            if record.on_hold(now) {
-                // Skip records that are on hold
-                None
-            } else {
-                Some(record)
-            }
-        })
+        .filter(move |record| !record.on_hold(now))
 }
 //     /// Find a record with exactly the requested amount, which can be the input to a transaction,
 //     /// matching the given parameters.
@@ -1168,6 +1158,7 @@ impl<L: Ledger> TransactionState<L> {
     /// aggragated by multiple addresses.
     /// * Otherwise, the change amount must be nonnegative.
     #[allow(clippy::type_complexity)]
+    #[allow(clippy::too_many_arguments)]
     fn find_records_with_pub_key(
         &self,
         records: &mut Records,
