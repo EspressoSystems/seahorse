@@ -2701,31 +2701,37 @@ async fn update_key_scan<
         ..
     } = shared_state;
 
-    let finished = if let Ok((mut editor, Some((key, ScanOutputs { records, history })))) = model
+    let finished = match model
         .sending_accounts
         .get_mut(address)
         .unwrap()
         .update_scan(event, source, state.txn_state.record_mt.commitment())
         .await
     {
-        editor.save()?;
-        if let Err(err) = state.add_records(model, &key, records).await {
-            tracing::error!("Error saving records from key scan {}: {}", address, err);
-        }
-        for (uid, t) in history {
-            model.transactions.create(uid, t)?;
-        }
+        Ok((mut editor, scan_info)) => {
+            editor.save()?;
+            match scan_info {
+                Some((key, ScanOutputs { records, history })) => {
+                    if let Err(err) = state.add_records(model, &key, records).await {
+                        tracing::error!("Error saving records from key scan {}: {}", address, err);
+                    }
+                    for (uid, t) in history {
+                        model.transactions.create(uid, t)?;
+                    }
 
-        // Signal anyone waiting for a notification that this scan finished.
-        for sender in pending_key_scans.remove(address).into_iter().flatten() {
-            // Ignore errors, it just means the receiving end of the channel has
-            // been dropped.
-            sender.send(()).ok();
-        }
+                    // Signal anyone waiting for a notification that this scan finished.
+                    for sender in pending_key_scans.remove(address).into_iter().flatten() {
+                        // Ignore errors, it just means the receiving end of the channel has
+                        // been dropped.
+                        sender.send(()).ok();
+                    }
 
-        true
-    } else {
-        false
+                    true
+                }
+                None => false,
+            }
+        }
+        _ => false,
     };
 
     model.persistence.store_snapshot(state).await?;
