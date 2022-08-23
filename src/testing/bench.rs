@@ -332,7 +332,7 @@ fn bench_ledger_scanner_run<
                     w.sync(bench.end_time).await.unwrap();
 
                     let start = Instant::now();
-                    w.add_sending_account(scan_key.clone(), "sending".into(), bench.start_time)
+                    w.add_sending_account(scan_key.clone(), "key".into(), bench.start_time)
                         .await
                         .unwrap();
                     w.await_key_scan(&scan_key.address()).await.unwrap();
@@ -372,12 +372,14 @@ fn bench_ledger_scanner_run<
                             .await
                             .unwrap();
                     }
-                    w.add_sending_account(scan_key.clone(), "sending".into(), bench.start_time)
-                        .await
-                        .unwrap();
 
                     // Wait for the keystore to scan all the events.
                     w.sync(bench.end_time).await.unwrap();
+
+                    w.add_sending_account(scan_key.clone(), "key".into(), bench.start_time)
+                        .await
+                        .unwrap();
+                    w.await_key_scan(&scan_key.address()).await.unwrap();
                     dur += start.elapsed();
 
                     // Ensure the wallet gets dropped before `_tmp_dir`.
