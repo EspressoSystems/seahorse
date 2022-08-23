@@ -1652,10 +1652,13 @@ impl<
     }
 
     #[cfg(any(test, bench, feature = "testing"))]
-    pub fn with_state(
+    pub fn with_state_and_keys(
         backend: Backend,
         loader: &mut (impl 'a + KeystoreLoader<L, Meta = Meta>),
         state: KeystoreState<'a, L>,
+        viewing_key: Option<(ViewerKeyPair, String)>,
+        freezing_key: Option<(FreezerKeyPair, String)>,
+        sending_key: Option<(UserKeyPair, String)>,
     ) -> BoxFuture<'a, Result<Keystore<'a, Backend, L, Meta>, KeystoreError<L>>> {
         let (
             mut atomic_store,
@@ -1666,6 +1669,30 @@ impl<
             mut freezing_accounts,
             mut sending_accounts,
         ) = Self::create_stores(loader).unwrap();
+        if let Some((key, description)) = viewing_key {
+            viewing_accounts
+                .create(key)
+                .unwrap()
+                .with_description(description)
+                .save()
+                .unwrap();
+        }
+        if let Some((key, description)) = freezing_key {
+            freezing_accounts
+                .create(key)
+                .unwrap()
+                .with_description(description)
+                .save()
+                .unwrap();
+        }
+        if let Some((key, description)) = sending_key {
+            sending_accounts
+                .create(key)
+                .unwrap()
+                .with_description(description)
+                .save()
+                .unwrap();
+        }
         Box::pin(async move {
             persistence.create(&state).await?;
             persistence.commit().await;
@@ -2721,8 +2748,8 @@ async fn update_key_scan<
 
                     // Signal anyone waiting for a notification that this scan finished.
                     for sender in pending_key_scans.remove(address).into_iter().flatten() {
-                        // Ignore errors, it just means the receiving end of the channel has
-                        // been dropped.
+                        // Ignore errors, it just means the receiving end of the channel has been
+                        // dropped.
                         sender.send(()).ok();
                     }
 

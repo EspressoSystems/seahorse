@@ -291,7 +291,7 @@ fn bench_ledger_scanner_run<
     mut bench: BenchLedgerScanner<'a, T>,
     cfg: BenchLedgerScannerConfig,
 ) {
-    let scan_key = if cfg.role == ScannerRole::Receiver {
+    let scan_key = if cfg.role.clone() == ScannerRole::Receiver {
         bench.receiver.clone()
     } else {
         UserKeyPair::generate(&mut bench.rng)
@@ -305,25 +305,24 @@ fn bench_ledger_scanner_run<
             let mut bench = bench.clone();
             let scan_key = scan_key.clone();
             async move {
+                let (mut viewing_key, mut freezing_key) = (None, None);
+                if is_viewer {
+                    viewing_key = Some((bench.viewing_key.clone(), "viewing".into()));
+                    freezing_key = Some((bench.freezing_key.clone(), "freezing".into()));
+                }
                 let mut dur = Duration::default();
                 for _ in 0..n {
                     let (mut w, _tmp_dir) = bench
                         .t
-                        .create_keystore_with_state(
+                        .create_keystore_with_state_and_keys(
                             KeyTree::random(&mut bench.rng).0,
                             &bench.ledger,
                             bench.initial_state.clone(),
+                            viewing_key.clone(),
+                            freezing_key.clone(),
+                            None,
                         )
                         .await;
-
-                    if is_viewer {
-                        w.add_viewing_account(bench.viewing_key.clone(), "viewing".into())
-                            .await
-                            .unwrap();
-                        w.add_freezing_account(bench.freezing_key.clone(), "freezing".into())
-                            .await
-                            .unwrap();
-                    }
 
                     // Wait for the main event thread to catch up before starting the timer, so that
                     // it is not consuming CPU time and interfering with the benchmark of the
@@ -350,36 +349,30 @@ fn bench_ledger_scanner_run<
             let mut bench = bench.clone();
             let scan_key = scan_key.clone();
             async move {
+                let (mut viewing_key, mut freezing_key) = (None, None);
+                if is_viewer {
+                    viewing_key = Some((bench.viewing_key.clone(), "viewing".into()));
+                    freezing_key = Some((bench.freezing_key.clone(), "freezing".into()));
+                }
                 let mut dur = Duration::default();
                 for _ in 0..n {
                     let state = bench.initial_state.clone();
                     let start = Instant::now();
                     // Create the keystore, starting the main event thread.
-                    let (mut w, _tmp_dir) = bench
+                    let (w, _tmp_dir) = bench
                         .t
-                        .create_keystore_with_state(
+                        .create_keystore_with_state_and_keys(
                             KeyTree::random(&mut bench.rng).0,
                             &bench.ledger,
                             state,
+                            viewing_key.clone(),
+                            freezing_key.clone(),
+                            Some((scan_key.clone(), "key".to_string())),
                         )
                         .await;
 
-                    if is_viewer {
-                        w.add_viewing_account(bench.viewing_key.clone(), "viewing".into())
-                            .await
-                            .unwrap();
-                        w.add_freezing_account(bench.freezing_key.clone(), "freezing".into())
-                            .await
-                            .unwrap();
-                    }
-
                     // Wait for the keystore to scan all the events.
                     w.sync(bench.end_time).await.unwrap();
-
-                    w.add_sending_account(scan_key.clone(), "key".into(), bench.start_time)
-                        .await
-                        .unwrap();
-                    w.await_key_scan(&scan_key.address()).await.unwrap();
                     dur += start.elapsed();
 
                     // Ensure the wallet gets dropped before `_tmp_dir`.

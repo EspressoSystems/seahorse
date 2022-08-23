@@ -251,11 +251,14 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         (Keystore::new(backend, &mut loader).await.unwrap(), temp_dir)
     }
 
-    async fn create_keystore_with_state(
+    async fn create_keystore_with_state_and_keys(
         &mut self,
         key_tree: KeyTree,
         ledger: &Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork>>>,
         state: KeystoreState<'a, Self::Ledger>,
+        viewing_key: Option<(ViewerKeyPair, String)>,
+        freezing_key: Option<(FreezerKeyPair, String)>,
+        sending_key: Option<(UserKeyPair, String)>,
     ) -> (Keystore<'a, Self::MockBackend, Self::Ledger, ()>, TempDir) {
         let temp_dir = TempDir::new("test_keystore").unwrap();
         let mut loader = TrivialKeystoreLoader {
@@ -264,9 +267,16 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         };
         let backend = self.create_backend(ledger.clone(), vec![]).await;
         (
-            Keystore::with_state(backend, &mut loader, state)
-                .await
-                .unwrap(),
+            Keystore::with_state_and_keys(
+                backend,
+                &mut loader,
+                state,
+                viewing_key,
+                freezing_key,
+                sending_key,
+            )
+            .await
+            .unwrap(),
             temp_dir,
         )
     }
