@@ -18,6 +18,7 @@ use crate::{
 };
 use atomic_store::{AppendLog, AtomicStoreLoader};
 use chrono::{DateTime, Local};
+use derivative::Derivative;
 use jf_cap::{
     keys::{FreezerKeyPair, FreezerPubKey, UserAddress, UserKeyPair, ViewerKeyPair, ViewerPubKey},
     MerkleCommitment,
@@ -61,7 +62,7 @@ impl KeyPair for UserKeyPair {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Derivative, Deserialize, Serialize)]
 #[serde(bound = "Key: DeserializeOwned + Serialize")]
 pub struct Account<L: Ledger, Key: KeyPair> {
     /// The account key.
@@ -79,8 +80,6 @@ pub struct Account<L: Ledger, Key: KeyPair> {
 }
 
 impl<L: Ledger, Key: KeyPair> Account<L, Key> {
-    #![allow(dead_code)]
-
     /// Get the account key.
     pub fn key(&self) -> &Key {
         &self.key
@@ -92,8 +91,8 @@ impl<L: Ledger, Key: KeyPair> Account<L, Key> {
     }
 
     /// Get the account description.
-    pub fn description(&self) -> String {
-        self.description.clone()
+    pub fn description(&self) -> &str {
+        &self.description
     }
 
     /// Check whether the account is used.
@@ -102,8 +101,8 @@ impl<L: Ledger, Key: KeyPair> Account<L, Key> {
     }
 
     /// Get the optional ledger scan.
-    pub fn scan(&self) -> Option<BackgroundKeyScan<L>> {
-        self.scan.clone()
+    pub fn scan(&self) -> Option<&BackgroundKeyScan<L>> {
+        self.scan.as_ref()
     }
 
     /// Get the created time.
@@ -117,18 +116,6 @@ impl<L: Ledger, Key: KeyPair> Account<L, Key> {
     }
 }
 
-impl<L: Ledger, Key: KeyPair> PartialEq<Self> for Account<L, Key> {
-    fn eq(&self, other: &Self) -> bool {
-        // We assume that the private keys are equal if the public keys are.
-        self.key.pub_key() == other.key.pub_key()
-            && self.description == other.description
-            && self.used == other.used
-            && self.scan == other.scan
-            && self.created_time == other.created_time
-            && self.modified_time == other.modified_time
-    }
-}
-
 pub type AccountsStore<L, Key, PubKey> = KeyValueStore<PubKey, Account<L, Key>>;
 
 /// An editor to create or update the account or accounts store.
@@ -138,8 +125,6 @@ pub struct AccountEditor<'a, L: Ledger, Key: KeyPair + DeserializeOwned + Serial
 }
 
 impl<'a, L: Ledger, Key: KeyPair + DeserializeOwned + Serialize> AccountEditor<'a, L, Key> {
-    #![allow(dead_code)]
-
     /// Create an account editor.
     fn new(
         store: &'a mut AccountsStore<L, Key, Key::PubKey>,
@@ -163,18 +148,6 @@ impl<'a, L: Ledger, Key: KeyPair + DeserializeOwned + Serialize> AccountEditor<'
     /// Set the optional ledger scan.
     pub(crate) fn set_scan(mut self, scan: Option<BackgroundKeyScan<L>>) -> Self {
         self.account.scan = scan;
-        self
-    }
-
-    /// Set the ledger scan.
-    pub(crate) fn with_scan(mut self, scan: BackgroundKeyScan<L>) -> Self {
-        self.account.scan = Some(scan);
-        self
-    }
-
-    /// Clear the leger scan.
-    pub(crate) fn clear_scan(mut self) -> Self {
-        self.account.scan = None;
         self
     }
 
@@ -250,8 +223,6 @@ pub struct Accounts<L: Ledger, Key: KeyPair + DeserializeOwned + Serialize> {
 }
 
 impl<L: Ledger, Key: KeyPair + DeserializeOwned + Serialize> Accounts<L, Key> {
-    #![allow(dead_code)]
-
     /// Load an accounts store.
     #[allow(clippy::type_complexity)]
     pub fn new(
@@ -275,14 +246,14 @@ impl<L: Ledger, Key: KeyPair + DeserializeOwned + Serialize> Accounts<L, Key> {
         self.store.iter().cloned()
     }
 
-    /// Get the keys of all accounts.
-    pub fn keys(&self) -> Vec<Key> {
-        self.iter().map(|account| account.key().clone()).collect()
+    /// Iterate through the keys of all accounts.
+    pub fn iter_keys(&self) -> impl Iterator<Item = Key> + '_ {
+        self.iter().map(|account| account.key().clone())
     }
 
-    /// Get the public keys of all accounts.
-    pub fn pub_keys(&self) -> Vec<Key::PubKey> {
-        self.iter().map(|account| account.pub_key()).collect()
+    /// Iterate through the public keys of all accounts.
+    pub fn iter_pub_keys(&self) -> impl Iterator<Item = Key::PubKey> + '_ {
+        self.iter().map(|account| account.pub_key())
     }
 
     /// Get the account by the public key from the store.

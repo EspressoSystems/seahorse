@@ -304,8 +304,6 @@ pub struct Asset {
 }
 
 impl Asset {
-    #![allow(dead_code)]
-
     /// Create a native asset.
     ///
     /// Returns the created asset.
@@ -676,8 +674,6 @@ pub struct Assets {
 }
 
 impl Assets {
-    #![allow(dead_code)]
-
     /// Load an assets store.
     ///
     /// None of the loaded assets will be verified until `verify_assets` is called.

@@ -13,6 +13,7 @@ use crate::{
 use arbitrary::{Arbitrary, Unstructured};
 use async_std::sync::Arc;
 use atomic_store::{load_store::BincodeLoadStore, AtomicStoreLoader, RollingLog};
+use derivative::Derivative;
 use espresso_macros::ser_test;
 use key_set::{OrderByOutputs, ProverKeySet};
 use reef::*;
@@ -63,17 +64,12 @@ mod serde_ark_unchecked {
 
 // Serialization intermediate for the dynamic part of a KeystoreState.
 #[ser_test(arbitrary, types(cap::Ledger), ark(false))]
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Derivative, Deserialize, Serialize)]
+#[derivative(PartialEq(bound = "L: Ledger"))]
 #[serde(bound = "")]
 struct KeystoreSnapshot<L: Ledger> {
     txn_state: TransactionState<L>,
     key_state: KeyStreamState,
-}
-
-impl<L: Ledger> PartialEq<Self> for KeystoreSnapshot<L> {
-    fn eq(&self, other: &Self) -> bool {
-        self.txn_state == other.txn_state && self.key_state == other.key_state
-    }
 }
 
 impl<'a, L: Ledger> From<&KeystoreState<'a, L>> for KeystoreSnapshot<L> {
