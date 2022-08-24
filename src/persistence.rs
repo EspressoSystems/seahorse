@@ -411,7 +411,6 @@ mod tests {
             txn_state: TransactionState {
                 validator,
                 now: Default::default(),
-                records: Default::default(),
                 nullifiers: Default::default(),
                 record_mt: record_merkle_tree,
             },
@@ -478,7 +477,7 @@ mod tests {
         stored.txn_state.record_mt.push(comm.to_field_element());
         stored.txn_state.validator.now += 1;
         stored.txn_state.now += EventIndex::from_source(EventSource::QueryService, 1);
-        stored.txn_state.records.insert(ro, 0, &user_key);
+        // stored.txn_state.records.insert(ro, 0, &user_key);
 
         // Snapshot the modified dynamic state and then reload.
         {
@@ -567,7 +566,7 @@ mod tests {
             let ro = random_ro(&mut rng, &user_key);
 
             let mut updated = stored.clone();
-            updated.txn_state.records.insert(ro, 0, &user_key);
+            // updated.txn_state.records.insert(ro, 0, &user_key);
             storage.store_snapshot(&updated).await.unwrap();
             storage.revert().await;
             storage.commit().await;
@@ -599,16 +598,16 @@ mod tests {
             );
 
             // Store some data.
-            stored.txn_state.records.insert(ro, 0, &user_key);
+            // stored.txn_state.records.insert(ro, 0, &user_key);
             storage.store_snapshot(&stored).await.unwrap();
 
             // Revert the changes.
-            stored
-                .txn_state
-                .records
-                .remove_by_nullifier(nullifier)
-                .unwrap();
-            storage.revert().await;
+            // stored
+            //     .txn_state
+            //     .records
+            //     .remove_by_nullifier(nullifier)
+            //     .unwrap();
+            // storage.revert().await;
 
             // Loading after revert should be a no-op.
             let state = storage.load().await.unwrap();

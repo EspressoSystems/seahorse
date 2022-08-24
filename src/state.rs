@@ -31,6 +31,7 @@ impl<'a, L: Ledger, Backend: KeystoreBackend<'a, L>, Meta: Serialize + Deseriali
         self.model.persistence.commit().await;
         self.model.assets.commit()?;
         self.model.transactions.commit()?;
+        self.model.records.commit()?;
         self.model
             .atomic_store
             .commit_version()

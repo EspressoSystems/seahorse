@@ -497,12 +497,16 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         pub_key: &UserPubKey,
         frozen: FreezeFlag,
     ) -> U256 {
-        model
+        let spendable = model
             .records
-            .get_spendable::<L>(asset, &pub_key.address(), frozen)
-            .unwrap()
-            .filter(move |record| !record.on_hold(self.txn_state.block_height()))
-            .fold(U256::zero(), |sum, record| sum + record.amount())
+            .get_spendable::<L>(asset, &pub_key.address(), frozen);
+        if let Some(records) = spendable {
+            records
+                .filter(move |record| !record.on_hold(self.txn_state.block_height()))
+                .fold(U256::zero(), |sum, record| sum + record.amount())
+        } else {
+            U256::zero()
+        }
     }
 
     pub fn balance<Meta: Serialize + DeserializeOwned + Send>(
@@ -531,7 +535,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         }
     }
 
-    // Inform the database that we have received memos for the given record UIDs. Return a list of
+    // Inform the Transactions database that we have received memos for the given record UIDs. Return a list of
     // the transactions that are completed as a result.
     pub fn received_memos(
         &mut self,
@@ -891,6 +895,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                     .unwrap()
                     .used = true;
                 // Add the record.
+                println!("adding record in receive_attached_records");
                 model.records.create::<L>(
                     *uid,
                     ro.clone(),
@@ -918,6 +923,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                     .unwrap()
                     .used = true;
                 // Add the record.
+                println!("adding record in receive_attached_records freeze path");
                 model.records.create::<L>(
                     *uid,
                     ro.clone(),
@@ -976,6 +982,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                 .unwrap()
                 .used = true;
             // Save the record.
+            println!("adding record in add_record");
             model.records.create::<L>(
                 uid,
                 record.clone(),
@@ -1027,6 +1034,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
             .get(&TransactionUID::<L>(txn.hash()))
             .ok();
         for nullifier in txn.input_nullifiers() {
+            println!("clear pending unholding records via nullifier");
             if let Ok(record) = model.records.with_nullifier_mut::<L>(&nullifier) {
                 if pending.is_some() {
                     // If we started this transaction, all of its inputs should have been on hold,
@@ -1500,13 +1508,18 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                 let now = self.txn_state.block_height();
                 let timeout = now + (L::record_root_history() as u64);
                 let uid = TransactionUID(txn.hash());
-
+                println!(
+                    "transactions has {} nullifiers",
+                    txn.input_nullifiers().len()
+                );
                 for nullifier in txn.input_nullifiers() {
                     // hold the record corresponding to this nullifier until the transaction is committed,
                     // rejected, or expired.
-                    let record = model.records.with_nullifier_mut(&nullifier)?;
-                    assert!(!(*record).on_hold(now));
-                    record.hold_until(timeout);
+                    println!("holding record for submitted txn");
+                    if let Ok(record) = model.records.with_nullifier_mut::<L>(&nullifier) {
+                        assert!(!(*record).on_hold(now));
+                        record.hold_until(timeout).save::<L>()?;
+                    }
                 }
                 info.timeout = Some(timeout);
                 let stored_txn = model.transactions.create(uid, info)?;
@@ -1682,7 +1695,7 @@ impl<
         mut backend: Backend,
         loader: &mut impl KeystoreLoader<L, Meta = Meta>,
     ) -> BoxFuture<'a, Result<Keystore<'a, Backend, L, Meta>, KeystoreError<L>>> {
-        let (mut atomic_store, mut persistence, mut assets, mut transactions, records) =
+        let (mut atomic_store, mut persistence, mut assets, mut transactions, mut records) =
             Self::create_stores(loader).unwrap();
         Box::pin(async move {
             let state = if persistence.exists() {
@@ -1695,6 +1708,7 @@ impl<
             persistence.commit().await;
             assets.commit()?;
             transactions.commit()?;
+            records.commit()?;
             atomic_store.commit_version()?;
             Self::new_impl(
                 backend,

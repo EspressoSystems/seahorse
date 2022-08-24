@@ -54,6 +54,7 @@ use std::convert::TryFrom;
 use std::convert::TryInto;
 use std::fmt::Debug;
 use std::hash::{Hash, Hasher};
+use std::iter;
 use std::ops::Mul;
 
 #[derive(
@@ -214,46 +215,6 @@ pub enum TransactionError {
     },
 }
 
-#[ser_test(arbitrary, ark(false))]
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Hash)]
-pub struct RecordInfo {
-    pub ro: RecordOpening,
-    pub uid: u64,
-    pub nullifier: Nullifier,
-    // if Some(t), this record is on hold until the validator timestamp surpasses `t`, because this
-    // record has been used as an input to a transaction that is not yet confirmed.
-    pub hold_until: Option<u64>,
-}
-
-impl RecordInfo {
-    pub fn on_hold(&self, now: u64) -> bool {
-        matches!(self.hold_until, Some(t) if t > now)
-    }
-
-    pub fn hold_until(&mut self, until: u64) {
-        self.hold_until = Some(until);
-    }
-
-    pub fn unhold(&mut self) {
-        self.hold_until = None;
-    }
-
-    pub fn amount(&self) -> RecordAmount {
-        self.ro.amount.into()
-    }
-}
-
-impl<'a> Arbitrary<'a> for RecordInfo {
-    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
-        Ok(Self {
-            ro: u.arbitrary::<ArbitraryRecordOpening>()?.into(),
-            uid: u.arbitrary()?,
-            nullifier: u.arbitrary::<ArbitraryNullifier>()?.into(),
-            hold_until: u.arbitrary()?,
-        })
-    }
-}
-
 // #[ser_test(ark(false))]
 // #[derive(Clone, Default, Serialize, Deserialize)]
 // #[serde(from = "Vec<RecordInfo>", into = "Vec<RecordInfo>")]
@@ -304,12 +265,13 @@ pub fn input_records<'a, L: Ledger + 'a>(
     owner: &'a UserAddress,
     frozen: FreezeFlag,
     now: u64,
-) -> impl Iterator<Item = Record> + 'a {
-    records
-        .get_spendable::<L>(&*asset, owner, frozen)
-        .unwrap()
-        .into_iter()
-        .filter(move |record| !record.on_hold(now))
+) -> Option<impl Iterator<Item = Record> + 'a> {
+    let spendable = records.get_spendable::<L>(&*asset, owner, frozen);
+    if let Some(r) = spendable {
+        Some(r.into_iter().filter(move |record| !record.on_hold(now)))
+    } else {
+        None
+    }
 }
 //     /// Find a record with exactly the requested amount, which can be the input to a transaction,
 //     /// matching the given parameters.
@@ -1169,6 +1131,7 @@ impl<L: Ledger> TransactionState<L> {
         max_records: Option<usize>,
         allow_insufficient: bool,
     ) -> Result<(Vec<(RecordOpening, u64)>, BigInt), TransactionError> {
+        println!("find records with Pub key");
         let now = self.validator.now();
 
         // If we have a record with the exact size required, use it to avoid
@@ -1198,38 +1161,40 @@ impl<L: Ledger> TransactionState<L> {
         // with something more sophisticated later.
         let mut result = vec![];
         let mut current_amount = U256::zero();
-        for record in input_records::<L>(records, asset, owner, frozen, now) {
-            // Skip 0-amount records; they take up slots in the transaction inputs without
-            // contributing to the total amount we're trying to consume.
-            if record.amount().is_zero() {
-                continue;
-            }
-
-            if let Some(max_records) = max_records {
-                if result.len() >= max_records {
-                    // Too much fragmentation: we can't make the required amount using few enough
-                    // records. This should be less likely once we implement a better allocation
-                    // strategy (or, any allocation strategy).
-                    //
-                    // In this case, we could either simply return an error, or we could
-                    // automatically generate a merge transaction to defragment our assets.
-                    // Automatically merging assets would implicitly incur extra transaction fees,
-                    // so for now we do the simple, uncontroversial thing and error out.
-                    return Err(TransactionError::Fragmentation {
-                        asset: *asset,
-                        amount,
-                        suggested_amount: current_amount,
-                        max_records,
-                    });
+        if let Some(inputs) = input_records::<L>(records, asset, owner, frozen, now) {
+            for record in inputs {
+                // Skip 0-amount records; they take up slots in the transaction inputs without
+                // contributing to the total amount we're trying to consume.
+                if record.amount().is_zero() {
+                    continue;
                 }
-            }
-            current_amount += record.amount().into();
-            result.push((record.record_opening().clone(), record.uid()));
-            if current_amount >= amount {
-                return Ok((
-                    result,
-                    u256_to_signed(current_amount) - u256_to_signed(amount),
-                ));
+
+                if let Some(max_records) = max_records {
+                    if result.len() >= max_records {
+                        // Too much fragmentation: we can't make the required amount using few enough
+                        // records. This should be less likely once we implement a better allocation
+                        // strategy (or, any allocation strategy).
+                        //
+                        // In this case, we could either simply return an error, or we could
+                        // automatically generate a merge transaction to defragment our assets.
+                        // Automatically merging assets would implicitly incur extra transaction fees,
+                        // so for now we do the simple, uncontroversial thing and error out.
+                        return Err(TransactionError::Fragmentation {
+                            asset: *asset,
+                            amount,
+                            suggested_amount: current_amount,
+                            max_records,
+                        });
+                    }
+                }
+                current_amount += record.amount().into();
+                result.push((record.record_opening().clone(), record.uid()));
+                if current_amount >= amount {
+                    return Ok((
+                        result,
+                        u256_to_signed(current_amount) - u256_to_signed(amount),
+                    ));
+                }
             }
         }
 
@@ -1304,6 +1269,7 @@ impl<L: Ledger> TransactionState<L> {
         key_pairs: &'l [UserKeyPair],
         fee: RecordAmount,
     ) -> Result<FeeInput<'l>, TransactionError> {
+        println!("find fee input");
         let (ro, uid, owner_keypair) = if fee.is_zero() {
             // For 0 fees, the allocation scheme is different than for other kinds of allocations.
             // For one thing, CAP requires one fee input record even if the amount of the record is
@@ -1326,15 +1292,19 @@ impl<L: Ledger> TransactionState<L> {
                     // List the spendable native records for this key, and tag them with `key` so
                     // that when we collect records from multiple keys, we remember which key owns
                     // each record.
-                    input_records::<L>(
+                    if let Some(inputs) = input_records::<L>(
                         records,
                         &AssetCode::native(),
                         &key.address(),
                         FreezeFlag::Unfrozen,
                         now,
-                    )
-                    .map(move |record| (record.record_opening().clone(), record.uid(), key))
-                    .collect::<Vec<_>>()
+                    ) {
+                        inputs
+                            .map(move |record| (record.record_opening().clone(), record.uid(), key))
+                            .collect::<Vec<_>>()
+                    } else {
+                        vec![]
+                    }
                 })
                 // Find the smallest record among all the records from all the keys.
                 .min_by_key(|(ro, _, _)| ro.amount)

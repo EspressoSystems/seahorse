@@ -21,6 +21,8 @@ use jf_cap::{
 };
 use net::UserPubKey;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
+use std::iter;
 use std::ops::{Deref, DerefMut};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -169,6 +171,7 @@ impl Records {
                 ),
                 (record.ro.amount.into(), record.uid),
             ));
+            println!("inserting nullifer on new store {}", record.nullifier);
             records
                 .nullifier_records
                 .insert((record.nullifier, record.uid));
@@ -201,6 +204,7 @@ impl Records {
             (ro.asset_def.code, ro.pub_key.address(), ro.freeze_flag),
             (record.ro.amount.into(), record.uid),
         ));
+        println!("inserting nulifier {}", record.nullifier());
         self.nullifier_records
             .insert((record.nullifier, record.uid));
         let mut editor = RecordEditor::new(self, record);
@@ -234,6 +238,7 @@ impl Records {
         &self,
         nullifier: &Nullifier,
     ) -> Result<Record, KeystoreError<L>> {
+        println!("With nullifier");
         let uid = self
             .nullifier_records
             .index()
@@ -246,11 +251,13 @@ impl Records {
         &mut self,
         nullifier: &Nullifier,
     ) -> Result<RecordEditor, KeystoreError<L>> {
+        println!("With nullifier mut. {} ", nullifier);
         let uid = *self
             .nullifier_records
             .index()
             .get(nullifier)
             .ok_or(KeyValueStoreError::KeyNotFound)?;
+        println!("found");
         self.get_mut(uid)
     }
 
@@ -261,16 +268,23 @@ impl Records {
         asset: &AssetCode,
         owner: &UserAddress,
         frozen: FreezeFlag,
-    ) -> Result<impl Iterator<Item = Record> + '_, KeystoreError<L>> {
+    ) -> Option<impl Iterator<Item = Record> + '_> {
+        println!("Getting spendable");
         let unspent_records = self
             .asset_records
             .index()
-            .get(&(*asset, owner.clone(), frozen))
-            .ok_or(KeyValueStoreError::KeyNotFound)?;
-        Ok(unspent_records
-            .iter()
-            .rev()
-            .map(move |(_, uid)| self.get::<L>(*uid).unwrap()))
+            .get(&(*asset, owner.clone(), frozen));
+        if let Some(records) = unspent_records {
+            Some(
+                records
+                    .iter()
+                    .rev()
+                    .map(move |(_, uid)| self.get::<L>(*uid).unwrap()),
+            )
+        } else {
+            println!("Nothing spendable");
+            None
+        }
     }
 
     /// Get one record with the exact amount or return None.  
@@ -310,6 +324,7 @@ impl Records {
 
     /// Revert the store version.
     pub fn revert<L: Ledger>(&mut self) -> Result<(), KeystoreError<L>> {
+        println!("REVERT!!! \n\n\n");
         self.asset_records.revert();
         self.nullifier_records.revert();
         Ok(self.store.revert_version()?)
@@ -329,6 +344,7 @@ impl Records {
             ),
             (record.amount(), record.uid()),
         ));
+        println!("removing nullifier {}", record.nullifier());
         self.nullifier_records
             .remove((record.nullifier, record.uid));
         Ok(record)
@@ -338,6 +354,7 @@ impl Records {
         &mut self,
         nullifier: &Nullifier,
     ) -> Result<Record, KeystoreError<L>> {
+        println!("delete With nullifier {}", nullifier);
         let uid = *self
             .nullifier_records
             .index()
