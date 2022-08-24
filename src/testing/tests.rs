@@ -1929,7 +1929,7 @@ pub mod generic_keystore_tests {
                         .persistence
                         .key_stream()
                         .derive_sub_tree("user".as_bytes())
-                        .derive_user_key_pair(&model.sending_accounts.index().to_le_bytes());
+                        .derive_user_key_pair(&model.sending_accounts.next_index().to_le_bytes());
                     model.backend.register_user_key(&key).await.unwrap();
                     Ok(key)
                 })

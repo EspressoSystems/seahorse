@@ -1190,11 +1190,10 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                 // new key, so keep incrementing the key stream state and generating keys until we
                 // find one that is new.
                 loop {
-                    let index = model.sending_accounts.index();
+                    let index = model.sending_accounts.next_index();
                     let user_key = model
                         .user_key_stream
                         .derive_user_key_pair(&index.to_le_bytes());
-                    model.sending_accounts.increment_index();
                     if model.sending_accounts.get(&user_key.address()).is_err() {
                         break (user_key, Some(index));
                     }
@@ -1224,10 +1223,9 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         // remote services.
         model
             .sending_accounts
-            .create(user_key.clone())?
+            .create(user_key.clone(), index)?
             .with_description(description)
             .set_scan(scan)
-            .set_index(index)
             .save()?;
         model.persistence.store_snapshot(self).await?;
         // If we successfully updated our data structures, register the key with the
@@ -1253,20 +1251,18 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                 (viewing_key, None)
             }
             None => {
-                let index = model.viewing_accounts.index();
+                let index = model.viewing_accounts.next_index();
                 let viewing_key = model
                     .viewer_key_stream
                     .derive_viewer_key_pair(&index.to_le_bytes());
-                model.viewing_accounts.increment_index();
                 (viewing_key, Some(index))
             }
         };
 
         model
             .viewing_accounts
-            .create(viewing_key.clone())?
+            .create(viewing_key.clone(), index)?
             .with_description(description)
-            .set_index(index)
             .save()?;
         model.persistence.store_snapshot(self).await?;
         Ok(viewing_key)
@@ -1289,20 +1285,18 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                 (freezing_key, None)
             }
             None => {
-                let index = model.viewing_accounts.index();
+                let index = model.viewing_accounts.next_index();
                 let freezing_key = model
                     .freezer_key_stream
                     .derive_freezer_key_pair(&index.to_le_bytes());
-                model.freezing_accounts.increment_index();
                 (freezing_key, Some(index))
             }
         };
 
         model
             .freezing_accounts
-            .create(freezing_key.clone())?
+            .create(freezing_key.clone(), index)?
             .with_description(description)
-            .set_index(index)
             .save()?;
         model.persistence.store_snapshot(self).await?;
 
@@ -1678,7 +1672,7 @@ impl<
         if let Some((key, description)) = viewing_key {
             resources
                 .viewing_accounts
-                .create(key)
+                .create(key, None)
                 .unwrap()
                 .with_description(description)
                 .save()
@@ -1687,7 +1681,7 @@ impl<
         if let Some((key, description)) = freezing_key {
             resources
                 .freezing_accounts
-                .create(key)
+                .create(key, None)
                 .unwrap()
                 .with_description(description)
                 .save()
@@ -1696,7 +1690,7 @@ impl<
         if let Some((key, description)) = sending_key {
             resources
                 .sending_accounts
-                .create(key)
+                .create(key, None)
                 .unwrap()
                 .with_description(description)
                 .save()
