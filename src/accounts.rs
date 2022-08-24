@@ -289,7 +289,7 @@ impl<L: Ledger, Key: KeyPair + DeserializeOwned + Serialize> Accounts<L, Key> {
     }
 
     /// Get the index.
-    pub fn index(&mut self) -> usize {
+    pub fn index(&self) -> usize {
         self.index
     }
 
