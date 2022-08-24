@@ -288,6 +288,11 @@ impl<L: Ledger, Key: KeyPair + DeserializeOwned + Serialize> Accounts<L, Key> {
         Ok(AccountEditor::new(&mut self.store, account))
     }
 
+    /// Get the index.
+    pub fn index(&mut self) -> usize {
+        self.index
+    }
+
     /// Get and increment the index.
     pub fn next_index(&mut self) -> usize {
         let index = self.index;
