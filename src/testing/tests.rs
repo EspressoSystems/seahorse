@@ -934,7 +934,6 @@ pub mod generic_keystore_tests {
 
         // Check that, like transfer inputs, freeze inputs are placed on hold and unusable while a
         // freeze that uses them is pending.
-        println!("Trying to freeze againg should fail");
         match keystores[2]
             .0
             .freeze(Some(&src), 0, &asset.code, 3, dst)
@@ -3188,22 +3187,18 @@ pub mod generic_keystore_tests {
 
         // Mint the maximum single-record amount, thrice (which will cause a total amount which
         // exceeds both the max single-record amount and the max of a u128).
-        println!("First mint \n");
-        keystores[0]
-            .0
-            .mint(Some(&addr0), 1, &asset.code, max_record, pub_key0.clone())
-            .await
-            .unwrap();
-        println!("sync \n");
-        t.sync(&ledger, &keystores).await;
-        println!("Second mint \n");
         keystores[0]
             .0
             .mint(Some(&addr0), 1, &asset.code, max_record, pub_key0.clone())
             .await
             .unwrap();
         t.sync(&ledger, &keystores).await;
-        println!("Thrid mint \n");
+        keystores[0]
+            .0
+            .mint(Some(&addr0), 1, &asset.code, max_record, pub_key0.clone())
+            .await
+            .unwrap();
+        t.sync(&ledger, &keystores).await;
         keystores[0]
             .0
             .mint(Some(&addr0), 1, &asset.code, max_record, pub_key0.clone())
@@ -3234,7 +3229,6 @@ pub mod generic_keystore_tests {
         // for the fee, giving a total of 2^128 - 1. We just need to make sure we use the account
         // with a native record of amount 1 to pay the fee, not the secondary account which still
         // has its initial native record of amount 4.
-        println!("First transfer \n");
         keystores[0]
             .0
             .transfer(

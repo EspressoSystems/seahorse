@@ -895,7 +895,6 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                     .unwrap()
                     .used = true;
                 // Add the record.
-                println!("adding record in receive_attached_records");
                 model.records.create::<L>(
                     *uid,
                     ro.clone(),
@@ -923,7 +922,6 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                     .unwrap()
                     .used = true;
                 // Add the record.
-                println!("adding record in receive_attached_records freeze path");
                 model.records.create::<L>(
                     *uid,
                     ro.clone(),
@@ -982,7 +980,6 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                 .unwrap()
                 .used = true;
             // Save the record.
-            println!("adding record in add_record");
             model.records.create::<L>(
                 uid,
                 record.clone(),
@@ -1034,7 +1031,6 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
             .get(&TransactionUID::<L>(txn.hash()))
             .ok();
         for nullifier in txn.input_nullifiers() {
-            println!("clear pending unholding records via nullifier");
             if let Ok(record) = model.records.with_nullifier_mut::<L>(&nullifier) {
                 if pending.is_some() {
                     // If we started this transaction, all of its inputs should have been on hold,
@@ -1508,14 +1504,9 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                 let now = self.txn_state.block_height();
                 let timeout = now + (L::record_root_history() as u64);
                 let uid = TransactionUID(txn.hash());
-                println!(
-                    "transactions has {} nullifiers",
-                    txn.input_nullifiers().len()
-                );
                 for nullifier in txn.input_nullifiers() {
                     // hold the record corresponding to this nullifier until the transaction is committed,
                     // rejected, or expired.
-                    println!("holding record for submitted txn");
                     if let Ok(record) = model.records.with_nullifier_mut::<L>(&nullifier) {
                         assert!(!(*record).on_hold(now));
                         record.hold_until(timeout).save::<L>()?;

@@ -16,7 +16,6 @@ use crate::{
     transactions::{SignedMemos, TransactionParams},
 };
 use arbitrary::{Arbitrary, Unstructured};
-use arbitrary_wrappers::*;
 use ark_serialize::*;
 use chrono::Local;
 use derive_more::*;
@@ -31,7 +30,7 @@ use jf_cap::{
     sign_receiver_memos,
     structs::{
         Amount, AssetCode, AssetCodeSeed, AssetDefinition, AssetPolicy, FeeInput, FreezeFlag,
-        Nullifier, ReceiverMemo, RecordCommitment, RecordOpening, TxnFeeInfo,
+        ReceiverMemo, RecordCommitment, RecordOpening, TxnFeeInfo,
     },
     transfer::{TransferNote, TransferNoteInput},
     AccMemberWitness, KeyPair, MerkleLeafProof, Signature,
@@ -54,7 +53,6 @@ use std::convert::TryFrom;
 use std::convert::TryInto;
 use std::fmt::Debug;
 use std::hash::{Hash, Hasher};
-use std::iter;
 use std::ops::Mul;
 
 #[derive(
@@ -267,182 +265,8 @@ pub fn input_records<'a, L: Ledger + 'a>(
     now: u64,
 ) -> Option<impl Iterator<Item = Record> + 'a> {
     let spendable = records.get_spendable::<L>(&*asset, owner, frozen);
-    if let Some(r) = spendable {
-        Some(r.into_iter().filter(move |record| !record.on_hold(now)))
-    } else {
-        None
-    }
+    spendable.map(|r| r.into_iter().filter(move |record| !record.on_hold(now)))
 }
-//     /// Find a record with exactly the requested amount, which can be the input to a transaction,
-//     /// matching the given parameters.
-//     pub fn input_record_with_amount(
-//         &self,
-//         asset: &AssetCode,
-//         owner: &UserAddress,
-//         frozen: FreezeFlag,
-//         amount: RecordAmount,
-//         now: u64,
-//     ) -> Option<&RecordInfo> {
-//         let unspent_records = self.asset_records.get(&(*asset, owner.clone(), frozen))?;
-//         let exact_matches = unspent_records.range((amount, 0)..(amount + 1u64.into(), 0));
-//         for (match_amount, uid) in exact_matches {
-//             assert_eq!(*match_amount, amount);
-//             let record = &self.record_info[uid];
-//             assert_eq!(record.amount(), amount);
-//             if record.on_hold(now) {
-//                 continue;
-//             }
-//             return Some(record);
-//         }
-
-//         None
-//     }
-
-//     pub fn record_with_nullifier(&self, nullifier: &Nullifier) -> Option<&RecordInfo> {
-//         let uid = self.nullifier_records.get(nullifier)?;
-//         self.record_info.get(uid)
-//     }
-
-//     pub fn record_with_nullifier_mut(&mut self, nullifier: &Nullifier) -> Option<&mut RecordInfo> {
-//         let uid = self.nullifier_records.get(nullifier)?;
-//         self.record_info.get_mut(uid)
-//     }
-
-//     pub fn insert(&mut self, ro: RecordOpening, uid: u64, key_pair: &UserKeyPair) {
-//         assert_eq!(key_pair.pub_key(), ro.pub_key);
-//         let nullifier = key_pair.nullify(
-//             ro.asset_def.policy_ref().freezer_pub_key(),
-//             uid,
-//             &RecordCommitment::from(&ro),
-//         );
-//         self.insert_with_nullifier(ro, uid, nullifier)
-//     }
-
-//     pub fn insert_freezable(&mut self, ro: RecordOpening, uid: u64, key_pair: &FreezerKeyPair) {
-//         let nullifier = key_pair.nullify(&ro.pub_key.address(), uid, &RecordCommitment::from(&ro));
-//         self.insert_with_nullifier(ro, uid, nullifier)
-//     }
-
-//     pub fn insert_with_nullifier(&mut self, ro: RecordOpening, uid: u64, nullifier: Nullifier) {
-//         self.insert_record(RecordInfo {
-//             ro,
-//             uid,
-//             nullifier,
-//             hold_until: None,
-//         });
-//     }
-
-//     pub fn insert_record(&mut self, rec: RecordInfo) {
-//         if let Some(old) = self.record_info.insert(rec.uid, rec.clone()) {
-//             assert_eq!(rec, old);
-//             return;
-//         }
-//         self.asset_records
-//             .entry((
-//                 rec.ro.asset_def.code,
-//                 rec.ro.pub_key.address(),
-//                 rec.ro.freeze_flag,
-//             ))
-//             .or_insert_with(BTreeSet::new)
-//             .insert((rec.ro.amount.into(), rec.uid));
-//         self.nullifier_records.insert(rec.nullifier, rec.uid);
-
-//         #[cfg(any(test, debug_assertions))]
-//         self.check();
-//     }
-
-//     pub fn remove_by_nullifier(&mut self, nullifier: Nullifier) -> Option<RecordInfo> {
-//         self.nullifier_records.remove(&nullifier).map(|uid| {
-//             let record = self.record_info.remove(&uid).unwrap();
-
-//             // Remove the record from `asset_records`, and if the sub-collection it was in becomes
-//             // empty, remove the whole collection.
-//             let asset_key = &(
-//                 record.ro.asset_def.code,
-//                 record.ro.pub_key.address(),
-//                 record.ro.freeze_flag,
-//             );
-//             let asset_records = self.asset_records.get_mut(asset_key).unwrap();
-//             assert!(asset_records.remove(&(record.amount(), uid)));
-//             if asset_records.is_empty() {
-//                 self.asset_records.remove(asset_key);
-//             }
-
-//             #[cfg(any(test, debug_assertions))]
-//             self.check();
-
-//             record
-//         })
-//     }
-// }
-
-// impl Index<Nullifier> for RecordDatabase {
-//     type Output = RecordInfo;
-//     fn index(&self, index: Nullifier) -> &RecordInfo {
-//         self.record_with_nullifier(&index).unwrap()
-//     }
-// }
-
-// impl IndexMut<Nullifier> for RecordDatabase {
-//     fn index_mut(&mut self, index: Nullifier) -> &mut RecordInfo {
-//         self.record_with_nullifier_mut(&index).unwrap()
-//     }
-// }
-
-// impl FromIterator<RecordInfo> for RecordDatabase {
-//     fn from_iter<T: IntoIterator<Item = RecordInfo>>(iter: T) -> Self {
-//         let mut db = Self::default();
-//         for info in iter {
-//             db.insert_record(info)
-//         }
-//         db
-//     }
-// }
-
-// impl From<Vec<RecordInfo>> for RecordDatabase {
-//     fn from(records: Vec<RecordInfo>) -> Self {
-//         records.into_iter().collect()
-//     }
-// }
-
-// impl From<RecordDatabase> for Vec<RecordInfo> {
-//     fn from(db: RecordDatabase) -> Self {
-//         db.record_info.into_values().collect()
-//     }
-// }
-
-// impl<'a> Arbitrary<'a> for RecordDatabase {
-//     fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
-//         Ok(Self::from(u.arbitrary::<Vec<RecordInfo>>()?))
-//     }
-// }
-
-// impl PartialEq<Self> for RecordDatabase {
-//     fn eq(&self, other: &Self) -> bool {
-//         #[cfg(any(test, debug_assertions))]
-//         self.check();
-
-//         self.record_info == other.record_info
-//     }
-// }
-
-// impl Debug for RecordDatabase {
-//     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-//         let hline = String::from_iter(std::iter::repeat('-').take(80));
-//         writeln!(f, "{}", hline)?;
-//         for (i, record) in self.iter().enumerate() {
-//             writeln!(f, "Record {}", i + 1)?;
-//             writeln!(f, "  Owner: {}", record.ro.pub_key)?;
-//             writeln!(f, "  Asset: {}", record.ro.asset_def.code)?;
-//             writeln!(f, "  Amount: {}", record.ro.amount)?;
-//             writeln!(f, "  UID: {}", record.uid)?;
-//             writeln!(f, "  Nullifier: {}", record.nullifier)?;
-//             writeln!(f, "  On hold until: {:?}", record.hold_until)?;
-//             writeln!(f, "{}", hline)?;
-//         }
-//         Ok(())
-//     }
-// }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TransactionStatus {
@@ -1131,7 +955,6 @@ impl<L: Ledger> TransactionState<L> {
         max_records: Option<usize>,
         allow_insufficient: bool,
     ) -> Result<(Vec<(RecordOpening, u64)>, BigInt), TransactionError> {
-        println!("find records with Pub key");
         let now = self.validator.now();
 
         // If we have a record with the exact size required, use it to avoid
@@ -1269,7 +1092,6 @@ impl<L: Ledger> TransactionState<L> {
         key_pairs: &'l [UserKeyPair],
         fee: RecordAmount,
     ) -> Result<FeeInput<'l>, TransactionError> {
-        println!("find fee input");
         let (ro, uid, owner_keypair) = if fee.is_zero() {
             // For 0 fees, the allocation scheme is different than for other kinds of allocations.
             // For one thing, CAP requires one fee input record even if the amount of the record is
