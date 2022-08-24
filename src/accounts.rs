@@ -255,7 +255,7 @@ impl<L: Ledger, Key: KeyPair + DeserializeOwned + Serialize> Accounts<L, Key> {
         )?;
         let store = AccountsStore::<L, Key, Key::PubKey>::new(log)?;
         // The next index is `max_index + 1`, where `max_index` is the maximum index among all
-        // accounts. If no account has an index, the next index will be 0. 
+        // accounts. If no account has an index, the next index will be 0.
         let index = match store.iter().filter_map(|account| account.index()).max() {
             Some(index) => index + 1,
             None => 0,
