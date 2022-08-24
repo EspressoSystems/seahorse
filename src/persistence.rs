@@ -441,7 +441,6 @@ mod tests {
         stored.txn_state.record_mt.push(comm.to_field_element());
         stored.txn_state.validator.now += 1;
         stored.txn_state.now += EventIndex::from_source(EventSource::QueryService, 1);
-        // stored.txn_state.records.insert(ro, 0, &user_key);
 
         // Snapshot the modified dynamic state and then reload.
         {
@@ -507,9 +506,8 @@ mod tests {
 
     #[async_std::test]
     async fn test_revert() -> std::io::Result<()> {
-        let (mut stored, mut loader, mut rng) = get_test_state("test_revert").await;
+        let (stored, mut loader, _) = get_test_state("test_revert").await;
 
-        // Make a change to one of the data structures, but revert it.
         let loaded = {
             let mut atomic_loader = AtomicStoreLoader::load(
                 &KeystoreLoader::<cap::Ledger>::location(&loader),
@@ -519,11 +517,8 @@ mod tests {
             let mut storage =
                 AtomicKeystoreStorage::new(&mut loader, &mut atomic_loader, 1024).unwrap();
             let mut atomic_store = AtomicStore::open(atomic_loader).unwrap();
-            let user_key = UserKeyPair::generate(&mut rng);
-            let ro = random_ro(&mut rng, &user_key);
 
-            let mut updated = stored.clone();
-            // updated.txn_state.records.insert(ro, 0, &user_key);
+            let updated = stored.clone();
             storage.store_snapshot(&updated).await.unwrap();
             storage.revert().await;
             storage.commit().await;
@@ -546,26 +541,7 @@ mod tests {
                 AtomicKeystoreStorage::new(&mut loader, &mut atomic_loader, 1024).unwrap();
             let mut atomic_store = AtomicStore::open(atomic_loader).unwrap();
 
-            let user_key = UserKeyPair::generate(&mut rng);
-            let ro = random_ro(&mut rng, &user_key);
-            let nullifier = user_key.nullify(
-                ro.asset_def.policy_ref().freezer_pub_key(),
-                0,
-                &RecordCommitment::from(&ro),
-            );
-
-            // Store some data.
-            // stored.txn_state.records.insert(ro, 0, &user_key);
             storage.store_snapshot(&stored).await.unwrap();
-
-            // Revert the changes.
-            // stored
-            //     .txn_state
-            //     .records
-            //     .remove_by_nullifier(nullifier)
-            //     .unwrap();
-            // storage.revert().await;
-
             // Loading after revert should be a no-op.
             let state = storage.load().await.unwrap();
             storage.commit().await;

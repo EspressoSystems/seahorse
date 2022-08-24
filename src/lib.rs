@@ -497,9 +497,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         address: &UserAddress,
         frozen: FreezeFlag,
     ) -> U256 {
-        let spendable = model
-            .records
-            .get_spendable::<L>(asset, address, frozen);
+        let spendable = model.records.get_spendable::<L>(asset, address, frozen);
         if let Some(records) = spendable {
             records
                 .filter(move |record| !record.on_hold(self.txn_state.block_height()))
@@ -914,9 +912,11 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                 model.records.create::<L>(
                     *uid,
                     ro.clone(),
-                    account
-                        .key()
-                        .nullify(&ro.pub_key.address(), *uid, &RecordCommitment::from(&ro)),
+                    account.key().nullify(
+                        &ro.pub_key.address(),
+                        *uid,
+                        &RecordCommitment::from(&ro),
+                    ),
                 )?;
             }
         }
@@ -1056,10 +1056,11 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                     // `freeze_outputs`, so we skip that one
                     for ((uid, remember), ro) in uids.iter_mut().zip(pending.outputs()).skip(1) {
                         let key_pair = model
-                        .freezing_accounts
-                        .get(ro.asset_def.policy_ref().freezer_pub_key())
-                        .unwrap()
-                        .key().clone();
+                            .freezing_accounts
+                            .get(ro.asset_def.policy_ref().freezer_pub_key())
+                            .unwrap()
+                            .key()
+                            .clone();
                         model
                             .records
                             .create::<L>(
@@ -1953,7 +1954,9 @@ impl<
     pub async fn balance_breakdown(&self, address: &UserAddress, asset: &AssetCode) -> U256 {
         let KeystoreSharedState { state, model, .. } = &*self.read().await;
         match model.sending_accounts.get(address) {
-            Ok(account) => state.balance_breakdown(model, &account.pub_key(), asset, FreezeFlag::Unfrozen),
+            Ok(account) => {
+                state.balance_breakdown(model, &account.pub_key(), asset, FreezeFlag::Unfrozen)
+            }
             _ => U256::zero(),
         }
     }
@@ -1962,18 +1965,18 @@ impl<
     pub async fn frozen_balance_breakdown(&self, address: &UserAddress, asset: &AssetCode) -> U256 {
         let KeystoreSharedState { state, model, .. } = &*self.read().await;
         match model.sending_accounts.get(address) {
-            Ok(account) => state.balance_breakdown(model, &account.pub_key(), asset, FreezeFlag::Frozen),
+            Ok(account) => {
+                state.balance_breakdown(model, &account.pub_key(), asset, FreezeFlag::Frozen)
+            }
             _ => U256::zero(),
         }
     }
-    
+
     /// List records owned or viewable by this keystore.
     pub async fn records(&self) -> impl Iterator<Item = Record> + '_ {
         let KeystoreSharedState { model, .. } = &*self.read().await;
         model.records.iter().collect::<Vec<_>>().into_iter()
     }
-
-
 
     /// List assets discovered or imported by this keystore.
     pub async fn assets(&self) -> Vec<Asset> {
