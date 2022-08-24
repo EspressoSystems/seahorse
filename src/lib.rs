@@ -1653,17 +1653,10 @@ impl<
         freezing_key: Option<(FreezerKeyPair, String)>,
         sending_key: Option<(UserKeyPair, String)>,
     ) -> BoxFuture<'a, Result<Keystore<'a, Backend, L, Meta>, KeystoreError<L>>> {
-        let (
-            mut atomic_store,
-            mut persistence,
-            mut assets,
-            mut transactions,
-            mut viewing_accounts,
-            mut freezing_accounts,
-            mut sending_accounts,
-        ) = Self::create_stores(loader).unwrap();
+        let mut resources = Self::create_stores(loader).unwrap();
         if let Some((key, description)) = viewing_key {
-            viewing_accounts
+            resources
+                .viewing_accounts
                 .create(key)
                 .unwrap()
                 .with_description(description)
@@ -1671,7 +1664,8 @@ impl<
                 .unwrap();
         }
         if let Some((key, description)) = freezing_key {
-            freezing_accounts
+            resources
+                .freezing_accounts
                 .create(key)
                 .unwrap()
                 .with_description(description)
@@ -1679,7 +1673,8 @@ impl<
                 .unwrap();
         }
         if let Some((key, description)) = sending_key {
-            sending_accounts
+            resources
+                .sending_accounts
                 .create(key)
                 .unwrap()
                 .with_description(description)
@@ -1687,26 +1682,9 @@ impl<
                 .unwrap();
         }
         Box::pin(async move {
-            persistence.create(&state).await?;
-            persistence.commit().await;
-            assets.commit()?;
-            transactions.commit()?;
-            viewing_accounts.commit()?;
-            freezing_accounts.commit()?;
-            sending_accounts.commit()?;
-            atomic_store.commit_version()?;
-            Self::new_impl(
-                backend,
-                atomic_store,
-                persistence,
-                assets,
-                transactions,
-                viewing_accounts,
-                freezing_accounts,
-                sending_accounts,
-                state,
-            )
-            .await
+            resources.persistence.create(&state).await?;
+            resources.commit().await?;
+            Self::new_impl(backend, resources, state).await
         })
     }
 
