@@ -245,7 +245,6 @@ impl<'a, const H: u8> KeystoreBackend<'a, cap::LedgerWithHeight<H>>
 
                     now: network.now(),
                 },
-                key_state: Default::default(),
             }
         };
         Ok(state)

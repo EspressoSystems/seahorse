@@ -8,7 +8,7 @@
 //! Ledger-agnostic implementation of [KeystoreStorage].
 use crate::{
     hd::KeyTree, loader::KeystoreLoader, txn_builder::TransactionState, EncryptingResourceAdapter,
-    KeyStreamState, KeystoreError, KeystoreState,
+    KeystoreError, KeystoreState,
 };
 use arbitrary::{Arbitrary, Unstructured};
 use async_std::sync::Arc;
@@ -69,14 +69,12 @@ mod serde_ark_unchecked {
 #[serde(bound = "")]
 struct KeystoreSnapshot<L: Ledger> {
     txn_state: TransactionState<L>,
-    key_state: KeyStreamState,
 }
 
 impl<'a, L: Ledger> From<&KeystoreState<'a, L>> for KeystoreSnapshot<L> {
     fn from(w: &KeystoreState<'a, L>) -> Self {
         Self {
             txn_state: w.txn_state.clone(),
-            key_state: w.key_state.clone(),
         }
     }
 }
@@ -89,7 +87,6 @@ where
     fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
         Ok(Self {
             txn_state: u.arbitrary()?,
-            key_state: u.arbitrary()?,
         })
     }
 }
@@ -230,7 +227,6 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicKeystoreSto
 
             // Dynamic state
             txn_state: dynamic_state.txn_state,
-            key_state: dynamic_state.key_state,
         })
     }
 
@@ -382,7 +378,6 @@ mod tests {
                 nullifiers: Default::default(),
                 record_mt: record_merkle_tree,
             },
-            key_state: Default::default(),
         };
 
         let mut loader = MockKeystoreLoader {
