@@ -56,6 +56,9 @@ impl Record {
     pub fn asset_definition(&self) -> &AssetDefinition {
         &self.ro.asset_def
     }
+    pub fn asset_code(&self) -> AssetCode {
+        self.asset_definition().code
+    }
 
     pub fn pub_key(&self) -> &UserPubKey {
         &self.ro.pub_key
@@ -229,6 +232,31 @@ impl Records {
         Ok(RecordEditor::new(self, record))
     }
 
+    /// Get a Record from a Nullifier
+    pub fn with_nullifier<L: Ledger>(
+        &self,
+        nullifier: &Nullifier,
+    ) -> Result<Record, KeystoreError<L>> {
+        let uid = self
+            .nullifier_records
+            .index()
+            .get(nullifier)
+            .ok_or(KeyValueStoreError::KeyNotFound)?;
+        self.get(*uid)
+    }
+    /// Get a RecordEditor from a Nullifier
+    pub fn with_nullifier_mut<L: Ledger>(
+        &mut self,
+        nullifier: &Nullifier,
+    ) -> Result<RecordEditor, KeystoreError<L>> {
+        let uid = *self
+            .nullifier_records
+            .index()
+            .get(nullifier)
+            .ok_or(KeyValueStoreError::KeyNotFound)?;
+        self.get_mut(uid)
+    }
+
     /// Get records associated with an asset and account which are either frozen or unfrozen
     /// Useful for finding records for transaction inputs
     pub fn get_spendable<L: Ledger>(
@@ -236,16 +264,17 @@ impl Records {
         asset: &AssetCode,
         owner: &UserAddress,
         frozen: FreezeFlag,
-    ) -> Result<impl Iterator<Item = Record> + '_, KeystoreError<L>> {
+    ) -> Option<impl Iterator<Item = Record> + '_> {
         let unspent_records = self
             .asset_records
             .index()
-            .get(&(*asset, owner.clone(), frozen))
-            .ok_or(KeyValueStoreError::KeyNotFound)?;
-        Ok(unspent_records
-            .iter()
-            .rev()
-            .map(move |(_, uid)| self.get::<L>(*uid).unwrap()))
+            .get(&(*asset, owner.clone(), frozen));
+        unspent_records.map(|records| {
+            records
+                .iter()
+                .rev()
+                .map(move |(_, uid)| self.get::<L>(*uid).unwrap())
+        })
     }
 
     /// Get one record with the exact amount or return None.  
@@ -307,5 +336,17 @@ impl Records {
         self.nullifier_records
             .remove((record.nullifier, record.uid));
         Ok(record)
+    }
+
+    pub fn delete_by_nullifier<L: Ledger>(
+        &mut self,
+        nullifier: &Nullifier,
+    ) -> Result<Record, KeystoreError<L>> {
+        let uid = *self
+            .nullifier_records
+            .index()
+            .get(nullifier)
+            .ok_or(KeyValueStoreError::KeyNotFound)?;
+        self.delete(uid)
     }
 }

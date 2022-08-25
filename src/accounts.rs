@@ -207,9 +207,7 @@ impl<'a, L: Ledger, Key: KeyPair + DeserializeOwned + Serialize> AccountEditor<'
     }
 }
 
-impl<'a, L: Ledger, Key: KeyPair + DeserializeOwned + Serialize> Deref
-    for AccountEditor<'_, L, Key>
-{
+impl<L: Ledger, Key: KeyPair + DeserializeOwned + Serialize> Deref for AccountEditor<'_, L, Key> {
     type Target = Account<L, Key>;
 
     fn deref(&self) -> &Account<L, Key> {
@@ -217,7 +215,7 @@ impl<'a, L: Ledger, Key: KeyPair + DeserializeOwned + Serialize> Deref
     }
 }
 
-impl<'a, L: Ledger, Key: KeyPair + DeserializeOwned + Serialize> DerefMut
+impl<L: Ledger, Key: KeyPair + DeserializeOwned + Serialize> DerefMut
     for AccountEditor<'_, L, Key>
 {
     fn deref_mut(&mut self) -> &mut Account<L, Key> {

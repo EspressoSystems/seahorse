@@ -11,12 +11,11 @@
 //! provides an interface for building them.
 use crate::{
     events::EventIndex,
+    records::{Record, Records},
     sparse_merkle_tree::SparseMerkleTree,
-    transactions::{SignedMemos, Transaction, TransactionParams, Transactions},
-    KeystoreError,
+    transactions::{SignedMemos, TransactionParams},
 };
 use arbitrary::{Arbitrary, Unstructured};
-use arbitrary_wrappers::*;
 use ark_serialize::*;
 use chrono::Local;
 use derive_more::*;
@@ -31,7 +30,7 @@ use jf_cap::{
     sign_receiver_memos,
     structs::{
         Amount, AssetCode, AssetCodeSeed, AssetDefinition, AssetPolicy, FeeInput, FreezeFlag,
-        Nullifier, ReceiverMemo, RecordCommitment, RecordOpening, TxnFeeInfo,
+        ReceiverMemo, RecordCommitment, RecordOpening, TxnFeeInfo,
     },
     transfer::{TransferNote, TransferNoteInput},
     AccMemberWitness, KeyPair, MerkleLeafProof, Signature,
@@ -45,18 +44,16 @@ use rand_chacha::ChaChaRng;
 #[cfg(test)]
 use reef::cap;
 use reef::{
-    traits::{Ledger, Transaction as _, TransactionKind as _, Validator as _},
+    traits::{Ledger, TransactionKind as _, Validator as _},
     types::*,
 };
 use serde::{Deserialize, Serialize};
 use snafu::{ResultExt, Snafu};
-use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::convert::TryFrom;
 use std::convert::TryInto;
-use std::fmt::{Debug, Formatter};
+use std::fmt::Debug;
 use std::hash::{Hash, Hasher};
-use std::iter::FromIterator;
-use std::ops::{Index, IndexMut, Mul};
+use std::ops::Mul;
 
 #[derive(
     Debug,
@@ -216,281 +213,16 @@ pub enum TransactionError {
     },
 }
 
-#[ser_test(arbitrary, ark(false))]
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Hash)]
-pub struct RecordInfo {
-    pub ro: RecordOpening,
-    pub uid: u64,
-    pub nullifier: Nullifier,
-    // if Some(t), this record is on hold until the validator timestamp surpasses `t`, because this
-    // record has been used as an input to a transaction that is not yet confirmed.
-    pub hold_until: Option<u64>,
-}
-
-impl RecordInfo {
-    pub fn on_hold(&self, now: u64) -> bool {
-        matches!(self.hold_until, Some(t) if t > now)
-    }
-
-    pub fn hold_until(&mut self, until: u64) {
-        self.hold_until = Some(until);
-    }
-
-    pub fn unhold(&mut self) {
-        self.hold_until = None;
-    }
-
-    pub fn amount(&self) -> RecordAmount {
-        self.ro.amount.into()
-    }
-}
-
-impl<'a> Arbitrary<'a> for RecordInfo {
-    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
-        Ok(Self {
-            ro: u.arbitrary::<ArbitraryRecordOpening>()?.into(),
-            uid: u.arbitrary()?,
-            nullifier: u.arbitrary::<ArbitraryNullifier>()?.into(),
-            hold_until: u.arbitrary()?,
-        })
-    }
-}
-
-#[ser_test(ark(false))]
-#[derive(Clone, Default, Serialize, Deserialize)]
-#[serde(from = "Vec<RecordInfo>", into = "Vec<RecordInfo>")]
-pub struct RecordDatabase {
-    // all records in the database, by uid. We use a BTreeMap so that equivalent databases have a
-    // consistent ordering for iteration and comparison.
-    record_info: BTreeMap<u64, RecordInfo>,
-    // record (size, uid) indexed by asset type, owner, and freeze status, for easy allocation as
-    // transfer or freeze inputs. The records for each asset are ordered by increasing size, which
-    // makes it easy to implement a worst-fit allocator that minimizes fragmentation.
-    asset_records: HashMap<(AssetCode, UserAddress, FreezeFlag), BTreeSet<(RecordAmount, u64)>>,
-    // record uids indexed by nullifier, for easy removal when confirmed as transfer inputs
-    nullifier_records: HashMap<Nullifier, u64>,
-}
-
-impl RecordDatabase {
-    // Panic if the auxiliary indexes are not consistent with the authoritative `record_info`.
-    #[cfg(any(test, debug_assertions))]
-    fn check(&self) {
-        for (uid, record) in &self.record_info {
-            assert_eq!(*uid, record.uid);
-            assert!(self.asset_records[&(
-                record.ro.asset_def.code,
-                record.ro.pub_key.address(),
-                record.ro.freeze_flag
-            )]
-                .contains(&(record.amount(), *uid)));
-            assert_eq!(*uid, self.nullifier_records[&record.nullifier]);
-        }
-        assert_eq!(
-            self.record_info.len(),
-            self.asset_records
-                .values()
-                .map(|set| set.len())
-                .sum::<usize>()
-        );
-        assert_eq!(self.record_info.len(), self.nullifier_records.len());
-    }
-
-    pub fn iter(&self) -> impl Iterator<Item = &RecordInfo> {
-        self.record_info.values()
-    }
-
-    /// Find records which can be the input to a transaction, matching the given parameters.
-    pub fn input_records<'a>(
-        &'a self,
-        asset: &AssetCode,
-        owner: &UserAddress,
-        frozen: FreezeFlag,
-        now: u64,
-    ) -> impl Iterator<Item = &'a RecordInfo> {
-        self.asset_records
-            .get(&(*asset, owner.clone(), frozen))
-            .into_iter()
-            .flatten()
-            .rev()
-            .filter_map(move |(_, uid)| {
-                let record = &self.record_info[uid];
-                if record.on_hold(now) {
-                    // Skip records that are on hold
-                    None
-                } else {
-                    Some(record)
-                }
-            })
-    }
-    /// Find a record with exactly the requested amount, which can be the input to a transaction,
-    /// matching the given parameters.
-    pub fn input_record_with_amount(
-        &self,
-        asset: &AssetCode,
-        owner: &UserAddress,
-        frozen: FreezeFlag,
-        amount: RecordAmount,
-        now: u64,
-    ) -> Option<&RecordInfo> {
-        let unspent_records = self.asset_records.get(&(*asset, owner.clone(), frozen))?;
-        let exact_matches = unspent_records.range((amount, 0)..(amount + 1u64.into(), 0));
-        for (match_amount, uid) in exact_matches {
-            assert_eq!(*match_amount, amount);
-            let record = &self.record_info[uid];
-            assert_eq!(record.amount(), amount);
-            if record.on_hold(now) {
-                continue;
-            }
-            return Some(record);
-        }
-
-        None
-    }
-
-    pub fn record_with_nullifier(&self, nullifier: &Nullifier) -> Option<&RecordInfo> {
-        let uid = self.nullifier_records.get(nullifier)?;
-        self.record_info.get(uid)
-    }
-
-    pub fn record_with_nullifier_mut(&mut self, nullifier: &Nullifier) -> Option<&mut RecordInfo> {
-        let uid = self.nullifier_records.get(nullifier)?;
-        self.record_info.get_mut(uid)
-    }
-
-    pub fn insert(&mut self, ro: RecordOpening, uid: u64, key_pair: &UserKeyPair) {
-        assert_eq!(key_pair.pub_key(), ro.pub_key);
-        let nullifier = key_pair.nullify(
-            ro.asset_def.policy_ref().freezer_pub_key(),
-            uid,
-            &RecordCommitment::from(&ro),
-        );
-        self.insert_with_nullifier(ro, uid, nullifier)
-    }
-
-    pub fn insert_freezable(&mut self, ro: RecordOpening, uid: u64, key_pair: &FreezerKeyPair) {
-        let nullifier = key_pair.nullify(&ro.pub_key.address(), uid, &RecordCommitment::from(&ro));
-        self.insert_with_nullifier(ro, uid, nullifier)
-    }
-
-    pub fn insert_with_nullifier(&mut self, ro: RecordOpening, uid: u64, nullifier: Nullifier) {
-        self.insert_record(RecordInfo {
-            ro,
-            uid,
-            nullifier,
-            hold_until: None,
-        });
-    }
-
-    pub fn insert_record(&mut self, rec: RecordInfo) {
-        if let Some(old) = self.record_info.insert(rec.uid, rec.clone()) {
-            assert_eq!(rec, old);
-            return;
-        }
-        self.asset_records
-            .entry((
-                rec.ro.asset_def.code,
-                rec.ro.pub_key.address(),
-                rec.ro.freeze_flag,
-            ))
-            .or_insert_with(BTreeSet::new)
-            .insert((rec.ro.amount.into(), rec.uid));
-        self.nullifier_records.insert(rec.nullifier, rec.uid);
-
-        #[cfg(any(test, debug_assertions))]
-        self.check();
-    }
-
-    pub fn remove_by_nullifier(&mut self, nullifier: Nullifier) -> Option<RecordInfo> {
-        self.nullifier_records.remove(&nullifier).map(|uid| {
-            let record = self.record_info.remove(&uid).unwrap();
-
-            // Remove the record from `asset_records`, and if the sub-collection it was in becomes
-            // empty, remove the whole collection.
-            let asset_key = &(
-                record.ro.asset_def.code,
-                record.ro.pub_key.address(),
-                record.ro.freeze_flag,
-            );
-            let asset_records = self.asset_records.get_mut(asset_key).unwrap();
-            assert!(asset_records.remove(&(record.amount(), uid)));
-            if asset_records.is_empty() {
-                self.asset_records.remove(asset_key);
-            }
-
-            #[cfg(any(test, debug_assertions))]
-            self.check();
-
-            record
-        })
-    }
-}
-
-impl Index<Nullifier> for RecordDatabase {
-    type Output = RecordInfo;
-    fn index(&self, index: Nullifier) -> &RecordInfo {
-        self.record_with_nullifier(&index).unwrap()
-    }
-}
-
-impl IndexMut<Nullifier> for RecordDatabase {
-    fn index_mut(&mut self, index: Nullifier) -> &mut RecordInfo {
-        self.record_with_nullifier_mut(&index).unwrap()
-    }
-}
-
-impl FromIterator<RecordInfo> for RecordDatabase {
-    fn from_iter<T: IntoIterator<Item = RecordInfo>>(iter: T) -> Self {
-        let mut db = Self::default();
-        for info in iter {
-            db.insert_record(info)
-        }
-        db
-    }
-}
-
-impl From<Vec<RecordInfo>> for RecordDatabase {
-    fn from(records: Vec<RecordInfo>) -> Self {
-        records.into_iter().collect()
-    }
-}
-
-impl From<RecordDatabase> for Vec<RecordInfo> {
-    fn from(db: RecordDatabase) -> Self {
-        db.record_info.into_values().collect()
-    }
-}
-
-impl<'a> Arbitrary<'a> for RecordDatabase {
-    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
-        Ok(Self::from(u.arbitrary::<Vec<RecordInfo>>()?))
-    }
-}
-
-impl PartialEq<Self> for RecordDatabase {
-    fn eq(&self, other: &Self) -> bool {
-        #[cfg(any(test, debug_assertions))]
-        self.check();
-
-        self.record_info == other.record_info
-    }
-}
-
-impl Debug for RecordDatabase {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let hline = String::from_iter(std::iter::repeat('-').take(80));
-        writeln!(f, "{}", hline)?;
-        for (i, record) in self.iter().enumerate() {
-            writeln!(f, "Record {}", i + 1)?;
-            writeln!(f, "  Owner: {}", record.ro.pub_key)?;
-            writeln!(f, "  Asset: {}", record.ro.asset_def.code)?;
-            writeln!(f, "  Amount: {}", record.ro.amount)?;
-            writeln!(f, "  UID: {}", record.uid)?;
-            writeln!(f, "  Nullifier: {}", record.nullifier)?;
-            writeln!(f, "  On hold until: {:?}", record.hold_until)?;
-            writeln!(f, "{}", hline)?;
-        }
-        Ok(())
-    }
+/// Find records which can be the input to a transaction, matching the given parameters.
+pub fn input_records<'a, L: Ledger + 'a>(
+    records: &'a Records,
+    asset: &'a AssetCode,
+    owner: &'a UserAddress,
+    frozen: FreezeFlag,
+    now: u64,
+) -> Option<impl Iterator<Item = Record> + 'a> {
+    let spendable = records.get_spendable::<L>(&*asset, owner, frozen);
+    spendable.map(|r| r.into_iter().filter(move |record| !record.on_hold(now)))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -578,9 +310,6 @@ pub struct TransactionState<L: Ledger> {
     pub now: EventIndex,
     // validator
     pub validator: Validator<L>,
-    // all records we care about, including records we own, records we have viewed, and records we
-    // can freeze or unfreeze
-    pub records: RecordDatabase,
     // sparse nullifier set Merkle tree mirrored from validators
     pub nullifiers: NullifierSet<L>,
     // sparse record Merkle tree mirrored from validators
@@ -591,7 +320,6 @@ impl<L: Ledger> PartialEq<Self> for TransactionState<L> {
     fn eq(&self, other: &Self) -> bool {
         self.now == other.now
             && self.validator == other.validator
-            && self.records == other.records
             && self.nullifiers == other.nullifiers
             && self.record_mt == other.record_mt
     }
@@ -607,7 +335,6 @@ where
         Ok(Self {
             now: u.arbitrary()?,
             validator: u.arbitrary()?,
-            records: u.arbitrary()?,
             nullifiers: u.arbitrary()?,
             record_mt: u.arbitrary()?,
         })
@@ -615,12 +342,6 @@ where
 }
 
 impl<L: Ledger> TransactionState<L> {
-    pub fn balance(&self, asset: &AssetCode, address: &UserAddress, frozen: FreezeFlag) -> U256 {
-        self.records
-            .input_records(asset, address, frozen, self.validator.now())
-            .fold(U256::zero(), |sum, record| sum + record.amount())
-    }
-
     pub fn block_height(&self) -> u64 {
         self.validator.now()
     }
@@ -637,76 +358,23 @@ impl<L: Ledger> TransactionState<L> {
         Ok((seed, asset_definition))
     }
 
-    pub fn add_pending_transaction(
-        &mut self,
-        transactions: &mut Transactions<L>,
-        txn: &reef::Transaction<L>,
-        mut info: TransactionParams<L>,
-    ) -> Result<Transaction<L>, KeystoreError<L>> {
-        let now = self.validator.now();
-        let timeout = now + (L::record_root_history() as u64);
-        let uid = TransactionUID(txn.hash());
-
-        for nullifier in txn.input_nullifiers() {
-            // hold the record corresponding to this nullifier until the transaction is committed,
-            // rejected, or expired.
-            if let Some(record) = self.records.record_with_nullifier_mut(&nullifier) {
-                assert!(!record.on_hold(now));
-                record.hold_until(timeout);
-            }
-        }
-        info.timeout = Some(timeout);
-        let stored_txn = transactions.create(uid, info);
-        Ok(stored_txn?.clone())
-    }
-
-    pub fn clear_pending_transaction<'t>(
-        &mut self,
-        transactions: &mut Transactions<L>,
-        txn: &reef::Transaction<L>,
-        res: &Option<CommittedTxn<'t>>,
-    ) -> Option<Transaction<L>> {
-        let now = self.validator.now();
-
-        let pending = transactions.get(&TransactionUID::<L>(txn.hash())).ok();
-        for nullifier in txn.input_nullifiers() {
-            if let Some(record) = self.records.record_with_nullifier_mut(&nullifier) {
-                if pending.is_some() {
-                    // If we started this transaction, all of its inputs should have been on hold,
-                    // to preserve the invariant that all input nullifiers of all pending
-                    // transactions are on hold.
-                    assert!(record.on_hold(now));
-
-                    if res.is_none() {
-                        // If the transaction was not accepted for any reason, its nullifiers have
-                        // not been spent, so remove the hold we placed on them.
-                        record.unhold();
-                    }
-                } else {
-                    // This isn't even our transaction.
-                    assert!(!record.on_hold(now));
-                }
-            }
-        }
-
-        pending
-    }
-
     pub fn transfer<'a, 'k>(
         &mut self,
+        records: &mut Records,
         spec: TransferSpec<'k>,
         proving_keys: &'k KeySet<TransferProvingKey<'a>, key_set::OrderByOutputs>,
         rng: &mut ChaChaRng,
     ) -> Result<(TransferNote, TransactionParams<L>), TransactionError> {
         if *spec.asset == AssetCode::native() {
-            self.transfer_native(spec, proving_keys, rng)
+            self.transfer_native(records, spec, proving_keys, rng)
         } else {
-            self.transfer_non_native(spec, proving_keys, rng)
+            self.transfer_non_native(records, spec, proving_keys, rng)
         }
     }
 
     fn transfer_native<'a, 'k>(
         &mut self,
+        records: &mut Records,
         spec: TransferSpec<'k>,
         proving_keys: &'k KeySet<TransferProvingKey<'a>, key_set::OrderByOutputs>,
         rng: &mut ChaChaRng,
@@ -719,6 +387,7 @@ impl<L: Ledger> TransactionState<L> {
 
         // find input records which account for at least the total amount, and possibly some change.
         let records = self.find_records(
+            records,
             &AssetCode::native(),
             spec.sender_key_pairs,
             FreezeFlag::Unfrozen,
@@ -831,6 +500,7 @@ impl<L: Ledger> TransactionState<L> {
 
     fn transfer_non_native<'a, 'k>(
         &mut self,
+        records_db: &mut Records,
         spec: TransferSpec<'k>,
         proving_keys: &'k KeySet<TransferProvingKey<'a>, key_set::OrderByOutputs>,
         rng: &mut ChaChaRng,
@@ -847,6 +517,7 @@ impl<L: Ledger> TransactionState<L> {
 
         // find input records of the asset type to spend (this does not include the fee input)
         let records = self.find_records(
+            records_db,
             spec.asset,
             spec.sender_key_pairs,
             FreezeFlag::Unfrozen,
@@ -884,7 +555,7 @@ impl<L: Ledger> TransactionState<L> {
                 ));
             }
         }
-        let fee_input = self.find_fee_input(spec.sender_key_pairs, spec.fee)?;
+        let fee_input = self.find_fee_input(records_db, spec.sender_key_pairs, spec.fee)?;
 
         // prepare outputs, excluding fee change (which will be automatically generated)
         let mut outputs = Vec::new();
@@ -1021,6 +692,7 @@ impl<L: Ledger> TransactionState<L> {
     #[allow(clippy::too_many_arguments)]
     pub fn mint<'a>(
         &mut self,
+        records: &mut Records,
         sending_keys: &[UserKeyPair],
         proving_key: &MintProvingKey<'a>,
         fee: RecordAmount,
@@ -1038,7 +710,7 @@ impl<L: Ledger> TransactionState<L> {
             FreezeFlag::Unfrozen,
         );
 
-        let fee_input = self.find_fee_input(sending_keys, fee)?;
+        let fee_input = self.find_fee_input(records, sending_keys, fee)?;
         let fee_rec = fee_input.ro.clone();
         let (fee_info, fee_out_rec) = TxnFeeInfo::new(rng, fee_input, fee.into()).unwrap();
         let rng = rng;
@@ -1075,6 +747,7 @@ impl<L: Ledger> TransactionState<L> {
     #[allow(clippy::too_many_arguments)]
     pub fn freeze_or_unfreeze<'a>(
         &mut self,
+        records: &mut Records,
         sending_keys: &[UserKeyPair],
         freezer_key_pair: &FreezerKeyPair,
         proving_keys: &KeySet<FreezeProvingKey<'a>, key_set::OrderByOutputs>,
@@ -1091,6 +764,7 @@ impl<L: Ledger> TransactionState<L> {
             FreezeFlag::Unfrozen => FreezeFlag::Frozen,
         };
         let (input_records, _) = self.find_records_with_pub_key(
+            records,
             &asset.code,
             &owner,
             inputs_frozen,
@@ -1109,7 +783,7 @@ impl<L: Ledger> TransactionState<L> {
                 keypair: freezer_key_pair,
             })
         }
-        let fee_input = self.find_fee_input(sending_keys, fee)?;
+        let fee_input = self.find_fee_input(records, sending_keys, fee)?;
         let fee_address = fee_input.owner_keypair.address();
 
         // find a proving key which can handle this transaction size
@@ -1172,8 +846,10 @@ impl<L: Ledger> TransactionState<L> {
     /// aggragated by multiple addresses.
     /// * Otherwise, the change amount must be nonnegative.
     #[allow(clippy::type_complexity)]
+    #[allow(clippy::too_many_arguments)]
     fn find_records_with_pub_key(
         &self,
+        records: &Records,
         asset: &AssetCode,
         owner: &UserAddress,
         frozen: FreezeFlag,
@@ -1189,11 +865,14 @@ impl<L: Ledger> TransactionState<L> {
         // too big for a single record, then of course we don not have a
         // record of exactly the right size.
         if let Ok(amount) = amount.try_into() {
-            if let Some(record) = self
-                .records
-                .input_record_with_amount(asset, owner, frozen, amount, now)
+            if let Some(record) = records
+                .get_spendable_with_amount::<L>(asset, owner, frozen, amount, now)
+                .unwrap()
             {
-                return Ok((vec![(record.ro.clone(), record.uid)], BigInt::zero()));
+                return Ok((
+                    vec![(record.record_opening().clone(), record.uid())],
+                    BigInt::zero(),
+                ));
             }
         }
 
@@ -1207,38 +886,40 @@ impl<L: Ledger> TransactionState<L> {
         // with something more sophisticated later.
         let mut result = vec![];
         let mut current_amount = U256::zero();
-        for record in self.records.input_records(asset, owner, frozen, now) {
-            // Skip 0-amount records; they take up slots in the transaction inputs without
-            // contributing to the total amount we're trying to consume.
-            if record.amount().is_zero() {
-                continue;
-            }
-
-            if let Some(max_records) = max_records {
-                if result.len() >= max_records {
-                    // Too much fragmentation: we can't make the required amount using few enough
-                    // records. This should be less likely once we implement a better allocation
-                    // strategy (or, any allocation strategy).
-                    //
-                    // In this case, we could either simply return an error, or we could
-                    // automatically generate a merge transaction to defragment our assets.
-                    // Automatically merging assets would implicitly incur extra transaction fees,
-                    // so for now we do the simple, uncontroversial thing and error out.
-                    return Err(TransactionError::Fragmentation {
-                        asset: *asset,
-                        amount,
-                        suggested_amount: current_amount,
-                        max_records,
-                    });
+        if let Some(inputs) = input_records::<L>(records, asset, owner, frozen, now) {
+            for record in inputs {
+                // Skip 0-amount records; they take up slots in the transaction inputs without
+                // contributing to the total amount we're trying to consume.
+                if record.amount().is_zero() {
+                    continue;
                 }
-            }
-            current_amount += record.amount().into();
-            result.push((record.ro.clone(), record.uid));
-            if current_amount >= amount {
-                return Ok((
-                    result,
-                    u256_to_signed(current_amount) - u256_to_signed(amount),
-                ));
+
+                if let Some(max_records) = max_records {
+                    if result.len() >= max_records {
+                        // Too much fragmentation: we can't make the required amount using few enough
+                        // records. This should be less likely once we implement a better allocation
+                        // strategy (or, any allocation strategy).
+                        //
+                        // In this case, we could either simply return an error, or we could
+                        // automatically generate a merge transaction to defragment our assets.
+                        // Automatically merging assets would implicitly incur extra transaction fees,
+                        // so for now we do the simple, uncontroversial thing and error out.
+                        return Err(TransactionError::Fragmentation {
+                            asset: *asset,
+                            amount,
+                            suggested_amount: current_amount,
+                            max_records,
+                        });
+                    }
+                }
+                current_amount += record.amount().into();
+                result.push((record.record_opening().clone(), record.uid()));
+                if current_amount >= amount {
+                    return Ok((
+                        result,
+                        u256_to_signed(current_amount) - u256_to_signed(amount),
+                    ));
+                }
             }
         }
 
@@ -1259,6 +940,7 @@ impl<L: Ledger> TransactionState<L> {
     #[allow(clippy::type_complexity)]
     fn find_records<'l>(
         &self,
+        records_db: &mut Records,
         asset: &AssetCode,
         owner_key_pairs: &'l [UserKeyPair],
         frozen: FreezeFlag,
@@ -1271,6 +953,7 @@ impl<L: Ledger> TransactionState<L> {
 
         for owner_key_pair in owner_key_pairs {
             let (input_records, change) = self.find_records_with_pub_key(
+                records_db,
                 asset,
                 &owner_key_pair.pub_key().address(),
                 frozen,
@@ -1307,6 +990,7 @@ impl<L: Ledger> TransactionState<L> {
     /// The record will be owned by one of the given key pairs.
     fn find_fee_input<'l>(
         &self,
+        records: &mut Records,
         key_pairs: &'l [UserKeyPair],
         fee: RecordAmount,
     ) -> Result<FeeInput<'l>, TransactionError> {
@@ -1332,14 +1016,19 @@ impl<L: Ledger> TransactionState<L> {
                     // List the spendable native records for this key, and tag them with `key` so
                     // that when we collect records from multiple keys, we remember which key owns
                     // each record.
-                    self.records
-                        .input_records(
-                            &AssetCode::native(),
-                            &key.address(),
-                            FreezeFlag::Unfrozen,
-                            now,
-                        )
-                        .map(move |record| (record.ro.clone(), record.uid, key))
+                    if let Some(inputs) = input_records::<L>(
+                        records,
+                        &AssetCode::native(),
+                        &key.address(),
+                        FreezeFlag::Unfrozen,
+                        now,
+                    ) {
+                        inputs
+                            .map(move |record| (record.record_opening().clone(), record.uid(), key))
+                            .collect::<Vec<_>>()
+                    } else {
+                        vec![]
+                    }
                 })
                 // Find the smallest record among all the records from all the keys.
                 .min_by_key(|(ro, _, _)| ro.amount)
@@ -1355,6 +1044,7 @@ impl<L: Ledger> TransactionState<L> {
             // and we can call out to the regular record allocation algorithm (using
             // `max_records == Some(1)`, since we cannot break fees into multiple records).
             let mut records = self.find_records(
+                records,
                 &AssetCode::native(),
                 key_pairs,
                 FreezeFlag::Unfrozen,

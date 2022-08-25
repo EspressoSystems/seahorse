@@ -239,7 +239,6 @@ impl<'a, const H: u8> KeystoreBackend<'a, cap::LedgerWithHeight<H>>
                 txn_state: TransactionState {
                     validator: network.validator.clone(),
 
-                    records: Default::default(),
                     nullifiers: Default::default(),
                     record_mt: SparseMerkleTree::sparse(network.records.clone()),
 
