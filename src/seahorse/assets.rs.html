@@ -861,6 +861,9 @@
 <span id="861">861</span>
 <span id="862">862</span>
 <span id="863">863</span>
+<span id="864">864</span>
+<span id="865">865</span>
+<span id="866">866</span>
 </pre><pre class="rust"><code><span class="comment">// Copyright (c) 2022 Espresso Systems (espressosys.com)</span>
 <span class="comment">// This file is part of the Seahorse library.</span>
 
@@ -873,9 +876,10 @@
 <span class="doccomment">//! This module defines [Asset], [AssetEditor], and [Assets], which provide CURD (create, read,</span>
 <span class="doccomment">//! update, and delete) operations, with the use of [KeyValueStore] to control the assets resource.</span>
 
-<span class="kw">use</span> <span class="kw">crate</span>::{<span class="ident">key_value_store</span>::<span class="kw-2">*</span>, <span class="ident">KeystoreError</span>, <span class="ident">Ledger</span>};
+<span class="kw">use</span> <span class="kw">crate</span>::{<span class="ident">key_value_store</span>::<span class="kw-2">*</span>, <span class="ident">EncryptingResourceAdapter</span>, <span class="ident">KeystoreError</span>, <span class="ident">Ledger</span>};
 <span class="kw">use</span> <span class="ident">arbitrary</span>::{<span class="ident">Arbitrary</span>, <span class="ident">Unstructured</span>};
 <span class="kw">use</span> <span class="ident">ark_serialize</span>::<span class="kw-2">*</span>;
+<span class="kw">use</span> <span class="ident">atomic_store</span>::{<span class="ident">AppendLog</span>, <span class="ident">AtomicStoreLoader</span>};
 <span class="kw">use</span> <span class="ident">chrono</span>::{<span class="ident">DateTime</span>, <span class="ident">Local</span>};
 <span class="kw">use</span> <span class="ident">espresso_macros::ser_test</span>;
 <span class="kw">use</span> <span class="ident">image</span>::{<span class="ident">imageops</span>, <span class="ident">ImageBuffer</span>, <span class="ident">ImageFormat</span>, <span class="ident">ImageResult</span>, <span class="ident">Pixel</span>, <span class="ident">Rgba</span>};
@@ -1166,8 +1170,6 @@
 }
 
 <span class="kw">impl</span> <span class="ident">Asset</span> {
-    <span class="attribute">#![<span class="ident">allow</span>(<span class="ident">dead_code</span>)]</span>
-
     <span class="doccomment">/// Create a native asset.</span>
     <span class="doccomment">///</span>
     <span class="doccomment">/// Returns the created asset.</span>
@@ -1538,12 +1540,16 @@
 }
 
 <span class="kw">impl</span> <span class="ident">Assets</span> {
-    <span class="attribute">#![<span class="ident">allow</span>(<span class="ident">dead_code</span>)]</span>
-
     <span class="doccomment">/// Load an assets store.</span>
     <span class="doccomment">///</span>
     <span class="doccomment">/// None of the loaded assets will be verified until `verify_assets` is called.</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">new</span><span class="op">&lt;</span><span class="ident">L</span>: <span class="ident">Ledger</span><span class="op">&gt;</span>(<span class="ident">store</span>: <span class="ident">AssetsStore</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="self">Self</span>, <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">new</span><span class="op">&lt;</span><span class="ident">L</span>: <span class="ident">Ledger</span><span class="op">&gt;</span>(
+        <span class="ident">loader</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">AtomicStoreLoader</span>,
+        <span class="ident">adaptor</span>: <span class="ident">EncryptingResourceAdapter</span><span class="op">&lt;</span>(<span class="ident">AssetCode</span>, <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">Asset</span><span class="op">&gt;</span>)<span class="op">&gt;</span>,
+        <span class="ident">fill_size</span>: <span class="ident">u64</span>,
+    ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="self">Self</span>, <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
+        <span class="kw">let</span> <span class="ident">log</span> <span class="op">=</span> <span class="ident">AppendLog::load</span>(<span class="ident">loader</span>, <span class="ident">adaptor</span>, <span class="string">&quot;keystore_assets&quot;</span>, <span class="ident">fill_size</span>)<span class="question-mark">?</span>;
+        <span class="kw">let</span> <span class="ident">store</span> <span class="op">=</span> <span class="ident">AssetsStore::new</span>(<span class="ident">log</span>)<span class="question-mark">?</span>;
         <span class="prelude-val">Ok</span>(<span class="self">Self</span> {
             <span class="ident">store</span>,
             <span class="ident">verified_assets</span>: <span class="ident">Persistable::new</span>(),

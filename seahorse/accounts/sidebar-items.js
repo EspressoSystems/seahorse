@@ -1,1 +1,1 @@
-initSidebarItems({"struct":[["Account","The persistent representation of an account."],["AccountInfo","An account bundled with all of its related information."]],"trait":[["KeyPair","Keys with a public part."]]});
+initSidebarItems({"struct":[["Account",""],["AccountEditor","An editor to create or update the account or accounts store."],["Accounts","Accounts stored in an accounts store."]],"trait":[["KeyPair","Keys with a public part."]],"type":[["AccountsStore",""]]});

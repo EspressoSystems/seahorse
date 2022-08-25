@@ -1,1 +1,0 @@
-initSidebarItems({"struct":[["Account",""],["AccountEditor","An editor to create or update the account or accounts store."],["Accounts","Accounts stored in an accounts store."]],"trait":[["KeyPair","Keys with a public part."]],"type":[["AccountsStore",""]]});

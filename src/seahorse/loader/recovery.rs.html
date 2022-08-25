@@ -96,7 +96,7 @@
 <span class="doccomment">/// decrypt them, change the keystore&#39;s password, and then re-encrypt it. If no files exist, the</span>
 <span class="doccomment">/// loader will create a new keystore using the given mnemonic and password. If the mnemonic used is</span>
 <span class="doccomment">/// in fact the same as the mnemonic used to create a keystore which has been lost, then the caller</span>
-<span class="doccomment">/// can recover their assets using [generate_user_key](crate::Keystore::generate_user_key) with</span>
+<span class="doccomment">/// can recover their assets using [generate_sending_account](crate::Keystore::generate_sending_account) with</span>
 <span class="doccomment">/// `scan_from` set to `Some(EventIndex::default())`. This will result in regenerating the same keys</span>
 <span class="doccomment">/// that belonged to the old keystore and scanning the ledger for records belonging to those keys.</span>
 <span class="doccomment">///</span>

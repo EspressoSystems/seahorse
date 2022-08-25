@@ -273,6 +273,12 @@
 <span id="273">273</span>
 <span id="274">274</span>
 <span id="275">275</span>
+<span id="276">276</span>
+<span id="277">277</span>
+<span id="278">278</span>
+<span id="279">279</span>
+<span id="280">280</span>
+<span id="281">281</span>
 </pre><pre class="rust"><code><span class="kw">use</span> <span class="kw">crate</span>::{
     <span class="ident">EventIndex</span>, <span class="ident">KeystoreBackend</span>, <span class="ident">KeystoreError</span>, <span class="ident">KeystoreModel</span>, <span class="ident">KeystoreState</span>, <span class="ident">TransactionStatus</span>,
     <span class="ident">TransactionUID</span>,
@@ -306,6 +312,9 @@
         <span class="self">self</span>.<span class="ident">model</span>.<span class="ident">persistence</span>.<span class="ident">commit</span>().<span class="kw">await</span>;
         <span class="self">self</span>.<span class="ident">model</span>.<span class="ident">assets</span>.<span class="ident">commit</span>()<span class="question-mark">?</span>;
         <span class="self">self</span>.<span class="ident">model</span>.<span class="ident">transactions</span>.<span class="ident">commit</span>()<span class="question-mark">?</span>;
+        <span class="self">self</span>.<span class="ident">model</span>.<span class="ident">viewing_accounts</span>.<span class="ident">commit</span>()<span class="question-mark">?</span>;
+        <span class="self">self</span>.<span class="ident">model</span>.<span class="ident">freezing_accounts</span>.<span class="ident">commit</span>()<span class="question-mark">?</span>;
+        <span class="self">self</span>.<span class="ident">model</span>.<span class="ident">sending_accounts</span>.<span class="ident">commit</span>()<span class="question-mark">?</span>;
         <span class="self">self</span>.<span class="ident">model</span>
             .<span class="ident">atomic_store</span>
             .<span class="ident">commit_version</span>()
@@ -315,6 +324,9 @@
     <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">revert</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(), <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
         <span class="self">self</span>.<span class="ident">model</span>.<span class="ident">assets</span>.<span class="ident">revert</span>()<span class="question-mark">?</span>;
         <span class="self">self</span>.<span class="ident">model</span>.<span class="ident">transactions</span>.<span class="ident">revert</span>()<span class="question-mark">?</span>;
+        <span class="self">self</span>.<span class="ident">model</span>.<span class="ident">viewing_accounts</span>.<span class="ident">revert</span>()<span class="question-mark">?</span>;
+        <span class="self">self</span>.<span class="ident">model</span>.<span class="ident">freezing_accounts</span>.<span class="ident">revert</span>()<span class="question-mark">?</span>;
+        <span class="self">self</span>.<span class="ident">model</span>.<span class="ident">sending_accounts</span>.<span class="ident">revert</span>()<span class="question-mark">?</span>;
         <span class="self">self</span>.<span class="ident">model</span>.<span class="ident">persistence</span>.<span class="ident">revert</span>().<span class="kw">await</span>;
         <span class="comment">// Reload in-memory state after the revert.</span>
         <span class="self">self</span>.<span class="ident">state</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">model</span>.<span class="ident">persistence</span>.<span class="ident">load</span>().<span class="kw">await</span><span class="question-mark">?</span>;
