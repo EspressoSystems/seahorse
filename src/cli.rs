@@ -833,8 +833,8 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                     .records()
                     .await
                     .into_iter()
-                    .filter(|rec| rec.record_opening().asset_def.code == asset.item && match &account {
-                        Some(address) => rec.record_opening().pub_key.address() == address.0,
+                    .filter(|rec| rec.asset_code() == asset.item && match &account {
+                        Some(address) => rec.pub_key().address() == address.0,
                         None => true
                     });
 
@@ -846,11 +846,11 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                 for record in records {
                     cli_write!(io, "{}\t{}\t{}",
                         record.uid(),
-                        record.record_opening().amount,
-                        record.record_opening().freeze_flag == FreezeFlag::Frozen
+                        record.amount(),
+                        record.freeze_flag() == FreezeFlag::Frozen
                     );
                     if account.is_none() {
-                        cli_write!(io, "\t{}", UserAddress::from(record.record_opening().pub_key.address()));
+                        cli_write!(io, "\t{}", UserAddress::from(record.pub_key().address()));
                     }
                     cli_writeln!(io);
                 }

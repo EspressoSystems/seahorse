@@ -501,7 +501,7 @@ mod tests {
 
     #[async_std::test]
     async fn test_revert() -> std::io::Result<()> {
-        let (stored, mut loader, _) = get_test_state("test_revert").await;
+        let (stored, mut loader, mut rng) = get_test_state("test_revert").await;
 
         let loaded = {
             let mut atomic_loader = AtomicStoreLoader::load(
@@ -513,7 +513,8 @@ mod tests {
                 AtomicKeystoreStorage::new(&mut loader, &mut atomic_loader, 1024).unwrap();
             let mut atomic_store = AtomicStore::open(atomic_loader).unwrap();
 
-            let updated = stored.clone();
+            let mut updated = stored.clone();
+            updated.txn_state.now = EventIndex::new(123, 456);
             storage.store_snapshot(&updated).await.unwrap();
             storage.revert().await;
             storage.commit().await;
@@ -536,7 +537,20 @@ mod tests {
                 AtomicKeystoreStorage::new(&mut loader, &mut atomic_loader, 1024).unwrap();
             let mut atomic_store = AtomicStore::open(atomic_loader).unwrap();
 
-            storage.store_snapshot(&stored).await.unwrap();
+            let user_key = UserKeyPair::generate(&mut rng);
+            let ro = random_ro(&mut rng, &user_key);
+            let nullifier = user_key.nullify(
+                ro.asset_def.policy_ref().freezer_pub_key(),
+                0,
+                &RecordCommitment::from(&ro),
+            );
+
+            let mut updated = stored.clone();
+            updated.txn_state.nullifiers.insert(nullifier.into());
+            updated.txn_state.now = EventIndex::new(123, 456);
+
+            storage.store_snapshot(&updated).await.unwrap();
+            storage.revert().await;
             // Loading after revert should be a no-op.
             let state = storage.load().await.unwrap();
             storage.commit().await;

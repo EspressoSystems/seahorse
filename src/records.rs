@@ -56,6 +56,9 @@ impl Record {
     pub fn asset_definition(&self) -> &AssetDefinition {
         &self.ro.asset_def
     }
+    pub fn asset_code(&self) -> AssetCode {
+        self.asset_definition().code
+    }
 
     pub fn pub_key(&self) -> &UserPubKey {
         &self.ro.pub_key

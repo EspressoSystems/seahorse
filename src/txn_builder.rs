@@ -849,7 +849,7 @@ impl<L: Ledger> TransactionState<L> {
     #[allow(clippy::too_many_arguments)]
     fn find_records_with_pub_key(
         &self,
-        records: &mut Records,
+        records: &Records,
         asset: &AssetCode,
         owner: &UserAddress,
         frozen: FreezeFlag,
