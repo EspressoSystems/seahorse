@@ -615,9 +615,9 @@ where
 }
 
 impl<L: Ledger> TransactionState<L> {
-    pub fn balance(&self, asset: &AssetCode, pub_key: &UserPubKey, frozen: FreezeFlag) -> U256 {
+    pub fn balance(&self, asset: &AssetCode, address: &UserAddress, frozen: FreezeFlag) -> U256 {
         self.records
-            .input_records(asset, &pub_key.address(), frozen, self.validator.now())
+            .input_records(asset, address, frozen, self.validator.now())
             .fold(U256::zero(), |sum, record| sum + record.amount())
     }
 

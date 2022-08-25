@@ -1,190 +1,37 @@
-/// Keys and associated data.
+// Copyright (c) 2022 Espresso Systems (espressosys.com)
+// This file is part of the Seahorse library.
+
+// This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+// You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+//! The accounts module.
+//!
+//! This module defines [Account], [AccountEditor], and [Accounts], which provide CURD (create, read,
+//! update, and delete) operations, with the use of [KeyValueStore] to control the accounts resource.
+
 use crate::{
-    assets::Asset,
-    events::{EventIndex, EventSource, LedgerEvent},
+    events::{EventSource, LedgerEvent},
     key_scan::{BackgroundKeyScan, ScanOutputs, ScanStatus},
-    txn_builder::RecordInfo,
+    key_value_store::KeyValueStore,
+    EncryptingResourceAdapter, KeystoreError,
 };
-use arbitrary::{Arbitrary, Unstructured};
-use arbitrary_wrappers::{ArbitraryFreezerKeyPair, ArbitraryUserKeyPair, ArbitraryViewerKeyPair};
+use atomic_store::{AppendLog, AtomicStoreLoader};
+use chrono::{DateTime, Local};
 use derivative::Derivative;
-use espresso_macros::ser_test;
 use jf_cap::{
     keys::{FreezerKeyPair, FreezerPubKey, UserAddress, UserKeyPair, ViewerKeyPair, ViewerPubKey},
-    structs::AssetCode,
     MerkleCommitment,
 };
-use primitive_types::U256;
-use reef::{Ledger, TransactionHash};
+use reef::Ledger;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use std::collections::HashMap;
-use std::fmt::Debug;
-
-/// The persistent representation of an account.
-#[ser_test(
-    arbitrary,
-    ark(false),
-    types(reef::cap::Ledger, ViewerKeyPair),
-    types(reef::cap::Ledger, FreezerKeyPair),
-    types(reef::cap::Ledger, UserKeyPair)
-)]
-#[derive(Derivative, Serialize, Deserialize)]
-#[derivative(
-    Clone(bound = "L: Ledger, Key: Clone"),
-    Debug(bound = "L: Ledger, Key: Debug")
-)]
-#[serde(bound = "L: Ledger, Key: Serialize + DeserializeOwned")]
-pub struct Account<L: Ledger, Key> {
-    pub(crate) key: Key,
-    pub(crate) description: String,
-    pub(crate) used: bool,
-    pub(crate) scan: Option<BackgroundKeyScan<L>>,
-}
-
-impl<L: Ledger, Key> Account<L, Key> {
-    pub fn new(key: Key, description: String) -> Self {
-        Self {
-            key,
-            description,
-            used: false,
-            scan: None,
-        }
-    }
-
-    pub(crate) async fn update_scan(
-        &mut self,
-        event: LedgerEvent<L>,
-        source: EventSource,
-        records_commitment: MerkleCommitment,
-    ) -> Option<(UserKeyPair, ScanOutputs<L>)> {
-        let mut scan = self.scan.take().unwrap();
-        scan.handle_event(event, source);
-        // Check if the scan is complete.
-        match scan.finalize(records_commitment) {
-            ScanStatus::Finished {
-                key,
-                records,
-                history,
-            } => Some((key, ScanOutputs { records, history })),
-            ScanStatus::InProgress(scan) => {
-                self.scan = Some(scan);
-                None
-            }
-        }
-    }
-}
-
-impl<L: Ledger, Key: KeyPair> PartialEq<Self> for Account<L, Key> {
-    fn eq(&self, other: &Self) -> bool {
-        // We assume that the private keys are equal if the public keys are.
-        self.key.pub_key() == other.key.pub_key()
-            && self.description == other.description
-            && self.used == other.used
-            && self.scan == other.scan
-    }
-}
-
-impl<'a, L: Ledger> Arbitrary<'a> for Account<L, ViewerKeyPair>
-where
-    TransactionHash<L>: Arbitrary<'a>,
-{
-    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
-        Ok(Self {
-            key: u.arbitrary::<ArbitraryViewerKeyPair>()?.into(),
-            description: u.arbitrary()?,
-            used: u.arbitrary()?,
-            scan: u.arbitrary()?,
-        })
-    }
-}
-
-impl<'a, L: Ledger> Arbitrary<'a> for Account<L, FreezerKeyPair>
-where
-    TransactionHash<L>: Arbitrary<'a>,
-{
-    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
-        Ok(Self {
-            key: u.arbitrary::<ArbitraryFreezerKeyPair>()?.into(),
-            description: u.arbitrary()?,
-            used: u.arbitrary()?,
-            scan: u.arbitrary()?,
-        })
-    }
-}
-
-impl<'a, L: Ledger> Arbitrary<'a> for Account<L, UserKeyPair>
-where
-    TransactionHash<L>: Arbitrary<'a>,
-{
-    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
-        Ok(Self {
-            key: u.arbitrary::<ArbitraryUserKeyPair>()?.into(),
-            description: u.arbitrary()?,
-            used: u.arbitrary()?,
-            scan: u.arbitrary()?,
-        })
-    }
-}
-
-/// An account bundled with all of its related information.
-#[derive(Clone, Debug)]
-pub struct AccountInfo<Key: KeyPair> {
-    pub address: Key::PubKey,
-    pub description: String,
-    pub used: bool,
-    pub assets: Vec<Asset>,
-    pub records: Vec<RecordInfo>,
-    /// The table of balances with corresponding asset code.
-    pub balances: HashMap<AssetCode, U256>,
-    /// The status of a ledger scan for this account's key.
-    ///
-    /// If a ledger scan using this account's key is in progress, `scan_status` contains the index
-    /// of the next event to be scanned and the index of the last event in the scan's range of
-    /// interest, in that order. Note that the former may be greater than the latter, since the scan
-    /// will not complete until it has caught with the main event loop, which may have advanced past
-    /// the end of the range of interest.
-    pub scan_status: Option<(EventIndex, EventIndex)>,
-}
-
-impl<Key: KeyPair> AccountInfo<Key> {
-    pub fn new<L: Ledger>(
-        account: Account<L, Key>,
-        assets: Vec<Asset>,
-        records: Vec<RecordInfo>,
-    ) -> Self {
-        let mut balances = HashMap::new();
-        for rec in &records {
-            *balances
-                .entry(rec.ro.asset_def.code)
-                .or_insert_with(U256::zero) += rec.amount().into();
-        }
-        Self {
-            address: account.key.pub_key(),
-            description: account.description,
-            used: account.used,
-            balances,
-            assets,
-            records,
-            scan_status: account.scan.map(|scan| (scan.status())),
-        }
-    }
-}
-
-impl<Key: KeyPair> PartialEq<Self> for AccountInfo<Key> {
-    fn eq(&self, other: &Self) -> bool {
-        self.address == other.address
-            && self.description == other.description
-            && self.used == other.used
-            && self.assets == other.assets
-            && self.records == other.records
-            && self.balances == other.balances
-            && self.scan_status == other.scan_status
-    }
-}
+use std::fmt::Display;
+use std::hash::Hash;
+use std::ops::{Deref, DerefMut};
 
 /// Keys with a public part.
 pub trait KeyPair: Clone + Send + Sync {
-    type PubKey: std::hash::Hash + Eq;
+    type PubKey: Clone + DeserializeOwned + Display + Eq + Hash + Serialize;
     fn pub_key(&self) -> Self::PubKey;
 }
 
@@ -205,12 +52,291 @@ impl KeyPair for FreezerKeyPair {
 }
 
 impl KeyPair for UserKeyPair {
-    // The PubKey here is supposed to be a conceptual "primary key" for looking up UserKeyPairs. We
-    // typically want to look up UserKeyPairs by Address, not PubKey, because if we have a PubKey we
-    // can always get and Address to do the lookup.
+    // The `PubKey` here is supposed to be a conceptual "primary key" for looking up
+    // `UserKeyPairs`. We typically want to look up `UserKeyPairs` by `Address`, not `UserPubKey`,
+    // because if we have a `UserPubKey` we can always get an `Address` to do the lookup.
     type PubKey = UserAddress;
 
     fn pub_key(&self) -> Self::PubKey {
         self.address()
+    }
+}
+
+#[derive(Clone, Debug, Derivative, Deserialize, Serialize)]
+#[serde(bound = "Key: DeserializeOwned + Serialize")]
+pub struct Account<L: Ledger, Key: KeyPair> {
+    /// The account key.
+    key: Key,
+    /// Optional index into the HD key stream.
+    ///
+    /// `None` means the key is imported, not an HD key.
+    index: Option<usize>,
+    /// The account description.
+    pub description: String,
+    /// Whether the account is used.
+    used: bool,
+    /// Optional ledger scan.
+    scan: Option<BackgroundKeyScan<L>>,
+    /// The time when the account was created.
+    created_time: DateTime<Local>,
+    /// The last time when the account was modified.
+    modified_time: DateTime<Local>,
+}
+
+impl<L: Ledger, Key: KeyPair> Account<L, Key> {
+    /// Get the account key.
+    pub fn key(&self) -> &Key {
+        &self.key
+    }
+
+    /// Get the account public key.
+    pub fn pub_key(&self) -> Key::PubKey {
+        self.key.pub_key()
+    }
+
+    /// Get the optional index into the HD key stream.
+    pub fn index(&self) -> Option<usize> {
+        self.index
+    }
+
+    /// Get the account description.
+    pub fn description(&self) -> &str {
+        &self.description
+    }
+
+    /// Check whether the account is used.
+    pub fn used(&self) -> bool {
+        self.used
+    }
+
+    /// Get the optional ledger scan.
+    pub fn scan(&self) -> Option<&BackgroundKeyScan<L>> {
+        self.scan.as_ref()
+    }
+
+    /// Get the created time.
+    pub fn created_time(&self) -> DateTime<Local> {
+        self.created_time
+    }
+
+    /// Get the modified time.
+    pub fn modified_time(&self) -> DateTime<Local> {
+        self.modified_time
+    }
+}
+
+pub type AccountsStore<L, Key, PubKey> = KeyValueStore<PubKey, Account<L, Key>>;
+
+/// An editor to create or update the account or accounts store.
+pub struct AccountEditor<'a, L: Ledger, Key: KeyPair + DeserializeOwned + Serialize> {
+    account: Account<L, Key>,
+    store: &'a mut AccountsStore<L, Key, Key::PubKey>,
+}
+
+impl<'a, L: Ledger, Key: KeyPair + DeserializeOwned + Serialize> AccountEditor<'a, L, Key> {
+    /// Create an account editor.
+    fn new(
+        store: &'a mut AccountsStore<L, Key, Key::PubKey>,
+        account: Account<L, Key>,
+    ) -> AccountEditor<'a, L, Key> {
+        Self { account, store }
+    }
+
+    /// Set the account description.
+    pub(crate) fn with_description(mut self, description: String) -> Self {
+        self.account.description = description;
+        self
+    }
+
+    /// Set the account as used.
+    pub fn set_used(mut self) -> Self {
+        self.account.used = true;
+        self
+    }
+
+    /// Set the optional ledger scan.
+    pub(crate) fn set_scan(mut self, scan: Option<BackgroundKeyScan<L>>) -> Self {
+        self.account.scan = scan;
+        self
+    }
+
+    /// Update the ledger scan.
+    ///
+    /// Returns
+    /// * `Err` if the scan isn't found, or
+    /// * `Ok((self, scan_info))`, where `scan_info` contains the scanned information if and only
+    /// if the scan is complete.
+    pub(crate) async fn update_scan(
+        mut self,
+        event: LedgerEvent<L>,
+        source: EventSource,
+        records_commitment: MerkleCommitment,
+    ) -> Result<
+        (
+            AccountEditor<'a, L, Key>,
+            Option<(UserKeyPair, ScanOutputs<L>)>,
+        ),
+        KeystoreError<L>,
+    > {
+        let mut scan = match self.account.scan.take() {
+            Some(scan) => scan,
+            None => return Err(KeystoreError::ScanNotFound),
+        };
+        scan.handle_event(event, source);
+        // Check if the scan is complete.
+        match scan.finalize(records_commitment) {
+            ScanStatus::Finished {
+                key,
+                records,
+                history,
+            } => Ok((self, Some((key, ScanOutputs { records, history })))),
+            ScanStatus::InProgress(scan) => {
+                self.account.scan = Some(scan);
+                Ok((self, None))
+            }
+        }
+    }
+
+    /// Save the account to the store.
+    ///
+    /// Returns the stored account.
+    pub fn save(&mut self) -> Result<Account<L, Key>, KeystoreError<L>> {
+        self.store.store(&self.account.pub_key(), &self.account)?;
+        self.account.modified_time = Local::now();
+        Ok(self.account.clone())
+    }
+}
+
+impl<'a, L: Ledger, Key: KeyPair + DeserializeOwned + Serialize> Deref
+    for AccountEditor<'_, L, Key>
+{
+    type Target = Account<L, Key>;
+
+    fn deref(&self) -> &Account<L, Key> {
+        &self.account
+    }
+}
+
+impl<'a, L: Ledger, Key: KeyPair + DeserializeOwned + Serialize> DerefMut
+    for AccountEditor<'_, L, Key>
+{
+    fn deref_mut(&mut self) -> &mut Account<L, Key> {
+        &mut self.account
+    }
+}
+
+/// Accounts stored in an accounts store.
+pub struct Accounts<L: Ledger, Key: KeyPair + DeserializeOwned + Serialize> {
+    /// A key-value store for accounts.
+    store: AccountsStore<L, Key, Key::PubKey>,
+
+    /// The next index into the HD key stream.
+    index: usize,
+}
+
+impl<L: Ledger, Key: KeyPair + DeserializeOwned + Serialize> Accounts<L, Key> {
+    /// Load an accounts store.
+    #[allow(clippy::type_complexity)]
+    pub fn new(
+        loader: &mut AtomicStoreLoader,
+        adaptor: EncryptingResourceAdapter<(Key::PubKey, Option<Account<L, Key>>)>,
+        pattern: &str,
+        fill_size: u64,
+    ) -> Result<Self, KeystoreError<L>> {
+        let log = AppendLog::load(
+            loader,
+            adaptor,
+            &format!("keystore_{}_accounts", pattern),
+            fill_size,
+        )?;
+        let store = AccountsStore::<L, Key, Key::PubKey>::new(log)?;
+        // The next index is `max_index + 1`, where `max_index` is the maximum index among all
+        // accounts. If no account has an index, the next index will be 0.
+        let index = match store.iter().filter_map(|account| account.index()).max() {
+            Some(index) => index + 1,
+            None => 0,
+        };
+        Ok(Self { store, index })
+    }
+
+    /// Iterate through the accounts.
+    pub fn iter(&self) -> impl Iterator<Item = Account<L, Key>> + '_ {
+        self.store.iter().cloned()
+    }
+
+    /// Iterate through the keys of all accounts.
+    pub fn iter_keys(&self) -> impl Iterator<Item = Key> + '_ {
+        self.iter().map(|account| account.key().clone())
+    }
+
+    /// Iterate through the public keys of all accounts.
+    pub fn iter_pub_keys(&self) -> impl Iterator<Item = Key::PubKey> + '_ {
+        self.iter().map(|account| account.pub_key())
+    }
+
+    /// Get the account by the public key from the store.
+    pub fn get(&self, pub_key: &Key::PubKey) -> Result<Account<L, Key>, KeystoreError<L>> {
+        Ok(self.store.load(pub_key)?)
+    }
+
+    /// Get a mutable account editor by the public key from the store.
+    pub fn get_mut(
+        &mut self,
+        pub_key: &Key::PubKey,
+    ) -> Result<AccountEditor<L, Key>, KeystoreError<L>> {
+        let account = self.get(pub_key)?;
+        Ok(AccountEditor::new(&mut self.store, account))
+    }
+
+    /// Get the index.
+    pub fn index(&self) -> usize {
+        self.index
+    }
+
+    /// Get and increment the index.
+    pub fn next_index(&mut self) -> usize {
+        let index = self.index;
+        self.index += 1;
+        index
+    }
+
+    /// Commit the store version.
+    pub fn commit(&mut self) -> Result<(), KeystoreError<L>> {
+        Ok(self.store.commit_version()?)
+    }
+
+    /// Revert the store version.
+    pub fn revert(&mut self) -> Result<(), KeystoreError<L>> {
+        Ok(self.store.revert_version()?)
+    }
+
+    /// Create an account with the default description.
+    ///
+    /// Returns the editor for the created account.
+    pub fn create(
+        &mut self,
+        key: Key,
+        index: Option<usize>,
+    ) -> Result<AccountEditor<L, Key>, KeystoreError<L>> {
+        let time = Local::now();
+        let account = Account {
+            key: key.clone(),
+            description: key.pub_key().to_string(),
+            used: false,
+            scan: None,
+            index,
+            created_time: time,
+            modified_time: time,
+        };
+        let mut editor = AccountEditor::new(&mut self.store, account);
+        editor.save()?;
+        Ok(editor)
+    }
+
+    /// Deletes an account from the store.
+    ///
+    /// Returns the deleted account.
+    pub fn delete(&mut self, pub_key: &Key::PubKey) -> Result<Account<L, Key>, KeystoreError<L>> {
+        Ok(self.store.delete(pub_key)?)
     }
 }

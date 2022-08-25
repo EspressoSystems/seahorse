@@ -103,7 +103,7 @@ async fn generate_independent_transactions<
     let mut w = t
         .create_keystore(KeyTree::random(&mut rng).0, &ledger)
         .await;
-    w.0.add_user_key(receiver.clone(), "key".into(), EventIndex::default())
+    w.0.add_sending_account(receiver.clone(), "key".into(), EventIndex::default())
         .await
         .unwrap();
 
@@ -216,7 +216,7 @@ async fn bench_ledger_scanner_setup<
     let mut w = t
         .create_keystore(KeyTree::random(&mut rng).0, &ledger)
         .await;
-    w.0.add_user_key(txns.receiver.clone(), "key".into(), EventIndex::default())
+    w.0.add_sending_account(txns.receiver.clone(), "key".into(), EventIndex::default())
         .await
         .unwrap();
 
@@ -238,10 +238,7 @@ async fn bench_ledger_scanner_setup<
     // Snapshot the state from which we want the benchmark keystores to start scanning the ledger.
     // Clear out any existing keys so that when we run the benchmark, we have full control over
     // which keys are in the keystore and whether it can receive, view, or freeze certain assets.
-    let mut initial_state = keystores[0].0.read().await.state().clone();
-    initial_state.viewing_accounts = Default::default();
-    initial_state.freezing_accounts = Default::default();
-    initial_state.sending_accounts = Default::default();
+    let initial_state = keystores[0].0.read().await.state().clone();
 
     // Create events by making a number of transfers. We transfer from a number of different
     // keystores so we can easily parallelize the transfers, which speeds things up and allows
@@ -294,25 +291,13 @@ fn bench_ledger_scanner_run<
     mut bench: BenchLedgerScanner<'a, T>,
     cfg: BenchLedgerScannerConfig,
 ) {
-    let scan_key = if cfg.role == ScannerRole::Receiver {
+    let scan_key = if cfg.role.clone() == ScannerRole::Receiver {
         bench.receiver.clone()
     } else {
         UserKeyPair::generate(&mut bench.rng)
     };
 
-    // Set up the keystore state for the benchmark.
-    let state = &mut bench.initial_state;
-    // If this is a viewing benchmark, add the viewable assets and viewing keys to the state.
-    if cfg.role == ScannerRole::Viewer {
-        state.freezing_accounts.insert(
-            bench.freezing_key.pub_key(),
-            Account::new(bench.freezing_key.clone(), "freezing".into()),
-        );
-        state.viewing_accounts.insert(
-            bench.viewing_key.pub_key(),
-            Account::new(bench.viewing_key.clone(), "viewing".into()),
-        );
-    }
+    let is_viewer = cfg.role == ScannerRole::Viewer;
 
     if cfg.background {
         // To create a background scan, just add a new key to an existing keystore.
@@ -320,14 +305,22 @@ fn bench_ledger_scanner_run<
             let mut bench = bench.clone();
             let scan_key = scan_key.clone();
             async move {
+                let (mut viewing_key, mut freezing_key) = (None, None);
+                if is_viewer {
+                    viewing_key = Some((bench.viewing_key.clone(), "viewing".into()));
+                    freezing_key = Some((bench.freezing_key.clone(), "freezing".into()));
+                }
                 let mut dur = Duration::default();
                 for _ in 0..n {
                     let (mut w, _tmp_dir) = bench
                         .t
-                        .create_keystore_with_state(
+                        .create_keystore_with_state_and_keys(
                             KeyTree::random(&mut bench.rng).0,
                             &bench.ledger,
                             bench.initial_state.clone(),
+                            viewing_key.clone(),
+                            freezing_key.clone(),
+                            None,
                         )
                         .await;
 
@@ -338,7 +331,7 @@ fn bench_ledger_scanner_run<
                     w.sync(bench.end_time).await.unwrap();
 
                     let start = Instant::now();
-                    w.add_user_key(scan_key.clone(), "key".into(), bench.start_time)
+                    w.add_sending_account(scan_key.clone(), "key".into(), bench.start_time)
                         .await
                         .unwrap();
                     w.await_key_scan(&scan_key.address()).await.unwrap();
@@ -356,13 +349,11 @@ fn bench_ledger_scanner_run<
             let mut bench = bench.clone();
             let scan_key = scan_key.clone();
             async move {
-                // Add the key directly to the state, ensuring that it is present immediately when
-                // the keystore is created.
-                bench
-                    .initial_state
-                    .sending_accounts
-                    .insert(scan_key.address(), Account::new(scan_key, "key".into()));
-
+                let (mut viewing_key, mut freezing_key) = (None, None);
+                if is_viewer {
+                    viewing_key = Some((bench.viewing_key.clone(), "viewing".into()));
+                    freezing_key = Some((bench.freezing_key.clone(), "freezing".into()));
+                }
                 let mut dur = Duration::default();
                 for _ in 0..n {
                     let state = bench.initial_state.clone();
@@ -370,12 +361,16 @@ fn bench_ledger_scanner_run<
                     // Create the keystore, starting the main event thread.
                     let (w, _tmp_dir) = bench
                         .t
-                        .create_keystore_with_state(
+                        .create_keystore_with_state_and_keys(
                             KeyTree::random(&mut bench.rng).0,
                             &bench.ledger,
                             state,
+                            viewing_key.clone(),
+                            freezing_key.clone(),
+                            Some((scan_key.clone(), "key".to_string())),
                         )
                         .await;
+
                     // Wait for the keystore to scan all the events.
                     w.sync(bench.end_time).await.unwrap();
                     dur += start.elapsed();

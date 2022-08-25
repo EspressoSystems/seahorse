@@ -7,14 +7,14 @@
 
 //! Ledger-agnostic implementation of [KeystoreStorage].
 use crate::{
-    accounts::Account, hd::KeyTree, loader::KeystoreLoader, txn_builder::TransactionState,
-    EncryptingResourceAdapter, KeyStreamState, KeystoreError, KeystoreState,
+    hd::KeyTree, loader::KeystoreLoader, txn_builder::TransactionState, EncryptingResourceAdapter,
+    KeystoreError, KeystoreState,
 };
 use arbitrary::{Arbitrary, Unstructured};
 use async_std::sync::Arc;
 use atomic_store::{load_store::BincodeLoadStore, AtomicStoreLoader, RollingLog};
+use derivative::Derivative;
 use espresso_macros::ser_test;
-use jf_cap::keys::{FreezerKeyPair, UserKeyPair, ViewerKeyPair};
 use key_set::{OrderByOutputs, ProverKeySet};
 use reef::*;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
@@ -64,34 +64,17 @@ mod serde_ark_unchecked {
 
 // Serialization intermediate for the dynamic part of a KeystoreState.
 #[ser_test(arbitrary, types(cap::Ledger), ark(false))]
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Derivative, Deserialize, Serialize)]
+#[derivative(PartialEq(bound = "L: Ledger"))]
 #[serde(bound = "")]
 struct KeystoreSnapshot<L: Ledger> {
     txn_state: TransactionState<L>,
-    key_state: KeyStreamState,
-    viewing_accounts: Vec<Account<L, ViewerKeyPair>>,
-    freezing_accounts: Vec<Account<L, FreezerKeyPair>>,
-    sending_accounts: Vec<Account<L, UserKeyPair>>,
-}
-
-impl<L: Ledger> PartialEq<Self> for KeystoreSnapshot<L> {
-    fn eq(&self, other: &Self) -> bool {
-        self.txn_state == other.txn_state
-            && self.key_state == other.key_state
-            && self.viewing_accounts == other.viewing_accounts
-            && self.freezing_accounts == other.freezing_accounts
-            && self.sending_accounts == other.sending_accounts
-    }
 }
 
 impl<'a, L: Ledger> From<&KeystoreState<'a, L>> for KeystoreSnapshot<L> {
     fn from(w: &KeystoreState<'a, L>) -> Self {
         Self {
             txn_state: w.txn_state.clone(),
-            key_state: w.key_state.clone(),
-            viewing_accounts: w.viewing_accounts.values().cloned().collect(),
-            freezing_accounts: w.freezing_accounts.values().cloned().collect(),
-            sending_accounts: w.sending_accounts.values().cloned().collect(),
         }
     }
 }
@@ -104,10 +87,6 @@ where
     fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
         Ok(Self {
             txn_state: u.arbitrary()?,
-            key_state: u.arbitrary()?,
-            viewing_accounts: u.arbitrary()?,
-            freezing_accounts: u.arbitrary()?,
-            sending_accounts: u.arbitrary()?,
         })
     }
 }
@@ -248,22 +227,6 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicKeystoreSto
 
             // Dynamic state
             txn_state: dynamic_state.txn_state,
-            key_state: dynamic_state.key_state,
-            viewing_accounts: dynamic_state
-                .viewing_accounts
-                .into_iter()
-                .map(|account| (account.key.pub_key(), account))
-                .collect(),
-            freezing_accounts: dynamic_state
-                .freezing_accounts
-                .into_iter()
-                .map(|account| (account.key.pub_key(), account))
-                .collect(),
-            sending_accounts: dynamic_state
-                .sending_accounts
-                .into_iter()
-                .map(|account| (account.key.address(), account))
-                .collect(),
         })
     }
 
@@ -323,7 +286,7 @@ mod tests {
     };
     use atomic_store::AtomicStore;
     use jf_cap::{
-        keys::{UserKeyPair, ViewerKeyPair},
+        keys::UserKeyPair,
         structs::{AssetDefinition, FreezeFlag, RecordCommitment, RecordOpening},
         TransactionVerifyingKey,
     };
@@ -415,10 +378,6 @@ mod tests {
                 nullifiers: Default::default(),
                 record_mt: record_merkle_tree,
             },
-            key_state: Default::default(),
-            viewing_accounts: Default::default(),
-            freezing_accounts: Default::default(),
-            sending_accounts: Default::default(),
         };
 
         let mut loader = MockKeystoreLoader {
@@ -510,13 +469,6 @@ mod tests {
         };
         assert_keystore_states_eq(&stored, &loaded);
 
-        // Append to monotonic state and then reload.
-        let viewing_key = ViewerKeyPair::generate(&mut rng);
-        // viewing keys for the asset library get persisted with the viewing accounts.
-        stored.viewing_accounts.insert(
-            viewing_key.pub_key(),
-            Account::new(viewing_key, "viewing_account".into()),
-        );
         {
             let mut atomic_loader = AtomicStoreLoader::load(
                 &KeystoreLoader::<cap::Ledger>::location(&loader),
