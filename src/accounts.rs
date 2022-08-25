@@ -67,6 +67,10 @@ impl KeyPair for UserKeyPair {
 pub struct Account<L: Ledger, Key: KeyPair> {
     /// The account key.
     key: Key,
+    /// Optional index into the HD key stream.
+    ///
+    /// `None` means the key is imported, not an HD key.
+    index: Option<usize>,
     /// The account description.
     pub description: String,
     /// Whether the account is used.
@@ -88,6 +92,11 @@ impl<L: Ledger, Key: KeyPair> Account<L, Key> {
     /// Get the account public key.
     pub fn pub_key(&self) -> Key::PubKey {
         self.key.pub_key()
+    }
+
+    /// Get the optional index into the HD key stream.
+    pub fn index(&self) -> Option<usize> {
+        self.index
     }
 
     /// Get the account description.
@@ -220,6 +229,9 @@ impl<'a, L: Ledger, Key: KeyPair + DeserializeOwned + Serialize> DerefMut
 pub struct Accounts<L: Ledger, Key: KeyPair + DeserializeOwned + Serialize> {
     /// A key-value store for accounts.
     store: AccountsStore<L, Key, Key::PubKey>,
+
+    /// The next index into the HD key stream.
+    index: usize,
 }
 
 impl<L: Ledger, Key: KeyPair + DeserializeOwned + Serialize> Accounts<L, Key> {
@@ -238,7 +250,13 @@ impl<L: Ledger, Key: KeyPair + DeserializeOwned + Serialize> Accounts<L, Key> {
             fill_size,
         )?;
         let store = AccountsStore::<L, Key, Key::PubKey>::new(log)?;
-        Ok(Self { store })
+        // The next index is `max_index + 1`, where `max_index` is the maximum index among all
+        // accounts. If no account has an index, the next index will be 0.
+        let index = match store.iter().filter_map(|account| account.index()).max() {
+            Some(index) => index + 1,
+            None => 0,
+        };
+        Ok(Self { store, index })
     }
 
     /// Iterate through the accounts.
@@ -270,6 +288,18 @@ impl<L: Ledger, Key: KeyPair + DeserializeOwned + Serialize> Accounts<L, Key> {
         Ok(AccountEditor::new(&mut self.store, account))
     }
 
+    /// Get the index.
+    pub fn index(&self) -> usize {
+        self.index
+    }
+
+    /// Get and increment the index.
+    pub fn next_index(&mut self) -> usize {
+        let index = self.index;
+        self.index += 1;
+        index
+    }
+
     /// Commit the store version.
     pub fn commit(&mut self) -> Result<(), KeystoreError<L>> {
         Ok(self.store.commit_version()?)
@@ -283,13 +313,18 @@ impl<L: Ledger, Key: KeyPair + DeserializeOwned + Serialize> Accounts<L, Key> {
     /// Create an account with the default description.
     ///
     /// Returns the editor for the created account.
-    pub fn create(&mut self, key: Key) -> Result<AccountEditor<L, Key>, KeystoreError<L>> {
+    pub fn create(
+        &mut self,
+        key: Key,
+        index: Option<usize>,
+    ) -> Result<AccountEditor<L, Key>, KeystoreError<L>> {
         let time = Local::now();
         let account = Account {
             key: key.clone(),
             description: key.pub_key().to_string(),
             used: false,
             scan: None,
+            index,
             created_time: time,
             modified_time: time,
         };

@@ -209,7 +209,6 @@ pub fn assert_keystore_states_eq<'a, L: Ledger>(
         w2.txn_state.validator.commit()
     );
     assert_eq!(w1.proving_keys, w2.proving_keys);
-    assert_eq!(w1.key_state, w2.key_state);
     assert_eq!(w1.txn_state.nullifiers, w2.txn_state.nullifiers);
     assert_eq!(
         w1.txn_state.record_mt.commitment(),
