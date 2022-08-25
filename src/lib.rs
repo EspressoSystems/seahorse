@@ -1987,9 +1987,9 @@ impl<
     }
 
     /// List records owned or viewable by this keystore.
-    pub async fn records(&self) -> impl Iterator<Item = Record> + '_ {
+    pub async fn records(&self) -> Vec<Record> {
         let KeystoreSharedState { model, .. } = &*self.read().await;
-        model.records.iter().collect::<Vec<_>>().into_iter()
+        model.records.iter().collect::<Vec<_>>()
     }
 
     /// List assets discovered or imported by this keystore.

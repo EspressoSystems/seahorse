@@ -832,6 +832,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                 let records = keystore
                     .records()
                     .await
+                    .into_iter()
                     .filter(|rec| rec.record_opening().asset_def.code == asset.item && match &account {
                         Some(address) => rec.record_opening().pub_key.address() == address.0,
                         None => true
