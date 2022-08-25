@@ -475,23 +475,6 @@ impl<L: Ledger> Default for EventSummary<L> {
 }
 
 impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
-    pub fn balance_for_key<Meta: Serialize + DeserializeOwned + Send>(
-        &self,
-        model: &KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
-        asset: &AssetCode,
-        address: &UserAddress,
-        frozen: FreezeFlag,
-    ) -> U256 {
-        let spendable = model.records.get_spendable::<L>(asset, address, frozen);
-        if let Some(records) = spendable {
-            records
-                .filter(move |record| !record.on_hold(self.txn_state.block_height()))
-                .fold(U256::zero(), |sum, record| sum + record.amount())
-        } else {
-            U256::zero()
-        }
-    }
-
     pub fn balance<Meta: Serialize + DeserializeOwned + Send>(
         &self,
         model: &KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
@@ -501,7 +484,7 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
     ) -> U256 {
         let mut balance = U256::zero();
         for address in addresses {
-            balance += self.balance_for_key(model, asset, &address, frozen);
+            balance += self.balance_breakdown(model, &address, asset, frozen);
         }
         balance
     }
@@ -513,7 +496,14 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         asset: &AssetCode,
         frozen: FreezeFlag,
     ) -> U256 {
-        self.balance_for_key(model, asset, address, frozen)
+        let spendable = model.records.get_spendable::<L>(asset, address, frozen);
+        if let Some(records) = spendable {
+            records
+                .filter(move |record| !record.on_hold(self.txn_state.block_height()))
+                .fold(U256::zero(), |sum, record| sum + record.amount())
+        } else {
+            U256::zero()
+        }
     }
 
     // Inform the Transactions database that we have received memos for the given record UIDs. Return a list of
