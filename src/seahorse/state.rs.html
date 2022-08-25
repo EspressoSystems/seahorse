@@ -279,6 +279,7 @@
 <span id="279">279</span>
 <span id="280">280</span>
 <span id="281">281</span>
+<span id="282">282</span>
 </pre><pre class="rust"><code><span class="kw">use</span> <span class="kw">crate</span>::{
     <span class="ident">EventIndex</span>, <span class="ident">KeystoreBackend</span>, <span class="ident">KeystoreError</span>, <span class="ident">KeystoreModel</span>, <span class="ident">KeystoreState</span>, <span class="ident">TransactionStatus</span>,
     <span class="ident">TransactionUID</span>,
@@ -312,6 +313,7 @@
         <span class="self">self</span>.<span class="ident">model</span>.<span class="ident">persistence</span>.<span class="ident">commit</span>().<span class="kw">await</span>;
         <span class="self">self</span>.<span class="ident">model</span>.<span class="ident">assets</span>.<span class="ident">commit</span>()<span class="question-mark">?</span>;
         <span class="self">self</span>.<span class="ident">model</span>.<span class="ident">transactions</span>.<span class="ident">commit</span>()<span class="question-mark">?</span>;
+        <span class="self">self</span>.<span class="ident">model</span>.<span class="ident">records</span>.<span class="ident">commit</span>()<span class="question-mark">?</span>;
         <span class="self">self</span>.<span class="ident">model</span>.<span class="ident">viewing_accounts</span>.<span class="ident">commit</span>()<span class="question-mark">?</span>;
         <span class="self">self</span>.<span class="ident">model</span>.<span class="ident">freezing_accounts</span>.<span class="ident">commit</span>()<span class="question-mark">?</span>;
         <span class="self">self</span>.<span class="ident">model</span>.<span class="ident">sending_accounts</span>.<span class="ident">commit</span>()<span class="question-mark">?</span>;
