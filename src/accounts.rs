@@ -207,9 +207,7 @@ impl<'a, L: Ledger, Key: KeyPair + DeserializeOwned + Serialize> AccountEditor<'
     }
 }
 
-impl<L: Ledger, Key: KeyPair + DeserializeOwned + Serialize> Deref
-    for AccountEditor<'_, L, Key>
-{
+impl<L: Ledger, Key: KeyPair + DeserializeOwned + Serialize> Deref for AccountEditor<'_, L, Key> {
     type Target = Account<L, Key>;
 
     fn deref(&self) -> &Account<L, Key> {
