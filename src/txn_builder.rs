@@ -213,50 +213,7 @@ pub enum TransactionError {
     },
 }
 
-// #[ser_test(ark(false))]
-// #[derive(Clone, Default, Serialize, Deserialize)]
-// #[serde(from = "Vec<RecordInfo>", into = "Vec<RecordInfo>")]
-// pub struct RecordDatabase {
-//     // all records in the database, by uid. We use a BTreeMap so that equivalent databases have a
-//     // consistent ordering for iteration and comparison.
-//     record_info: BTreeMap<u64, RecordInfo>,
-//     // record (size, uid) indexed by asset type, owner, and freeze status, for easy allocation as
-//     // transfer or freeze inputs. The records for each asset are ordered by increasing size, which
-//     // makes it easy to implement a worst-fit allocator that minimizes fragmentation.
-//     asset_records: HashMap<(AssetCode, UserAddress, FreezeFlag), BTreeSet<(RecordAmount, u64)>>,
-//     // record uids indexed by nullifier, for easy removal when confirmed as transfer inputs
-//     nullifier_records: HashMap<Nullifier, u64>,
-// }
-
-// impl RecordDatabase {
-//     // Panic if the auxiliary indexes are not consistent with the authoritative `record_info`.
-//     #[cfg(any(test, debug_assertions))]
-//     fn check(&self) {
-//         for (uid, record) in &self.record_info {
-//             assert_eq!(*uid, record.uid);
-//             assert!(self.asset_records[&(
-//                 record.ro.asset_def.code,
-//                 record.ro.pub_key.address(),
-//                 record.ro.freeze_flag
-//             )]
-//                 .contains(&(record.amount(), *uid)));
-//             assert_eq!(*uid, self.nullifier_records[&record.nullifier]);
-//         }
-//         assert_eq!(
-//             self.record_info.len(),
-//             self.asset_records
-//                 .values()
-//                 .map(|set| set.len())
-//                 .sum::<usize>()
-//         );
-//         assert_eq!(self.record_info.len(), self.nullifier_records.len());
-//     }
-
-//     pub fn iter(&self) -> impl Iterator<Item = &RecordInfo> {
-//         self.record_info.values()
-//     }
-
-//     /// Find records which can be the input to a transaction, matching the given parameters.
+/// Find records which can be the input to a transaction, matching the given parameters.
 pub fn input_records<'a, L: Ledger + 'a>(
     records: &'a Records,
     asset: &'a AssetCode,
@@ -400,61 +357,6 @@ impl<L: Ledger> TransactionState<L> {
         let asset_definition = AssetDefinition::new(code, policy).context(CryptoSnafu)?;
         Ok((seed, asset_definition))
     }
-
-    // pub fn add_pending_transaction(
-    //     &mut self,
-    //     transactions: &mut Transactions<L>,
-    //     txn: &reef::Transaction<L>,
-    //     mut info: TransactionParams<L>,
-    // ) -> Result<Transaction<L>, KeystoreError<L>> {
-    //     let now = self.validator.now();
-    //     let timeout = now + (L::record_root_history() as u64);
-    //     let uid = TransactionUID(txn.hash());
-
-    //     for nullifier in txn.input_nullifiers() {
-    //         // hold the record corresponding to this nullifier until the transaction is committed,
-    //         // rejected, or expired.
-    //         if let Some(record) = self.records.record_with_nullifier_mut(&nullifier) {
-    //             assert!(!record.on_hold(now));
-    //             record.hold_until(timeout);
-    //         }
-    //     }
-    //     info.timeout = Some(timeout);
-    //     let stored_txn = transactions.create(uid, info);
-    //     Ok(stored_txn?.clone())
-    // }
-
-    // pub fn clear_pending_transaction<'t>(
-    //     &mut self,
-    //     transactions: &mut Transactions<L>,
-    //     txn: &reef::Transaction<L>,
-    //     res: &Option<CommittedTxn<'t>>,
-    // ) -> Option<Transaction<L>> {
-    //     let now = self.validator.now();
-
-    //     let pending = transactions.get(&TransactionUID::<L>(txn.hash())).ok();
-    //     for nullifier in txn.input_nullifiers() {
-    //         if let Some(record) = self.records.record_with_nullifier_mut(&nullifier) {
-    //             if pending.is_some() {
-    //                 // If we started this transaction, all of its inputs should have been on hold,
-    //                 // to preserve the invariant that all input nullifiers of all pending
-    //                 // transactions are on hold.
-    //                 assert!(record.on_hold(now));
-
-    //                 if res.is_none() {
-    //                     // If the transaction was not accepted for any reason, its nullifiers have
-    //                     // not been spent, so remove the hold we placed on them.
-    //                     record.unhold();
-    //                 }
-    //             } else {
-    //                 // This isn't even our transaction.
-    //                 assert!(!record.on_hold(now));
-    //             }
-    //         }
-    //     }
-
-    //     pending
-    // }
 
     pub fn transfer<'a, 'k>(
         &mut self,

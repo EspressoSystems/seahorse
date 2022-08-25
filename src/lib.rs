@@ -1056,7 +1056,6 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                                     *uid,
                                     &RecordCommitment::from(ro),
                                 ),
-                                // TODO Error handling
                             )
                             .ok();
                         *remember = true;
