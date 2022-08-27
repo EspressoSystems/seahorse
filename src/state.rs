@@ -1,5 +1,5 @@
 use crate::{
-    EventIndex, KeystoreBackend, KeystoreError, KeystoreModel, KeystoreState, TransactionStatus,
+    EventIndex, KeystoreBackend, KeystoreError, KeystoreModel, ledger_state::LedgerState, TransactionStatus,
     TransactionUID,
 };
 use async_std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
@@ -17,7 +17,7 @@ pub struct KeystoreSharedState<
     Backend: KeystoreBackend<'a, L>,
     Meta: Serialize + DeserializeOwned + Send,
 > {
-    pub(crate) state: KeystoreState<'a, L>,
+    pub(crate) state: LedgerState<'a, L>,
     pub(crate) model: KeystoreModel<'a, L, Backend, Meta>,
     pub(crate) sync_handles: Vec<(EventIndex, oneshot::Sender<()>)>,
     pub(crate) txn_subscribers: HashMap<TransactionUID<L>, Vec<oneshot::Sender<TransactionStatus>>>,
@@ -58,7 +58,7 @@ impl<'a, L: Ledger, Backend: KeystoreBackend<'a, L>, Meta: Serialize + Deseriali
     KeystoreSharedState<'a, L, Backend, Meta>
 {
     pub fn new(
-        state: KeystoreState<'a, L>,
+        state: LedgerState<'a, L>,
         model: KeystoreModel<'a, L, Backend, Meta>,
         key_scans: impl IntoIterator<Item = UserAddress>,
     ) -> Self {
@@ -79,7 +79,7 @@ impl<'a, L: Ledger, Backend: KeystoreBackend<'a, L>, Meta: Serialize + Deseriali
         &mut self.model.backend
     }
 
-    pub fn state(&self) -> &KeystoreState<'a, L> {
+    pub fn state(&self) -> &LedgerState<'a, L> {
         &self.state
     }
 
@@ -100,7 +100,7 @@ impl<'a, L: Ledger, Backend: KeystoreBackend<'a, L>, Meta: Send + Serialize + De
     KeystoreSharedStateRwLock<'a, L, Backend, Meta>
 {
     pub fn new(
-        state: KeystoreState<'a, L>,
+        state: LedgerState<'a, L>,
         model: KeystoreModel<'a, L, Backend, Meta>,
         key_scans: impl IntoIterator<Item = UserAddress>,
     ) -> Self {

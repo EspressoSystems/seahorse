@@ -8,7 +8,7 @@
 //! Ledger-agnostic implementation of [KeystoreStorage].
 use crate::{
     hd::KeyTree, loader::KeystoreLoader, txn_builder::TransactionState, EncryptingResourceAdapter,
-    KeystoreError, KeystoreState,
+    KeystoreError, ledger_state::LedgerState,
 };
 use arbitrary::{Arbitrary, Unstructured};
 use async_std::sync::Arc;
@@ -22,15 +22,15 @@ use snafu::ResultExt;
 
 const ATOMIC_STORE_RETAINED_ENTRIES: u32 = 5;
 
-// Serialization intermediate for the static part of a KeystoreState.
+// Serialization intermediate for the static part of a LedgerState.
 #[derive(Deserialize, Serialize, Debug)]
 struct KeystoreStaticState<'a> {
     #[serde(with = "serde_ark_unchecked")]
     proving_keys: Arc<ProverKeySet<'a, OrderByOutputs>>,
 }
 
-impl<'a, L: Ledger> From<&KeystoreState<'a, L>> for KeystoreStaticState<'a> {
-    fn from(w: &KeystoreState<'a, L>) -> Self {
+impl<'a, L: Ledger> From<&LedgerState<'a, L>> for KeystoreStaticState<'a> {
+    fn from(w: &LedgerState<'a, L>) -> Self {
         Self {
             proving_keys: w.proving_keys.clone(),
         }
@@ -62,7 +62,7 @@ mod serde_ark_unchecked {
     }
 }
 
-// Serialization intermediate for the dynamic part of a KeystoreState.
+// Serialization intermediate for the dynamic part of a LedgerState.
 #[ser_test(arbitrary, types(cap::Ledger), ark(false))]
 #[derive(Debug, Derivative, Deserialize, Serialize)]
 #[derivative(PartialEq(bound = "L: Ledger"))]
@@ -71,8 +71,8 @@ struct KeystoreSnapshot<L: Ledger> {
     txn_state: TransactionState<L>,
 }
 
-impl<'a, L: Ledger> From<&KeystoreState<'a, L>> for KeystoreSnapshot<L> {
-    fn from(w: &KeystoreState<'a, L>) -> Self {
+impl<'a, L: Ledger> From<&LedgerState<'a, L>> for KeystoreSnapshot<L> {
+    fn from(w: &LedgerState<'a, L>) -> Self {
         Self {
             txn_state: w.txn_state.clone(),
         }
@@ -178,7 +178,7 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned + Clone + PartialE
 impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicKeystoreStorage<'a, L, Meta> {
     pub async fn create(
         mut self: &mut Self,
-        w: &KeystoreState<'a, L>,
+        w: &LedgerState<'a, L>,
     ) -> Result<(), KeystoreError<L>> {
         // Store the initial static and dynamic state, and the metadata.
         self.persisted_meta
@@ -210,7 +210,7 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicKeystoreSto
         self.persisted_meta.load_latest().is_ok()
     }
 
-    pub async fn load(&self) -> Result<KeystoreState<'a, L>, KeystoreError<L>> {
+    pub async fn load(&self) -> Result<LedgerState<'a, L>, KeystoreError<L>> {
         let static_state = self
             .static_data
             .load_latest()
@@ -221,7 +221,7 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicKeystoreSto
             .load_latest()
             .context(crate::PersistenceSnafu)?;
 
-        Ok(KeystoreState {
+        Ok(LedgerState {
             // Static state
             proving_keys: static_state.proving_keys,
 
@@ -232,7 +232,7 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicKeystoreSto
 
     pub async fn store_snapshot(
         &mut self,
-        w: &KeystoreState<'a, L>,
+        w: &LedgerState<'a, L>,
     ) -> Result<(), KeystoreError<L>> {
         self.dynamic_state
             .store_resource(&KeystoreSnapshot::from(w))
@@ -334,7 +334,7 @@ mod tests {
     async fn get_test_state(
         name: &str,
     ) -> (
-        KeystoreState<'static, cap::Ledger>,
+        LedgerState<'static, cap::Ledger>,
         MockKeystoreLoader,
         ChaChaRng,
     ) {
@@ -365,7 +365,7 @@ mod tests {
         let record_merkle_tree = SparseMerkleTree::new(cap::Ledger::merkle_height()).unwrap();
         let validator = cap::Validator::default();
 
-        let state = KeystoreState {
+        let state = LedgerState {
             proving_keys: Arc::new(ProverKeySet {
                 xfr: KeySet::new(xfr_prove_keys.into_iter()).unwrap(),
                 freeze: KeySet::new(vec![freeze_prove_key].into_iter()).unwrap(),
@@ -435,7 +435,7 @@ mod tests {
         let comm = RecordCommitment::from(&ro);
         stored.txn_state.record_mt.push(comm.to_field_element());
         stored.txn_state.validator.now += 1;
-        stored.txn_state.now += EventIndex::from_source(EventSource::QueryService, 1);
+        stored.txn_state.now() += EventIndex::from_source(EventSource::QueryService, 1);
 
         // Snapshot the modified dynamic state and then reload.
         {
@@ -514,7 +514,7 @@ mod tests {
             let mut atomic_store = AtomicStore::open(atomic_loader).unwrap();
 
             let mut updated = stored.clone();
-            updated.txn_state.now = EventIndex::new(123, 456);
+            updated.txn_state.now() = EventIndex::new(123, 456);
             storage.store_snapshot(&updated).await.unwrap();
             storage.revert().await;
             storage.commit().await;
@@ -547,7 +547,7 @@ mod tests {
 
             let mut updated = stored.clone();
             updated.txn_state.nullifiers.insert(nullifier.into());
-            updated.txn_state.now = EventIndex::new(123, 456);
+            updated.txn_state.now() = EventIndex::new(123, 456);
 
             storage.store_snapshot(&updated).await.unwrap();
             storage.revert().await;

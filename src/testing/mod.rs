@@ -200,10 +200,10 @@ impl<'a, L: Ledger, N: MockNetwork<'a, L>> MockLedger<'a, L, N> {
 // keystore states (like round-trip serialization tests) but since it is deterministic, we shouldn't
 // make it into a PartialEq instance.
 pub fn assert_keystore_states_eq<'a, L: Ledger>(
-    w1: &KeystoreState<'a, L>,
-    w2: &KeystoreState<'a, L>,
+    w1: &LedgerState<'a, L>,
+    w2: &LedgerState<'a, L>,
 ) {
-    assert_eq!(w1.txn_state.now, w2.txn_state.now);
+    assert_eq!(w1.txn_state.now(), w2.txn_state.now());
     assert_eq!(
         w1.txn_state.validator.commit(),
         w2.txn_state.validator.commit()
@@ -253,7 +253,7 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         &mut self,
         key_tree: KeyTree,
         ledger: &Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork>>>,
-        state: KeystoreState<'a, Self::Ledger>,
+        state: LedgerState<'a, Self::Ledger>,
         viewing_key: Option<(ViewerKeyPair, String)>,
         freezing_key: Option<(FreezerKeyPair, String)>,
         sending_key: Option<(UserKeyPair, String)>,
