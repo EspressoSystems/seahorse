@@ -2828,6 +2828,9 @@
 <span id="2828">2828</span>
 <span id="2829">2829</span>
 <span id="2830">2830</span>
+<span id="2831">2831</span>
+<span id="2832">2832</span>
+<span id="2833">2833</span>
 </pre><pre class="rust"><code><span class="comment">// Copyright (c) 2022 Espresso Systems (espressosys.com)</span>
 <span class="comment">// This file is part of the Seahorse library.</span>
 
@@ -3389,7 +3392,10 @@
                         <span class="comment">// sparseness. If any of the consumers of this block (for example, the</span>
                         <span class="comment">// viewer component, or the owner of this keystore) care about a uid, they</span>
                         <span class="comment">// will set its `remember` flag to true.</span>
-                        <span class="ident">uids</span>.<span class="ident">into_iter</span>().<span class="ident">map</span>(<span class="op">|</span><span class="ident">uid</span><span class="op">|</span> (<span class="ident">uid</span>, <span class="bool-val">false</span>)).<span class="ident">collect</span>::<span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="kw">_</span><span class="op">&gt;</span><span class="op">&gt;</span>()
+                        <span class="ident">uids</span>.<span class="number">0</span>
+                            .<span class="ident">into_iter</span>()
+                            .<span class="ident">map</span>(<span class="op">|</span><span class="ident">uid</span><span class="op">|</span> (<span class="ident">uid</span>, <span class="bool-val">false</span>))
+                            .<span class="ident">collect</span>::<span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="kw">_</span><span class="op">&gt;</span><span class="op">&gt;</span>()
                     }
                     <span class="prelude-val">Err</span>(<span class="ident">val_err</span>) <span class="op">=</span><span class="op">&gt;</span> {
                         <span class="comment">//todo !jeb.bearer handle this case more robustly. If we get here, it means</span>
