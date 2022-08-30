@@ -559,7 +559,10 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
                         // sparseness. If any of the consumers of this block (for example, the
                         // viewer component, or the owner of this keystore) care about a uid, they
                         // will set its `remember` flag to true.
-                        uids.into_iter().map(|uid| (uid, false)).collect::<Vec<_>>()
+                        uids.0
+                            .into_iter()
+                            .map(|uid| (uid, false))
+                            .collect::<Vec<_>>()
                     }
                     Err(val_err) => {
                         //todo !jeb.bearer handle this case more robustly. If we get here, it means

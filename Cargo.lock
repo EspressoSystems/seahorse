@@ -3336,7 +3336,7 @@ dependencies = [
 [[package]]
 name = "reef"
 version = "0.3.0"
-source = "git+https://github.com/EspressoSystems/reef.git#7b45d90bcf1894a4a542e1680ccdf8cb7e6df247"
+source = "git+https://github.com/EspressoSystems/reef.git#2cab39fa229c98de8d72a795e0020e888b4af847"
 dependencies = [
  "arbitrary",
  "arbitrary-wrappers",
@@ -3345,6 +3345,7 @@ dependencies = [
  "funty 1.1.0",
  "itertools",
  "jf-cap",
+ "jf-primitives",
  "lazy_static",
  "rand_chacha 0.3.1",
  "serde",
