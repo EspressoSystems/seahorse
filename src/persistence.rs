@@ -7,8 +7,8 @@
 
 //! Ledger-agnostic implementation of [KeystoreStorage].
 use crate::{
-    hd::KeyTree, loader::KeystoreLoader, txn_builder::TransactionState, EncryptingResourceAdapter,
-    KeystoreError, ledger_state::LedgerState,
+    hd::KeyTree, ledger_state::LedgerState, loader::KeystoreLoader, txn_builder::TransactionState,
+    EncryptingResourceAdapter, KeystoreError,
 };
 use arbitrary::{Arbitrary, Unstructured};
 use async_std::sync::Arc;
@@ -19,23 +19,6 @@ use key_set::{OrderByOutputs, ProverKeySet};
 use reef::*;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use snafu::ResultExt;
-
-const ATOMIC_STORE_RETAINED_ENTRIES: u32 = 5;
-
-// Serialization intermediate for the static part of a LedgerState.
-#[derive(Deserialize, Serialize, Debug)]
-struct KeystoreStaticState<'a> {
-    #[serde(with = "serde_ark_unchecked")]
-    proving_keys: Arc<ProverKeySet<'a, OrderByOutputs>>,
-}
-
-impl<'a, L: Ledger> From<&LedgerState<'a, L>> for KeystoreStaticState<'a> {
-    fn from(w: &LedgerState<'a, L>) -> Self {
-        Self {
-            proving_keys: w.proving_keys.clone(),
-        }
-    }
-}
 
 mod serde_ark_unchecked {
     use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
@@ -62,36 +45,7 @@ mod serde_ark_unchecked {
     }
 }
 
-// Serialization intermediate for the dynamic part of a LedgerState.
-#[ser_test(arbitrary, types(cap::Ledger), ark(false))]
-#[derive(Debug, Derivative, Deserialize, Serialize)]
-#[derivative(PartialEq(bound = "L: Ledger"))]
-#[serde(bound = "")]
-struct KeystoreSnapshot<L: Ledger> {
-    txn_state: TransactionState<L>,
-}
-
-impl<'a, L: Ledger> From<&LedgerState<'a, L>> for KeystoreSnapshot<L> {
-    fn from(w: &LedgerState<'a, L>) -> Self {
-        Self {
-            txn_state: w.txn_state.clone(),
-        }
-    }
-}
-
-impl<'a, L: Ledger> Arbitrary<'a> for KeystoreSnapshot<L>
-where
-    TransactionState<L>: Arbitrary<'a>,
-    TransactionHash<L>: Arbitrary<'a>,
-{
-    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
-        Ok(Self {
-            txn_state: u.arbitrary()?,
-        })
-    }
-}
-
-pub struct AtomicKeystoreStorage<'a, L: Ledger, Meta: Serialize + DeserializeOwned> {
+pub struct AtomicKeystoreStorage<Meta: Serialize + DeserializeOwned> {
     // Metadata given at initialization time that may not have been written to disk yet.
     meta: Meta,
     // Persisted metadata, if the keystore has already been committed to disk. This is a snapshot log
@@ -100,18 +54,11 @@ pub struct AtomicKeystoreStorage<'a, L: Ledger, Meta: Serialize + DeserializeOwn
     // metadata and static data are persisted to disk atomically when the keystore is created.
     persisted_meta: RollingLog<BincodeLoadStore<Meta>>,
     meta_dirty: bool,
-    // Snapshot log with a single entry containing the static data.
-    static_data: RollingLog<EncryptingResourceAdapter<KeystoreStaticState<'a>>>,
-    static_dirty: bool,
-    dynamic_state: RollingLog<EncryptingResourceAdapter<KeystoreSnapshot<L>>>,
-    dynamic_state_dirty: bool,
     root_key_tree: KeyTree,
 }
 
-impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned + Clone + PartialEq>
-    AtomicKeystoreStorage<'a, L, Meta>
-{
-    pub fn new(
+impl<Meta: Send + Serialize + DeserializeOwned + Clone + PartialEq> AtomicKeystoreStorage<Meta> {
+    pub fn new<L: Ledger>(
         loader: &mut impl KeystoreLoader<L, Meta = Meta>,
         atomic_loader: &mut AtomicStoreLoader,
         file_fill_size: u64,
@@ -143,53 +90,24 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned + Clone + PartialE
                 (meta, key, false)
             }
         };
-        let adapter = EncryptingResourceAdapter::<()>::new(key.derive_sub_tree("enc".as_bytes()));
-
-        let static_data = RollingLog::load(
-            atomic_loader,
-            adapter.cast(),
-            "keystore_static",
-            file_fill_size,
-        )
-        .context(crate::PersistenceSnafu)?;
-
-        let mut dynamic_state = RollingLog::load(
-            atomic_loader,
-            adapter.cast(),
-            "keystore_dyn",
-            file_fill_size,
-        )
-        .context(crate::PersistenceSnafu)?;
-        dynamic_state.set_retained_entries(ATOMIC_STORE_RETAINED_ENTRIES);
 
         Ok(Self {
             meta,
             persisted_meta,
             meta_dirty,
-            static_data,
-            static_dirty: false,
-            dynamic_state,
-            dynamic_state_dirty: false,
             root_key_tree: key,
         })
     }
 }
 
-impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicKeystoreStorage<'a, L, Meta> {
-    pub async fn create(
-        mut self: &mut Self,
-        w: &LedgerState<'a, L>,
-    ) -> Result<(), KeystoreError<L>> {
-        // Store the initial static and dynamic state, and the metadata.
+impl<Meta: Send + Serialize + DeserializeOwned> AtomicKeystoreStorage<Meta> {
+    pub async fn create<L: Ledger>(mut self: &mut Self) -> Result<(), KeystoreError<L>> {
+        // Store the metadata.
         self.persisted_meta
             .store_resource(&self.meta)
             .context(crate::PersistenceSnafu)?;
         self.meta_dirty = true;
-        self.static_data
-            .store_resource(&KeystoreStaticState::from(w))
-            .context(crate::PersistenceSnafu)?;
-        self.static_dirty = true;
-        self.store_snapshot(w).await
+        Ok(())
     }
 
     pub fn key_stream(&self) -> KeyTree {
@@ -205,73 +123,25 @@ impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicKeystoreSto
     }
 }
 
-impl<'a, L: Ledger, Meta: Send + Serialize + DeserializeOwned> AtomicKeystoreStorage<'a, L, Meta> {
+impl<Meta: Send + Serialize + DeserializeOwned> AtomicKeystoreStorage<Meta> {
     pub fn exists(&self) -> bool {
         self.persisted_meta.load_latest().is_ok()
     }
 
-    pub async fn load(&self) -> Result<LedgerState<'a, L>, KeystoreError<L>> {
-        let static_state = self
-            .static_data
-            .load_latest()
-            .context(crate::PersistenceSnafu)?;
-
-        let dynamic_state = self
-            .dynamic_state
-            .load_latest()
-            .context(crate::PersistenceSnafu)?;
-
-        Ok(LedgerState {
-            // Static state
-            proving_keys: static_state.proving_keys,
-
-            // Dynamic state
-            txn_state: dynamic_state.txn_state,
-        })
-    }
-
-    pub async fn store_snapshot(
-        &mut self,
-        w: &LedgerState<'a, L>,
-    ) -> Result<(), KeystoreError<L>> {
-        self.dynamic_state
-            .store_resource(&KeystoreSnapshot::from(w))
-            .context(crate::PersistenceSnafu)?;
-        self.dynamic_state_dirty = true;
-        Ok(())
-    }
-
-    pub async fn commit(&mut self) {
+    pub fn commit(&mut self) {
         {
             if self.meta_dirty {
                 self.persisted_meta.commit_version().unwrap();
             } else {
                 self.persisted_meta.skip_version().unwrap();
             }
-
-            if self.static_dirty {
-                self.static_data.commit_version().unwrap();
-            } else {
-                self.static_data.skip_version().unwrap();
-            }
-
-            if self.dynamic_state_dirty {
-                self.dynamic_state.commit_version().unwrap();
-                self.dynamic_state.prune_file_entries().unwrap();
-            } else {
-                self.dynamic_state.skip_version().unwrap();
-            }
         }
 
         self.meta_dirty = false;
-        self.static_dirty = false;
-        self.dynamic_state_dirty = false;
     }
 
     pub async fn revert(&mut self) {
         self.persisted_meta.revert_version().unwrap();
-        self.static_data.revert_version().unwrap();
-        self.dynamic_state.revert_version().unwrap();
     }
 }
 
@@ -433,7 +303,7 @@ mod tests {
         let user_key = UserKeyPair::generate(&mut rng);
         let ro = random_ro(&mut rng, &user_key);
         let comm = RecordCommitment::from(&ro);
-        stored.txn_state.record_mt.push(comm.to_field_element());
+        stored.txn_state.record_mt().push(comm.to_field_element());
         stored.txn_state.validator.now += 1;
         stored.txn_state.now() += EventIndex::from_source(EventSource::QueryService, 1);
 

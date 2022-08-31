@@ -11,20 +11,33 @@
 //! provides an interface for building them.
 use crate::{
     events::{EventIndex, EventSource, LedgerEvent},
-    records::{Record, Records},KeystoreModel,KeystoreBackend,EventSummary,key_scan::BackgroundKeyScan,
-    sparse_merkle_tree::SparseMerkleTree,Transactions,TransactionUID,
-    transactions::{SignedMemos, TransactionParams},RecordAmount,input_records,receive_history_entry,CommittedTxn,Captures,MintInfo,
-    txn_builder::{TransferSpec,TransactionStatus},TransactionError,EncryptingResourceAdapter,KeystoreError,CryptoSnafu
-};use std::sync::Arc;use jf_cap::{MerkleTree};
+    input_records,
+    key_scan::BackgroundKeyScan,
+    receive_history_entry,
+    records::{Record, Records},
+    sparse_merkle_tree::SparseMerkleTree,
+    transactions::{SignedMemos, Transaction, TransactionParams},
+    txn_builder::{TransactionStatus, TransferSpec},
+    Captures, CommittedTxn, CryptoSnafu, EncryptingResourceAdapter, EventSummary, KeystoreBackend,
+    KeystoreError, KeystoreModel, MintInfo, RecordAmount, TransactionUID, Transactions,
+};
 use arbitrary::{Arbitrary, Unstructured};
 use ark_serialize::*;
-use chrono::Local;use std::collections::HashMap;
-use derive_more::*;use std::iter::repeat;
-use espresso_macros::ser_test; use atomic_store::RollingLog;
+use ark_std::future::Future;
+use atomic_store::{AtomicStoreLoader, RollingLog};
+use chrono::Local;
+use derive_more::*;
+use espresso_macros::ser_test;
+use futures::future::BoxFuture;
+use futures::stream::Stream;
+use jf_cap::MerkleTree;
 use jf_cap::{
-    errors::TxnApiError,MerklePath,
+    errors::TxnApiError,
     freeze::{FreezeNote, FreezeNoteInput},
-    keys::{FreezerKeyPair, FreezerPubKey, ViewerKeyPair,UserAddress, UserKeyPair, UserPubKey, ViewerPubKey},
+    keys::{
+        FreezerKeyPair, FreezerPubKey, UserAddress, UserKeyPair, UserPubKey, ViewerKeyPair,
+        ViewerPubKey,
+    },
     mint::MintNote,
     proof::freeze::FreezeProvingKey,
     proof::{mint::MintProvingKey, transfer::TransferProvingKey},
@@ -32,41 +45,45 @@ use jf_cap::{
     structs::{
         Amount, AssetCode, AssetCodeSeed, AssetDefinition, AssetPolicy, FeeInput, FreezeFlag,
         ReceiverMemo, RecordCommitment, RecordOpening, TxnFeeInfo,
-    },TransactionNote,
+    },
     transfer::{TransferNote, TransferNoteInput},
-    AccMemberWitness, KeyPair, MerkleLeafProof, Signature
+    AccMemberWitness, KeyPair, MerkleLeafProof, MerklePath, Signature, TransactionNote,
 };
 use jf_primitives::aead::EncKey;
-use jf_utils::tagged_blob;use ark_std::future::Future;
-use key_set::{KeySet,ProverKeySet};
+use jf_utils::tagged_blob;
+use key_set::{KeySet, OrderByOutputs, ProverKeySet};
 use num_bigint::{BigInt, Sign};
 use num_traits::identities::{One, Zero};
 use primitive_types::U256;
-use rand_chacha::ChaChaRng; use futures::future::BoxFuture;use futures::stream::Stream;
+use rand_chacha::ChaChaRng;
 #[cfg(test)]
 use reef::cap;
 use reef::{
     traits::{
-        Block as _, NullifierSet as _, Transaction , TransactionKind as _,
+        Block as _, NullifierSet as _, Transaction as _, TransactionKind as _,
         ValidationError as _, Validator as _,
     },
-    TransactionKind, *,    types::*,
-
+    types::*,
+    TransactionKind, *,
 };
-use serde::{Deserialize,de::DeserializeOwned, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use snafu::{ResultExt, Snafu};
+use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::convert::TryInto;
 use std::fmt::Debug;
 use std::hash::{Hash, Hasher};
+use std::iter::repeat;
 use std::ops::Mul;
+use std::sync::Arc;
 
 /// A never expired target.
 pub const UNEXPIRED_VALID_UNTIL: u64 = 2u64.pow(jf_cap::constants::MAX_TIMESTAMP_LEN as u32) - 1;
+const ATOMIC_STORE_RETAINED_ENTRIES: u32 = 5;
 
 // #[ser_test(arbitrary, types(cap::Ledger), ark(false))]
 // #[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(Deserialize,Serialize)]
+#[derive(Deserialize, Serialize)]
 // #[serde(bound = "")]
 /// The state of the global ledger.
 pub struct LedgerState<'a, L: Ledger> {
@@ -101,9 +118,9 @@ pub struct LedgerState<'a, L: Ledger> {
     ///
     /// These keys are constructed when the keystore is created, and they never change afterwards.
     proving_keys: Arc<ProverKeySet<'a, key_set::OrderByOutputs>>,
-    
+
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // Dynamic state
+    // Dynamic data
     //
     /// Index of the last event processed.
     now: EventIndex,
@@ -116,16 +133,19 @@ pub struct LedgerState<'a, L: Ledger> {
     nullifiers: NullifierSet<L>,
 }
 
-
-
-impl<'a,L: Ledger> LedgerState<'a,L> {
-      /// Get the event index.
-      pub fn now(&self) -> EventIndex {
+impl<'a, L: Ledger> LedgerState<'a, L> {
+    /// Get the event index.
+    pub fn now(&self) -> EventIndex {
         self.now
     }
 
-      /// Get the record Merkle tree.
-      pub fn record_mt(&self) -> MerkleTree {
+    /// Increment the index of the given event source.
+    pub fn increment_now(&mut self, source: EventSource) {
+        self.now += EventIndex::from_source(source, 1);
+    }
+
+    /// Get the record Merkle tree.
+    pub fn record_mt(&self) -> MerkleTree {
         self.record_mt
     }
 
@@ -133,13 +153,13 @@ impl<'a,L: Ledger> LedgerState<'a,L> {
         self.validator.now()
     }
 
-    pub fn transfer< 'k>(
+    pub fn transfer<'k>(
         &mut self,
         records: &mut Records,
         spec: TransferSpec<'k>,
         proving_keys: &'k KeySet<TransferProvingKey<'a>, key_set::OrderByOutputs>,
         rng: &mut ChaChaRng,
-    ) -> Result<(TransferNote, TransactionParams<L>), TransactionError> {
+    ) -> Result<(TransferNote, TransactionParams<L>), KeystoreError<L>> {
         if *spec.asset == AssetCode::native() {
             self.transfer_native(records, spec, proving_keys, rng)
         } else {
@@ -147,13 +167,13 @@ impl<'a,L: Ledger> LedgerState<'a,L> {
         }
     }
 
-    fn transfer_native< 'k>(
+    fn transfer_native<'k>(
         &mut self,
         records: &mut Records,
         spec: TransferSpec<'k>,
         proving_keys: &'k KeySet<TransferProvingKey<'a>, key_set::OrderByOutputs>,
         rng: &mut ChaChaRng,
-    ) -> Result<(TransferNote, TransactionParams<L>), TransactionError> {
+    ) -> Result<(TransferNote, TransactionParams<L>), KeystoreError<L>> {
         let total_output_amount: U256 = spec
             .receivers
             .iter()
@@ -273,13 +293,13 @@ impl<'a,L: Ledger> LedgerState<'a,L> {
         Ok((note, txn_params))
     }
 
-    fn transfer_non_native< 'k>(
+    fn transfer_non_native<'k>(
         &mut self,
         records_db: &mut Records,
         spec: TransferSpec<'k>,
         proving_keys: &'k KeySet<TransferProvingKey<'a>, key_set::OrderByOutputs>,
         rng: &mut ChaChaRng,
-    ) -> Result<(TransferNote, TransactionParams<L>), TransactionError> {
+    ) -> Result<(TransferNote, TransactionParams<L>), KeystoreError<L>> {
         assert_ne!(
             *spec.asset,
             AssetCode::native(),
@@ -438,7 +458,7 @@ impl<'a,L: Ledger> LedgerState<'a,L> {
         include: impl IntoIterator<Item = bool>,
         rng: &mut ChaChaRng,
         sig_key_pair: &KeyPair,
-    ) -> Result<(Vec<Option<ReceiverMemo>>, Signature), TransactionError> {
+    ) -> Result<(Vec<Option<ReceiverMemo>>, Signature), KeystoreError<L>> {
         let memos: Vec<_> = records
             .iter()
             // Any remaining outputs beyond the length of `include` are dummy outputs. We do want to
@@ -475,7 +495,7 @@ impl<'a,L: Ledger> LedgerState<'a,L> {
         amount: RecordAmount,
         receiver: UserPubKey,
         rng: &mut ChaChaRng,
-    ) -> Result<(MintNote, TransactionParams<L>), TransactionError> {
+    ) -> Result<(MintNote, TransactionParams<L>), KeystoreError<L>> {
         let (asset_def, seed, asset_description) = asset;
         let mint_record = RecordOpening::new(
             rng,
@@ -532,7 +552,7 @@ impl<'a,L: Ledger> LedgerState<'a,L> {
         owner: UserAddress,
         outputs_frozen: FreezeFlag,
         rng: &mut ChaChaRng,
-    ) -> Result<(FreezeNote, TransactionParams<L>), TransactionError> {
+    ) -> Result<(FreezeNote, TransactionParams<L>), KeystoreError<L>> {
         // find input records of the asset type to freeze (this does not include the fee input)
         let inputs_frozen = match outputs_frozen {
             FreezeFlag::Frozen => FreezeFlag::Unfrozen,
@@ -631,7 +651,7 @@ impl<'a,L: Ledger> LedgerState<'a,L> {
         amount: U256,
         max_records: Option<usize>,
         allow_insufficient: bool,
-    ) -> Result<(Vec<(RecordOpening, u64)>, BigInt), TransactionError> {
+    ) -> Result<(Vec<(RecordOpening, u64)>, BigInt), KeystoreError<L>> {
         let now = self.validator.now();
 
         // If we have a record with the exact size required, use it to avoid
@@ -679,7 +699,7 @@ impl<'a,L: Ledger> LedgerState<'a,L> {
                         // automatically generate a merge transaction to defragment our assets.
                         // Automatically merging assets would implicitly incur extra transaction fees,
                         // so for now we do the simple, uncontroversial thing and error out.
-                        return Err(TransactionError::Fragmentation {
+                        return Err(KeystoreError::Fragmentation {
                             asset: *asset,
                             amount,
                             suggested_amount: current_amount,
@@ -704,7 +724,7 @@ impl<'a,L: Ledger> LedgerState<'a,L> {
                 u256_to_signed(current_amount) - u256_to_signed(amount),
             ))
         } else {
-            Err(TransactionError::InsufficientBalance {
+            Err(KeystoreError::InsufficientBalance {
                 asset: *asset,
                 required: amount,
                 actual: current_amount,
@@ -721,7 +741,7 @@ impl<'a,L: Ledger> LedgerState<'a,L> {
         frozen: FreezeFlag,
         amount: U256,
         max_records: Option<usize>,
-    ) -> Result<Vec<(&'l UserKeyPair, Vec<(RecordOpening, u64)>, RecordAmount)>, TransactionError>
+    ) -> Result<Vec<(&'l UserKeyPair, Vec<(RecordOpening, u64)>, RecordAmount)>, KeystoreError<L>>
     {
         let mut records = Vec::new();
         let mut target_amount = amount;
@@ -753,7 +773,7 @@ impl<'a,L: Ledger> LedgerState<'a,L> {
             target_amount = bigint_to_u256(-change);
         }
 
-        Err(TransactionError::InsufficientBalance {
+        Err(KeystoreError::InsufficientBalance {
             asset: *asset,
             required: amount,
             actual: amount - target_amount,
@@ -768,7 +788,7 @@ impl<'a,L: Ledger> LedgerState<'a,L> {
         records: &mut Records,
         key_pairs: &'l [UserKeyPair],
         fee: RecordAmount,
-    ) -> Result<FeeInput<'l>, TransactionError> {
+    ) -> Result<FeeInput<'l>, KeystoreError<L>> {
         let (ro, uid, owner_keypair) = if fee.is_zero() {
             // For 0 fees, the allocation scheme is different than for other kinds of allocations.
             // For one thing, CAP requires one fee input record even if the amount of the record is
@@ -809,7 +829,7 @@ impl<'a,L: Ledger> LedgerState<'a,L> {
                 .min_by_key(|(ro, _, _)| ro.amount)
                 // If there weren't any records at all, we simply cannot pay the fee -- even though
                 // the fee amount is 0!
-                .ok_or(TransactionError::InsufficientBalance {
+                .ok_or(KeystoreError::InsufficientBalance {
                     asset: AssetCode::native(),
                     required: fee.into(),
                     actual: U256::zero(),
@@ -861,7 +881,7 @@ impl<'a,L: Ledger> LedgerState<'a,L> {
     //
     // `xfr_size_requirement` - If specified, the proving keys must be the exact size.
     #[allow(clippy::too_many_arguments)]
-    fn xfr_proving_key< 'k>(
+    fn xfr_proving_key<'k>(
         rng: &mut ChaChaRng,
         any_key: UserPubKey,
         proving_keys: &'k KeySet<TransferProvingKey<'a>, key_set::OrderByOutputs>,
@@ -870,7 +890,7 @@ impl<'a,L: Ledger> LedgerState<'a,L> {
         outputs: &mut Vec<RecordOpening>,
         xfr_size_requirement: Option<(usize, usize)>,
         change_record: bool,
-    ) -> Result<(&'k TransferProvingKey<'a>, usize), TransactionError> {
+    ) -> Result<(&'k TransferProvingKey<'a>, usize), KeystoreError<L>> {
         let total_output_amount = outputs
             .iter()
             .fold(U256::zero(), |sum, ro| sum + RecordAmount::from(ro.amount));
@@ -889,7 +909,7 @@ impl<'a,L: Ledger> LedgerState<'a,L> {
         match xfr_size_requirement {
             Some((input_size, output_size)) => {
                 if (input_size, output_size) != (min_num_inputs, min_num_outputs) {
-                    return Err(TransactionError::InvalidSize {
+                    return Err(KeystoreError::InvalidSize {
                         asset: asset.code,
                         num_inputs_required: input_size,
                         num_inputs_actual: min_num_inputs,
@@ -899,7 +919,7 @@ impl<'a,L: Ledger> LedgerState<'a,L> {
                 }
                 match proving_keys.exact_fit_key(input_size, output_size) {
                     Some(key) => Ok((key, 0)),
-                    None => Err(TransactionError::NoFitKey {
+                    None => Err(KeystoreError::NoFitKey {
                         num_inputs: input_size,
                         num_outputs: output_size,
                     }),
@@ -912,7 +932,7 @@ impl<'a,L: Ledger> LedgerState<'a,L> {
                         if max_outputs >= min_num_outputs {
                             // If there is a key that can fit the correct number of outputs had we only
                             // managed to find fewer inputs, call this a fragmentation error.
-                            TransactionError::Fragmentation {
+                            KeystoreError::Fragmentation {
                                 asset: asset.code,
                                 amount: total_output_amount,
                                 suggested_amount: inputs
@@ -926,7 +946,7 @@ impl<'a,L: Ledger> LedgerState<'a,L> {
                         } else {
                             // Otherwise, we just have too many outputs for any of our available keys. There
                             // is nothing we can do about that on the transaction builder side.
-                            TransactionError::TooManyOutputs {
+                            KeystoreError::TooManyOutputs {
                                 asset: asset.code,
                                 max_records: max_outputs,
                                 num_receivers: outputs.len() - change_record as usize,
@@ -968,7 +988,7 @@ impl<'a,L: Ledger> LedgerState<'a,L> {
         asset: &AssetDefinition,
         inputs: &mut Vec<FreezeNoteInput<'k>>,
         key_pair: &'k FreezerKeyPair,
-    ) -> Result<&'k FreezeProvingKey<'a>, TransactionError> {
+    ) -> Result<&'k FreezeProvingKey<'a>, KeystoreError<L>> {
         let total_output_amount = inputs.iter().fold(U256::zero(), |sum, input| {
             sum + RecordAmount::from(input.ro.amount)
         });
@@ -978,7 +998,7 @@ impl<'a,L: Ledger> LedgerState<'a,L> {
         let (key_inputs, key_outputs, proving_key) = proving_keys
             .best_fit_key(num_inputs, num_outputs)
             .map_err(|(max_inputs, _)| {
-                TransactionError::Fragmentation {
+                KeystoreError::Fragmentation {
                     asset: asset.code,
                     amount: total_output_amount,
                     suggested_amount: inputs
@@ -1013,1080 +1033,134 @@ impl<'a,L: Ledger> LedgerState<'a,L> {
     }
 }
 
-impl<'a, L: 'static + Ledger> LedgerState<'a, L> {
-    pub fn balance<Meta: Serialize + DeserializeOwned + Send>(
-        &self,
-        model: &KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
-        addresses: impl Iterator<Item = UserAddress>,
-        asset: &AssetCode,
-        frozen: FreezeFlag,
-    ) -> U256 {
-        let mut balance = U256::zero();
-        for address in addresses {
-            balance += self.balance_breakdown(model, &address, asset, frozen);
-        }
-        balance
-    }
+/// Serialization intermediate for the static part of a ledger state.
+// // #[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize)]
+struct StaticState<'a> {
+    // #[serde(with = "serde_ark_unchecked")]
+    proving_keys: Arc<ProverKeySet<'a, OrderByOutputs>>,
+}
 
-    pub fn balance_breakdown<Meta: Serialize + DeserializeOwned + Send>(
-        &self,
-        model: &KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
-        address: &UserAddress,
-        asset: &AssetCode,
-        frozen: FreezeFlag,
-    ) -> U256 {
-        let spendable = model.records.get_spendable::<L>(asset, address, frozen);
-        if let Some(records) = spendable {
-            records
-                .filter(move |record| !record.on_hold(self.block_height()))
-                .fold(U256::zero(), |sum, record| sum + record.amount())
-        } else {
-            U256::zero()
-        }
-    }
-
-    // Inform the Transactions database that we have received memos for the given record UIDs. Return a list of
-    // the transactions that are completed as a result.
-    pub fn received_memos(
-        &mut self,
-        uids: impl Iterator<Item = u64>,
-        transactions: &mut Transactions<L>,
-    ) -> Vec<TransactionUID<L>> {
-        let mut completed = Vec::new();
-        for uid in uids {
-            if let Ok(txn) = transactions.with_memo_id_mut(uid) {
-                let mut txn = txn.remove_pending_uid(uid);
-                let transaction = txn.save().unwrap();
-                if transaction.pending_uids().is_empty() {
-                    completed.push((*txn).uid().clone());
-                }
-            }
-        }
-        completed
-    }
-
-    pub async fn handle_event<Meta: Serialize + DeserializeOwned + Send>(
-        &mut self,
-        model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
-        event: LedgerEvent<L>,
-        source: EventSource,
-    ) -> Result<EventSummary<L>, KeystoreError<L>> {
-        self.now += EventIndex::from_source(source, 1);
-        let mut summary = EventSummary::default();
-        match event {
-            LedgerEvent::Commit {
-                block,
-                block_id,
-                state_comm,
-            } => {
-                // Don't trust the network connection that provided us this event; validate it
-                // against our local mirror of the ledger and bail out if it is invalid.
-                let mut uids = match self.validator.validate_and_apply(block.clone()) {
-                    Ok(uids) => {
-                        if state_comm != self.validator.commit() {
-                            // Received a block which validates, but our state commitment does not
-                            // match that of the event source. Since the block validates, we will
-                            // accept it, but this must indicate that the event source is lying or
-                            // mistaken about the state commitment. This would be a good time to
-                            // switch to a different query server or something, but for now we'll
-                            // just log the problem.
-                            tracing::error!("received valid block with invalid state commitment");
-                        }
-
-                        // Get a list of new uids and whether we want to remember them in our record
-                        // Merkle tree. Initially, set `remember` to false for all uids, to maximize
-                        // sparseness. If any of the consumers of this block (for example, the
-                        // viewer component, or the owner of this keystore) care about a uid, they
-                        // will set its `remember` flag to true.
-                        uids.into_iter().map(|uid| (uid, false)).collect::<Vec<_>>()
-                    }
-                    Err(val_err) => {
-                        //todo !jeb.bearer handle this case more robustly. If we get here, it means
-                        // the event stream has lied to us, so recovery is quite tricky and may
-                        // require us to fail over to a different query service.
-                        panic!("received invalid block: {:?}, {:?}", block, val_err);
-                    }
-                };
-
-                // Update our full copies of sparse validator data structures to be consistent with
-                // the validator state.
-                for txn in block.txns() {
-                    let nullifiers = txn.input_nullifiers();
-                    // Remove spent records.
-                    for n in &nullifiers {
-                        if let Ok(record) = model.records.delete_by_nullifier::<L>(n) {
-                            self.forget_merkle_leaf(record.uid());
-                        }
-                    }
-                }
-                // Insert new records.
-                self.append_merkle_leaves(
-                    block
-                        .txns()
-                        .into_iter()
-                        .flat_map(|txn| txn.output_commitments()),
-                );
-                // Update nullifier set
-                let nullifier_proofs = block
-                    .txns()
-                    .into_iter()
-                    .flat_map(|txn| txn.proven_nullifiers())
-                    .collect::<Vec<_>>();
-                if self
-                    .nullifiers
-                    .multi_insert(&nullifier_proofs)
-                    .is_err()
-                {
-                    //todo !jeb.bearer handle this case more robustly. If we get here, it means the
-                    // event stream has lied to us, so recovery is quite tricky and may require us
-                    // to fail over to a different query service.
-                    panic!("received block with invalid nullifier proof");
-                }
-
-                for (txn_id, txn) in block.txns().into_iter().enumerate() {
-                    // Split the uids corresponding to this transaction off the front of `uids`.
-                    let mut this_txn_uids = uids;
-                    uids = this_txn_uids.split_off(txn.output_len());
-                    assert_eq!(this_txn_uids.len(), txn.output_len());
-
-                    // If this transaction contains record openings for all of its outputs,
-                    // consider it retired immediately, do not wait for memos.
-                    let retired = txn.output_openings().is_some();
-
-                    // Add the spent nullifiers to the summary. Map each nullifier to one of the
-                    // output UIDs of the same transaction, so that we can tell when the memos
-                    // arrive for the transaction which spent this nullifier (completing the
-                    // transaction's life cycle) by looking at the UIDs attached to the memos.
-                    // TODO !keyao Stop identifying transactions by input nullifier and instead use hashes.
-                    // (https://github.com/SpectrumXYZ/cape/issues/275.)
-                    if !txn.input_nullifiers().is_empty() {
-                        summary.spent_nullifiers.extend(
-                            txn.input_nullifiers()
-                                .into_iter()
-                                .zip(repeat(this_txn_uids[0].0)),
-                        );
-                        if retired {
-                            summary.retired_nullifiers.push(txn.input_nullifiers()[0]);
-                        }
-                    }
-
-                    // Different concerns within the keystore consume transactions in different ways.
-                    // Now we give each concern a chance to consume this transaction, performing any
-                    // processing they need to do and possibly setting the `remember` flag for
-                    // output records they care about.
-                    //
-                    // This is a transaction we submitted and have been
-                    // awaiting confirmation.
-                    let mut self_published = false;
-                    if let Some(pending) = self
-                        .clear_pending_transaction(
-                            model,
-                            &txn,
-                            Some((block_id, txn_id as u64, &mut this_txn_uids)),
-                        )
-                        .await
-                    {
-                        let status = if retired {
-                            TransactionStatus::Retired
-                        } else {
-                            TransactionStatus::AwaitingMemos
-                        };
-                        summary.updated_txns.push((pending.uid().clone(), status));
-                        model
-                            .transactions
-                            .get_mut(pending.uid())
-                            .unwrap()
-                            .add_pending_uids(
-                                &this_txn_uids
-                                    .iter()
-                                    .zip(pending.memos().unwrap().memos.iter())
-                                    .filter_map(|((uid, _), memo)| memo.as_ref().map(|_| *uid))
-                                    .into_iter()
-                                    .collect::<Vec<u64>>(),
-                            )
-                            .set_status(status)
-                            .save()
-                            .unwrap();
-                        model
-                            .backend
-                            .finalize(pending, Some((block_id, txn_id as u64)))
-                            .await;
-                        self_published = true;
-                    }
-
-                    // This is someone else's transaction but we can view it.
-                    self.view_transaction(model, &txn, &mut this_txn_uids)
-                        .await?;
-
-                    // If this transaction has record openings attached, check if they are for us
-                    // and add them immediately, without waiting for memos.
-                    if let Err(err) = self
-                        .receive_attached_records(
-                            model,
-                            &txn,
-                            &mut this_txn_uids,
-                            !self_published,
-                            // Only add to history if we didn't send this same transaction
-                        )
-                        .await
-                    {
-                        tracing::error!(
-                            "Error saving records attached to transaction {}:{}: {}",
-                            block_id,
-                            txn_id,
-                            err
-                        );
-                    }
-
-                    // Prune the record Merkle tree of records we don't care about.
-                    for (uid, remember) in this_txn_uids {
-                        if !remember {
-                            self.forget_merkle_leaf(uid);
-                        }
-                    }
-                }
-
-                // Some transactions may have expired when we stepped the validator state. Remove
-                // them from our pending transaction data structures.
-                //
-                // This maintains the invariant that everything in `pending_transactions` must
-                // correspond to an on-hold record, because everything which corresponds to a record
-                // whose hold just expired will be removed from the set now.
-                match model
-                    .transactions
-                    .remove_expired(self.block_height())
-                {
-                    Ok(txns) => {
-                        for txn in txns {
-                            summary
-                                .updated_txns
-                                .push((txn.uid().clone(), TransactionStatus::Rejected));
-                            model.backend.finalize(txn, None).await;
-                        }
-                    }
-                    Err(err) => {
-                        println!(
-                            "Error removing expired transaction from storage.  Block: {},  Error: {}",
-                            block_id, err
-                        );
-                    }
-                }
-            }
-            LedgerEvent::Memos {
-                outputs,
-                transaction,
-            } => {
-                let completed =
-                    self.received_memos(outputs.iter().map(|info| info.2), &mut model.transactions);
-                let self_published = !completed.is_empty();
-                summary.updated_txns.extend(
-                    completed
-                        .into_iter()
-                        .map(|txn_uid| (txn_uid, TransactionStatus::Retired))
-                        .collect::<Vec<_>>(),
-                );
-
-                summary
-                    .received_memos
-                    .extend(outputs.iter().map(|(memo, _, uid, _)| (memo.clone(), *uid)));
-                for key in &model
-                    .sending_accounts
-                    .iter_keys()
-                    .collect::<Vec<UserKeyPair>>()
-                {
-                    let records = self
-                        .try_open_memos(model, key, &outputs, transaction.clone(), !self_published)
-                        .await?;
-                    if let Err(err) = self.add_records(model, key, records).await {
-                        tracing::error!("error saving received records: {}", err);
-                    }
-                }
-            }
-            LedgerEvent::Reject { block, error } => {
-                for mut txn in block.txns() {
-                    summary
-                        .rejected_nullifiers
-                        .append(&mut txn.input_nullifiers());
-                    if let Some(pending) = self.clear_pending_transaction(model, &txn, None).await {
-                        // Try to resubmit if the error is recoverable.
-                        let uid = pending.uid();
-                        if error.is_bad_nullifier_proof() {
-                            if self.update_nullifier_proofs(model, &mut txn).await.is_ok()
-                                && self
-                                    .submit_elaborated_transaction(model, txn, None)
-                                    .await
-                                    .is_ok()
-                            {
-                                // The transaction has been successfully resubmitted. It is still in
-                                // the same state (pending) so we don't need to add it to
-                                // `updated_txns`.
-                            } else {
-                                // If we failed to resubmit, then the rejection is final.
-                                summary
-                                    .updated_txns
-                                    .push((uid.clone(), TransactionStatus::Rejected));
-                                model.backend.finalize(pending, None).await;
-                            }
-                        } else {
-                            summary
-                                .updated_txns
-                                .push((uid.clone(), TransactionStatus::Rejected));
-                            model.backend.finalize(pending, None).await;
-                        }
-                    }
-                }
-            }
-        };
-
-        model.persistence.store_snapshot(self).await?;
-        Ok(summary)
-    }
-
-    async fn try_open_memos<Meta: Serialize + DeserializeOwned + Send>(
-        &mut self,
-        model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
-        key_pair: &UserKeyPair,
-        memos: &[(ReceiverMemo, RecordCommitment, u64, MerklePath)],
-        transaction: Option<(u64, u64, TransactionHash<L>, TransactionKind<L>)>,
-        add_to_history: bool,
-    ) -> Result<Vec<(RecordOpening, u64, MerklePath)>, KeystoreError<L>> {
-        let mut records = Vec::new();
-        for (memo, comm, uid, proof) in memos {
-            if let Ok(record_opening) = memo.decrypt(key_pair, comm, &[]) {
-                if !record_opening.is_dummy() {
-                    // If this record is for us (i.e. its corresponding memo decrypts under
-                    // our key) and not a dummy, then add it to our owned records.
-                    records.push((record_opening, *uid, proof.clone()));
-                }
-            }
-        }
-
-        if add_to_history && !records.is_empty() {
-            if let Some((_block_id, _txn_id, hash, kind)) = transaction {
-                self.add_receive_history(
-                    model,
-                    kind,
-                    hash,
-                    &records
-                        .iter()
-                        .map(|(ro, _, _)| ro.clone())
-                        .collect::<Vec<_>>(),
-                )
-                .await?;
-            }
-        }
-
-        Ok(records)
-    }
-
-    async fn receive_attached_records<Meta: Serialize + DeserializeOwned + Send>(
-        &mut self,
-        model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
-        txn: &reef::Transaction<L>,
-        uids: &mut [(u64, bool)],
-        add_to_history: bool,
-    ) -> Result<(), KeystoreError<L>> {
-        let records = txn.output_openings().into_iter().flatten().zip(uids);
-        let mut my_records = vec![];
-        for (ro, (uid, remember)) in records {
-            if let Ok(account_editor) = model.sending_accounts.get_mut(&ro.pub_key.address()) {
-                // If this record is for us, add it to the keystore and include it in the
-                // list of received records for created a received transaction history
-                // entry.
-                *remember = true;
-                // Add the asset type if it is not already in the asset library.
-                model.assets.create(ro.asset_def.clone(), None)?;
-                // Mark the account receiving the records used.
-                let account = account_editor.set_used().save()?;
-                // Add the record.
-                model.records.create::<L>(
-                    *uid,
-                    ro.clone(),
-                    account.key().nullify(
-                        ro.asset_def.policy_ref().freezer_pub_key(),
-                        *uid,
-                        &RecordCommitment::from(&ro),
-                    ),
-                )?;
-                my_records.push(ro);
-            } else if let Ok(account_editor) = model
-                .freezing_accounts
-                .get_mut(ro.asset_def.policy_ref().freezer_pub_key())
-            {
-                // If this record is not for us, but we can freeze it, then this
-                // becomes like an view. Add the record to our collection of freezable
-                // records, but do not include it in the history entry.
-                *remember = true;
-                // Add the asset type if it is not already in the asset library.
-                model.assets.create(ro.asset_def.clone(), None)?;
-                // Mark the freezing account which is tracking the record used.
-                let account = account_editor.set_used().save()?;
-                // Add the record.
-                model.records.create::<L>(
-                    *uid,
-                    ro.clone(),
-                    account.key().nullify(
-                        &ro.pub_key.address(),
-                        *uid,
-                        &RecordCommitment::from(&ro),
-                    ),
-                )?;
-            }
-        }
-
-        if add_to_history && !my_records.is_empty() {
-            self.add_receive_history(model, txn.kind(), txn.hash().clone(), &my_records)
-                .await?;
-        }
-
-        Ok(())
-    }
-
-    async fn add_receive_history<Meta: Serialize + DeserializeOwned + Send>(
-        &mut self,
-        model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
-        kind: TransactionKind<L>,
-        hash: TransactionHash<L>,
-        records: &[RecordOpening],
-    ) -> Result<(), KeystoreError<L>> {
-        let uid = TransactionUID::<L>(hash);
-        let history = receive_history_entry(kind, records);
-        model.transactions.create(uid, history)?;
-        Ok(())
-    }
-
-    pub async fn add_records<Meta: Serialize + DeserializeOwned + Send>(
-        &mut self,
-        model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
-        key_pair: &UserKeyPair,
-        records: Vec<(RecordOpening, u64, MerklePath)>,
-    ) -> Result<(), KeystoreError<L>> {
-        for (record, uid, proof) in records {
-            let comm = RecordCommitment::from(&record);
-            if !self
-                .remember_merkle_leaf(uid, &MerkleLeafProof::new(comm.to_field_element(), proof))
-            {
-                return Err(KeystoreError::BadMerkleProof {
-                    commitment: comm,
-                    uid,
-                });
-            }
-
-            // Add the asset type if it is not already in the asset library.
-            model.assets_mut().create(record.asset_def.clone(), None)?;
-
-            // Mark the account receiving the record as used.
-            model
-                .sending_accounts
-                .get_mut(&key_pair.address())
-                .unwrap()
-                .set_used()
-                .save()?;
-            // Save the record.
-            model.records.create::<L>(
-                uid,
-                record.clone(),
-                key_pair.nullify(
-                    record.asset_def.policy_ref().freezer_pub_key(),
-                    uid,
-                    &RecordCommitment::from(&record),
-                ),
-            )?;
-        }
-        Ok(())
-    }
-
-  pub  async fn import_memo<Meta: Serialize + DeserializeOwned + Send>(
-        &mut self,
-        model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
-        memo: ReceiverMemo,
-        comm: RecordCommitment,
-        uid: u64,
-        proof: MerklePath,
-    ) -> Result<(), KeystoreError<L>> {
-        for key in model
-            .sending_accounts
-            .iter_keys()
-            .collect::<Vec<UserKeyPair>>()
-        {
-            let records = self
-                .try_open_memos(
-                    model,
-                    &key,
-                    &[(memo.clone(), comm, uid, proof.clone())],
-                    None,
-                    false,
-                )
-                .await?;
-            if !records.is_empty() {
-                return self.add_records(model, &key, records).await;
-            }
-        }
-
-        Err(KeystoreError::<L>::CannotDecryptMemo {})
-    }
-
-    async fn clear_pending_transaction<'t, Meta: Serialize + DeserializeOwned + Send>(
-        &mut self,
-        model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
-        txn: &reef::Transaction<L>,
-        res: Option<CommittedTxn<'t>>,
-    ) -> Option<Transaction<L>> {
-        let now = self.block_height();
-        let pending = model
-            .transactions
-            .get(&TransactionUID::<L>(txn.hash()))
-            .ok();
-        for nullifier in txn.input_nullifiers() {
-            if let Ok(record) = model.records.with_nullifier_mut::<L>(&nullifier) {
-                if pending.is_some() {
-                    // If we started this transaction, all of its inputs should have been on hold,
-                    // to preserve the invariant that all input nullifiers of all pending
-                    // transactions are on hold.
-                    assert!(record.on_hold(now));
-
-                    if res.is_none() {
-                        // If the transaction was not accepted for any reason, its nullifiers have
-                        // not been spent, so remove the hold we placed on them.
-                        record.unhold().save::<L>().ok();
-                    }
-                } else {
-                    // This isn't even our transaction.
-                    assert!(!record.on_hold(now));
-                }
-            }
-        }
-
-        // If this was a successful transaction, add all of its frozen/unfrozen outputs to our
-        // freezable database (for freeze/unfreeze transactions).
-        if let Some((_, _, uids)) = res {
-            if let Some(pending) = &pending {
-                if pending.kind().clone() == TransactionKind::<L>::freeze()
-                    || pending.kind().clone() == TransactionKind::<L>::unfreeze()
-                {
-                    // the first uid corresponds to the fee change output, which is not one of the
-                    // `freeze_outputs`, so we skip that one
-                    for ((uid, remember), ro) in uids.iter_mut().zip(pending.outputs()).skip(1) {
-                        let key_pair = model
-                            .freezing_accounts
-                            .get(ro.asset_def.policy_ref().freezer_pub_key())
-                            .unwrap()
-                            .key()
-                            .clone();
-                        model
-                            .records
-                            .create::<L>(
-                                *uid,
-                                ro.clone(),
-                                key_pair.nullify(
-                                    &ro.pub_key.address(),
-                                    *uid,
-                                    &RecordCommitment::from(ro),
-                                ),
-                            )
-                            .ok();
-                        *remember = true;
-                    }
-                }
-            }
-        }
-        pending
-    }
-
-    async fn view_transaction<Meta: Serialize + DeserializeOwned + Send>(
-        &mut self,
-        model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
-        txn: &reef::Transaction<L>,
-        uids: &mut [(u64, bool)],
-    ) -> Result<(), KeystoreError<L>> {
-        // Try to decrypt viewer memos.
-        let mut viewable_assets = HashMap::new();
-        for asset in model.assets.iter() {
-            if model
-                .viewing_accounts
-                .get(asset.definition().policy_ref().viewer_pub_key())
-                .is_ok()
-            {
-                viewable_assets.insert(asset.code(), asset.definition().clone());
-            }
-        }
-        if let Ok(memo) = txn.open_viewing_memo(
-            &viewable_assets,
-            &model
-                .viewing_accounts
-                .iter()
-                .map(|account| (account.pub_key(), account.key().clone()))
-                .collect(),
-        ) {
-            // Mark the viewing account used.
-            model
-                .viewing_accounts
-                .get_mut(memo.asset.policy_ref().viewer_pub_key())
-                .unwrap()
-                .set_used()
-                .save()
-                .unwrap();
-
-            //todo !jeb.bearer eventually, we will probably want to save all the viewing memos for
-            // the whole transaction (inputs and outputs) regardless of whether any of the outputs
-            // are freezeable, just for general viewing purposes.
-
-            // the first uid corresponds to the fee change output, which has no view memo, so skip
-            // that one
-            for ((uid, remember), output) in uids.iter_mut().skip(1).zip(memo.outputs) {
-                let pub_key = match output.user_address {
-                    Some(address) => Some(match model.backend.get_public_key(&address).await {
-                        Ok(key) => key,
-                        // If the address isn't found in the backend, it may not be registered. In
-                        // this case, use the address and a default encryption key to construct a
-                        // public key. The encryption key is only a placeholder since it won't be
-                        // used to compute the record commitment.
-                        Err(_) => UserPubKey::new(address, EncKey::default()),
-                    }),
-                    None => None,
-                };
-                if let (Some(pub_key), Some(amount), Some(blind)) =
-                    (pub_key, output.amount, output.blinding_factor)
-                {
-                    // If the viewing memo contains all the information we need to potentially freeze
-                    // this record, save it in our database for later freezing.
-                    if let Ok(account_editor) = model
-                        .freezing_accounts
-                        .get_mut(memo.asset.policy_ref().freezer_pub_key())
-                    {
-                        // Mark the freezing account that is tracking the record used.
-                        let account = account_editor.set_used().save().unwrap();
-
-                        let record_opening = RecordOpening {
-                            amount,
-                            asset_def: memo.asset.clone(),
-                            pub_key,
-                            freeze_flag: FreezeFlag::Unfrozen,
-                            blind,
-                        };
-                        model.records.create::<L>(
-                            *uid,
-                            record_opening.clone(),
-                            account.key().nullify(
-                                &record_opening.pub_key.address(),
-                                *uid,
-                                &RecordCommitment::from(&record_opening),
-                            ),
-                        )?;
-                        *remember = true;
-                    }
-                }
-            }
-        }
-        Ok(())
-    }
-
-    async fn update_nullifier_proofs<Meta: Serialize + DeserializeOwned + Send>(
-        &mut self,
-        model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
-        txn: &mut reef::Transaction<L>,
-    ) -> Result<(), KeystoreError<L>> {
-        let mut proofs = Vec::new();
-        for n in txn.input_nullifiers() {
-            let (spent, proof) = model
-                .backend
-                .get_nullifier_proof(&mut self.nullifiers, n)
-                .await?;
-            if spent {
-                return Err(KeystoreError::<L>::NullifierAlreadyPublished { nullifier: n });
-            }
-            proofs.push(proof);
-        }
-        txn.set_proofs(proofs);
-        Ok(())
-    }
-
-    // This function ran into the same mystifying compiler behavior as
-    // `submit_elaborated_transaction`, where the default async desugaring loses track of the `Send`
-    // impl for the result type. As with the other function, this can be fixed by manually
-    // desugaring the type signature.
-   pub  fn define_asset<'b, Meta: Serialize + DeserializeOwned + Send + Send>(
-        &'b mut self,
-        model: &'b mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
-        name: String,
-        description: &'b [u8],
-        policy: AssetPolicy,
-    ) -> impl 'b + Captures<'a> + Future<Output = Result<AssetDefinition, KeystoreError<L>>> + Send
-    where
-        'a: 'b,
-    {
-        async move {
-            let seed = AssetCodeSeed::generate(model.rng);
-            let code = AssetCode::new_domestic(seed, description);
-            let definition = AssetDefinition::new(code, policy).context(CryptoSnafu)?;
-            let mint_info = MintInfo {
-                seed,
-                description: description.to_vec(),
-            };
-
-            model
-                .assets_mut()
-                .create(definition.clone(), Some(mint_info.clone()))?
-                .with_name(name)
-                .with_description(mint_info.fmt_description())
-                .save()?;
-
-            // If the asset is viewable/freezable, mark the appropriate viewing/freezing accounts
-            // `used`.
-            let policy = definition.policy_ref();
-            if policy.is_viewer_pub_key_set() {
-                if let Ok(account) = model.viewing_accounts.get_mut(policy.viewer_pub_key()) {
-                    account.set_used().save()?;
-                }
-            }
-            if policy.is_freezer_pub_key_set() {
-                if let Ok(account) = model.freezing_accounts.get_mut(policy.freezer_pub_key()) {
-                    account.set_used().save()?;
-                }
-            }
-            model.persistence.store_snapshot(self).await?;
-            Ok(definition)
-        }
-    }
-
-    // Add a new user key and set up a scan of the ledger to import records belonging to this key.
-    //
-    // `user_key` can be provided to add an arbitrary key, not necessarily derived from this
-    // keystore's deterministic key stream. Otherwise, the next key in the key stream will be derived
-    // and added.
-    //
-    // If `scan_from` is provided, a new ledger scan will be created and the corresponding event
-    // stream will be returned. Note that the caller is responsible for actually starting the task
-    // which processes this scan, since the Keystore (not the LedgerState) has the data structures
-    // needed to manage tasks (the AsyncScope, mutexes, etc.).
-    async fn add_sending_account<Meta: Serialize + DeserializeOwned + Send>(
-        &mut self,
-        model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
-        user_key: Option<UserKeyPair>,
-        description: String,
-        scan_from: Option<EventIndex>,
-    ) -> Result<
-        (
-            UserKeyPair,
-            Option<impl 'a + Stream<Item = (LedgerEvent<L>, EventSource)> + Send + Unpin>,
-        ),
-        KeystoreError<L>,
-    > {
-        let (user_key, index) = match user_key {
-            Some(user_key) => {
-                if model.sending_accounts.get(&user_key.address()).is_ok() {
-                    // For other key types, adding a key that already exists is a no-op. However,
-                    // because of the background ledger scans associated with user keys, we want to
-                    // report an error, since the user may have attempted to add the same key with
-                    // two different `scan_from` parameters, and we have not actually started the
-                    // second scan in this case.
-                    return Err(KeystoreError::<L>::UserKeyExists {
-                        pub_key: user_key.pub_key(),
-                    });
-                }
-                (user_key, None)
-            }
-            None => {
-                // It is possible that we already have some of the keys that will be yielded by the
-                // deterministic key stream. For example, the user could create a second keystore with
-                // the same mnemonic, generate some keys, and then manually add those keys to this
-                // keystore. If `user_key` is not provided, this function is required to generate a
-                // new key, so keep incrementing the key stream state and generating keys until we
-                // find one that is new.
-                loop {
-                    let index = model.sending_accounts.next_index();
-                    let user_key = model
-                        .user_key_stream
-                        .derive_user_key_pair(&index.to_le_bytes());
-                    if model.sending_accounts.get(&user_key.address()).is_err() {
-                        break (user_key, Some(index));
-                    }
-                }
-            }
-        };
-
-        let (scan, events) = if let Some(scan_from) = scan_from {
-            // Get the stream of events for the background scan worker task to process.
-            let (frontier, next_event) = model.backend.get_initial_scan_state(scan_from).await?;
-            let events = model.backend.subscribe(next_event, None).await;
-
-            // Create a background scan of the ledger to import records belonging to this key.
-            let scan = BackgroundKeyScan::new(
-                user_key.clone(),
-                next_event,
-                scan_from,
-                self.now,
-                SparseMerkleTree::sparse(frontier),
-            );
-            (Some(scan), Some(events))
-        } else {
-            (None, None)
-        };
-
-        // Add a new account to our set of accounts and update our persistent data structures and
-        // remote services.
-        model
-            .sending_accounts
-            .create(user_key.clone(), index)?
-            .with_description(description)
-            .set_scan(scan)
-            .save()?;
-        model.persistence.store_snapshot(self).await?;
-        // If we successfully updated our data structures, register the key with the
-        // network. The storage transaction will revert if this fails.
-        model.backend.register_user_key(&user_key).await?;
-        Ok((user_key, events))
-    }
-
-    // `viewing_key` can be provided to add an arbitrary key, not necessarily derived from this
-    // keystore's deterministic key stream. Otherwise, the next key in the key stream will be derived
-    // and added.
-    async fn add_viewing_account<Meta: Serialize + DeserializeOwned + Send>(
-        &mut self,
-        model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
-        viewing_key: Option<ViewerKeyPair>,
-        description: String,
-    ) -> Result<ViewerKeyPair, KeystoreError<L>> {
-        let (viewing_key, index) = match viewing_key {
-            Some(viewing_key) => {
-                if model.viewing_accounts.get(&viewing_key.pub_key()).is_ok() {
-                    return Ok(viewing_key);
-                }
-                (viewing_key, None)
-            }
-            None => {
-                let index = model.viewing_accounts.next_index();
-                let viewing_key = model
-                    .viewer_key_stream
-                    .derive_viewer_key_pair(&index.to_le_bytes());
-                (viewing_key, Some(index))
-            }
-        };
-
-        model
-            .viewing_accounts
-            .create(viewing_key.clone(), index)?
-            .with_description(description)
-            .save()?;
-        model.persistence.store_snapshot(self).await?;
-        Ok(viewing_key)
-    }
-
-    // `freezing_key` can be provided to add an arbitrary key, not necessarily derived from this
-    // keystore's deterministic key stream. Otherwise, the next key in the key stream will be derived
-    // and added.
-    async fn add_freezing_account<Meta: Serialize + DeserializeOwned + Send>(
-        &mut self,
-        model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
-        freezing_key: Option<FreezerKeyPair>,
-        description: String,
-    ) -> Result<FreezerKeyPair, KeystoreError<L>> {
-        let (freezing_key, index) = match freezing_key {
-            Some(freezing_key) => {
-                if model.freezing_accounts.get(&freezing_key.pub_key()).is_ok() {
-                    return Ok(freezing_key);
-                }
-                (freezing_key, None)
-            }
-            None => {
-                let index = model.viewing_accounts.next_index();
-                let freezing_key = model
-                    .freezer_key_stream
-                    .derive_freezer_key_pair(&index.to_le_bytes());
-                (freezing_key, Some(index))
-            }
-        };
-
-        model
-            .freezing_accounts
-            .create(freezing_key.clone(), index)?
-            .with_description(description)
-            .save()?;
-        model.persistence.store_snapshot(self).await?;
-
-        Ok(freezing_key)
-    }
-
-    pub fn build_transfer<'k, Meta: Serialize + DeserializeOwned + Send>(
-        &mut self,
-        model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
-        spec: TransferSpec<'k>,
-    ) -> Result<(TransferNote, TransactionParams<L>), KeystoreError<L>> {
-        self
-            .transfer(
-                &mut model.records,
-                spec,
-                &self.proving_keys.xfr,
-                &mut model.rng,
-            )
-    }
-
-   pub async fn build_mint<Meta: Serialize + DeserializeOwned + Send>(
-        &mut self,
-        model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
-        minter: Option<&UserAddress>,
-        fee: RecordAmount,
-        asset_code: &AssetCode,
-        amount: RecordAmount,
-        receiver: UserPubKey,
-    ) -> Result<(MintNote, TransactionParams<L>), KeystoreError<L>> {
-        let asset = model
-            .assets
-            .get::<L>(asset_code)
-            .map_err(|_| KeystoreError::<L>::UndefinedAsset { asset: *asset_code })?;
-        let MintInfo { seed, description } =
-            asset
-                .mint_info()
-                .ok_or(KeystoreError::<L>::AssetNotMintable {
-                    asset: asset.definition().clone(),
-                })?;
-        let sending_keys = match minter {
-            Some(addr) => vec![model.sending_accounts.get(addr)?.key().clone()],
-            None => model.sending_accounts.iter_keys().collect(),
-        };
-        self
-            .mint(
-                &mut model.records,
-                &sending_keys,
-                &self.proving_keys.mint,
-                fee,
-                &(asset.definition().clone(), seed, description),
-                amount,
-                receiver,
-                &mut model.rng,
-            )
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub async fn build_freeze<Meta: Serialize + DeserializeOwned + Send>(
-        &mut self,
-        model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
-        fee_address: Option<&UserAddress>,
-        fee: RecordAmount,
-        asset: &AssetCode,
-        amount: U256,
-        owner: UserAddress,
-        outputs_frozen: FreezeFlag,
-    ) -> Result<(FreezeNote, TransactionParams<L>), KeystoreError<L>> {
-        let asset = model
-            .assets
-            .get::<L>(asset)
-            .map_err(|_| KeystoreError::<L>::UndefinedAsset { asset: *asset })?
-            .definition()
-            .clone();
-        let freeze_key = match model
-            .freezing_accounts
-            .get(asset.policy_ref().freezer_pub_key())
-        {
-            Ok(account) => account.key().clone(),
-            _ => return Err(KeystoreError::<L>::AssetNotFreezable { asset }),
-        };
-        let sending_keys = match fee_address {
-            Some(addr) => vec![model.sending_accounts.get(addr)?.key().clone()],
-            None => model.sending_accounts.iter_keys().collect(),
-        };
-
-        self
-            .freeze_or_unfreeze(
-                &mut model.records,
-                &sending_keys,
-                &freeze_key,
-                &self.proving_keys.freeze,
-                fee,
-                &asset,
-                amount,
-                owner,
-                outputs_frozen,
-                &mut model.rng,
-            )
-    }
-
-   pub  async fn submit_transaction<Meta: Serialize + DeserializeOwned + Send>(
-        &mut self,
-        model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
-        note: TransactionNote,
-        info: TransactionParams<L>,
-    ) -> Result<TransactionUID<L>, KeystoreError<L>> {
-        let mut nullifier_pfs = Vec::new();
-        for n in note.nullifiers() {
-            let (spent, proof) = model
-                .backend
-                .get_nullifier_proof(&mut self.nullifiers, n)
-                .await?;
-            if spent {
-                return Err(KeystoreError::<L>::NullifierAlreadyPublished { nullifier: n });
-            }
-            nullifier_pfs.push(proof);
-        }
-
-        let txn = reef::Transaction::<L>::cap(note, nullifier_pfs);
-        self.submit_elaborated_transaction(model, txn, Some(info))
-            .await
-    }
-
-    // For reasons that are not clearly understood, the default async desugaring for this function
-    // loses track of the fact that the result type implements Send, which causes very confusing
-    // error messages farther up the call stack (apparently at the point where this function is
-    // monomorphized) which do not point back to this location. This is likely due to a bug in type
-    // inference, or at least a deficiency around async sugar combined with a bug in diagnostics.
-    //
-    // As a work-around, we do the desugaring manually so that we can explicitly specify that the
-    // return type implements Send. The return type also captures a reference with lifetime 'a,
-    // which is different from (but related to) the lifetime 'b of the returned Future, and
-    // `impl 'a + 'b + ...` does not work, so we use the work-around described at
-    // https://stackoverflow.com/questions/50547766/how-can-i-get-impl-trait-to-use-the-appropriate-lifetime-for-a-mutable-reference
-    // to indicate the captured lifetime using the Captures trait.
-    pub async fn submit_elaborated_transaction<'b, Meta: Serialize + DeserializeOwned + Send + Send>(
-        &'b mut self,
-        model: &'b mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
-        txn: reef::Transaction<L>,
-        info: Option<TransactionParams<L>>,
-    ) -> impl 'b + Captures<'a> + Future<Output = Result<TransactionUID<L>, KeystoreError<L>>> + Send
-    where
-        'a: 'b,
-    {
-        async move {
-            let stored_txn = if let Some(mut info) = info {
-                let now = self.block_height();
-                let timeout = now + (L::record_root_history() as u64);
-                let uid = TransactionUID(txn.hash());
-                for nullifier in txn.input_nullifiers() {
-                    // hold the record corresponding to this nullifier until the transaction is committed,
-                    // rejected, or expired.
-                    if let Ok(record) = model.records.with_nullifier_mut::<L>(&nullifier) {
-                        assert!(!(*record).on_hold(now));
-                        record.hold_until(timeout).save::<L>()?;
-                    }
-                }
-                info.timeout = Some(timeout);
-                let stored_txn = model.transactions.create(uid, info)?;
-                model.persistence.store_snapshot(self).await?;
-                stored_txn.clone()
-            } else {
-                model.transactions.get(&TransactionUID::<L>(txn.hash()))?
-            };
-            let uid = stored_txn.uid().clone();
-            // If we succeeded in creating and persisting the pending transaction, submit it to the
-            // validators.
-            model.backend.submit(txn.clone(), stored_txn).await?;
-            Ok(uid)
+impl<'a, L: Ledger> From<&LedgerState<'a, L>> for StaticState<'a> {
+    fn from(w: &LedgerState<'a, L>) -> Self {
+        Self {
+            proving_keys: w.proving_keys.clone(),
         }
     }
 }
 
-pub struct LedgerStateStore<'a, L:Ledger+DeserializeOwned+Serialize> {
-    store: RollingLog::<EncryptingResourceAdapter<LedgerState<'a, L>>>
+/// Serialization intermediate for the dynamic part of a ledger state.
+// #[ser_test(arbitrary, types(cap::Ledger), ark(false))]
+// #[derive(Debug, Derivative, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
+// #[derivative(PartialEq(bound = "L: Ledger"))]
+// #[serde(bound = "")]
+struct DynamicState<L: Ledger> {
+    now: EventIndex,
+    validator: Validator<L>,
+    record_mt: MerkleTree,
+    leaf_to_forget: Option<u64>,
+    nullifiers: NullifierSet<L>,
 }
 
+impl<'a, L: Ledger> From<&LedgerState<'a, L>> for DynamicState<L> {
+    fn from(w: &LedgerState<'a, L>) -> Self {
+        Self {
+            now: w.now.clone(),
+            validator: w.validator.clone(),
+            record_mt: w.record_mt.clone(),
+            leaf_to_forget: w.leaf_to_forget.clone(),
+            nullifiers: w.nullifiers.clone(),
+        }
+    }
+}
 
-impl<'a, L:Ledger+DeserializeOwned+Serialize> LedgerStateStore<'a,L> {
+// impl<'a, L: Ledger> Arbitrary<'a> for DynamicState<L>
+// where
+//     TransactionState<L>: Arbitrary<'a>,
+//     TransactionHash<L>: Arbitrary<'a>,
+// {
+//     fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
+//         Ok(Self {
+//             txn_state: u.arbitrary()?,
+//         })
+//     }
+// }
+
+pub struct LedgerStateStore<'a, L: Ledger + DeserializeOwned + Serialize> {
+    static_store: RollingLog<EncryptingResourceAdapter<StaticState<'a>>>,
+    dynamic_store: RollingLog<EncryptingResourceAdapter<DynamicState<L>>>,
+}
+
+impl<'a, L: Ledger + DeserializeOwned + Serialize> LedgerStateStore<'a, L> {
+    /// Create a ledger state store.
+    pub fn new(
+        loader: &mut AtomicStoreLoader,
+        static_adaptor: EncryptingResourceAdapter<StaticState<'a>>,
+        dynamic_adaptor: EncryptingResourceAdapter<DynamicState<L>>,
+        fill_size: u64,
+    ) -> Result<Self, KeystoreError<L>> {
+        let static_store =
+            RollingLog::load(loader, static_adaptor.cast(), "keystore_static", fill_size)
+                .context(crate::PersistenceSnafu)?;
+
+        let mut dynamic_store = RollingLog::load(
+            loader,
+            dynamic_adaptor.cast(),
+            "keystore_dynamic",
+            fill_size,
+        )
+        .context(crate::PersistenceSnafu)?;
+        dynamic_store.set_retained_entries(ATOMIC_STORE_RETAINED_ENTRIES);
+
+        Ok(Self {
+            static_store,
+            dynamic_store,
+        })
+    }
+
     pub fn load(&self) -> Result<LedgerState<'a, L>, KeystoreError<L>> {
-       Ok( self.store.load_latest()?)
-
+        let static_state = self.static_store.load_latest()?;
+        let dynamic_store = self.dynamic_store.load_latest()?;
+        Ok(LedgerState {
+            proving_keys: static_state.proving_keys.clone(),
+            now: dynamic_store.now.clone(),
+            validator: dynamic_store.validator.clone(),
+            record_mt: dynamic_store.record_mt.clone(),
+            leaf_to_forget: dynamic_store.leaf_to_forget.clone(),
+            nullifiers: dynamic_store.nullifiers.clone(),
+        })
     }
 
-    pub fn update(&mut self, new_state: &LedgerState<'a, L>) -> Result<(),KeystoreError<L>> {
-       Ok(self.store.store_resource(new_state)?)
+    pub fn load_proving_keys(
+        &self,
+    ) -> Result<&Arc<ProverKeySet<'a, key_set::OrderByOutputs>>, KeystoreError<L>> {
+        let static_state = self.static_store.load_latest()?;
+        Ok(static_state.proving_keys.clone())
+    }
+
+    pub fn load_nullifiers(&self) -> Result<&NullifierSet<L>, KeystoreError<L>> {
+        let dynamic_store = self.dynamic_store.load_latest()?;
+        Ok(dynamic_store.nullifiers.clone())
+    }
+
+    pub fn update(&mut self, ledger_state: &LedgerState<'a, L>) -> Result<(), KeystoreError<L>> {
+        self.static_store.store_resource(ledger_state.into())?;
+        self.dynamic_store.store_resource(ledger_state.into())?;
+        Ok(())
+    }
+
+    pub fn update_dynamic(
+        &mut self,
+        ledger_state: &LedgerState<'a, L>,
+    ) -> Result<(), KeystoreError<L>> {
+        Ok(self.dynamic_store.store_resource(ledger_state.into())?)
+    }
+
+    pub fn commit(&mut self) -> Result<(), KeystoreError<L>> {
+        self.static_data.commit_version()?;
+        self.dynamic_state.commit_version()?;
+        self.dynamic_state.prune_file_entries()?;
     }
 }
 

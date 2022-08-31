@@ -1,6 +1,6 @@
 use crate::{
-    EventIndex, KeystoreBackend, KeystoreError, KeystoreModel, ledger_state::LedgerState, TransactionStatus,
-    TransactionUID,
+    ledger_state::LedgerState, EventIndex, KeystoreBackend, KeystoreError, KeystoreModel,
+    TransactionStatus, TransactionUID,
 };
 use async_std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use futures::{channel::oneshot, TryFuture, TryFutureExt};
@@ -13,7 +13,7 @@ use std::collections::HashMap;
 /// Keystore state which is shared with event handling threads.
 pub struct KeystoreSharedState<
     'a,
-    L: Ledger,
+    L: Ledger + DeserializeOwned + Serialize,
     Backend: KeystoreBackend<'a, L>,
     Meta: Serialize + DeserializeOwned + Send,
 > {
@@ -24,11 +24,16 @@ pub struct KeystoreSharedState<
     pub(crate) pending_key_scans: HashMap<UserAddress, Vec<oneshot::Sender<()>>>,
 }
 
-impl<'a, L: Ledger, Backend: KeystoreBackend<'a, L>, Meta: Serialize + DeserializeOwned + Send>
-    KeystoreSharedState<'a, L, Backend, Meta>
+impl<
+        'a,
+        L: Ledger + DeserializeOwned + Serialize,
+        Backend: KeystoreBackend<'a, L>,
+        Meta: Serialize + DeserializeOwned + Send,
+    > KeystoreSharedState<'a, L, Backend, Meta>
 {
     async fn commit(&mut self) -> Result<(), KeystoreError<L>> {
-        self.model.persistence.commit().await;
+        self.model.persistence.commit();
+        self.model.ledger_state.commit()?;
         self.model.assets.commit()?;
         self.model.transactions.commit()?;
         self.model.records.commit()?;
@@ -48,14 +53,16 @@ impl<'a, L: Ledger, Backend: KeystoreBackend<'a, L>, Meta: Serialize + Deseriali
         self.model.freezing_accounts.revert()?;
         self.model.sending_accounts.revert()?;
         self.model.persistence.revert().await;
-        // Reload in-memory state after the revert.
-        self.state = self.model.persistence.load().await?;
         Ok(())
     }
 }
 
-impl<'a, L: Ledger, Backend: KeystoreBackend<'a, L>, Meta: Serialize + DeserializeOwned + Send>
-    KeystoreSharedState<'a, L, Backend, Meta>
+impl<
+        'a,
+        L: Ledger + DeserializeOwned + Serialize,
+        Backend: KeystoreBackend<'a, L>,
+        Meta: Serialize + DeserializeOwned + Send,
+    > KeystoreSharedState<'a, L, Backend, Meta>
 {
     pub fn new(
         state: LedgerState<'a, L>,
@@ -91,13 +98,17 @@ impl<'a, L: Ledger, Backend: KeystoreBackend<'a, L>, Meta: Serialize + Deseriali
 /// A read-write lock where writes must go through atomic storage transactions.
 pub struct KeystoreSharedStateRwLock<
     'a,
-    L: Ledger,
+    L: Ledger + DeserializeOwned + Serialize,
     Backend: KeystoreBackend<'a, L>,
     Meta: Send + Serialize + DeserializeOwned,
 >(RwLock<KeystoreSharedState<'a, L, Backend, Meta>>);
 
-impl<'a, L: Ledger, Backend: KeystoreBackend<'a, L>, Meta: Send + Serialize + DeserializeOwned>
-    KeystoreSharedStateRwLock<'a, L, Backend, Meta>
+impl<
+        'a,
+        L: Ledger + DeserializeOwned + Serialize,
+        Backend: KeystoreBackend<'a, L>,
+        Meta: Send + Serialize + DeserializeOwned,
+    > KeystoreSharedStateRwLock<'a, L, Backend, Meta>
 {
     pub fn new(
         state: LedgerState<'a, L>,
@@ -140,7 +151,7 @@ pub type KeystoreSharedStateReadGuard<'l, 'a, L, Backend, Meta> =
 pub struct KeystoreSharedStateWriteGuard<
     'l,
     'a,
-    L: Ledger,
+    L: Ledger + DeserializeOwned + Serialize,
     Backend: KeystoreBackend<'a, L>,
     Meta: Send + Serialize + DeserializeOwned,
 > {
@@ -151,7 +162,7 @@ pub struct KeystoreSharedStateWriteGuard<
 impl<
         'l,
         'a,
-        L: Ledger,
+        L: Ledger + DeserializeOwned + Serialize,
         Backend: KeystoreBackend<'a, L>,
         Meta: Send + Serialize + DeserializeOwned,
     > KeystoreSharedStateWriteGuard<'l, 'a, L, Backend, Meta>
@@ -265,7 +276,7 @@ impl<
 impl<
         'l,
         'a,
-        L: Ledger,
+        L: Ledger + DeserializeOwned + Serialize,
         Backend: KeystoreBackend<'a, L>,
         Meta: Send + Serialize + DeserializeOwned,
     > Drop for KeystoreSharedStateWriteGuard<'l, 'a, L, Backend, Meta>
