@@ -403,7 +403,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             C,
             |io, keystore| {
                 for address in keystore.sending_addresses().await {
-                    cli_writeln!(io, "{}", address);
+                    cli_writeln!(io, "{}", UserAddress(address));
                 }
             }
         ),
@@ -412,8 +412,8 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             "print all of the public keys of this keystore",
             C,
             |io, keystore| {
-                for address in keystore.sending_addresses().await {
-                    cli_writeln!(io, "{}", address);
+                for key_pair in keystore.sending_keys().await {
+                    cli_writeln!(io, "{}", key_pair.pub_key());
                 }
             }
         ),
@@ -819,7 +819,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             |io, keystore| {
                 cli_writeln!(io, "Addresses:");
                 for address in keystore.sending_addresses().await {
-                    cli_writeln!(io, "  {}", address);
+                    cli_writeln!(io, "  {}", UserAddress(address));
                 }
                 print_keys::<C>(io, keystore).await;
             }
@@ -895,9 +895,9 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
 
 async fn print_keys<'a, C: CLI<'a>>(io: &mut SharedIO, keystore: &Keystore<'a, C>) {
     cli_writeln!(io, "Sending keys:");
-    for address in keystore.sending_addresses().await {
-        let account = keystore.sending_account(&address).await.unwrap();
-        cli_writeln!(io, "  {} {}", address, account.description);
+    for key_pair in keystore.sending_keys().await {
+        let account = keystore.sending_account(&key_pair.address()).await.unwrap();
+        cli_writeln!(io, "  {} {}", key_pair.pub_key(), account.description);
     }
     cli_writeln!(io, "Viewing keys:");
     for key in keystore.viewing_pub_keys().await {
