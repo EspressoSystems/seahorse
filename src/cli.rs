@@ -403,7 +403,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             C,
             |io, keystore| {
                 for address in keystore.sending_addresses().await {
-                    cli_writeln!(io, "{}", address);
+                    cli_writeln!(io, "{}", UserAddress(address));
                 }
             }
         ),
@@ -412,8 +412,8 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             "print all of the public keys of this keystore",
             C,
             |io, keystore| {
-                for address in keystore.sending_addresses().await {
-                    cli_writeln!(io, "{}", address);
+                for key_pair in keystore.sending_keys().await {
+                    cli_writeln!(io, "{}", key_pair.pub_key());
                 }
             }
         ),
