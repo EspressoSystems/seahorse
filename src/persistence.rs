@@ -6,44 +6,11 @@
 // You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 //! Ledger-agnostic implementation of [KeystoreStorage].
-use crate::{
-    hd::KeyTree, ledger_state::LedgerState, loader::KeystoreLoader, txn_builder::TransactionState,
-    EncryptingResourceAdapter, KeystoreError,
-};
-use arbitrary::{Arbitrary, Unstructured};
-use async_std::sync::Arc;
+use crate::{hd::KeyTree, loader::KeystoreLoader, EncryptingResourceAdapter, KeystoreError};
 use atomic_store::{load_store::BincodeLoadStore, AtomicStoreLoader, RollingLog};
-use derivative::Derivative;
-use espresso_macros::ser_test;
-use key_set::{OrderByOutputs, ProverKeySet};
 use reef::*;
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Serialize};
 use snafu::ResultExt;
-
-mod serde_ark_unchecked {
-    use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-    use serde::{
-        de::{Deserialize, Deserializer},
-        ser::{Serialize, Serializer},
-    };
-    use std::sync::Arc;
-
-    pub fn serialize<S: Serializer, T: CanonicalSerialize>(
-        t: &Arc<T>,
-        s: S,
-    ) -> Result<S::Ok, S::Error> {
-        let mut bytes = Vec::new();
-        t.serialize_unchecked(&mut bytes).unwrap();
-        Serialize::serialize(&bytes, s)
-    }
-
-    pub fn deserialize<'a, D: Deserializer<'a>, T: CanonicalDeserialize>(
-        d: D,
-    ) -> Result<Arc<T>, D::Error> {
-        let bytes = <Vec<u8> as Deserialize<'a>>::deserialize(d)?;
-        Ok(Arc::new(T::deserialize_unchecked(&*bytes).unwrap()))
-    }
-}
 
 pub struct AtomicKeystoreStorage<Meta: Serialize + DeserializeOwned> {
     // Metadata given at initialization time that may not have been written to disk yet.
@@ -61,7 +28,6 @@ impl<Meta: Send + Serialize + DeserializeOwned + Clone + PartialEq> AtomicKeysto
     pub fn new<L: Ledger>(
         loader: &mut impl KeystoreLoader<L, Meta = Meta>,
         atomic_loader: &mut AtomicStoreLoader,
-        file_fill_size: u64,
     ) -> Result<Self, KeystoreError<L>> {
         // Load the metadata first so the loader can use it to generate the encryption key needed to
         // read the rest of the data.
@@ -259,8 +225,7 @@ mod tests {
                 "keystore",
             )
             .unwrap();
-            let mut storage =
-                AtomicKeystoreStorage::new(&mut loader, &mut atomic_loader, 1024).unwrap();
+            let mut storage = AtomicKeystoreStorage::new(&mut loader, &mut atomic_loader).unwrap();
             let mut atomic_store = AtomicStore::open(atomic_loader).unwrap();
 
             storage.commit().await;
@@ -289,8 +254,7 @@ mod tests {
                 "keystore",
             )
             .unwrap();
-            let mut storage =
-                AtomicKeystoreStorage::new(&mut loader, &mut atomic_loader, 1024).unwrap();
+            let mut storage = AtomicKeystoreStorage::new(&mut loader, &mut atomic_loader).unwrap();
             let mut atomic_store = AtomicStore::open(atomic_loader).unwrap();
             let state = storage.load().await.unwrap();
             storage.commit().await;
@@ -314,8 +278,7 @@ mod tests {
                 "keystore",
             )
             .unwrap();
-            let mut storage =
-                AtomicKeystoreStorage::new(&mut loader, &mut atomic_loader, 1024).unwrap();
+            let mut storage = AtomicKeystoreStorage::new(&mut loader, &mut atomic_loader).unwrap();
             let mut atomic_store = AtomicStore::open(atomic_loader).unwrap();
             storage.store_snapshot(&stored).await.unwrap();
             storage.commit().await;
@@ -327,8 +290,7 @@ mod tests {
                 "keystore",
             )
             .unwrap();
-            let mut storage =
-                AtomicKeystoreStorage::new(&mut loader, &mut atomic_loader, 1024).unwrap();
+            let mut storage = AtomicKeystoreStorage::new(&mut loader, &mut atomic_loader).unwrap();
             let mut atomic_store = AtomicStore::open(atomic_loader).unwrap();
             let state = storage.load().await.unwrap();
             storage.commit().await;
@@ -343,8 +305,7 @@ mod tests {
                 "keystore",
             )
             .unwrap();
-            let mut storage =
-                AtomicKeystoreStorage::new(&mut loader, &mut atomic_loader, 1024).unwrap();
+            let mut storage = AtomicKeystoreStorage::new(&mut loader, &mut atomic_loader).unwrap();
             let mut atomic_store = AtomicStore::open(atomic_loader).unwrap();
             storage.store_snapshot(&stored).await.unwrap();
             storage.commit().await;
@@ -356,8 +317,7 @@ mod tests {
                 "keystore",
             )
             .unwrap();
-            let mut storage =
-                AtomicKeystoreStorage::new(&mut loader, &mut atomic_loader, 1024).unwrap();
+            let mut storage = AtomicKeystoreStorage::new(&mut loader, &mut atomic_loader).unwrap();
             let mut atomic_store = AtomicStore::open(atomic_loader).unwrap();
             let state = storage.load().await.unwrap();
             storage.commit().await;
@@ -379,8 +339,7 @@ mod tests {
                 "keystore",
             )
             .unwrap();
-            let mut storage =
-                AtomicKeystoreStorage::new(&mut loader, &mut atomic_loader, 1024).unwrap();
+            let mut storage = AtomicKeystoreStorage::new(&mut loader, &mut atomic_loader).unwrap();
             let mut atomic_store = AtomicStore::open(atomic_loader).unwrap();
 
             let mut updated = stored.clone();
@@ -403,8 +362,7 @@ mod tests {
                 "keystore",
             )
             .unwrap();
-            let mut storage =
-                AtomicKeystoreStorage::new(&mut loader, &mut atomic_loader, 1024).unwrap();
+            let mut storage = AtomicKeystoreStorage::new(&mut loader, &mut atomic_loader).unwrap();
             let mut atomic_store = AtomicStore::open(atomic_loader).unwrap();
 
             let user_key = UserKeyPair::generate(&mut rng);

@@ -33,7 +33,7 @@ impl<
 {
     async fn commit(&mut self) -> Result<(), KeystoreError<L>> {
         self.model.persistence.commit();
-        self.model.ledger_state.commit()?;
+        self.model.ledger_state_store.commit()?;
         self.model.assets.commit()?;
         self.model.transactions.commit()?;
         self.model.records.commit()?;
