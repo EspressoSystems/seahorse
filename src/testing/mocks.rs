@@ -12,7 +12,6 @@ use crate::{
     sparse_merkle_tree::SparseMerkleTree,
     testing::{MockEventSource, MockNetwork as _},
     transactions::Transaction,
-    txn_builder::TransactionState,
     CryptoSnafu, KeystoreBackend, KeystoreError, LedgerState,
 };
 use async_std::sync::{Arc, Mutex};
@@ -236,14 +235,10 @@ impl<'a, const H: u8> KeystoreBackend<'a, cap::LedgerWithHeight<H>>
 
             LedgerState {
                 proving_keys: network.proving_keys.clone(),
-                txn_state: TransactionState {
-                    validator: network.validator.clone(),
-
-                    nullifiers: Default::default(),
-                    record_mt: SparseMerkleTree::sparse(network.records.clone()),
-
-                    now: network.now(),
-                },
+                validator: network.validator.clone(),
+                nullifiers: Default::default(),
+                record_mt: SparseMerkleTree::sparse(network.records.clone()),
+                now: network.now(),
             }
         };
         Ok(state)

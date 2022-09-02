@@ -46,15 +46,13 @@ use num_bigint::{BigInt, Sign};
 use num_traits::identities::Zero;
 use primitive_types::U256;
 use rand_chacha::ChaChaRng;
-#[cfg(test)]
-use reef::cap;
 use reef::{
     traits::{
         Block as _, NullifierSet as _, Transaction as _, TransactionKind as _, ValidationError,
         Validator as _,
     },
     types::*,
-    TransactionKind, *,
+    TransactionKind, Validator, *,
 };
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use snafu::ResultExt;
@@ -68,8 +66,8 @@ const ATOMIC_STORE_RETAINED_ENTRIES: u32 = 5;
 
 // #[ser_test(arbitrary, types(cap::Ledger), ark(false))]
 // #[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(Deserialize, Serialize)]
-// #[serde(bound = "")]
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(bound = "")]
 /// The state of the global ledger.
 pub struct LedgerState<'a, L: Ledger> {
     // For persistence, the fields in this struct are grouped into two categories based on how they
@@ -102,23 +100,22 @@ pub struct LedgerState<'a, L: Ledger> {
     /// transaction types supported by the verifying keys maintained by validators.
     ///
     /// These keys are constructed when the keystore is created, and they never change afterwards.
-    proving_keys: Arc<ProverKeySet<'a, key_set::OrderByOutputs>>,
+    pub proving_keys: Arc<ProverKeySet<'a, key_set::OrderByOutputs>>,
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // Dynamic data
     //
     /// Index of the last event processed.
-    now: EventIndex,
+    pub now: EventIndex,
     /// The Validator.
-    validator: Validator<L>,
+    pub validator: Validator<L>,
     /// Sparse record Merkle tree mirrored from validators.
-    record_mt: SparseMerkleTree,
-    leaf_to_forget: Option<u64>,
+    pub record_mt: SparseMerkleTree,
     /// Sparse nullifier set Merkle tree mirrored from validators
-    nullifiers: NullifierSet<L>,
+    pub nullifiers: NullifierSet<L>,
 }
 
-impl<'a, L: 'static + Ledger + DeserializeOwned + Serialize> LedgerState<'a, L> {
+impl<'a, L: 'static + Ledger> LedgerState<'a, L> {
     /// Get the proving keys.
     pub fn proving_keys(&self) -> Arc<ProverKeySet<'a, key_set::OrderByOutputs>> {
         self.proving_keys.clone()
@@ -1074,7 +1071,7 @@ impl<'a, L: 'static + Ledger + DeserializeOwned + Serialize> LedgerState<'a, L> 
         event: LedgerEvent<L>,
         source: EventSource,
     ) -> Result<EventSummary<L>, KeystoreError<L>> {
-        self.increment_now(source);
+        self.now += EventIndex::from_source(source, 1);
         let mut summary = EventSummary::default();
         match event {
             LedgerEvent::Commit {
@@ -1086,7 +1083,7 @@ impl<'a, L: 'static + Ledger + DeserializeOwned + Serialize> LedgerState<'a, L> 
                 // against our local mirror of the ledger and bail out if it is invalid.
                 let mut uids = match self.validator.validate_and_apply(block.clone()) {
                     Ok(uids) => {
-                        if state_comm != self.validator().commit() {
+                        if state_comm != self.validator.commit() {
                             // Received a block which validates, but our state commitment does not
                             // match that of the event source. Since the block validates, we will
                             // accept it, but this must indicate that the event source is lying or
@@ -1112,7 +1109,7 @@ impl<'a, L: 'static + Ledger + DeserializeOwned + Serialize> LedgerState<'a, L> 
                 };
 
                 // Update our full copies of sparse validator data structures to be consistent with
-                // the validator self.
+                // the validator state.
                 for txn in block.txns() {
                     let nullifiers = txn.input_nullifiers();
                     // Remove spent records.
@@ -1243,7 +1240,7 @@ impl<'a, L: 'static + Ledger + DeserializeOwned + Serialize> LedgerState<'a, L> 
                     }
                 }
 
-                // Some transactions may have expired when we stepped the validator self. Remove
+                // Some transactions may have expired when we stepped the validator state. Remove
                 // them from our pending transaction data structures.
                 //
                 // This maintains the invariant that everything in `pending_transactions` must
@@ -1260,9 +1257,9 @@ impl<'a, L: 'static + Ledger + DeserializeOwned + Serialize> LedgerState<'a, L> 
                     }
                     Err(err) => {
                         println!(
-                        "Error removing expired transaction from storage.  Block: {},  Error: {}",
-                        block_id, err
-                    );
+                            "Error removing expired transaction from storage.  Block: {},  Error: {}",
+                            block_id, err
+                        );
                     }
                 }
             }
@@ -1913,12 +1910,11 @@ impl<'a, L: Ledger> From<&LedgerState<'a, L>> for StaticState<'a> {
 // #[derive(Debug, Derivative, Deserialize, Serialize)]
 #[derive(Deserialize, Serialize)]
 // #[derivative(PartialEq(bound = "L: Ledger"))]
-// #[serde(bound = "")]
+#[serde(bound = "")]
 pub(crate) struct DynamicState<L: Ledger> {
     now: EventIndex,
     validator: Validator<L>,
     record_mt: SparseMerkleTree,
-    leaf_to_forget: Option<u64>,
     nullifiers: NullifierSet<L>,
 }
 
@@ -1928,7 +1924,6 @@ impl<'a, L: Ledger> From<&LedgerState<'a, L>> for DynamicState<L> {
             now: w.now,
             validator: w.validator.clone(),
             record_mt: w.record_mt.clone(),
-            leaf_to_forget: w.leaf_to_forget,
             nullifiers: w.nullifiers.clone(),
         }
     }
@@ -1946,12 +1941,12 @@ impl<'a, L: Ledger> From<&LedgerState<'a, L>> for DynamicState<L> {
 //     }
 // }
 
-pub struct LedgerStateStore<'a, L: Ledger + DeserializeOwned + Serialize> {
+pub struct LedgerStateStore<'a, L: Ledger> {
     static_store: RollingLog<EncryptingResourceAdapter<StaticState<'a>>>,
     dynamic_store: RollingLog<EncryptingResourceAdapter<DynamicState<L>>>,
 }
 
-impl<'a, L: Ledger + DeserializeOwned + Serialize> LedgerStateStore<'a, L> {
+impl<'a, L: Ledger> LedgerStateStore<'a, L> {
     /// Create a ledger state store.
     pub(crate) fn new(
         loader: &mut AtomicStoreLoader,
@@ -1986,7 +1981,6 @@ impl<'a, L: Ledger + DeserializeOwned + Serialize> LedgerStateStore<'a, L> {
             now: dynamic_store.now,
             validator: dynamic_store.validator.clone(),
             record_mt: dynamic_store.record_mt.clone(),
-            leaf_to_forget: dynamic_store.leaf_to_forget,
             nullifiers: dynamic_store.nullifiers,
         })
     }
@@ -2012,6 +2006,12 @@ impl<'a, L: Ledger + DeserializeOwned + Serialize> LedgerStateStore<'a, L> {
         self.static_store.commit_version()?;
         self.dynamic_store.commit_version()?;
         self.dynamic_store.prune_file_entries()?;
+        Ok(())
+    }
+
+    pub fn revert(&mut self) -> Result<(), KeystoreError<L>> {
+        self.static_store.revert_version()?;
+        self.dynamic_store.revert_version()?;
         Ok(())
     }
 }

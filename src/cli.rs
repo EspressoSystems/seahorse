@@ -79,7 +79,6 @@ pub trait CLI<'a> {
     fn extra_commands() -> Vec<Command<'a, Self>>
     where
         Self: Sized,
-        <Self as CLI<'a>>::Ledger: DeserializeOwned + Serialize,
     {
         vec![]
     }
@@ -114,10 +113,7 @@ pub type Keystore<'a, C> =
 /// This struct can be created manually, but it is easier to use the [command!] macro, which
 /// automatically parses a function specification to create the documentation for command
 /// parameters.
-pub struct Command<'a, C: CLI<'a>>
-where
-    <C as CLI<'a>>::Ledger: DeserializeOwned + Serialize,
-{
+pub struct Command<'a, C: CLI<'a>> {
     /// The name of the command, for display and lookup.
     pub name: String,
     /// The parameters of the command and their types, as strings, for display purposes in the
@@ -143,10 +139,7 @@ pub type CommandFunc<'a, C> = Box<
         ) -> BoxFuture<'l, ()>,
 >;
 
-impl<'a, C: CLI<'a>> Display for Command<'a, C>
-where
-    <C as CLI<'a>>::Ledger: DeserializeOwned + Serialize,
-{
+impl<'a, C: CLI<'a>> Display for Command<'a, C> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.name)?;
         for (param, ty) in &self.params {
@@ -161,18 +154,14 @@ where
 }
 
 /// Types which can be parsed from a string relative to a particular [Keystore].Stream
-pub trait CLIInput<'a, C: CLI<'a>>: Sized
-where
-    <C as CLI<'a>>::Ledger: DeserializeOwned + Serialize,
-{
+pub trait CLIInput<'a, C: CLI<'a>>: Sized {
     fn parse_for_keystore(keystore: &mut Keystore<'a, C>, s: &str) -> Option<Self>;
 }
 
 macro_rules! cli_input_from_str {
     ($($t:ty),*) => {
         $(
-            impl<'a, C: CLI<'a>> CLIInput<'a, C> for $t where
-            <C as CLI<'a>>::Ledger: DeserializeOwned + Serialize, {
+            impl<'a, C: CLI<'a>> CLIInput<'a, C> for $t  {
                 fn parse_for_keystore(_keystore: &mut Keystore<'a, C>, s: &str) -> Option<Self> {
                     Self::from_str(s).ok()
                 }
@@ -186,10 +175,7 @@ cli_input_from_str! {
     RecordAmount, RecordCommitment, String, UserAddress, UserPubKey, ViewerPubKey
 }
 
-impl<'a, C: CLI<'a>, L: Ledger> CLIInput<'a, C> for TransactionUID<L>
-where
-    <C as CLI<'a>>::Ledger: DeserializeOwned + Serialize,
-{
+impl<'a, C: CLI<'a>, L: Ledger> CLIInput<'a, C> for TransactionUID<L> {
     fn parse_for_keystore(_keystore: &mut Keystore<'a, C>, s: &str) -> Option<Self> {
         Self::from_str(s).ok()
     }
@@ -198,10 +184,7 @@ where
 // Annoyingly, FromStr for U256 always interprets the input as hex. This implementation checks for a
 // 0x prefix. If present, it interprets the remainder of the string as hex, otherwise it interprets
 // the entire string as decimal.
-impl<'a, C: CLI<'a>> CLIInput<'a, C> for U256
-where
-    <C as CLI<'a>>::Ledger: DeserializeOwned + Serialize,
-{
+impl<'a, C: CLI<'a>> CLIInput<'a, C> for U256 {
     fn parse_for_keystore(_wallet: &mut Keystore<'a, C>, s: &str) -> Option<Self> {
         if s.starts_with("0x") {
             s.parse().ok()
@@ -321,10 +304,7 @@ pub use crate::count;
 
 /// Types which can be listed in terminal output and parsed from a list index.
 #[async_trait]
-pub trait Listable<'a, C: CLI<'a>>: Sized
-where
-    <C as CLI<'a>>::Ledger: DeserializeOwned + Serialize,
-{
+pub trait Listable<'a, C: CLI<'a>>: Sized {
     async fn list(keystore: &mut Keystore<'a, C>) -> Vec<ListItem<Self>>;
 
     fn list_sync(keystore: &mut Keystore<'a, C>) -> Vec<ListItem<Self>> {
@@ -348,10 +328,7 @@ impl<T: Display> Display for ListItem<T> {
     }
 }
 
-impl<'a, C: CLI<'a>, T: Listable<'a, C> + CLIInput<'a, C>> CLIInput<'a, C> for ListItem<T>
-where
-    <C as CLI<'a>>::Ledger: DeserializeOwned + Serialize,
-{
+impl<'a, C: CLI<'a>, T: Listable<'a, C> + CLIInput<'a, C>> CLIInput<'a, C> for ListItem<T> {
     fn parse_for_keystore(keystore: &mut Keystore<'a, C>, s: &str) -> Option<Self> {
         if let Ok(index) = usize::from_str(s) {
             // If the input looks like a list index, build the list for type T and get an element of
@@ -374,10 +351,7 @@ where
 }
 
 #[async_trait]
-impl<'a, C: CLI<'a>> Listable<'a, C> for AssetCode
-where
-    <C as CLI<'a>>::Ledger: DeserializeOwned + Serialize,
-{
+impl<'a, C: CLI<'a>> Listable<'a, C> for AssetCode {
     async fn list(keystore: &mut Keystore<'a, C>) -> Vec<ListItem<Self>> {
         // Get our viewing and freezing keys so we can check if the asset types are
         // viewable/freezable.
@@ -420,10 +394,7 @@ where
     }
 }
 
-fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>>
-where
-    <C as CLI<'a>>::Ledger: DeserializeOwned + Serialize,
-{
+fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
     let mut commands = C::extra_commands();
     commands.append(&mut vec![
         command!(
@@ -922,10 +893,7 @@ where
     commands
 }
 
-async fn print_keys<'a, C: CLI<'a>>(io: &mut SharedIO, keystore: &Keystore<'a, C>)
-where
-    <C as CLI<'a>>::Ledger: DeserializeOwned + Serialize,
-{
+async fn print_keys<'a, C: CLI<'a>>(io: &mut SharedIO, keystore: &Keystore<'a, C>) {
     cli_writeln!(io, "Sending keys:");
     for address in keystore.sending_addresses().await {
         let account = keystore.sending_account(&address).await.unwrap();
@@ -949,10 +917,7 @@ pub enum KeyType {
     Sending,
 }
 
-impl<'a, C: CLI<'a>> CLIInput<'a, C> for KeyType
-where
-    <C as CLI<'a>>::Ledger: DeserializeOwned + Serialize,
-{
+impl<'a, C: CLI<'a>> CLIInput<'a, C> for KeyType {
     fn parse_for_keystore(_keystore: &mut Keystore<'a, C>, s: &str) -> Option<Self> {
         match s {
             "view" | "viewing" => Some(Self::Viewing),
@@ -969,9 +934,7 @@ pub async fn finish_transaction<'a, C: CLI<'a>>(
     result: Result<TransactionUID<C::Ledger>, KeystoreError<C::Ledger>>,
     wait: Option<bool>,
     success_state: &str,
-) where
-    <C as CLI<'a>>::Ledger: DeserializeOwned + Serialize,
-{
+) {
     match result {
         Ok(uid) => {
             if wait == Some(true) {
@@ -997,11 +960,7 @@ pub async fn finish_transaction<'a, C: CLI<'a>>(
 }
 
 /// Run the CLI based in the provided command line arguments.
-pub async fn cli_main<
-    'a,
-    L: 'static + Ledger + DeserializeOwned + Serialize,
-    C: CLI<'a, Ledger = L>,
->(
+pub async fn cli_main<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
     args: C::Args,
 ) -> Result<(), KeystoreError<L>> {
     if let Some(path) = args.key_gen_path() {
@@ -1026,7 +985,7 @@ pub fn key_gen<'a, C: CLI<'a>>(mut path: PathBuf) -> Result<(), KeystoreError<C:
     Ok(())
 }
 
-async fn repl<'a, L: 'static + Ledger + DeserializeOwned + Serialize, C: CLI<'a, Ledger = L>>(
+async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
     args: C::Args,
 ) -> Result<(), KeystoreError<L>> {
     let (storage, _tmp_dir) = match args.storage_path() {

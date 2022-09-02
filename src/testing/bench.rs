@@ -238,7 +238,7 @@ async fn bench_ledger_scanner_setup<
     // Snapshot the state from which we want the benchmark keystores to start scanning the ledger.
     // Clear out any existing keys so that when we run the benchmark, we have full control over
     // which keys are in the keystore and whether it can receive, view, or freeze certain assets.
-    let initial_state = keystores[0].0.read().await.state().clone();
+    let initial_state = keystores[0].0.read().await.state();
 
     // Create events by making a number of transfers. We transfer from a number of different
     // keystores so we can easily parallelize the transfers, which speeds things up and allows

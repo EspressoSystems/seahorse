@@ -291,7 +291,7 @@ pub trait KeystoreBackend<'a, L: Ledger>: Send {
 /// Transient state derived from the persistent [LedgerState].
 pub struct KeystoreModel<
     'a,
-    L: Ledger + DeserializeOwned + Serialize,
+    L: Ledger,
     Backend: KeystoreBackend<'a, L>,
     Meta: Serialize + DeserializeOwned + Send,
 > {
@@ -320,12 +320,8 @@ pub struct KeystoreModel<
     _marker2: std::marker::PhantomData<L>,
 }
 
-impl<
-        'a,
-        L: Ledger + DeserializeOwned + Serialize,
-        Backend: KeystoreBackend<'a, L>,
-        Meta: Serialize + DeserializeOwned + Send,
-    > KeystoreModel<'a, L, Backend, Meta>
+impl<'a, L: Ledger, Backend: KeystoreBackend<'a, L>, Meta: Serialize + DeserializeOwned + Send>
+    KeystoreModel<'a, L, Backend, Meta>
 {
     /// Access the persistent storage layer
     pub fn persistence(&self) -> &AtomicKeystoreStorage<Meta> {
@@ -391,11 +387,7 @@ pub fn received_memos<L: Ledger>(
 ///
 /// Note that this function cannot be used to import verified assets. Verified assets can only be
 /// imported using [verify_assets], conditional on a signature check.
-pub fn import_asset<
-    'a,
-    L: Ledger + DeserializeOwned + Serialize,
-    Meta: Serialize + DeserializeOwned + Send,
->(
+pub fn import_asset<'a, L: Ledger, Meta: Serialize + DeserializeOwned + Send>(
     model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
     asset: Asset,
 ) -> Result<(), KeystoreError<L>> {
@@ -413,11 +405,7 @@ pub fn import_asset<
 }
 
 /// Load a verified asset library with its trusted signer.
-pub fn verify_assets<
-    'a,
-    L: Ledger + DeserializeOwned + Serialize,
-    Meta: Serialize + DeserializeOwned + Send,
->(
+pub fn verify_assets<'a, L: Ledger, Meta: Serialize + DeserializeOwned + Send>(
     model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
     trusted_signer: &VerKey,
     library: VerifiedAssetLibrary,
@@ -425,11 +413,7 @@ pub fn verify_assets<
     model.assets.verify_assets(trusted_signer, library)
 }
 
-async fn view_transaction<
-    'a,
-    L: Ledger + DeserializeOwned + Serialize,
-    Meta: Serialize + DeserializeOwned + Send,
->(
+async fn view_transaction<'a, L: Ledger, Meta: Serialize + DeserializeOwned + Send>(
     model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
     txn: &reef::Transaction<L>,
     uids: &mut [(u64, bool)],
@@ -516,11 +500,7 @@ async fn view_transaction<
     Ok(())
 }
 
-async fn receive_attached_records<
-    'a,
-    L: Ledger + DeserializeOwned + Serialize,
-    Meta: Serialize + DeserializeOwned + Send,
->(
+async fn receive_attached_records<'a, L: Ledger, Meta: Serialize + DeserializeOwned + Send>(
     model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
     txn: &reef::Transaction<L>,
     uids: &mut [(u64, bool)],
@@ -579,11 +559,7 @@ async fn receive_attached_records<
     Ok(())
 }
 
-async fn add_receive_history<
-    'a,
-    L: Ledger + DeserializeOwned + Serialize,
-    Meta: Serialize + DeserializeOwned + Send,
->(
+async fn add_receive_history<'a, L: Ledger, Meta: Serialize + DeserializeOwned + Send>(
     model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
     kind: TransactionKind<L>,
     hash: TransactionHash<L>,
@@ -595,11 +571,7 @@ async fn add_receive_history<
     Ok(())
 }
 
-async fn try_open_memos<
-    'a,
-    L: Ledger + DeserializeOwned + Serialize,
-    Meta: Serialize + DeserializeOwned + Send,
->(
+async fn try_open_memos<'a, L: Ledger, Meta: Serialize + DeserializeOwned + Send>(
     model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
     key_pair: &UserKeyPair,
     memos: &[(ReceiverMemo, RecordCommitment, u64, MerklePath)],
@@ -670,7 +642,7 @@ impl<L: Ledger> Default for EventSummary<L> {
 pub struct Keystore<
     'a,
     Backend: KeystoreBackend<'a, L>,
-    L: Ledger + DeserializeOwned + Serialize,
+    L: Ledger,
     Meta: Serialize + DeserializeOwned + Send,
 > {
     // Data shared between the main thread and the event handling thread:
@@ -737,7 +709,7 @@ impl<T: Serialize + DeserializeOwned> LoadStore for EncryptingResourceAdapter<T>
 
 pub struct KeystoreResources<
     'a,
-    L: 'static + Ledger + DeserializeOwned + Serialize,
+    L: 'static + Ledger,
     Meta: 'a + Serialize + DeserializeOwned + Send + Sync + Clone + PartialEq,
 > {
     atomic_store: AtomicStore,
@@ -753,7 +725,7 @@ pub struct KeystoreResources<
 
 impl<
         'a,
-        L: 'static + Ledger + DeserializeOwned + Serialize,
+        L: 'static + Ledger,
         Meta: 'a + Serialize + DeserializeOwned + Send + Sync + Clone + PartialEq,
     > KeystoreResources<'a, L, Meta>
 {
@@ -794,7 +766,7 @@ impl<'a, T, F: Future<Output = T> + Captures<'a> + Send> SendFuture<'a, T> for F
 
 impl<
         'a,
-        L: 'static + Ledger + DeserializeOwned + Serialize,
+        L: 'static + Ledger,
         Backend: 'a + KeystoreBackend<'a, L> + Send + Sync,
         Meta: 'a + Serialize + DeserializeOwned + Send + Sync + Clone + PartialEq,
     > Keystore<'a, Backend, L, Meta>
@@ -1856,7 +1828,7 @@ impl<
 
 async fn update_ledger<
     'a,
-    L: 'static + Ledger + DeserializeOwned + Serialize,
+    L: 'static + Ledger,
     Backend: KeystoreBackend<'a, L>,
     Meta: Send + DeserializeOwned + Serialize,
 >(
@@ -1899,7 +1871,7 @@ async fn update_ledger<
 
 async fn update_key_scan<
     'a,
-    L: 'static + Ledger + DeserializeOwned + Serialize,
+    L: 'static + Ledger,
     Backend: KeystoreBackend<'a, L>,
     Meta: Send + DeserializeOwned + Serialize,
 >(

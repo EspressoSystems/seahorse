@@ -13,7 +13,7 @@ use std::collections::HashMap;
 /// Keystore state which is shared with event handling threads.
 pub struct KeystoreSharedState<
     'a,
-    L: Ledger + DeserializeOwned + Serialize,
+    L: Ledger,
     Backend: KeystoreBackend<'a, L>,
     Meta: Serialize + DeserializeOwned + Send,
 > {
@@ -24,12 +24,8 @@ pub struct KeystoreSharedState<
     pub(crate) pending_key_scans: HashMap<UserAddress, Vec<oneshot::Sender<()>>>,
 }
 
-impl<
-        'a,
-        L: Ledger + DeserializeOwned + Serialize,
-        Backend: KeystoreBackend<'a, L>,
-        Meta: Serialize + DeserializeOwned + Send,
-    > KeystoreSharedState<'a, L, Backend, Meta>
+impl<'a, L: Ledger, Backend: KeystoreBackend<'a, L>, Meta: Serialize + DeserializeOwned + Send>
+    KeystoreSharedState<'a, L, Backend, Meta>
 {
     async fn commit(&mut self) -> Result<(), KeystoreError<L>> {
         self.model.persistence.commit();
@@ -57,12 +53,8 @@ impl<
     }
 }
 
-impl<
-        'a,
-        L: Ledger + DeserializeOwned + Serialize,
-        Backend: KeystoreBackend<'a, L>,
-        Meta: Serialize + DeserializeOwned + Send,
-    > KeystoreSharedState<'a, L, Backend, Meta>
+impl<'a, L: Ledger, Backend: KeystoreBackend<'a, L>, Meta: Serialize + DeserializeOwned + Send>
+    KeystoreSharedState<'a, L, Backend, Meta>
 {
     pub fn new(
         state: LedgerState<'a, L>,
@@ -86,8 +78,8 @@ impl<
         &mut self.model.backend
     }
 
-    pub fn state(&self) -> &LedgerState<'a, L> {
-        &self.state
+    pub fn state(&self) -> LedgerState<'a, L> {
+        self.state.clone()
     }
 
     pub fn rng(&mut self) -> &mut ChaChaRng {
@@ -98,17 +90,13 @@ impl<
 /// A read-write lock where writes must go through atomic storage transactions.
 pub struct KeystoreSharedStateRwLock<
     'a,
-    L: Ledger + DeserializeOwned + Serialize,
+    L: Ledger,
     Backend: KeystoreBackend<'a, L>,
     Meta: Send + Serialize + DeserializeOwned,
 >(RwLock<KeystoreSharedState<'a, L, Backend, Meta>>);
 
-impl<
-        'a,
-        L: Ledger + DeserializeOwned + Serialize,
-        Backend: KeystoreBackend<'a, L>,
-        Meta: Send + Serialize + DeserializeOwned,
-    > KeystoreSharedStateRwLock<'a, L, Backend, Meta>
+impl<'a, L: Ledger, Backend: KeystoreBackend<'a, L>, Meta: Send + Serialize + DeserializeOwned>
+    KeystoreSharedStateRwLock<'a, L, Backend, Meta>
 {
     pub fn new(
         state: LedgerState<'a, L>,
@@ -151,7 +139,7 @@ pub type KeystoreSharedStateReadGuard<'l, 'a, L, Backend, Meta> =
 pub struct KeystoreSharedStateWriteGuard<
     'l,
     'a,
-    L: Ledger + DeserializeOwned + Serialize,
+    L: Ledger,
     Backend: KeystoreBackend<'a, L>,
     Meta: Send + Serialize + DeserializeOwned,
 > {
@@ -162,7 +150,7 @@ pub struct KeystoreSharedStateWriteGuard<
 impl<
         'l,
         'a,
-        L: Ledger + DeserializeOwned + Serialize,
+        L: Ledger,
         Backend: KeystoreBackend<'a, L>,
         Meta: Send + Serialize + DeserializeOwned,
     > KeystoreSharedStateWriteGuard<'l, 'a, L, Backend, Meta>
@@ -276,7 +264,7 @@ impl<
 impl<
         'l,
         'a,
-        L: Ledger + DeserializeOwned + Serialize,
+        L: Ledger,
         Backend: KeystoreBackend<'a, L>,
         Meta: Send + Serialize + DeserializeOwned,
     > Drop for KeystoreSharedStateWriteGuard<'l, 'a, L, Backend, Meta>
