@@ -865,6 +865,14 @@ pub mod generic_keystore_tests {
         let (ledger, mut keystores) = t
             .create_test_network(&[(3, 4)], vec![2, 2, 2], &mut now)
             .await;
+        let mut expected_history = keystores[0]
+            .0
+            .transaction_history()
+            .await
+            .unwrap()
+            .into_iter()
+            .map(TxnHistoryWithTimeTolerantEq)
+            .collect::<Vec<_>>();
 
         let (asset, r1) = {
             let mut rng = ChaChaRng::from_seed([42u8; 32]);
@@ -1049,84 +1057,85 @@ pub mod generic_keystore_tests {
         );
 
         // Check that the history properly accounts for freezes and unfreezes.
-        let expected_history = vec![
-            transactions::create_test_txn(
-                r1,
-                TransactionParams {
-                    timeout: None,
-                    status: TransactionStatus::Unknown,
-                    signed_memos: None,
-                    inputs: Default::default(),
-                    outputs: Default::default(),
-                    time: Local::now(),
-                    asset: asset.code,
-                    kind: TransactionKind::<T::Ledger>::mint(),
-                    senders: Vec::new(),
-                    receivers: vec![(keystores[0].1[0].address(), 3.into())],
-                    fee_change: None,
-                    asset_change: None,
-                },
-            ),
-            transactions::create_test_txn(
-                r2,
-                TransactionParams {
-                    timeout: None,
-                    status: TransactionStatus::Unknown,
-                    signed_memos: None,
-                    inputs: Default::default(),
-                    outputs: Default::default(),
-                    time: Local::now(),
-                    asset: asset.code,
-                    kind: TransactionKind::<T::Ledger>::freeze(),
-                    senders: Vec::new(),
-                    receivers: vec![(keystores[0].1[0].address(), 3.into())],
-                    fee_change: None,
-                    asset_change: None,
-                },
-            ),
-            transactions::create_test_txn(
-                r3,
-                TransactionParams {
-                    timeout: None,
-                    status: TransactionStatus::Unknown,
-                    signed_memos: None,
-                    inputs: Default::default(),
-                    outputs: Default::default(),
-                    time: Local::now(),
-                    asset: asset.code,
-                    kind: TransactionKind::<T::Ledger>::unfreeze(),
-                    senders: Vec::new(),
-                    receivers: vec![(keystores[0].1[0].address(), 3.into())],
-                    fee_change: None,
-                    asset_change: None,
-                },
-            ),
-            transactions::create_test_txn(
-                xfr_receipt,
-                TransactionParams {
-                    timeout: None,
-                    status: TransactionStatus::Unknown,
-                    signed_memos: None,
-                    inputs: Default::default(),
-                    outputs: Default::default(),
-                    time: Local::now(),
-                    asset: asset.code,
-                    kind: TransactionKind::<T::Ledger>::send(),
-                    senders: keystores[0]
-                        .1
-                        .clone()
-                        .into_iter()
-                        .map(|pub_key| pub_key.address())
-                        .collect::<Vec<_>>(),
-                    receivers: vec![(keystores[1].1[0].address(), RecordAmount::one())],
-                    fee_change: Some(1.into()),
-                    asset_change: Some(2.into()),
-                },
-            ),
-        ]
-        .into_iter()
-        .map(TxnHistoryWithTimeTolerantEq)
-        .collect::<Vec<_>>();
+        expected_history.extend(
+            vec![
+                transactions::create_test_txn(
+                    r1,
+                    TransactionParams {
+                        timeout: None,
+                        status: TransactionStatus::Unknown,
+                        signed_memos: None,
+                        inputs: Default::default(),
+                        outputs: Default::default(),
+                        time: Local::now(),
+                        asset: asset.code,
+                        kind: TransactionKind::<T::Ledger>::mint(),
+                        senders: Vec::new(),
+                        receivers: vec![(keystores[0].1[0].address(), 3.into())],
+                        fee_change: None,
+                        asset_change: None,
+                    },
+                ),
+                transactions::create_test_txn(
+                    r2,
+                    TransactionParams {
+                        timeout: None,
+                        status: TransactionStatus::Unknown,
+                        signed_memos: None,
+                        inputs: Default::default(),
+                        outputs: Default::default(),
+                        time: Local::now(),
+                        asset: asset.code,
+                        kind: TransactionKind::<T::Ledger>::freeze(),
+                        senders: Vec::new(),
+                        receivers: vec![(keystores[0].1[0].address(), 3.into())],
+                        fee_change: None,
+                        asset_change: None,
+                    },
+                ),
+                transactions::create_test_txn(
+                    r3,
+                    TransactionParams {
+                        timeout: None,
+                        status: TransactionStatus::Unknown,
+                        signed_memos: None,
+                        inputs: Default::default(),
+                        outputs: Default::default(),
+                        time: Local::now(),
+                        asset: asset.code,
+                        kind: TransactionKind::<T::Ledger>::unfreeze(),
+                        senders: Vec::new(),
+                        receivers: vec![(keystores[0].1[0].address(), 3.into())],
+                        fee_change: None,
+                        asset_change: None,
+                    },
+                ),
+                transactions::create_test_txn(
+                    xfr_receipt,
+                    TransactionParams {
+                        timeout: None,
+                        status: TransactionStatus::Unknown,
+                        signed_memos: None,
+                        inputs: Default::default(),
+                        outputs: Default::default(),
+                        time: Local::now(),
+                        asset: asset.code,
+                        kind: TransactionKind::<T::Ledger>::send(),
+                        senders: keystores[0]
+                            .1
+                            .clone()
+                            .into_iter()
+                            .map(|pub_key| pub_key.address())
+                            .collect::<Vec<_>>(),
+                        receivers: vec![(keystores[1].1[0].address(), RecordAmount::one())],
+                        fee_change: Some(1.into()),
+                        asset_change: Some(2.into()),
+                    },
+                ),
+            ]
+            .into_iter()
+            .map(TxnHistoryWithTimeTolerantEq),
+        );
         let actual_history = keystores[0]
             .0
             .transaction_history()
