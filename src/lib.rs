@@ -731,6 +731,7 @@ impl<
 {
     async fn commit(&mut self) -> Result<(), KeystoreError<L>> {
         self.persistence.commit();
+        self.ledger_state_store.commit()?;
         self.assets.commit()?;
         self.transactions.commit()?;
         self.records.commit()?;
@@ -841,7 +842,7 @@ impl<
             } else {
                 let state: LedgerState<'a, L> = backend.create().await?;
                 resources.persistence.create().await?;
-                resources.ledger_state_store.update_dynamic(&state)?;
+                resources.ledger_state_store.update(&state)?;
                 state
             };
             resources.commit().await?;
@@ -887,7 +888,8 @@ impl<
                 .unwrap();
         }
         Box::pin(async move {
-            resources.ledger_state_store.update_dynamic(&state)?;
+            resources.persistence.create().await?;
+            resources.ledger_state_store.update(&state)?;
             resources.commit().await?;
             Self::new_impl(backend, resources, state).await
         })

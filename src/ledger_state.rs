@@ -64,8 +64,6 @@ use std::sync::Arc;
 pub const UNEXPIRED_VALID_UNTIL: u64 = 2u64.pow(jf_cap::constants::MAX_TIMESTAMP_LEN as u32) - 1;
 const ATOMIC_STORE_RETAINED_ENTRIES: u32 = 5;
 
-// #[ser_test(arbitrary, types(cap::Ledger), ark(false))]
-// #[derive(Debug, Clone, Serialize, Deserialize)]
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(bound = "")]
 /// The state of the global ledger.
@@ -1906,10 +1904,7 @@ impl<'a, L: Ledger> From<&LedgerState<'a, L>> for StaticState<'a> {
 }
 
 /// Serialization intermediate for the dynamic part of a ledger state.
-// #[ser_test(arbitrary, types(cap::Ledger), ark(false))]
-// #[derive(Debug, Derivative, Deserialize, Serialize)]
 #[derive(Deserialize, Serialize)]
-// #[derivative(PartialEq(bound = "L: Ledger"))]
 #[serde(bound = "")]
 pub(crate) struct DynamicState<L: Ledger> {
     now: EventIndex,
@@ -1928,18 +1923,6 @@ impl<'a, L: Ledger> From<&LedgerState<'a, L>> for DynamicState<L> {
         }
     }
 }
-
-// impl<'a, L: Ledger> Arbitrary<'a> for DynamicState<L>
-// where
-//     TransactionState<L>: Arbitrary<'a>,
-//     TransactionHash<L>: Arbitrary<'a>,
-// {
-//     fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
-//         Ok(Self {
-//             txn_state: u.arbitrary()?,
-//         })
-//     }
-// }
 
 pub struct LedgerStateStore<'a, L: Ledger> {
     static_store: RollingLog<EncryptingResourceAdapter<StaticState<'a>>>,

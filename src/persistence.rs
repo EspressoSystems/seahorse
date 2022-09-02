@@ -225,7 +225,7 @@ mod tests {
                 "keystore",
             )
             .unwrap();
-            let persistence = AtomicKeystoreStorage::new::<cap::Ledger, MockKeystoreLoader>(
+            let mut persistence = AtomicKeystoreStorage::new::<cap::Ledger, MockKeystoreLoader>(
                 &mut loader,
                 &mut atomic_loader,
             )
@@ -236,12 +236,9 @@ mod tests {
                     .unwrap();
             let mut atomic_store = AtomicStore::open(atomic_loader).unwrap();
 
-            ledger_state_store.commit().unwrap();
-            atomic_store.commit_version().unwrap();
-            assert!(!persistence.exists());
-
             ledger_state_store.update(&state).unwrap();
             ledger_state_store.commit().unwrap();
+            persistence.commit();
             atomic_store.commit_version().unwrap();
             assert!(!persistence.exists());
         }
@@ -262,7 +259,7 @@ mod tests {
                 "keystore",
             )
             .unwrap();
-            let persistence = AtomicKeystoreStorage::new::<cap::Ledger, MockKeystoreLoader>(
+            let mut persistence = AtomicKeystoreStorage::new::<cap::Ledger, MockKeystoreLoader>(
                 &mut loader,
                 &mut atomic_loader,
             )
@@ -274,6 +271,7 @@ mod tests {
             let mut atomic_store = AtomicStore::open(atomic_loader).unwrap();
             let state = ledger_state_store.load().unwrap();
             ledger_state_store.commit().unwrap();
+            persistence.commit();
             atomic_store.commit_version().unwrap();
             state
         };
@@ -294,7 +292,7 @@ mod tests {
                 "keystore",
             )
             .unwrap();
-            let persistence = AtomicKeystoreStorage::new::<cap::Ledger, MockKeystoreLoader>(
+            let mut persistence = AtomicKeystoreStorage::new::<cap::Ledger, MockKeystoreLoader>(
                 &mut loader,
                 &mut atomic_loader,
             )
@@ -306,6 +304,7 @@ mod tests {
             let mut atomic_store = AtomicStore::open(atomic_loader).unwrap();
             ledger_state_store.update_dynamic(&stored).unwrap();
             ledger_state_store.commit().unwrap();
+            persistence.commit();
             atomic_store.commit_version().unwrap();
         }
         let loaded = {
@@ -314,7 +313,7 @@ mod tests {
                 "keystore",
             )
             .unwrap();
-            let persistence = AtomicKeystoreStorage::new::<cap::Ledger, MockKeystoreLoader>(
+            let mut persistence = AtomicKeystoreStorage::new::<cap::Ledger, MockKeystoreLoader>(
                 &mut loader,
                 &mut atomic_loader,
             )
@@ -326,6 +325,7 @@ mod tests {
             let mut atomic_store = AtomicStore::open(atomic_loader).unwrap();
             let state = ledger_state_store.load().unwrap();
             ledger_state_store.commit().unwrap();
+            persistence.commit();
             atomic_store.commit_version().unwrap();
             state
         };
@@ -344,7 +344,7 @@ mod tests {
                 "keystore",
             )
             .unwrap();
-            let persistence = AtomicKeystoreStorage::new::<cap::Ledger, MockKeystoreLoader>(
+            let mut persistence = AtomicKeystoreStorage::new::<cap::Ledger, MockKeystoreLoader>(
                 &mut loader,
                 &mut atomic_loader,
             )
@@ -360,6 +360,7 @@ mod tests {
             ledger_state_store.update_dynamic(&updated).unwrap();
             ledger_state_store.revert().unwrap();
             ledger_state_store.commit().unwrap();
+            persistence.commit();
             atomic_store.commit_version().unwrap();
 
             // Make sure loading after a revert does not return the reverted changes.
@@ -375,7 +376,7 @@ mod tests {
                 "keystore",
             )
             .unwrap();
-            let persistence = AtomicKeystoreStorage::new::<cap::Ledger, MockKeystoreLoader>(
+            let mut persistence = AtomicKeystoreStorage::new::<cap::Ledger, MockKeystoreLoader>(
                 &mut loader,
                 &mut atomic_loader,
             )
@@ -403,6 +404,7 @@ mod tests {
             // Loading after revert should be a no-op.
             let state = ledger_state_store.load().unwrap();
             ledger_state_store.commit().unwrap();
+            persistence.commit();
             atomic_store.commit_version().unwrap();
             state
         };
