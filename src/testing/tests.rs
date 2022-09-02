@@ -10,6 +10,7 @@ use super::*;
 use chrono::Duration;
 use commit::Commitment;
 use espresso_macros::generic_tests;
+use futures::future::join_all;
 use std::env;
 
 #[derive(Clone, Debug)]
@@ -1174,9 +1175,6 @@ pub mod generic_keystore_tests {
             (3, 2), // non-native merge
         ];
         let mut balances = vec![vec![0u64.into(); ndefs as usize + 1]; nkeystores as usize];
-        // reason for blocking the history entries is that entries corresponding to transactions
-        // that were validated in the same block can be recorded by the keystores in any order.
-        let mut histories = vec![vec![vec![]]; nkeystores as usize];
         let grants =
             // Each of the two addresses of the minter (keystore 0) gets 1 coin per initial record,
             // to pay transaction fees while it mints and distributes the records, and 1 coin per
@@ -1247,6 +1245,18 @@ pub mod generic_keystore_tests {
             now.elapsed().as_secs_f32()
         );
         now = Instant::now();
+
+        // `histories` is a list of blocks of transactions for each keystore. The reason for
+        // blocking the history entries is that entries corresponding to transactions that were
+        // validated in the same block can be recorded by the keystores in any order. Each keystore
+        // starts with 1 block, containing the history entries it had after initialization. We will
+        // append more blocks as we generate test transactions, and after each block we will check
+        // that each keystore's reported historoy matches its expected history.
+        let mut histories: Vec<Vec<Vec<Transaction<T::Ledger>>>> =
+            join_all(keystores.iter().skip(1).map(|(keystore, _, _)| async move {
+                vec![keystore.transaction_history().await.unwrap()]
+            }))
+            .await;
 
         fn push_history<L: Ledger>(
             keystore_ix: usize,
