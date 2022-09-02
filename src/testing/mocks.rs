@@ -102,9 +102,13 @@ impl<'a, const H: u8> super::MockNetwork<'a, cap::LedgerWithHeight<H>>
         self.events.now()
     }
 
-    fn submit(&mut self, block: cap::Block) -> Result<(), KeystoreError<cap::LedgerWithHeight<H>>> {
+    fn submit(
+        &mut self,
+        block: cap::Block,
+    ) -> Result<usize, KeystoreError<cap::LedgerWithHeight<H>>> {
         match self.validator.validate_and_apply(block.clone()) {
             Ok(validated) => {
+                let block_size = block.len();
                 let mut uids = validated.0;
                 // Add nullifiers
                 for txn in &block {
@@ -132,11 +136,13 @@ impl<'a, const H: u8> super::MockNetwork<'a, cap::LedgerWithHeight<H>>
                     block_uids.push(this_txn_uids);
                 }
                 self.committed_blocks.push((block, block_uids));
+                Ok(block_size)
             }
-            Err(error) => self.generate_event(LedgerEvent::Reject { block, error }),
+            Err(error) => {
+                self.generate_event(LedgerEvent::Reject { block, error });
+                Ok(0)
+            }
         }
-
-        Ok(())
     }
 
     fn post_memos(
