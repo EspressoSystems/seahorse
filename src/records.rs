@@ -159,8 +159,8 @@ impl Records {
         let store = RecordsStore::new(log)?;
         let mut records = Self {
             store,
-            asset_records: Persistable::new(),
-            nullifier_records: Persistable::new(),
+            asset_records: PersistableMap::new(),
+            nullifier_records: PersistableMap::new(),
         };
         for record in records.store.iter() {
             let ro = &record.ro;

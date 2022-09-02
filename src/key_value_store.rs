@@ -140,31 +140,36 @@ pub trait Persist<C> {
     fn revert(&mut self);
 }
 
+pub trait Persistable<I> {
+    fn index(&self) -> &I;
+    fn commit(&mut self);
+}
+
 /// A persistable in-memory state.
-pub struct Persistable<I, C> {
+pub struct PersistableMap<I, C> {
     /// In-memory index, including both committed and uncommitted changes.
     index: I,
     /// Changes that haven't been committed.
     pending_changes: Vec<IndexChange<C>>,
 }
 
-impl<I, C> Persistable<I, C> {
+impl<I, C> Persistable<I> for PersistableMap<I, C> {
     /// Get the index.
-    pub fn index(&self) -> &I {
+    fn index(&self) -> &I {
         &self.index
     }
 
     /// Commit the pending changes.
-    pub fn commit(&mut self) {
+    fn commit(&mut self) {
         // The index is always up-to-date, so commting only needs to clear the pending changes.
         self.pending_changes = Vec::new();
     }
 }
 
-pub type PersistableHashSet<K> = Persistable<HashSet<K>, K>;
-pub type PersistableHashMap<K, V> = Persistable<HashMap<K, V>, (K, V)>;
-pub type PersistableBTreeMultiMap<K, V> = Persistable<BTreeMap<K, HashSet<V>>, (K, V)>;
-pub type PersistableHashMapBTreeMultiMap<K, V> = Persistable<HashMap<K, BTreeSet<V>>, (K, V)>;
+pub type PersistableHashSet<K> = PersistableMap<HashSet<K>, K>;
+pub type PersistableHashMap<K, V> = PersistableMap<HashMap<K, V>, (K, V)>;
+pub type PersistableBTreeMultiMap<K, V> = PersistableMap<BTreeMap<K, HashSet<V>>, (K, V)>;
+pub type PersistableHashMapBTreeMultiMap<K, V> = PersistableMap<HashMap<K, BTreeSet<V>>, (K, V)>;
 
 impl<K: Copy + Eq + Hash> Persist<K> for PersistableHashSet<K> {
     fn new() -> Self {
@@ -348,4 +353,44 @@ impl<K: Clone + Eq + Hash, V: Clone + Eq + Hash + Ord> Persist<(K, V)>
         }
         self.pending_changes = Vec::new();
     }
+}
+
+mod test {
+    use crate::key_value_store::{Persist, Persistable};
+    pub enum PersistAction<C> {
+        Insert(C),
+        Remove(C),
+        Revert,
+        Commit,
+    }
+    pub fn test_persistasble<I: Clone + Default, C, P: Persist<C> + Persistable<I>>(
+        persistable: &mut P,
+        insert_fn: fn(&mut I, &C),
+        remove_fn: fn(&mut I, &C),
+        changes: Vec<PersistAction<C>>,
+    ) {
+        let mut control = I::default();
+        let mut revert_index = control.clone();
+        for change in changes {
+            match change {
+                PersistAction::Insert(change) => {
+                    insert_fn(&mut control, &change);
+                    persistable.insert(change);
+                },
+                PersistAction::Remove(change) => {
+                    remove_fn(&mut control, &change);
+                    persistable.remove(change);
+                },
+                PersistAction::Revert => {
+                    persistable.revert();
+                    control = revert_index.clone()
+                },
+                PersistAction::Commit => {
+                    persistable.commit();
+                    revert_index = control.clone();
+                },
+            }
+        }
+    }
+    pub fn proptest_persistable_hash_map() {}
 }

@@ -270,8 +270,8 @@ impl<L: Ledger> Transactions<L> {
         let store = TransactionsStore::<L>::new(log)?;
         let mut transactions = Self {
             store,
-            expiring_txns: Persistable::new(),
-            uids_awaiting_memos: Persistable::new(),
+            expiring_txns: PersistableMap::new(),
+            uids_awaiting_memos: PersistableMap::new(),
         };
         // Build the indices from what's loaded from storage
         for txn in transactions.store.iter() {
