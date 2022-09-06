@@ -355,18 +355,43 @@ impl<K: Clone + Eq + Hash, V: Clone + Eq + Hash + Ord> Persist<(K, V)>
     }
 }
 
-mod test {
-    use crate::key_value_store::{Persist, Persistable};
-    pub enum PersistAction<C> {
+#[cfg(test)]
+pub mod test {
+    use crate::key_value_store::*;
+    use core::fmt::Debug;
+    use proptest::test_runner::{Config, FileFailurePersistence, TestError, TestRunner};
+    use proptest::{collection::vec, prelude::*, prop_oneof, strategy::Strategy};
+    use std::collections::HashMap;
+    pub trait Set<V: Eq + Hash> {
+        fn insert(&mut self, value: V) -> bool;
+        fn remove(&mut self, value: &V) -> bool;
+    }
+
+    impl<V> Set<V> for HashSet<V> 
+    where V: Eq + Hash 
+    {
+        fn insert(&mut self, value: V) -> bool {
+            HashSet::insert(self, value)
+        }
+        fn remove(&mut self, value: &V) -> bool {
+            HashSet::remove(self, value)
+        }
+    }
+    #[derive(Clone, Debug, strum_macros::Display)]
+    pub enum PersistAction<C: Clone + Debug> {
         Insert(C),
         Remove(C),
         Revert,
         Commit,
     }
-    pub fn test_persistasble<I: Clone + Default, C, P: Persist<C> + Persistable<I>>(
+    pub fn test_persistasble<
+        I: Clone + Default + PartialEq + Debug,
+        C: Clone + Debug,
+        P: Persist<C> + Persistable<I>,
+    >(
         persistable: &mut P,
-        insert_fn: fn(&mut I, &C),
-        remove_fn: fn(&mut I, &C),
+        insert_fn: fn(&mut I, C),
+        remove_fn: fn(&mut I, C),
         changes: Vec<PersistAction<C>>,
     ) {
         let mut control = I::default();
@@ -374,23 +399,78 @@ mod test {
         for change in changes {
             match change {
                 PersistAction::Insert(change) => {
-                    insert_fn(&mut control, &change);
+                    insert_fn(&mut control, change.clone());
                     persistable.insert(change);
-                },
+                }
                 PersistAction::Remove(change) => {
-                    remove_fn(&mut control, &change);
+                    remove_fn(&mut control, change.clone());
                     persistable.remove(change);
-                },
+                }
                 PersistAction::Revert => {
                     persistable.revert();
                     control = revert_index.clone()
-                },
+                }
                 PersistAction::Commit => {
                     persistable.commit();
                     revert_index = control.clone();
-                },
+                }
             }
         }
+        assert_eq!(*persistable.index(), revert_index);
     }
-    pub fn proptest_persistable_hash_map() {}
+
+    pub fn action_strategy(size: u32) -> impl Strategy<Value = PersistAction<(u32, String)>> {
+        prop_oneof![
+            Just(PersistAction::Revert),
+            Just(PersistAction::Commit),
+            (0..size, ".*").prop_map(|(a, b)| PersistAction::Insert((a, b))),
+            (0..size, ".*").prop_map(|(a, b)| PersistAction::Remove((a, b))),
+        ]
+    }
+
+    pub fn actions<C>(size: usize) -> impl Strategy<Value = Vec<PersistAction<(u32, String)>>> {
+        vec(action_strategy(size as u32), 0..size)
+    }
+
+    pub fn test_hash_map<K: Eq + Hash + Clone + Debug, V: Clone + Debug + PartialEq>(
+        changes: Vec<PersistAction<(K, V)>>,
+    ) {
+        let mut map = PersistableHashMap::new();
+        test_persistasble(&mut map, insert_hash_map, remove_hash_map, changes)
+    }
+
+    fn insert_hash_map<K: Eq + Hash, V>(map: &mut HashMap<K, V>, change: (K, V)) {
+        map.insert(change.0, change.1);
+    }
+    fn remove_hash_map<K: Eq + Hash, V>(map: &mut HashMap<K, V>, change: (K, V)) {
+        map.remove(&change.0);
+    }
+    fn insert_hash_set<V: Eq + Hash>(set: &mut HashSet<V>, item: V) {
+        set.insert(item);
+    }
+    fn remove_hash_set<V: Eq + Hash>(set: &mut HashSet<V>, item: &V) {
+        set.remove(item);
+    }
+    fn remove_multi_map<K: Eq + Hash, V: Eq + Hash>(map: &mut HashMap<K, HashSet<V>>, change: (K, V)) {
+
+    }
+
+    #[test]
+    pub fn proptest_persistable_hash_map() {
+        let mut runner = TestRunner::new(Config {
+            // Turn failure persistence off for demonstration
+            failure_persistence: Some(Box::new(FileFailurePersistence::Off)),
+            ..Config::default()
+        });
+        let result = runner.run(&actions::<(u32, String)>(1000), |v| {
+            test_hash_map::<u32, String>(v);
+            Ok(())
+        });
+        match result {
+            Err(TestError::Fail(_, value)) => {
+                println!("Found minimal failing case: {:?}", value);
+            }
+            result => panic!("Unexpected result: {:?}", result),
+        }
+    }
 }
