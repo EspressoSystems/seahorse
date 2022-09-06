@@ -316,8 +316,12 @@ pub trait KeystoreBackend<'a, L: Ledger>: Send {
     /// relevant nullifier. This function should check if `nullifier` is represented in
     /// `nullifiers` and query the network only if it is not. Optionally, this function may add the
     /// proof to the cache after obtaining a proof from the network.
+    ///
+    /// `block_height` indicates the block height, or state number, for which  `nullifiers` is the
+    /// current nullifier set.
     async fn get_nullifier_proof(
         &self,
+        block_height: u64,
         nullifiers: &mut NullifierSet<L>,
         nullifier: Nullifier,
     ) -> Result<(bool, NullifierProof<L>), KeystoreError<L>>;
@@ -1156,7 +1160,11 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         for n in txn.input_nullifiers() {
             let (spent, proof) = model
                 .backend
-                .get_nullifier_proof(&mut self.txn_state.nullifiers, n)
+                .get_nullifier_proof(
+                    self.txn_state.block_height(),
+                    &mut self.txn_state.nullifiers,
+                    n,
+                )
                 .await?;
             if spent {
                 return Err(KeystoreError::<L>::NullifierAlreadyPublished { nullifier: n });
@@ -1480,7 +1488,11 @@ impl<'a, L: 'static + Ledger> KeystoreState<'a, L> {
         for n in note.nullifiers() {
             let (spent, proof) = model
                 .backend
-                .get_nullifier_proof(&mut self.txn_state.nullifiers, n)
+                .get_nullifier_proof(
+                    self.txn_state.block_height(),
+                    &mut self.txn_state.nullifiers,
+                    n,
+                )
                 .await?;
             if spent {
                 return Err(KeystoreError::<L>::NullifierAlreadyPublished { nullifier: n });
