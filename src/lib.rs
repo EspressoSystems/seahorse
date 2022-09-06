@@ -1052,7 +1052,12 @@ impl<
     /// Compute the spendable balance of the given asset type owned by all addresses.
     pub async fn balance(&self, asset: &AssetCode) -> U256 {
         let KeystoreSharedState { state, model, .. } = &*self.read().await;
-        state.balance(model, asset, FreezeFlag::Unfrozen)
+        state.balance(
+            model,
+            model.sending_accounts.iter_pub_keys(),
+            asset,
+            FreezeFlag::Unfrozen,
+        )
     }
 
     /// Compute the spendable balance of the given asset type owned by the given address.

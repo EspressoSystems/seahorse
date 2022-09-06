@@ -1032,11 +1032,12 @@ impl<'a, L: 'static + Ledger> LedgerState<'a, L> {
     pub fn balance<Meta: Serialize + DeserializeOwned + Send>(
         &self,
         model: &KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
+        addresses: impl Iterator<Item = UserAddress>,
         asset: &AssetCode,
         frozen: FreezeFlag,
     ) -> U256 {
         let mut balance = U256::zero();
-        for address in model.sending_accounts.iter_pub_keys() {
+        for address in addresses {
             balance += self.balance_breakdown(model, &address, asset, frozen);
         }
         balance
@@ -1092,7 +1093,10 @@ impl<'a, L: 'static + Ledger> LedgerState<'a, L> {
                         // sparseness. If any of the consumers of this block (for example, the
                         // viewer component, or the owner of this keystore) care about a uid, they
                         // will set its `remember` flag to true.
-                        uids.into_iter().map(|uid| (uid, false)).collect::<Vec<_>>()
+                        uids.0
+                            .into_iter()
+                            .map(|uid| (uid, false))
+                            .collect::<Vec<_>>()
                     }
                     Err(val_err) => {
                         //todo !jeb.bearer handle this case more robustly. If we get here, it means
@@ -1327,7 +1331,7 @@ impl<'a, L: 'static + Ledger> LedgerState<'a, L> {
         Ok(summary)
     }
 
-    pub async fn add_records<Meta: Serialize + DeserializeOwned + Send>(
+    pub(crate) async fn add_records<Meta: Serialize + DeserializeOwned + Send>(
         &mut self,
         model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
         key_pair: &UserKeyPair,
@@ -1368,7 +1372,7 @@ impl<'a, L: 'static + Ledger> LedgerState<'a, L> {
         Ok(())
     }
 
-    pub async fn import_memo<Meta: Serialize + DeserializeOwned + Send>(
+    pub(crate) async fn import_memo<Meta: Serialize + DeserializeOwned + Send>(
         &mut self,
         model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
         memo: ReceiverMemo,
@@ -1488,7 +1492,7 @@ impl<'a, L: 'static + Ledger> LedgerState<'a, L> {
     // `submit_elaborated_transaction`, where the default async desugaring loses track of the `Send`
     // impl for the result type. As with the other function, this can be fixed by manually
     // desugaring the type signature.
-    pub fn define_asset<'b, Meta: Serialize + DeserializeOwned + Send + Send>(
+    pub(crate) fn define_asset<'b, Meta: Serialize + DeserializeOwned + Send + Send>(
         &'b mut self,
         model: &'b mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
         name: String,
@@ -1690,7 +1694,7 @@ impl<'a, L: 'static + Ledger> LedgerState<'a, L> {
         Ok(freezing_key)
     }
 
-    pub fn build_transfer<'k, Meta: Serialize + DeserializeOwned + Send>(
+    pub(crate) fn build_transfer<'k, Meta: Serialize + DeserializeOwned + Send>(
         &mut self,
         model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
         spec: TransferSpec<'k>,
@@ -1703,7 +1707,7 @@ impl<'a, L: 'static + Ledger> LedgerState<'a, L> {
         )
     }
 
-    pub async fn build_mint<Meta: Serialize + DeserializeOwned + Send>(
+    pub(crate) async fn build_mint<Meta: Serialize + DeserializeOwned + Send>(
         &mut self,
         model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
         minter: Option<&UserAddress>,
@@ -1740,7 +1744,7 @@ impl<'a, L: 'static + Ledger> LedgerState<'a, L> {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub async fn build_freeze<Meta: Serialize + DeserializeOwned + Send>(
+    pub(crate) async fn build_freeze<Meta: Serialize + DeserializeOwned + Send>(
         &mut self,
         model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
         fee_address: Option<&UserAddress>,
