@@ -1698,7 +1698,7 @@ impl<'a, L: 'static + Ledger> LedgerState<'a, L> {
         for n in txn.input_nullifiers() {
             let (spent, proof) = model
                 .backend
-                .get_nullifier_proof(&mut self.nullifiers, n)
+                .get_nullifier_proof(self.block_height(), &mut self.nullifiers, n)
                 .await?;
             if spent {
                 return Err(KeystoreError::<L>::NullifierAlreadyPublished { nullifier: n });
@@ -2018,7 +2018,7 @@ impl<'a, L: 'static + Ledger> LedgerState<'a, L> {
         for n in note.nullifiers() {
             let (spent, proof) = model
                 .backend
-                .get_nullifier_proof(&mut self.nullifiers, n)
+                .get_nullifier_proof(self.block_height(), &mut self.nullifiers, n)
                 .await?;
             if spent {
                 return Err(KeystoreError::<L>::NullifierAlreadyPublished { nullifier: n });

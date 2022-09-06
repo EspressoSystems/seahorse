@@ -279,10 +279,12 @@ impl<'a, const H: u8> KeystoreBackend<'a, cap::LedgerWithHeight<H>>
 
     async fn get_nullifier_proof(
         &self,
+        block_height: u64,
         _set: &mut cap::NullifierSet,
         nullifier: Nullifier,
     ) -> Result<(bool, ()), KeystoreError<cap::LedgerWithHeight<H>>> {
         let mut ledger = self.ledger.lock().await;
+        assert_eq!(block_height, ledger.network().committed_blocks.len() as u64);
         Ok((ledger.network().nullifiers.contains(&nullifier), ()))
     }
 
