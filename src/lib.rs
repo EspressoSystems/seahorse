@@ -53,7 +53,7 @@ use crate::{
     encryption::Cipher,
     events::{EventIndex, EventSource, LedgerEvent},
     hd::KeyTree,
-    key_scan::{receive_history_entry, ScanOutputs},
+    key_scan::ScanOutputs,
     ledger_state::{LedgerState, LedgerStateStore},
     loader::KeystoreLoader,
     persistence::AtomicKeystoreStorage,
@@ -84,18 +84,16 @@ use jf_cap::{
     mint::MintNote,
     structs::{
         AssetCode, AssetDefinition, AssetPolicy, FreezeFlag, Nullifier, ReceiverMemo,
-        RecordCommitment, RecordOpening,
+        RecordCommitment,
     },
     transfer::TransferNote,
     MerklePath, MerkleTree, TransactionNote, VerKey,
 };
-use jf_primitives::aead;
 use primitive_types::U256;
 use rand_chacha::{rand_core::SeedableRng, ChaChaRng};
-use reef::{traits::Transaction as _, TransactionKind, *};
+use reef::{TransactionKind, *};
 use serde::{de::DeserializeOwned, Serialize};
 use snafu::Snafu;
-use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::sync::Arc;
 use std::time::Duration;
@@ -364,23 +362,13 @@ impl<'a, L: Ledger, Backend: KeystoreBackend<'a, L>, Meta: Serialize + Deseriali
     }
 }
 
-// Inform the Transactions database that we have received memos for the given record UIDs. Return a list of
-// the transactions that are completed as a result.
-pub fn received_memos<L: Ledger>(
-    uids: impl Iterator<Item = u64>,
-    transactions: &mut Transactions<L>,
-) -> Vec<TransactionUID<L>> {
-    let mut completed = Vec::new();
-    for uid in uids {
-        if let Ok(txn) = transactions.with_memo_id_mut(uid) {
-            let mut txn = txn.remove_pending_uid(uid);
-            let transaction = txn.save().unwrap();
-            if transaction.pending_uids().is_empty() {
-                completed.push((*txn).uid().clone());
-            }
-        }
-    }
-    completed
+/// Load a verified asset library with its trusted signer.
+pub fn verify_assets<'a, L: Ledger, Meta: Serialize + DeserializeOwned + Send>(
+    model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
+    trusted_signer: &VerKey,
+    library: VerifiedAssetLibrary,
+) -> Result<Vec<AssetDefinition>, KeystoreError<L>> {
+    model.assets.verify_assets(trusted_signer, library)
 }
 
 /// Import an unverified asset.
@@ -402,209 +390,6 @@ pub fn import_asset<'a, L: Ledger, Meta: Serialize + DeserializeOwned + Send>(
         .update_internal(asset)?
         .save()?;
     Ok(())
-}
-
-/// Load a verified asset library with its trusted signer.
-pub fn verify_assets<'a, L: Ledger, Meta: Serialize + DeserializeOwned + Send>(
-    model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
-    trusted_signer: &VerKey,
-    library: VerifiedAssetLibrary,
-) -> Result<Vec<AssetDefinition>, KeystoreError<L>> {
-    model.assets.verify_assets(trusted_signer, library)
-}
-
-async fn view_transaction<'a, L: Ledger, Meta: Serialize + DeserializeOwned + Send>(
-    model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
-    txn: &reef::Transaction<L>,
-    uids: &mut [(u64, bool)],
-) -> Result<(), KeystoreError<L>> {
-    // Try to decrypt viewer memos.
-    let mut viewable_assets = HashMap::new();
-    for asset in model.assets.iter() {
-        if model
-            .viewing_accounts
-            .get(asset.definition().policy_ref().viewer_pub_key())
-            .is_ok()
-        {
-            viewable_assets.insert(asset.code(), asset.definition().clone());
-        }
-    }
-    if let Ok(memo) = txn.open_viewing_memo(
-        &viewable_assets,
-        &model
-            .viewing_accounts
-            .iter()
-            .map(|account| (account.pub_key(), account.key().clone()))
-            .collect(),
-    ) {
-        // Mark the viewing account used.
-        model
-            .viewing_accounts
-            .get_mut(memo.asset.policy_ref().viewer_pub_key())
-            .unwrap()
-            .set_used()
-            .save()
-            .unwrap();
-
-        //todo !jeb.bearer eventually, we will probably want to save all the viewing memos for
-        // the whole transaction (inputs and outputs) regardless of whether any of the outputs
-        // are freezeable, just for general viewing purposes.
-
-        // the first uid corresponds to the fee change output, which has no view memo, so skip
-        // that one
-        for ((uid, remember), output) in uids.iter_mut().skip(1).zip(memo.outputs) {
-            let pub_key = match output.user_address {
-                Some(address) => Some(match model.backend.get_public_key(&address).await {
-                    Ok(key) => key,
-                    // If the address isn't found in the backend, it may not be registered. In
-                    // this case, use the address and a default encryption key to construct a
-                    // public key. The encryption key is only a placeholder since it won't be
-                    // used to compute the record commitment.
-                    Err(_) => UserPubKey::new(address, aead::EncKey::default()),
-                }),
-                None => None,
-            };
-            if let (Some(pub_key), Some(amount), Some(blind)) =
-                (pub_key, output.amount, output.blinding_factor)
-            {
-                // If the viewing memo contains all the information we need to potentially freeze
-                // this record, save it in our database for later freezing.
-                if let Ok(account_editor) = model
-                    .freezing_accounts
-                    .get_mut(memo.asset.policy_ref().freezer_pub_key())
-                {
-                    // Mark the freezing account that is tracking the record used.
-                    let account = account_editor.set_used().save().unwrap();
-
-                    let record_opening = RecordOpening {
-                        amount,
-                        asset_def: memo.asset.clone(),
-                        pub_key,
-                        freeze_flag: FreezeFlag::Unfrozen,
-                        blind,
-                    };
-                    model.records.create::<L>(
-                        *uid,
-                        record_opening.clone(),
-                        account.key().nullify(
-                            &record_opening.pub_key.address(),
-                            *uid,
-                            &RecordCommitment::from(&record_opening),
-                        ),
-                    )?;
-                    *remember = true;
-                }
-            }
-        }
-    }
-    Ok(())
-}
-
-async fn receive_attached_records<'a, L: Ledger, Meta: Serialize + DeserializeOwned + Send>(
-    model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
-    txn: &reef::Transaction<L>,
-    uids: &mut [(u64, bool)],
-    add_to_history: bool,
-) -> Result<(), KeystoreError<L>> {
-    let records = txn.output_openings().into_iter().flatten().zip(uids);
-    let mut my_records = vec![];
-    for (ro, (uid, remember)) in records {
-        if let Ok(account_editor) = model.sending_accounts.get_mut(&ro.pub_key.address()) {
-            // If this record is for us, add it to the keystore and include it in the
-            // list of received records for created a received transaction history
-            // entry.
-            *remember = true;
-            // Add the asset type if it is not already in the asset library.
-            model.assets.create(ro.asset_def.clone(), None)?;
-            // Mark the account receiving the records used.
-            let account = account_editor.set_used().save()?;
-            // Add the record.
-            model.records.create::<L>(
-                *uid,
-                ro.clone(),
-                account.key().nullify(
-                    ro.asset_def.policy_ref().freezer_pub_key(),
-                    *uid,
-                    &RecordCommitment::from(&ro),
-                ),
-            )?;
-            my_records.push(ro);
-        } else if let Ok(account_editor) = model
-            .freezing_accounts
-            .get_mut(ro.asset_def.policy_ref().freezer_pub_key())
-        {
-            // If this record is not for us, but we can freeze it, then this
-            // becomes like an view. Add the record to our collection of freezable
-            // records, but do not include it in the history entry.
-            *remember = true;
-            // Add the asset type if it is not already in the asset library.
-            model.assets.create(ro.asset_def.clone(), None)?;
-            // Mark the freezing account which is tracking the record used.
-            let account = account_editor.set_used().save()?;
-            // Add the record.
-            model.records.create::<L>(
-                *uid,
-                ro.clone(),
-                account
-                    .key()
-                    .nullify(&ro.pub_key.address(), *uid, &RecordCommitment::from(&ro)),
-            )?;
-        }
-    }
-
-    if add_to_history && !my_records.is_empty() {
-        add_receive_history(model, txn.kind(), txn.hash().clone(), &my_records).await?;
-    }
-
-    Ok(())
-}
-
-async fn add_receive_history<'a, L: Ledger, Meta: Serialize + DeserializeOwned + Send>(
-    model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
-    kind: TransactionKind<L>,
-    hash: TransactionHash<L>,
-    records: &[RecordOpening],
-) -> Result<(), KeystoreError<L>> {
-    let uid = TransactionUID::<L>(hash);
-    let history = receive_history_entry(kind, records);
-    model.transactions.create(uid, history)?;
-    Ok(())
-}
-
-async fn try_open_memos<'a, L: Ledger, Meta: Serialize + DeserializeOwned + Send>(
-    model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
-    key_pair: &UserKeyPair,
-    memos: &[(ReceiverMemo, RecordCommitment, u64, MerklePath)],
-    transaction: Option<(u64, u64, TransactionHash<L>, TransactionKind<L>)>,
-    add_to_history: bool,
-) -> Result<Vec<(RecordOpening, u64, MerklePath)>, KeystoreError<L>> {
-    let mut records = Vec::new();
-    for (memo, comm, uid, proof) in memos {
-        if let Ok(record_opening) = memo.decrypt(key_pair, comm, &[]) {
-            if !record_opening.is_dummy() {
-                // If this record is for us (i.e. its corresponding memo decrypts under
-                // our key) and not a dummy, then add it to our owned records.
-                records.push((record_opening, *uid, proof.clone()));
-            }
-        }
-    }
-
-    if add_to_history && !records.is_empty() {
-        if let Some((_block_id, _txn_id, hash, kind)) = transaction {
-            add_receive_history(
-                model,
-                kind,
-                hash,
-                &records
-                    .iter()
-                    .map(|(ro, _, _)| ro.clone())
-                    .collect::<Vec<_>>(),
-            )
-            .await?;
-        }
-    }
-
-    Ok(records)
 }
 
 // Trait used to indicate that an abstract return type captures a reference with the lifetime 'a.
@@ -1049,7 +834,7 @@ impl<
         model.sending_accounts.get(address)
     }
 
-    /// Compute the spendable balance of the given asset type owned by all addresses.
+    /// Compute the spendable balance of the given asset owned by the given addresses.
     pub async fn balance(&self, asset: &AssetCode) -> U256 {
         let KeystoreSharedState { state, model, .. } = &*self.read().await;
         state.balance(
@@ -1060,7 +845,7 @@ impl<
         )
     }
 
-    /// Compute the spendable balance of the given asset type owned by the given address.
+    /// Compute the spendable balance of the given asset owned by the given address.
     pub async fn balance_breakdown(&self, address: &UserAddress, asset: &AssetCode) -> U256 {
         let KeystoreSharedState { state, model, .. } = &*self.read().await;
         match model.sending_accounts.get(address) {

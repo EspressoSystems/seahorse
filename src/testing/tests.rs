@@ -6,8 +6,7 @@
 // You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
 #![deny(warnings)]
 
-use super::transactions::Transaction;
-use super::*;
+use super::{transactions::Transaction, *};
 use chrono::Duration;
 use commit::Commitment;
 use espresso_macros::generic_tests;

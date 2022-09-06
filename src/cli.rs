@@ -161,7 +161,7 @@ pub trait CLIInput<'a, C: CLI<'a>>: Sized {
 macro_rules! cli_input_from_str {
     ($($t:ty),*) => {
         $(
-            impl<'a, C: CLI<'a>> CLIInput<'a, C> for $t  {
+            impl<'a, C: CLI<'a>> CLIInput<'a, C> for $t {
                 fn parse_for_keystore(_keystore: &mut Keystore<'a, C>, s: &str) -> Option<Self> {
                     Self::from_str(s).ok()
                 }

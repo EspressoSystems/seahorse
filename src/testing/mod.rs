@@ -20,7 +20,7 @@ use async_std::sync::{Arc, Mutex};
 use chrono::Local;
 use futures::{channel::mpsc, stream::iter};
 use hd::KeyTree;
-use jf_cap::{MerkleTree, Signature, TransactionVerifyingKey};
+use jf_cap::{structs::RecordOpening, MerkleTree, Signature, TransactionVerifyingKey};
 use key_set::{KeySet, OrderByOutputs, ProverKeySet, VerifierKeySet};
 use rand_chacha::rand_core::RngCore;
 use reef::{
