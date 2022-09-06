@@ -1893,7 +1893,7 @@ async fn update_key_scan<
         .sending_accounts
         .get_mut(address)
         .unwrap()
-        .update_scan(event, source, state.record_mt().commitment())
+        .update_scan(event, source, state.record_mt.commitment())
         .await
     {
         Ok((mut editor, scan_info)) => {

@@ -210,9 +210,9 @@ pub fn assert_keystore_states_eq<'a, L: 'static + Ledger>(
 ) {
     assert_eq!(w1.now(), w2.now());
     assert_eq!(w1.validator.commit(), w2.validator.commit());
-    assert_eq!(w1.proving_keys, w2.proving_keys);
+    assert_eq!(w1.proving_keys(), w2.proving_keys());
     assert_eq!(w1.nullifiers, w2.nullifiers);
-    assert_eq!(w1.record_mt().commitment(), w2.record_mt().commitment());
+    assert_eq!(w1.record_mt.commitment(), w2.record_mt.commitment());
 }
 
 #[async_trait]

@@ -203,17 +203,17 @@ mod tests {
         let record_merkle_tree = SparseMerkleTree::new(cap::Ledger::merkle_height()).unwrap();
         let validator = cap::Validator::default();
 
-        let state = LedgerState {
-            proving_keys: Arc::new(ProverKeySet {
+        let state = LedgerState::new(
+            Arc::new(ProverKeySet {
                 xfr: KeySet::new(xfr_prove_keys.into_iter()).unwrap(),
                 freeze: KeySet::new(vec![freeze_prove_key].into_iter()).unwrap(),
                 mint: mint_prove_key,
             }),
+            Default::default(),
             validator,
-            now: Default::default(),
-            nullifiers: Default::default(),
-            record_mt: record_merkle_tree,
-        };
+            record_merkle_tree,
+            Default::default(),
+        );
 
         let mut loader = MockKeystoreLoader {
             dir: TempDir::new(name).unwrap(),

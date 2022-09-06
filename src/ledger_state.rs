@@ -98,7 +98,7 @@ pub struct LedgerState<'a, L: Ledger> {
     /// transaction types supported by the verifying keys maintained by validators.
     ///
     /// These keys are constructed when the keystore is created, and they never change afterwards.
-    pub proving_keys: Arc<ProverKeySet<'a, key_set::OrderByOutputs>>,
+    proving_keys: Arc<ProverKeySet<'a, key_set::OrderByOutputs>>,
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // Dynamic data
@@ -114,6 +114,22 @@ pub struct LedgerState<'a, L: Ledger> {
 }
 
 impl<'a, L: 'static + Ledger> LedgerState<'a, L> {
+    /// Construct a ledger state.
+    pub fn new(
+        proving_keys: Arc<ProverKeySet<'a, key_set::OrderByOutputs>>,
+        now: EventIndex,
+        validator: Validator<L>,
+        record_mt: SparseMerkleTree,
+        nullifiers: NullifierSet<L>,
+    ) -> Self {
+        Self {
+            proving_keys,
+            now,
+            validator,
+            record_mt,
+            nullifiers,
+        }
+    }
     /// Get the proving keys.
     pub fn proving_keys(&self) -> Arc<ProverKeySet<'a, key_set::OrderByOutputs>> {
         self.proving_keys.clone()
@@ -122,26 +138,6 @@ impl<'a, L: 'static + Ledger> LedgerState<'a, L> {
     /// Get the event index.
     pub fn now(&self) -> EventIndex {
         self.now
-    }
-
-    /// Increment the index of the given event source.
-    pub fn increment_now(&mut self, source: EventSource) {
-        self.now += EventIndex::from_source(source, 1);
-    }
-
-    /// Get the validator.
-    pub fn validator(&self) -> &Validator<L> {
-        &self.validator
-    }
-
-    /// Get the nullifiers.
-    pub fn nullifiers(&self) -> &NullifierSet<L> {
-        &self.nullifiers
-    }
-
-    /// Get the record Merkle tree.
-    pub fn record_mt(&self) -> &SparseMerkleTree {
-        &self.record_mt
     }
 
     pub fn block_height(&self) -> u64 {
@@ -1929,7 +1925,7 @@ pub struct LedgerStateStore<'a, L: Ledger> {
     dynamic_store: RollingLog<EncryptingResourceAdapter<DynamicState<L>>>,
 }
 
-impl<'a, L: Ledger> LedgerStateStore<'a, L> {
+impl<'a, L: 'static + Ledger> LedgerStateStore<'a, L> {
     /// Create a ledger state store.
     pub(crate) fn new(
         loader: &mut AtomicStoreLoader,
@@ -1959,13 +1955,13 @@ impl<'a, L: Ledger> LedgerStateStore<'a, L> {
     pub fn load(&self) -> Result<LedgerState<'a, L>, KeystoreError<L>> {
         let static_state = self.static_store.load_latest()?;
         let dynamic_store = self.dynamic_store.load_latest()?;
-        Ok(LedgerState {
-            proving_keys: static_state.proving_keys.clone(),
-            now: dynamic_store.now,
-            validator: dynamic_store.validator.clone(),
-            record_mt: dynamic_store.record_mt.clone(),
-            nullifiers: dynamic_store.nullifiers,
-        })
+        Ok(LedgerState::new(
+            static_state.proving_keys.clone(),
+            dynamic_store.now,
+            dynamic_store.validator.clone(),
+            dynamic_store.record_mt.clone(),
+            dynamic_store.nullifiers,
+        ))
     }
 
     pub fn update(&mut self, ledger_state: &LedgerState<'a, L>) -> Result<(), KeystoreError<L>> {

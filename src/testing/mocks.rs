@@ -233,13 +233,13 @@ impl<'a, const H: u8> KeystoreBackend<'a, cap::LedgerWithHeight<H>>
             let mut ledger = self.ledger.lock().await;
             let network = ledger.network();
 
-            LedgerState {
-                proving_keys: network.proving_keys.clone(),
-                validator: network.validator.clone(),
-                nullifiers: Default::default(),
-                record_mt: SparseMerkleTree::sparse(network.records.clone()),
-                now: network.now(),
-            }
+            LedgerState::new(
+                network.proving_keys.clone(),
+                network.now(),
+                network.validator.clone(),
+                SparseMerkleTree::sparse(network.records.clone()),
+                Default::default(),
+            )
         };
         Ok(state)
     }

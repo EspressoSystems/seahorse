@@ -24,8 +24,12 @@ pub struct KeystoreSharedState<
     pub(crate) pending_key_scans: HashMap<UserAddress, Vec<oneshot::Sender<()>>>,
 }
 
-impl<'a, L: Ledger, Backend: KeystoreBackend<'a, L>, Meta: Serialize + DeserializeOwned + Send>
-    KeystoreSharedState<'a, L, Backend, Meta>
+impl<
+        'a,
+        L: 'static + Ledger,
+        Backend: KeystoreBackend<'a, L>,
+        Meta: Serialize + DeserializeOwned + Send,
+    > KeystoreSharedState<'a, L, Backend, Meta>
 {
     async fn commit(&mut self) -> Result<(), KeystoreError<L>> {
         self.model.persistence.commit();
@@ -95,8 +99,12 @@ pub struct KeystoreSharedStateRwLock<
     Meta: Send + Serialize + DeserializeOwned,
 >(RwLock<KeystoreSharedState<'a, L, Backend, Meta>>);
 
-impl<'a, L: Ledger, Backend: KeystoreBackend<'a, L>, Meta: Send + Serialize + DeserializeOwned>
-    KeystoreSharedStateRwLock<'a, L, Backend, Meta>
+impl<
+        'a,
+        L: 'static + Ledger,
+        Backend: KeystoreBackend<'a, L>,
+        Meta: Send + Serialize + DeserializeOwned,
+    > KeystoreSharedStateRwLock<'a, L, Backend, Meta>
 {
     pub fn new(
         state: LedgerState<'a, L>,
@@ -139,7 +147,7 @@ pub type KeystoreSharedStateReadGuard<'l, 'a, L, Backend, Meta> =
 pub struct KeystoreSharedStateWriteGuard<
     'l,
     'a,
-    L: Ledger,
+    L: 'static + Ledger,
     Backend: KeystoreBackend<'a, L>,
     Meta: Send + Serialize + DeserializeOwned,
 > {
@@ -150,7 +158,7 @@ pub struct KeystoreSharedStateWriteGuard<
 impl<
         'l,
         'a,
-        L: Ledger,
+        L: 'static + Ledger,
         Backend: KeystoreBackend<'a, L>,
         Meta: Send + Serialize + DeserializeOwned,
     > KeystoreSharedStateWriteGuard<'l, 'a, L, Backend, Meta>
@@ -264,7 +272,7 @@ impl<
 impl<
         'l,
         'a,
-        L: Ledger,
+        L: 'static + Ledger,
         Backend: KeystoreBackend<'a, L>,
         Meta: Send + Serialize + DeserializeOwned,
     > Drop for KeystoreSharedStateWriteGuard<'l, 'a, L, Backend, Meta>
