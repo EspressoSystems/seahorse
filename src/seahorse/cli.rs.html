@@ -1501,8 +1501,8 @@
 <span class="doccomment">//! arguments to the options and flags required by the general CLI implementation. After that,</span>
 <span class="doccomment">//! [cli_main] can be used to run the CLI interactively.</span>
 <span class="kw">use</span> <span class="kw">crate</span>::{
-    <span class="ident">assets::Asset</span>, <span class="ident">events::EventIndex</span>, <span class="ident">io::SharedIO</span>, <span class="ident">loader::KeystoreLoader</span>, <span class="ident">reader::Reader</span>,
-    <span class="ident">txn_builder::TransactionUID</span>, <span class="ident">BincodeSnafu</span>, <span class="ident">IoSnafu</span>, <span class="ident">KeystoreBackend</span>, <span class="ident">KeystoreError</span>,
+    <span class="ident">assets::Asset</span>, <span class="ident">events::EventIndex</span>, <span class="ident">io::SharedIO</span>, <span class="ident">ledger_state::TransactionUID</span>,
+    <span class="ident">loader::KeystoreLoader</span>, <span class="ident">reader::Reader</span>, <span class="ident">BincodeSnafu</span>, <span class="ident">IoSnafu</span>, <span class="ident">KeystoreBackend</span>, <span class="ident">KeystoreError</span>,
     <span class="ident">RecordAmount</span>, <span class="ident">TransactionStatus</span>,
 };
 <span class="kw">use</span> <span class="ident">async_std::task::block_on</span>;

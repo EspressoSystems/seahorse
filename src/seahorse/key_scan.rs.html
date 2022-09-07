@@ -414,14 +414,14 @@
 <span class="doccomment">///</span>
 <span class="doccomment">/// This module provides an interface for searching a ledger for records belonging to a particular</span>
 <span class="doccomment">/// key. It is completely independent from the main ledger scanning functionality in `lib.rs` and</span>
-<span class="doccomment">/// `txn_builder.rs`, which means it can be run asynchronously, and the results of an asnchronous</span>
+<span class="doccomment">/// `ledger_state.rs`, which means it can be run asynchronously, and the results of an asnchronous</span>
 <span class="doccomment">/// key-specific ledger scan can be folded back into the main keystore state once the scan</span>
 <span class="doccomment">/// synchronizes with the main ledger follower.</span>
 <span class="kw">use</span> <span class="kw">crate</span>::{
     <span class="ident">events</span>::{<span class="ident">EventIndex</span>, <span class="ident">EventSource</span>, <span class="ident">LedgerEvent</span>},
+    <span class="ident">ledger_state</span>::{<span class="ident">TransactionStatus</span>, <span class="ident">TransactionUID</span>},
     <span class="ident">sparse_merkle_tree::SparseMerkleTree</span>,
     <span class="ident">transactions::TransactionParams</span>,
-    <span class="ident">txn_builder</span>::{<span class="ident">TransactionStatus</span>, <span class="ident">TransactionUID</span>},
 };
 <span class="kw">use</span> <span class="ident">arbitrary</span>::{<span class="ident">Arbitrary</span>, <span class="ident">Unstructured</span>};
 <span class="kw">use</span> <span class="ident">arbitrary_wrappers::ArbitraryUserKeyPair</span>;

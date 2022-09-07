@@ -562,6 +562,96 @@
 <span id="562">562</span>
 <span id="563">563</span>
 <span id="564">564</span>
+<span id="565">565</span>
+<span id="566">566</span>
+<span id="567">567</span>
+<span id="568">568</span>
+<span id="569">569</span>
+<span id="570">570</span>
+<span id="571">571</span>
+<span id="572">572</span>
+<span id="573">573</span>
+<span id="574">574</span>
+<span id="575">575</span>
+<span id="576">576</span>
+<span id="577">577</span>
+<span id="578">578</span>
+<span id="579">579</span>
+<span id="580">580</span>
+<span id="581">581</span>
+<span id="582">582</span>
+<span id="583">583</span>
+<span id="584">584</span>
+<span id="585">585</span>
+<span id="586">586</span>
+<span id="587">587</span>
+<span id="588">588</span>
+<span id="589">589</span>
+<span id="590">590</span>
+<span id="591">591</span>
+<span id="592">592</span>
+<span id="593">593</span>
+<span id="594">594</span>
+<span id="595">595</span>
+<span id="596">596</span>
+<span id="597">597</span>
+<span id="598">598</span>
+<span id="599">599</span>
+<span id="600">600</span>
+<span id="601">601</span>
+<span id="602">602</span>
+<span id="603">603</span>
+<span id="604">604</span>
+<span id="605">605</span>
+<span id="606">606</span>
+<span id="607">607</span>
+<span id="608">608</span>
+<span id="609">609</span>
+<span id="610">610</span>
+<span id="611">611</span>
+<span id="612">612</span>
+<span id="613">613</span>
+<span id="614">614</span>
+<span id="615">615</span>
+<span id="616">616</span>
+<span id="617">617</span>
+<span id="618">618</span>
+<span id="619">619</span>
+<span id="620">620</span>
+<span id="621">621</span>
+<span id="622">622</span>
+<span id="623">623</span>
+<span id="624">624</span>
+<span id="625">625</span>
+<span id="626">626</span>
+<span id="627">627</span>
+<span id="628">628</span>
+<span id="629">629</span>
+<span id="630">630</span>
+<span id="631">631</span>
+<span id="632">632</span>
+<span id="633">633</span>
+<span id="634">634</span>
+<span id="635">635</span>
+<span id="636">636</span>
+<span id="637">637</span>
+<span id="638">638</span>
+<span id="639">639</span>
+<span id="640">640</span>
+<span id="641">641</span>
+<span id="642">642</span>
+<span id="643">643</span>
+<span id="644">644</span>
+<span id="645">645</span>
+<span id="646">646</span>
+<span id="647">647</span>
+<span id="648">648</span>
+<span id="649">649</span>
+<span id="650">650</span>
+<span id="651">651</span>
+<span id="652">652</span>
+<span id="653">653</span>
+<span id="654">654</span>
 </pre><pre class="rust"><code><span class="comment">// Copyright (c) 2022 Espresso Systems (espressosys.com)</span>
 <span class="comment">// This file is part of the Seahorse library.</span>
 
@@ -571,14 +661,14 @@
 
 <span class="doccomment">//! Ledger-agnostic implementation of [KeystoreStorage].</span>
 <span class="kw">use</span> <span class="kw">crate</span>::{
-    <span class="ident">hd::KeyTree</span>, <span class="ident">loader::KeystoreLoader</span>, <span class="ident">txn_builder::TransactionState</span>, <span class="ident">EncryptingResourceAdapter</span>,
-    <span class="ident">KeystoreError</span>, <span class="ident">KeystoreState</span>,
+    <span class="ident">accounts::Account</span>, <span class="ident">hd::KeyTree</span>, <span class="ident">txn_builder::TransactionState</span>, <span class="ident">EncryptingResourceAdapter</span>,
+    <span class="ident">KeyStreamState</span>, <span class="ident">KeystoreError</span>, <span class="ident">KeystoreState</span>, <span class="ident">TransactionHistoryEntry</span>,
 };
 <span class="kw">use</span> <span class="ident">arbitrary</span>::{<span class="ident">Arbitrary</span>, <span class="ident">Unstructured</span>};
 <span class="kw">use</span> <span class="ident">async_std::sync::Arc</span>;
-<span class="kw">use</span> <span class="ident">atomic_store</span>::{<span class="ident">load_store::BincodeLoadStore</span>, <span class="ident">AtomicStoreLoader</span>, <span class="ident">RollingLog</span>};
-<span class="kw">use</span> <span class="ident">derivative::Derivative</span>;
+<span class="kw">use</span> <span class="ident">atomic_store</span>::{<span class="ident">load_store::BincodeLoadStore</span>, <span class="ident">AppendLog</span>, <span class="ident">AtomicStoreLoader</span>, <span class="ident">RollingLog</span>};
 <span class="kw">use</span> <span class="ident">espresso_macros::ser_test</span>;
+<span class="kw">use</span> <span class="ident">jf_cap::keys</span>::{<span class="ident">FreezerKeyPair</span>, <span class="ident">UserKeyPair</span>, <span class="ident">ViewerKeyPair</span>};
 <span class="kw">use</span> <span class="ident">key_set</span>::{<span class="ident">OrderByOutputs</span>, <span class="ident">ProverKeySet</span>};
 <span class="kw">use</span> <span class="ident">reef</span>::<span class="kw-2">*</span>;
 <span class="kw">use</span> <span class="ident">serde</span>::{<span class="ident">de::DeserializeOwned</span>, <span class="ident">Deserialize</span>, <span class="ident">Serialize</span>};
@@ -628,17 +718,34 @@
 
 <span class="comment">// Serialization intermediate for the dynamic part of a KeystoreState.</span>
 <span class="attribute">#[<span class="ident">ser_test</span>(<span class="ident">arbitrary</span>, <span class="ident">types</span>(<span class="ident">cap::Ledger</span>), <span class="ident">ark</span>(<span class="bool-val">false</span>))]</span>
-<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Debug</span>, <span class="ident">Derivative</span>, <span class="ident">Deserialize</span>, <span class="ident">Serialize</span>)]</span>
-<span class="attribute">#[<span class="ident">derivative</span>(<span class="ident">PartialEq</span>(<span class="ident">bound</span> <span class="op">=</span> <span class="string">&quot;L: Ledger&quot;</span>))]</span>
+<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Debug</span>, <span class="ident">Deserialize</span>, <span class="ident">Serialize</span>)]</span>
 <span class="attribute">#[<span class="ident">serde</span>(<span class="ident">bound</span> <span class="op">=</span> <span class="string">&quot;&quot;</span>)]</span>
 <span class="kw">struct</span> <span class="ident">KeystoreSnapshot</span><span class="op">&lt;</span><span class="ident">L</span>: <span class="ident">Ledger</span><span class="op">&gt;</span> {
     <span class="ident">txn_state</span>: <span class="ident">TransactionState</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span>,
+    <span class="ident">key_state</span>: <span class="ident">KeyStreamState</span>,
+    <span class="ident">viewing_accounts</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">Account</span><span class="op">&lt;</span><span class="ident">L</span>, <span class="ident">ViewerKeyPair</span><span class="op">&gt;</span><span class="op">&gt;</span>,
+    <span class="ident">freezing_accounts</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">Account</span><span class="op">&lt;</span><span class="ident">L</span>, <span class="ident">FreezerKeyPair</span><span class="op">&gt;</span><span class="op">&gt;</span>,
+    <span class="ident">sending_accounts</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">Account</span><span class="op">&lt;</span><span class="ident">L</span>, <span class="ident">UserKeyPair</span><span class="op">&gt;</span><span class="op">&gt;</span>,
+}
+
+<span class="kw">impl</span><span class="op">&lt;</span><span class="ident">L</span>: <span class="ident">Ledger</span><span class="op">&gt;</span> <span class="ident">PartialEq</span><span class="op">&lt;</span><span class="self">Self</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">KeystoreSnapshot</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span> {
+    <span class="kw">fn</span> <span class="ident">eq</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">other</span>: <span class="kw-2">&amp;</span><span class="self">Self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">bool</span> {
+        <span class="self">self</span>.<span class="ident">txn_state</span> <span class="op">=</span><span class="op">=</span> <span class="ident">other</span>.<span class="ident">txn_state</span>
+            <span class="op">&amp;&amp;</span> <span class="self">self</span>.<span class="ident">key_state</span> <span class="op">=</span><span class="op">=</span> <span class="ident">other</span>.<span class="ident">key_state</span>
+            <span class="op">&amp;&amp;</span> <span class="self">self</span>.<span class="ident">viewing_accounts</span> <span class="op">=</span><span class="op">=</span> <span class="ident">other</span>.<span class="ident">viewing_accounts</span>
+            <span class="op">&amp;&amp;</span> <span class="self">self</span>.<span class="ident">freezing_accounts</span> <span class="op">=</span><span class="op">=</span> <span class="ident">other</span>.<span class="ident">freezing_accounts</span>
+            <span class="op">&amp;&amp;</span> <span class="self">self</span>.<span class="ident">sending_accounts</span> <span class="op">=</span><span class="op">=</span> <span class="ident">other</span>.<span class="ident">sending_accounts</span>
+    }
 }
 
 <span class="kw">impl</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span>: <span class="ident">Ledger</span><span class="op">&gt;</span> <span class="ident">From</span><span class="op">&lt;</span><span class="kw-2">&amp;</span><span class="ident">KeystoreState</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">KeystoreSnapshot</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span> {
     <span class="kw">fn</span> <span class="ident">from</span>(<span class="ident">w</span>: <span class="kw-2">&amp;</span><span class="ident">KeystoreState</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span><span class="op">&gt;</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span> {
         <span class="self">Self</span> {
             <span class="ident">txn_state</span>: <span class="ident">w</span>.<span class="ident">txn_state</span>.<span class="ident">clone</span>(),
+            <span class="ident">key_state</span>: <span class="ident">w</span>.<span class="ident">key_state</span>.<span class="ident">clone</span>(),
+            <span class="ident">viewing_accounts</span>: <span class="ident">w</span>.<span class="ident">viewing_accounts</span>.<span class="ident">values</span>().<span class="ident">cloned</span>().<span class="ident">collect</span>(),
+            <span class="ident">freezing_accounts</span>: <span class="ident">w</span>.<span class="ident">freezing_accounts</span>.<span class="ident">values</span>().<span class="ident">cloned</span>().<span class="ident">collect</span>(),
+            <span class="ident">sending_accounts</span>: <span class="ident">w</span>.<span class="ident">sending_accounts</span>.<span class="ident">values</span>().<span class="ident">cloned</span>().<span class="ident">collect</span>(),
         }
     }
 }
@@ -651,6 +758,10 @@
     <span class="kw">fn</span> <span class="ident">arbitrary</span>(<span class="ident">u</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">Unstructured</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span><span class="op">&gt;</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">arbitrary::Result</span><span class="op">&lt;</span><span class="self">Self</span><span class="op">&gt;</span> {
         <span class="prelude-val">Ok</span>(<span class="self">Self</span> {
             <span class="ident">txn_state</span>: <span class="ident">u</span>.<span class="ident">arbitrary</span>()<span class="question-mark">?</span>,
+            <span class="ident">key_state</span>: <span class="ident">u</span>.<span class="ident">arbitrary</span>()<span class="question-mark">?</span>,
+            <span class="ident">viewing_accounts</span>: <span class="ident">u</span>.<span class="ident">arbitrary</span>()<span class="question-mark">?</span>,
+            <span class="ident">freezing_accounts</span>: <span class="ident">u</span>.<span class="ident">arbitrary</span>()<span class="question-mark">?</span>,
+            <span class="ident">sending_accounts</span>: <span class="ident">u</span>.<span class="ident">arbitrary</span>()<span class="question-mark">?</span>,
         })
     }
 }
@@ -669,46 +780,23 @@
     <span class="ident">static_dirty</span>: <span class="ident">bool</span>,
     <span class="ident">dynamic_state</span>: <span class="ident">RollingLog</span><span class="op">&lt;</span><span class="ident">EncryptingResourceAdapter</span><span class="op">&lt;</span><span class="ident">KeystoreSnapshot</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span><span class="op">&gt;</span>,
     <span class="ident">dynamic_state_dirty</span>: <span class="ident">bool</span>,
-    <span class="ident">root_key_tree</span>: <span class="ident">KeyTree</span>,
+    <span class="ident">txn_history</span>: <span class="ident">AppendLog</span><span class="op">&lt;</span><span class="ident">EncryptingResourceAdapter</span><span class="op">&lt;</span><span class="ident">TransactionHistoryEntry</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span><span class="op">&gt;</span>,
+    <span class="ident">txn_history_dirty</span>: <span class="ident">bool</span>,
+    <span class="ident">keystore_key_tree</span>: <span class="ident">KeyTree</span>,
 }
 
 <span class="kw">impl</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span>: <span class="ident">Ledger</span>, <span class="ident">Meta</span>: <span class="ident">Send</span> <span class="op">+</span> <span class="ident">Serialize</span> <span class="op">+</span> <span class="ident">DeserializeOwned</span> <span class="op">+</span> <span class="ident">Clone</span> <span class="op">+</span> <span class="ident">PartialEq</span><span class="op">&gt;</span>
     <span class="ident">AtomicKeystoreStorage</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span>, <span class="ident">Meta</span><span class="op">&gt;</span>
 {
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">new</span>(
-        <span class="ident">loader</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="kw">impl</span> <span class="ident">KeystoreLoader</span><span class="op">&lt;</span><span class="ident">L</span>, <span class="ident">Meta</span> <span class="op">=</span> <span class="ident">Meta</span><span class="op">&gt;</span>,
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">new</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span>(
+        <span class="ident">adapter</span>: <span class="ident">EncryptingResourceAdapter</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span>,
         <span class="ident">atomic_loader</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">AtomicStoreLoader</span>,
         <span class="ident">file_fill_size</span>: <span class="ident">u64</span>,
+        <span class="ident">meta</span>: <span class="ident">Meta</span>,
+        <span class="ident">persisted_meta</span>: <span class="ident">RollingLog</span><span class="op">&lt;</span><span class="ident">BincodeLoadStore</span><span class="op">&lt;</span><span class="ident">Meta</span><span class="op">&gt;</span><span class="op">&gt;</span>,
+        <span class="ident">meta_dirty</span>: <span class="ident">bool</span>,
+        <span class="ident">key</span>: <span class="ident">KeyTree</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="self">Self</span>, <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
-        <span class="comment">// Load the metadata first so the loader can use it to generate the encryption key needed to</span>
-        <span class="comment">// read the rest of the data.</span>
-        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">persisted_meta</span> <span class="op">=</span> <span class="ident">RollingLog::load</span>(
-            <span class="ident">atomic_loader</span>,
-            <span class="ident">BincodeLoadStore</span>::<span class="op">&lt;</span><span class="ident">Meta</span><span class="op">&gt;</span><span class="ident">::default</span>(),
-            <span class="string">&quot;keystore_meta&quot;</span>,
-            <span class="number">1024</span>,
-        )<span class="question-mark">?</span>;
-        <span class="kw">let</span> (<span class="ident">meta</span>, <span class="ident">key</span>, <span class="ident">meta_dirty</span>) <span class="op">=</span> <span class="kw">match</span> <span class="ident">persisted_meta</span>.<span class="ident">load_latest</span>() {
-            <span class="prelude-val">Ok</span>(<span class="kw-2">mut</span> <span class="ident">meta</span>) <span class="op">=</span><span class="op">&gt;</span> {
-                <span class="kw">let</span> <span class="ident">old_meta</span> <span class="op">=</span> <span class="ident">meta</span>.<span class="ident">clone</span>();
-                <span class="kw">let</span> <span class="ident">key</span> <span class="op">=</span> <span class="ident">loader</span>.<span class="ident">load</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">meta</span>)<span class="question-mark">?</span>;
-
-                <span class="comment">// Store the new metadata if the loader changed it</span>
-                <span class="kw">if</span> <span class="ident">meta</span> <span class="op">!</span><span class="op">=</span> <span class="ident">old_meta</span> {
-                    <span class="ident">persisted_meta</span>.<span class="ident">store_resource</span>(<span class="kw-2">&amp;</span><span class="ident">meta</span>)<span class="question-mark">?</span>;
-                    (<span class="ident">meta</span>, <span class="ident">key</span>, <span class="bool-val">true</span>)
-                } <span class="kw">else</span> {
-                    (<span class="ident">meta</span>, <span class="ident">key</span>, <span class="bool-val">false</span>)
-                }
-            }
-            <span class="prelude-val">Err</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> {
-                <span class="comment">// If there is no persisted metadata, ask the loader to generate a new keystore.</span>
-                <span class="kw">let</span> (<span class="ident">meta</span>, <span class="ident">key</span>) <span class="op">=</span> <span class="ident">loader</span>.<span class="ident">create</span>()<span class="question-mark">?</span>;
-                (<span class="ident">meta</span>, <span class="ident">key</span>, <span class="bool-val">false</span>)
-            }
-        };
-        <span class="kw">let</span> <span class="ident">adapter</span> <span class="op">=</span> <span class="ident">EncryptingResourceAdapter</span>::<span class="op">&lt;</span>()<span class="op">&gt;</span><span class="ident">::new</span>(<span class="ident">key</span>.<span class="ident">derive_sub_tree</span>(<span class="string">&quot;enc&quot;</span>.<span class="ident">as_bytes</span>()));
-
         <span class="kw">let</span> <span class="ident">static_data</span> <span class="op">=</span> <span class="ident">RollingLog::load</span>(
             <span class="ident">atomic_loader</span>,
             <span class="ident">adapter</span>.<span class="ident">cast</span>(),
@@ -726,6 +814,14 @@
         .<span class="ident">context</span>(<span class="ident"><span class="kw">crate</span>::PersistenceSnafu</span>)<span class="question-mark">?</span>;
         <span class="ident">dynamic_state</span>.<span class="ident">set_retained_entries</span>(<span class="ident">ATOMIC_STORE_RETAINED_ENTRIES</span>);
 
+        <span class="kw">let</span> <span class="ident">txn_history</span> <span class="op">=</span> <span class="ident">AppendLog::load</span>(
+            <span class="ident">atomic_loader</span>,
+            <span class="ident">adapter</span>.<span class="ident">cast</span>(),
+            <span class="string">&quot;keystore_txns&quot;</span>,
+            <span class="ident">file_fill_size</span>,
+        )
+        .<span class="ident">context</span>(<span class="ident"><span class="kw">crate</span>::PersistenceSnafu</span>)<span class="question-mark">?</span>;
+
         <span class="prelude-val">Ok</span>(<span class="self">Self</span> {
             <span class="ident">meta</span>,
             <span class="ident">persisted_meta</span>,
@@ -734,7 +830,9 @@
             <span class="ident">static_dirty</span>: <span class="bool-val">false</span>,
             <span class="ident">dynamic_state</span>,
             <span class="ident">dynamic_state_dirty</span>: <span class="bool-val">false</span>,
-            <span class="ident">root_key_tree</span>: <span class="ident">key</span>,
+            <span class="ident">txn_history</span>,
+            <span class="ident">txn_history_dirty</span>: <span class="bool-val">false</span>,
+            <span class="ident">keystore_key_tree</span>: <span class="ident">key</span>.<span class="ident">derive_sub_tree</span>(<span class="string">&quot;keystore&quot;</span>.<span class="ident">as_bytes</span>()),
         })
     }
 }
@@ -744,24 +842,38 @@
         <span class="kw-2">mut</span> <span class="self">self</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">Self</span>,
         <span class="ident">w</span>: <span class="kw-2">&amp;</span><span class="ident">KeystoreState</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span><span class="op">&gt;</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(), <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
-        <span class="comment">// Store the initial static and dynamic state, and the metadata.</span>
-        <span class="self">self</span>.<span class="ident">persisted_meta</span>
-            .<span class="ident">store_resource</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">meta</span>)
-            .<span class="ident">context</span>(<span class="ident"><span class="kw">crate</span>::PersistenceSnafu</span>)<span class="question-mark">?</span>;
-        <span class="self">self</span>.<span class="ident">meta_dirty</span> <span class="op">=</span> <span class="bool-val">true</span>;
-        <span class="self">self</span>.<span class="ident">static_data</span>
-            .<span class="ident">store_resource</span>(<span class="kw-2">&amp;</span><span class="ident">KeystoreStaticState::from</span>(<span class="ident">w</span>))
-            .<span class="ident">context</span>(<span class="ident"><span class="kw">crate</span>::PersistenceSnafu</span>)<span class="question-mark">?</span>;
-        <span class="self">self</span>.<span class="ident">static_dirty</span> <span class="op">=</span> <span class="bool-val">true</span>;
-        <span class="self">self</span>.<span class="ident">store_snapshot</span>(<span class="ident">w</span>).<span class="kw">await</span>
+        <span class="comment">// Store the initial static and dynamic state, and the metadata. We do this in a closure so</span>
+        <span class="comment">// that if any operation fails, it will exit the closure but not this function, and we can</span>
+        <span class="comment">// then commit or revert based on the results of the closure.</span>
+        <span class="kw">let</span> <span class="ident">store</span> <span class="op">=</span> <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>;
+        <span class="kw">match</span> (<span class="op">|</span><span class="op">|</span> <span class="kw">async</span> <span class="kw">move</span> {
+            <span class="ident">store</span>
+                .<span class="ident">persisted_meta</span>
+                .<span class="ident">store_resource</span>(<span class="kw-2">&amp;</span><span class="ident">store</span>.<span class="ident">meta</span>)
+                .<span class="ident">context</span>(<span class="ident"><span class="kw">crate</span>::PersistenceSnafu</span>)<span class="question-mark">?</span>;
+            <span class="ident">store</span>.<span class="ident">meta_dirty</span> <span class="op">=</span> <span class="bool-val">true</span>;
+            <span class="ident">store</span>
+                .<span class="ident">static_data</span>
+                .<span class="ident">store_resource</span>(<span class="kw-2">&amp;</span><span class="ident">KeystoreStaticState::from</span>(<span class="ident">w</span>))
+                .<span class="ident">context</span>(<span class="ident"><span class="kw">crate</span>::PersistenceSnafu</span>)<span class="question-mark">?</span>;
+            <span class="ident">store</span>.<span class="ident">static_dirty</span> <span class="op">=</span> <span class="bool-val">true</span>;
+            <span class="ident">store</span>.<span class="ident">store_snapshot</span>(<span class="ident">w</span>).<span class="kw">await</span>
+        })()
+        .<span class="kw">await</span>
+        {
+            <span class="prelude-val">Ok</span>(()) <span class="op">=</span><span class="op">&gt;</span> {
+                <span class="self">self</span>.<span class="ident">commit</span>().<span class="kw">await</span>;
+                <span class="prelude-val">Ok</span>(())
+            }
+            <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span><span class="op">&gt;</span> {
+                <span class="self">self</span>.<span class="ident">revert</span>().<span class="kw">await</span>;
+                <span class="prelude-val">Err</span>(<span class="ident">err</span>)
+            }
+        }
     }
 
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">key_stream</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">KeyTree</span> {
-        <span class="self">self</span>.<span class="ident">root_key_tree</span>.<span class="ident">derive_sub_tree</span>(<span class="string">&quot;keystore&quot;</span>.<span class="ident">as_bytes</span>())
-    }
-
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">encrypting_storage_adapter</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">EncryptingResourceAdapter</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> {
-        <span class="ident">EncryptingResourceAdapter</span>::<span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span><span class="ident">::new</span>(<span class="self">self</span>.<span class="ident">root_key_tree</span>.<span class="ident">derive_sub_tree</span>(<span class="string">&quot;enc&quot;</span>.<span class="ident">as_bytes</span>()))
+        <span class="self">self</span>.<span class="ident">keystore_key_tree</span>.<span class="ident">clone</span>()
     }
 
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">meta</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="kw-2">&amp;</span><span class="ident">Meta</span> {
@@ -774,7 +886,11 @@
         <span class="self">self</span>.<span class="ident">persisted_meta</span>.<span class="ident">load_latest</span>().<span class="ident">is_ok</span>()
     }
 
-    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">load</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">KeystoreState</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span><span class="op">&gt;</span>, <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
+    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">load</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">KeystoreState</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span><span class="op">&gt;</span>, <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
+        <span class="comment">// This function is called once, when the keystore is loaded. It is a good place to persist</span>
+        <span class="comment">// changes to the metadata that happened during loading.</span>
+        <span class="self">self</span>.<span class="ident">commit</span>().<span class="kw">await</span>;
+
         <span class="kw">let</span> <span class="ident">static_state</span> <span class="op">=</span> <span class="self">self</span>
             .<span class="ident">static_data</span>
             .<span class="ident">load_latest</span>()
@@ -791,6 +907,22 @@
 
             <span class="comment">// Dynamic state</span>
             <span class="ident">txn_state</span>: <span class="ident">dynamic_state</span>.<span class="ident">txn_state</span>,
+            <span class="ident">key_state</span>: <span class="ident">dynamic_state</span>.<span class="ident">key_state</span>,
+            <span class="ident">viewing_accounts</span>: <span class="ident">dynamic_state</span>
+                .<span class="ident">viewing_accounts</span>
+                .<span class="ident">into_iter</span>()
+                .<span class="ident">map</span>(<span class="op">|</span><span class="ident">account</span><span class="op">|</span> (<span class="ident">account</span>.<span class="ident">key</span>.<span class="ident">pub_key</span>(), <span class="ident">account</span>))
+                .<span class="ident">collect</span>(),
+            <span class="ident">freezing_accounts</span>: <span class="ident">dynamic_state</span>
+                .<span class="ident">freezing_accounts</span>
+                .<span class="ident">into_iter</span>()
+                .<span class="ident">map</span>(<span class="op">|</span><span class="ident">account</span><span class="op">|</span> (<span class="ident">account</span>.<span class="ident">key</span>.<span class="ident">pub_key</span>(), <span class="ident">account</span>))
+                .<span class="ident">collect</span>(),
+            <span class="ident">sending_accounts</span>: <span class="ident">dynamic_state</span>
+                .<span class="ident">sending_accounts</span>
+                .<span class="ident">into_iter</span>()
+                .<span class="ident">map</span>(<span class="op">|</span><span class="ident">account</span><span class="op">|</span> (<span class="ident">account</span>.<span class="ident">key</span>.<span class="ident">address</span>(), <span class="ident">account</span>))
+                .<span class="ident">collect</span>(),
         })
     }
 
@@ -803,6 +935,26 @@
             .<span class="ident">context</span>(<span class="ident"><span class="kw">crate</span>::PersistenceSnafu</span>)<span class="question-mark">?</span>;
         <span class="self">self</span>.<span class="ident">dynamic_state_dirty</span> <span class="op">=</span> <span class="bool-val">true</span>;
         <span class="prelude-val">Ok</span>(())
+    }
+
+    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">store_transaction</span>(
+        <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>,
+        <span class="ident">txn</span>: <span class="ident">TransactionHistoryEntry</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span>,
+    ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(), <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
+        <span class="self">self</span>.<span class="ident">txn_history</span>
+            .<span class="ident">store_resource</span>(<span class="kw-2">&amp;</span><span class="ident">txn</span>)
+            .<span class="ident">context</span>(<span class="ident"><span class="kw">crate</span>::PersistenceSnafu</span>)<span class="question-mark">?</span>;
+        <span class="self">self</span>.<span class="ident">txn_history_dirty</span> <span class="op">=</span> <span class="bool-val">true</span>;
+        <span class="prelude-val">Ok</span>(())
+    }
+
+    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">transaction_history</span>(
+        <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>,
+    ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">TransactionHistoryEntry</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span>, <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
+        <span class="self">self</span>.<span class="ident">txn_history</span>
+            .<span class="ident">iter</span>()
+            .<span class="ident">map</span>(<span class="op">|</span><span class="ident">res</span><span class="op">|</span> <span class="ident">res</span>.<span class="ident">context</span>(<span class="ident"><span class="kw">crate</span>::PersistenceSnafu</span>))
+            .<span class="ident">collect</span>()
     }
 
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">commit</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>) {
@@ -825,17 +977,25 @@
             } <span class="kw">else</span> {
                 <span class="self">self</span>.<span class="ident">dynamic_state</span>.<span class="ident">skip_version</span>().<span class="ident">unwrap</span>();
             }
+
+            <span class="kw">if</span> <span class="self">self</span>.<span class="ident">txn_history_dirty</span> {
+                <span class="self">self</span>.<span class="ident">txn_history</span>.<span class="ident">commit_version</span>().<span class="ident">unwrap</span>();
+            } <span class="kw">else</span> {
+                <span class="self">self</span>.<span class="ident">txn_history</span>.<span class="ident">skip_version</span>().<span class="ident">unwrap</span>();
+            }
         }
 
         <span class="self">self</span>.<span class="ident">meta_dirty</span> <span class="op">=</span> <span class="bool-val">false</span>;
         <span class="self">self</span>.<span class="ident">static_dirty</span> <span class="op">=</span> <span class="bool-val">false</span>;
         <span class="self">self</span>.<span class="ident">dynamic_state_dirty</span> <span class="op">=</span> <span class="bool-val">false</span>;
+        <span class="self">self</span>.<span class="ident">txn_history_dirty</span> <span class="op">=</span> <span class="bool-val">false</span>;
     }
 
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">revert</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>) {
         <span class="self">self</span>.<span class="ident">persisted_meta</span>.<span class="ident">revert_version</span>().<span class="ident">unwrap</span>();
         <span class="self">self</span>.<span class="ident">static_data</span>.<span class="ident">revert_version</span>().<span class="ident">unwrap</span>();
         <span class="self">self</span>.<span class="ident">dynamic_state</span>.<span class="ident">revert_version</span>().<span class="ident">unwrap</span>();
+        <span class="self">self</span>.<span class="ident">txn_history</span>.<span class="ident">revert_version</span>().<span class="ident">unwrap</span>();
     }
 }
 
@@ -846,20 +1006,27 @@
         <span class="ident">events</span>::{<span class="ident">EventIndex</span>, <span class="ident">EventSource</span>},
         <span class="ident">loader::KeystoreLoader</span>,
         <span class="ident">sparse_merkle_tree::SparseMerkleTree</span>,
-        <span class="ident">testing::assert_keystore_states_eq</span>,
+        <span class="ident">testing</span>::{<span class="ident">assert_keystore_states_eq</span>, <span class="ident">mocks::MockBackend</span>},
+        <span class="ident">txn_builder</span>::{<span class="ident">PendingTransaction</span>, <span class="ident">TransactionInfo</span>, <span class="ident">TransactionUID</span>},
+        <span class="ident">Keystore</span>,
     };
-    <span class="kw">use</span> <span class="ident">atomic_store::AtomicStore</span>;
+    <span class="kw">use</span> <span class="ident">chrono::Local</span>;
+    <span class="kw">use</span> <span class="ident">commit::Commitment</span>;
     <span class="kw">use</span> <span class="ident">jf_cap</span>::{
-        <span class="ident">keys::UserKeyPair</span>,
-        <span class="ident">structs</span>::{<span class="ident">AssetDefinition</span>, <span class="ident">FreezeFlag</span>, <span class="ident">RecordCommitment</span>, <span class="ident">RecordOpening</span>},
-        <span class="ident">TransactionVerifyingKey</span>,
+        <span class="ident">keys</span>::{<span class="ident">UserKeyPair</span>, <span class="ident">ViewerKeyPair</span>},
+        <span class="ident">sign_receiver_memos</span>,
+        <span class="ident">structs</span>::{
+            <span class="ident">AssetCode</span>, <span class="ident">AssetDefinition</span>, <span class="ident">FreezeFlag</span>, <span class="ident">ReceiverMemo</span>, <span class="ident">RecordCommitment</span>, <span class="ident">RecordOpening</span>,
+        },
+        <span class="ident">KeyPair</span>, <span class="ident">Signature</span>, <span class="ident">TransactionVerifyingKey</span>,
     };
     <span class="kw">use</span> <span class="ident">key_set::KeySet</span>;
     <span class="kw">use</span> <span class="ident">rand_chacha</span>::{
         <span class="ident">rand_core</span>::{<span class="ident">RngCore</span>, <span class="ident">SeedableRng</span>},
         <span class="ident">ChaChaRng</span>,
     };
-    <span class="kw">use</span> <span class="ident">reef::cap</span>;
+    <span class="kw">use</span> <span class="ident">reef</span>::{<span class="ident">cap</span>, <span class="ident">traits::TransactionKind</span> <span class="kw">as</span> <span class="kw">_</span>};
+    <span class="kw">use</span> <span class="ident">std::iter::repeat_with</span>;
     <span class="kw">use</span> <span class="ident">std::path::PathBuf</span>;
     <span class="kw">use</span> <span class="ident">tempdir::TempDir</span>;
 
@@ -893,6 +1060,32 @@
             <span class="ident">key_pair</span>.<span class="ident">pub_key</span>(),
             <span class="ident">FreezeFlag::Unfrozen</span>,
         )
+    }
+
+    <span class="kw">fn</span> <span class="ident">random_ros</span>(<span class="ident">rng</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">ChaChaRng</span>, <span class="ident">key_pair</span>: <span class="kw-2">&amp;</span><span class="ident">UserKeyPair</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">RecordOpening</span><span class="op">&gt;</span> {
+        <span class="ident">repeat_with</span>(<span class="op">|</span><span class="op">|</span> <span class="ident">random_ro</span>(<span class="ident">rng</span>, <span class="ident">key_pair</span>)).<span class="ident">take</span>(<span class="number">3</span>).<span class="ident">collect</span>()
+    }
+
+    <span class="kw">fn</span> <span class="ident">random_memos</span>(
+        <span class="ident">rng</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">ChaChaRng</span>,
+        <span class="ident">key_pair</span>: <span class="kw-2">&amp;</span><span class="ident">UserKeyPair</span>,
+    ) <span class="op">-</span><span class="op">&gt;</span> (<span class="ident">Vec</span><span class="op">&lt;</span><span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">ReceiverMemo</span><span class="op">&gt;</span><span class="op">&gt;</span>, <span class="ident">Signature</span>) {
+        <span class="kw">let</span> <span class="ident">memos</span> <span class="op">=</span> <span class="ident">repeat_with</span>(<span class="op">|</span><span class="op">|</span> {
+            <span class="kw">let</span> <span class="ident">ro</span> <span class="op">=</span> <span class="ident">random_ro</span>(<span class="ident">rng</span>, <span class="ident">key_pair</span>);
+            <span class="ident">ReceiverMemo::from_ro</span>(<span class="ident">rng</span>, <span class="kw-2">&amp;</span><span class="ident">ro</span>, <span class="kw-2">&amp;</span>[]).<span class="ident">unwrap</span>()
+        })
+        .<span class="ident">take</span>(<span class="number">3</span>)
+        .<span class="ident">collect</span>::<span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="kw">_</span><span class="op">&gt;</span><span class="op">&gt;</span>();
+        <span class="kw">let</span> <span class="ident">sig</span> <span class="op">=</span> <span class="ident">sign_receiver_memos</span>(<span class="kw-2">&amp;</span><span class="ident">KeyPair::generate</span>(<span class="ident">rng</span>), <span class="kw-2">&amp;</span><span class="ident">memos</span>).<span class="ident">unwrap</span>();
+        (<span class="ident">memos</span>.<span class="ident">into_iter</span>().<span class="ident">map</span>(<span class="op">|</span><span class="ident">memo</span><span class="op">|</span> <span class="prelude-val">Some</span>(<span class="ident">memo</span>)).<span class="ident">collect</span>(), <span class="ident">sig</span>)
+    }
+
+    <span class="kw">fn</span> <span class="ident">random_txn_hash</span>(<span class="ident">rng</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">ChaChaRng</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">Commitment</span><span class="op">&lt;</span><span class="ident">cap::Transaction</span><span class="op">&gt;</span> {
+        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">hash</span> <span class="op">=</span> [<span class="number">0</span>; <span class="number">64</span>];
+        <span class="ident">rng</span>.<span class="ident">fill_bytes</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">hash</span>);
+        <span class="ident">commit::RawCommitmentBuilder</span>::<span class="op">&lt;</span><span class="ident">cap::Transaction</span><span class="op">&gt;</span><span class="ident">::new</span>(<span class="string">&quot;random_txn_hash&quot;</span>)
+            .<span class="ident">fixed_size_bytes</span>(<span class="kw-2">&amp;</span><span class="ident">hash</span>)
+            .<span class="ident">finalize</span>()
     }
 
     <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">get_test_state</span>(
@@ -938,9 +1131,15 @@
             <span class="ident">txn_state</span>: <span class="ident">TransactionState</span> {
                 <span class="ident">validator</span>,
                 <span class="ident">now</span>: <span class="ident">Default::default</span>(),
+                <span class="ident">records</span>: <span class="ident">Default::default</span>(),
                 <span class="ident">nullifiers</span>: <span class="ident">Default::default</span>(),
                 <span class="ident">record_mt</span>: <span class="ident">record_merkle_tree</span>,
+                <span class="ident">transactions</span>: <span class="ident">Default::default</span>(),
             },
+            <span class="ident">key_state</span>: <span class="ident">Default::default</span>(),
+            <span class="ident">viewing_accounts</span>: <span class="ident">Default::default</span>(),
+            <span class="ident">freezing_accounts</span>: <span class="ident">Default::default</span>(),
+            <span class="ident">sending_accounts</span>: <span class="ident">Default::default</span>(),
         };
 
         <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">loader</span> <span class="op">=</span> <span class="ident">MockKeystoreLoader</span> {
@@ -948,23 +1147,12 @@
             <span class="ident">key</span>: <span class="ident">KeyTree::random</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">rng</span>).<span class="number">0</span>,
         };
         {
-            <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">atomic_loader</span> <span class="op">=</span> <span class="ident">AtomicStoreLoader::load</span>(
-                <span class="kw-2">&amp;</span><span class="ident">KeystoreLoader</span>::<span class="op">&lt;</span><span class="ident">cap::Ledger</span><span class="op">&gt;</span><span class="ident">::location</span>(<span class="kw-2">&amp;</span><span class="ident">loader</span>),
-                <span class="string">&quot;keystore&quot;</span>,
-            )
-            .<span class="ident">unwrap</span>();
-            <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">storage</span> <span class="op">=</span>
-                <span class="ident">AtomicKeystoreStorage::new</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">loader</span>, <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">atomic_loader</span>, <span class="number">1024</span>).<span class="ident">unwrap</span>();
-            <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">atomic_store</span> <span class="op">=</span> <span class="ident">AtomicStore::open</span>(<span class="ident">atomic_loader</span>).<span class="ident">unwrap</span>();
-
-            <span class="ident">storage</span>.<span class="ident">commit</span>().<span class="kw">await</span>;
-            <span class="ident">atomic_store</span>.<span class="ident">commit_version</span>().<span class="ident">unwrap</span>();
-            <span class="macro">assert!</span>(<span class="op">!</span><span class="ident">storage</span>.<span class="ident">exists</span>());
-
+            <span class="kw">let</span> (<span class="kw-2">mut</span> <span class="ident">atomic_store</span>, <span class="kw-2">mut</span> <span class="ident">storage</span>, <span class="kw-2">mut</span> <span class="ident">assets</span>) <span class="op">=</span>
+                <span class="ident">Keystore</span>::<span class="op">&lt;</span><span class="ident">MockBackend</span>, <span class="ident">cap::Ledger</span>, ()<span class="op">&gt;</span><span class="ident">::create_stores</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">loader</span>).<span class="ident">unwrap</span>();
             <span class="ident">storage</span>.<span class="ident">create</span>(<span class="kw-2">&amp;</span><span class="ident">state</span>).<span class="kw">await</span>.<span class="ident">unwrap</span>();
-            <span class="ident">storage</span>.<span class="ident">commit</span>().<span class="kw">await</span>;
-            <span class="ident">atomic_store</span>.<span class="ident">commit_version</span>().<span class="ident">unwrap</span>();
             <span class="macro">assert!</span>(<span class="ident">storage</span>.<span class="ident">exists</span>());
+            <span class="ident">assets</span>.<span class="ident">commit</span>::<span class="op">&lt;</span><span class="ident">cap::Ledger</span><span class="op">&gt;</span>().<span class="ident">unwrap</span>();
+            <span class="ident">atomic_store</span>.<span class="ident">commit_version</span>().<span class="ident">unwrap</span>();
         }
 
         (<span class="ident">state</span>, <span class="ident">loader</span>, <span class="ident">rng</span>)
@@ -978,16 +1166,10 @@
         <span class="comment">// load comes only from persistent storage and not from any in-memory state of the first</span>
         <span class="comment">// instance.</span>
         <span class="kw">let</span> <span class="ident">loaded</span> <span class="op">=</span> {
-            <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">atomic_loader</span> <span class="op">=</span> <span class="ident">AtomicStoreLoader::load</span>(
-                <span class="kw-2">&amp;</span><span class="ident">KeystoreLoader</span>::<span class="op">&lt;</span><span class="ident">cap::Ledger</span><span class="op">&gt;</span><span class="ident">::location</span>(<span class="kw-2">&amp;</span><span class="ident">loader</span>),
-                <span class="string">&quot;keystore&quot;</span>,
-            )
-            .<span class="ident">unwrap</span>();
-            <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">storage</span> <span class="op">=</span>
-                <span class="ident">AtomicKeystoreStorage::new</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">loader</span>, <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">atomic_loader</span>, <span class="number">1024</span>).<span class="ident">unwrap</span>();
-            <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">atomic_store</span> <span class="op">=</span> <span class="ident">AtomicStore::open</span>(<span class="ident">atomic_loader</span>).<span class="ident">unwrap</span>();
+            <span class="kw">let</span> (<span class="kw-2">mut</span> <span class="ident">atomic_store</span>, <span class="kw-2">mut</span> <span class="ident">storage</span>, <span class="kw-2">mut</span> <span class="ident">assets</span>) <span class="op">=</span>
+                <span class="ident">Keystore</span>::<span class="op">&lt;</span><span class="ident">MockBackend</span>, <span class="ident">cap::Ledger</span>, ()<span class="op">&gt;</span><span class="ident">::create_stores</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">loader</span>).<span class="ident">unwrap</span>();
             <span class="kw">let</span> <span class="ident">state</span> <span class="op">=</span> <span class="ident">storage</span>.<span class="ident">load</span>().<span class="kw">await</span>.<span class="ident">unwrap</span>();
-            <span class="ident">storage</span>.<span class="ident">commit</span>().<span class="kw">await</span>;
+            <span class="ident">assets</span>.<span class="ident">commit</span>::<span class="op">&lt;</span><span class="ident">cap::Ledger</span><span class="op">&gt;</span>().<span class="ident">unwrap</span>();
             <span class="ident">atomic_store</span>.<span class="ident">commit_version</span>().<span class="ident">unwrap</span>();
             <span class="ident">state</span>
         };
@@ -1000,61 +1182,68 @@
         <span class="ident">stored</span>.<span class="ident">txn_state</span>.<span class="ident">record_mt</span>.<span class="ident">push</span>(<span class="ident">comm</span>.<span class="ident">to_field_element</span>());
         <span class="ident">stored</span>.<span class="ident">txn_state</span>.<span class="ident">validator</span>.<span class="ident">now</span> <span class="op">+</span><span class="op">=</span> <span class="number">1</span>;
         <span class="ident">stored</span>.<span class="ident">txn_state</span>.<span class="ident">now</span> <span class="op">+</span><span class="op">=</span> <span class="ident">EventIndex::from_source</span>(<span class="ident">EventSource::QueryService</span>, <span class="number">1</span>);
+        <span class="ident">stored</span>.<span class="ident">txn_state</span>.<span class="ident">records</span>.<span class="ident">insert</span>(<span class="ident">ro</span>, <span class="number">0</span>, <span class="kw-2">&amp;</span><span class="ident">user_key</span>);
+        <span class="kw">let</span> (<span class="ident">memos</span>, <span class="ident">sig</span>) <span class="op">=</span> <span class="ident">random_memos</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">rng</span>, <span class="kw-2">&amp;</span><span class="ident">user_key</span>);
+        <span class="kw">let</span> <span class="ident">txn_uid</span> <span class="op">=</span> <span class="ident">TransactionUID</span>(<span class="ident">random_txn_hash</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">rng</span>));
+        <span class="kw">let</span> <span class="ident">txn</span> <span class="op">=</span> <span class="ident">PendingTransaction</span> {
+            <span class="ident">info</span>: <span class="ident">TransactionInfo</span> {
+                <span class="ident">accounts</span>: <span class="macro">vec!</span>[<span class="ident">user_key</span>.<span class="ident">address</span>()],
+                <span class="ident">memos</span>,
+                <span class="ident">sig</span>,
+                <span class="ident">freeze_outputs</span>: <span class="ident">random_ros</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">rng</span>, <span class="kw-2">&amp;</span><span class="ident">user_key</span>),
+                <span class="ident">uid</span>: <span class="prelude-val">Some</span>(<span class="ident">txn_uid</span>.<span class="ident">clone</span>()),
+                <span class="ident">history</span>: <span class="prelude-val">None</span>,
+                <span class="ident">inputs</span>: <span class="ident">random_ros</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">rng</span>, <span class="kw-2">&amp;</span><span class="ident">user_key</span>),
+                <span class="ident">outputs</span>: <span class="ident">random_ros</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">rng</span>, <span class="kw-2">&amp;</span><span class="ident">user_key</span>),
+            },
+            <span class="ident">timeout</span>: <span class="number">5000</span>,
+            <span class="ident">hash</span>: <span class="ident">random_txn_hash</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">rng</span>),
+        };
+        <span class="ident">stored</span>.<span class="ident">txn_state</span>.<span class="ident">transactions</span>.<span class="ident">insert_pending</span>(<span class="ident">txn</span>);
+        <span class="ident">stored</span>
+            .<span class="ident">txn_state</span>
+            .<span class="ident">transactions</span>
+            .<span class="ident">await_memos</span>(<span class="ident">txn_uid</span>, <span class="macro">vec!</span>[<span class="number">1</span>, <span class="number">2</span>, <span class="number">3</span>]);
 
         <span class="comment">// Snapshot the modified dynamic state and then reload.</span>
         {
-            <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">atomic_loader</span> <span class="op">=</span> <span class="ident">AtomicStoreLoader::load</span>(
-                <span class="kw-2">&amp;</span><span class="ident">KeystoreLoader</span>::<span class="op">&lt;</span><span class="ident">cap::Ledger</span><span class="op">&gt;</span><span class="ident">::location</span>(<span class="kw-2">&amp;</span><span class="ident">loader</span>),
-                <span class="string">&quot;keystore&quot;</span>,
-            )
-            .<span class="ident">unwrap</span>();
-            <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">storage</span> <span class="op">=</span>
-                <span class="ident">AtomicKeystoreStorage::new</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">loader</span>, <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">atomic_loader</span>, <span class="number">1024</span>).<span class="ident">unwrap</span>();
-            <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">atomic_store</span> <span class="op">=</span> <span class="ident">AtomicStore::open</span>(<span class="ident">atomic_loader</span>).<span class="ident">unwrap</span>();
+            <span class="kw">let</span> (<span class="kw-2">mut</span> <span class="ident">atomic_store</span>, <span class="kw-2">mut</span> <span class="ident">storage</span>, <span class="kw-2">mut</span> <span class="ident">assets</span>) <span class="op">=</span>
+                <span class="ident">Keystore</span>::<span class="op">&lt;</span><span class="ident">MockBackend</span>, <span class="ident">cap::Ledger</span>, ()<span class="op">&gt;</span><span class="ident">::create_stores</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">loader</span>).<span class="ident">unwrap</span>();
             <span class="ident">storage</span>.<span class="ident">store_snapshot</span>(<span class="kw-2">&amp;</span><span class="ident">stored</span>).<span class="kw">await</span>.<span class="ident">unwrap</span>();
             <span class="ident">storage</span>.<span class="ident">commit</span>().<span class="kw">await</span>;
+            <span class="ident">assets</span>.<span class="ident">commit</span>::<span class="op">&lt;</span><span class="ident">cap::Ledger</span><span class="op">&gt;</span>().<span class="ident">unwrap</span>();
             <span class="ident">atomic_store</span>.<span class="ident">commit_version</span>().<span class="ident">unwrap</span>();
         }
         <span class="kw">let</span> <span class="ident">loaded</span> <span class="op">=</span> {
-            <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">atomic_loader</span> <span class="op">=</span> <span class="ident">AtomicStoreLoader::load</span>(
-                <span class="kw-2">&amp;</span><span class="ident">KeystoreLoader</span>::<span class="op">&lt;</span><span class="ident">cap::Ledger</span><span class="op">&gt;</span><span class="ident">::location</span>(<span class="kw-2">&amp;</span><span class="ident">loader</span>),
-                <span class="string">&quot;keystore&quot;</span>,
-            )
-            .<span class="ident">unwrap</span>();
-            <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">storage</span> <span class="op">=</span>
-                <span class="ident">AtomicKeystoreStorage::new</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">loader</span>, <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">atomic_loader</span>, <span class="number">1024</span>).<span class="ident">unwrap</span>();
-            <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">atomic_store</span> <span class="op">=</span> <span class="ident">AtomicStore::open</span>(<span class="ident">atomic_loader</span>).<span class="ident">unwrap</span>();
+            <span class="kw">let</span> (<span class="kw-2">mut</span> <span class="ident">atomic_store</span>, <span class="kw-2">mut</span> <span class="ident">storage</span>, <span class="kw-2">mut</span> <span class="ident">assets</span>) <span class="op">=</span>
+                <span class="ident">Keystore</span>::<span class="op">&lt;</span><span class="ident">MockBackend</span>, <span class="ident">cap::Ledger</span>, ()<span class="op">&gt;</span><span class="ident">::create_stores</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">loader</span>).<span class="ident">unwrap</span>();
             <span class="kw">let</span> <span class="ident">state</span> <span class="op">=</span> <span class="ident">storage</span>.<span class="ident">load</span>().<span class="kw">await</span>.<span class="ident">unwrap</span>();
-            <span class="ident">storage</span>.<span class="ident">commit</span>().<span class="kw">await</span>;
+            <span class="ident">assets</span>.<span class="ident">commit</span>::<span class="op">&lt;</span><span class="ident">cap::Ledger</span><span class="op">&gt;</span>().<span class="ident">unwrap</span>();
             <span class="ident">atomic_store</span>.<span class="ident">commit_version</span>().<span class="ident">unwrap</span>();
             <span class="ident">state</span>
         };
         <span class="ident">assert_keystore_states_eq</span>(<span class="kw-2">&amp;</span><span class="ident">stored</span>, <span class="kw-2">&amp;</span><span class="ident">loaded</span>);
 
+        <span class="comment">// Append to monotonic state and then reload.</span>
+        <span class="kw">let</span> <span class="ident">viewing_key</span> <span class="op">=</span> <span class="ident">ViewerKeyPair::generate</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">rng</span>);
+        <span class="comment">// viewing keys for the asset library get persisted with the viewing accounts.</span>
+        <span class="ident">stored</span>.<span class="ident">viewing_accounts</span>.<span class="ident">insert</span>(
+            <span class="ident">viewing_key</span>.<span class="ident">pub_key</span>(),
+            <span class="ident">Account::new</span>(<span class="ident">viewing_key</span>, <span class="string">&quot;viewing_account&quot;</span>.<span class="ident">into</span>()),
+        );
         {
-            <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">atomic_loader</span> <span class="op">=</span> <span class="ident">AtomicStoreLoader::load</span>(
-                <span class="kw-2">&amp;</span><span class="ident">KeystoreLoader</span>::<span class="op">&lt;</span><span class="ident">cap::Ledger</span><span class="op">&gt;</span><span class="ident">::location</span>(<span class="kw-2">&amp;</span><span class="ident">loader</span>),
-                <span class="string">&quot;keystore&quot;</span>,
-            )
-            .<span class="ident">unwrap</span>();
-            <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">storage</span> <span class="op">=</span>
-                <span class="ident">AtomicKeystoreStorage::new</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">loader</span>, <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">atomic_loader</span>, <span class="number">1024</span>).<span class="ident">unwrap</span>();
-            <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">atomic_store</span> <span class="op">=</span> <span class="ident">AtomicStore::open</span>(<span class="ident">atomic_loader</span>).<span class="ident">unwrap</span>();
+            <span class="kw">let</span> (<span class="kw-2">mut</span> <span class="ident">atomic_store</span>, <span class="kw-2">mut</span> <span class="ident">storage</span>, <span class="kw-2">mut</span> <span class="ident">assets</span>) <span class="op">=</span>
+                <span class="ident">Keystore</span>::<span class="op">&lt;</span><span class="ident">MockBackend</span>, <span class="ident">cap::Ledger</span>, ()<span class="op">&gt;</span><span class="ident">::create_stores</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">loader</span>).<span class="ident">unwrap</span>();
             <span class="ident">storage</span>.<span class="ident">store_snapshot</span>(<span class="kw-2">&amp;</span><span class="ident">stored</span>).<span class="kw">await</span>.<span class="ident">unwrap</span>();
             <span class="ident">storage</span>.<span class="ident">commit</span>().<span class="kw">await</span>;
+            <span class="ident">assets</span>.<span class="ident">commit</span>::<span class="op">&lt;</span><span class="ident">cap::Ledger</span><span class="op">&gt;</span>().<span class="ident">unwrap</span>();
             <span class="ident">atomic_store</span>.<span class="ident">commit_version</span>().<span class="ident">unwrap</span>();
         }
         <span class="kw">let</span> <span class="ident">loaded</span> <span class="op">=</span> {
-            <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">atomic_loader</span> <span class="op">=</span> <span class="ident">AtomicStoreLoader::load</span>(
-                <span class="kw-2">&amp;</span><span class="ident">KeystoreLoader</span>::<span class="op">&lt;</span><span class="ident">cap::Ledger</span><span class="op">&gt;</span><span class="ident">::location</span>(<span class="kw-2">&amp;</span><span class="ident">loader</span>),
-                <span class="string">&quot;keystore&quot;</span>,
-            )
-            .<span class="ident">unwrap</span>();
-            <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">storage</span> <span class="op">=</span>
-                <span class="ident">AtomicKeystoreStorage::new</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">loader</span>, <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">atomic_loader</span>, <span class="number">1024</span>).<span class="ident">unwrap</span>();
-            <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">atomic_store</span> <span class="op">=</span> <span class="ident">AtomicStore::open</span>(<span class="ident">atomic_loader</span>).<span class="ident">unwrap</span>();
+            <span class="kw">let</span> (<span class="kw-2">mut</span> <span class="ident">atomic_store</span>, <span class="kw-2">mut</span> <span class="ident">storage</span>, <span class="kw-2">mut</span> <span class="ident">assets</span>) <span class="op">=</span>
+                <span class="ident">Keystore</span>::<span class="op">&lt;</span><span class="ident">MockBackend</span>, <span class="ident">cap::Ledger</span>, ()<span class="op">&gt;</span><span class="ident">::create_stores</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">loader</span>).<span class="ident">unwrap</span>();
             <span class="kw">let</span> <span class="ident">state</span> <span class="op">=</span> <span class="ident">storage</span>.<span class="ident">load</span>().<span class="kw">await</span>.<span class="ident">unwrap</span>();
-            <span class="ident">storage</span>.<span class="ident">commit</span>().<span class="kw">await</span>;
+            <span class="ident">assets</span>.<span class="ident">commit</span>::<span class="op">&lt;</span><span class="ident">cap::Ledger</span><span class="op">&gt;</span>().<span class="ident">unwrap</span>();
             <span class="ident">atomic_store</span>.<span class="ident">commit_version</span>().<span class="ident">unwrap</span>();
             <span class="ident">state</span>
         };
@@ -1065,41 +1254,12 @@
 
     <span class="attribute">#[<span class="ident">async_std::test</span>]</span>
     <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">test_revert</span>() <span class="op">-</span><span class="op">&gt;</span> <span class="ident">std::io::Result</span><span class="op">&lt;</span>()<span class="op">&gt;</span> {
-        <span class="kw">let</span> (<span class="ident">stored</span>, <span class="kw-2">mut</span> <span class="ident">loader</span>, <span class="kw-2">mut</span> <span class="ident">rng</span>) <span class="op">=</span> <span class="ident">get_test_state</span>(<span class="string">&quot;test_revert&quot;</span>).<span class="kw">await</span>;
-
-        <span class="kw">let</span> <span class="ident">loaded</span> <span class="op">=</span> {
-            <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">atomic_loader</span> <span class="op">=</span> <span class="ident">AtomicStoreLoader::load</span>(
-                <span class="kw-2">&amp;</span><span class="ident">KeystoreLoader</span>::<span class="op">&lt;</span><span class="ident">cap::Ledger</span><span class="op">&gt;</span><span class="ident">::location</span>(<span class="kw-2">&amp;</span><span class="ident">loader</span>),
-                <span class="string">&quot;keystore&quot;</span>,
-            )
-            .<span class="ident">unwrap</span>();
-            <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">storage</span> <span class="op">=</span>
-                <span class="ident">AtomicKeystoreStorage::new</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">loader</span>, <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">atomic_loader</span>, <span class="number">1024</span>).<span class="ident">unwrap</span>();
-            <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">atomic_store</span> <span class="op">=</span> <span class="ident">AtomicStore::open</span>(<span class="ident">atomic_loader</span>).<span class="ident">unwrap</span>();
-
-            <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">updated</span> <span class="op">=</span> <span class="ident">stored</span>.<span class="ident">clone</span>();
-            <span class="ident">updated</span>.<span class="ident">txn_state</span>.<span class="ident">now</span> <span class="op">=</span> <span class="ident">EventIndex::new</span>(<span class="number">123</span>, <span class="number">456</span>);
-            <span class="ident">storage</span>.<span class="ident">store_snapshot</span>(<span class="kw-2">&amp;</span><span class="ident">updated</span>).<span class="kw">await</span>.<span class="ident">unwrap</span>();
-            <span class="ident">storage</span>.<span class="ident">revert</span>().<span class="kw">await</span>;
-            <span class="ident">storage</span>.<span class="ident">commit</span>().<span class="kw">await</span>;
-            <span class="ident">atomic_store</span>.<span class="ident">commit_version</span>().<span class="ident">unwrap</span>();
-
-            <span class="comment">// Make sure loading after a revert does not return the reverted changes.</span>
-            <span class="kw">let</span> <span class="ident">state</span> <span class="op">=</span> <span class="ident">storage</span>.<span class="ident">load</span>().<span class="kw">await</span>.<span class="ident">unwrap</span>();
-            <span class="ident">state</span>
-        };
-        <span class="ident">assert_keystore_states_eq</span>(<span class="kw-2">&amp;</span><span class="ident">stored</span>, <span class="kw-2">&amp;</span><span class="ident">loaded</span>);
+        <span class="kw">let</span> (<span class="kw-2">mut</span> <span class="ident">stored</span>, <span class="kw-2">mut</span> <span class="ident">loader</span>, <span class="kw-2">mut</span> <span class="ident">rng</span>) <span class="op">=</span> <span class="ident">get_test_state</span>(<span class="string">&quot;test_revert&quot;</span>).<span class="kw">await</span>;
 
         <span class="comment">// Change multiple data structures and revert.</span>
         <span class="kw">let</span> <span class="ident">loaded</span> <span class="op">=</span> {
-            <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">atomic_loader</span> <span class="op">=</span> <span class="ident">AtomicStoreLoader::load</span>(
-                <span class="kw-2">&amp;</span><span class="ident">KeystoreLoader</span>::<span class="op">&lt;</span><span class="ident">cap::Ledger</span><span class="op">&gt;</span><span class="ident">::location</span>(<span class="kw-2">&amp;</span><span class="ident">loader</span>),
-                <span class="string">&quot;keystore&quot;</span>,
-            )
-            .<span class="ident">unwrap</span>();
-            <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">storage</span> <span class="op">=</span>
-                <span class="ident">AtomicKeystoreStorage::new</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">loader</span>, <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">atomic_loader</span>, <span class="number">1024</span>).<span class="ident">unwrap</span>();
-            <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">atomic_store</span> <span class="op">=</span> <span class="ident">AtomicStore::open</span>(<span class="ident">atomic_loader</span>).<span class="ident">unwrap</span>();
+            <span class="kw">let</span> (<span class="kw-2">mut</span> <span class="ident">atomic_store</span>, <span class="kw-2">mut</span> <span class="ident">storage</span>, <span class="kw-2">mut</span> <span class="ident">assets</span>) <span class="op">=</span>
+                <span class="ident">Keystore</span>::<span class="op">&lt;</span><span class="ident">MockBackend</span>, <span class="ident">cap::Ledger</span>, ()<span class="op">&gt;</span><span class="ident">::create_stores</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">loader</span>).<span class="ident">unwrap</span>();
 
             <span class="kw">let</span> <span class="ident">user_key</span> <span class="op">=</span> <span class="ident">UserKeyPair::generate</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">rng</span>);
             <span class="kw">let</span> <span class="ident">ro</span> <span class="op">=</span> <span class="ident">random_ro</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">rng</span>, <span class="kw-2">&amp;</span><span class="ident">user_key</span>);
@@ -1109,15 +1269,35 @@
                 <span class="kw-2">&amp;</span><span class="ident">RecordCommitment::from</span>(<span class="kw-2">&amp;</span><span class="ident">ro</span>),
             );
 
-            <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">updated</span> <span class="op">=</span> <span class="ident">stored</span>.<span class="ident">clone</span>();
-            <span class="ident">updated</span>.<span class="ident">txn_state</span>.<span class="ident">nullifiers</span>.<span class="ident">insert</span>(<span class="ident">nullifier</span>.<span class="ident">into</span>());
-            <span class="ident">updated</span>.<span class="ident">txn_state</span>.<span class="ident">now</span> <span class="op">=</span> <span class="ident">EventIndex::new</span>(<span class="number">123</span>, <span class="number">456</span>);
+            <span class="comment">// Store some data.</span>
+            <span class="ident">stored</span>.<span class="ident">txn_state</span>.<span class="ident">records</span>.<span class="ident">insert</span>(<span class="ident">ro</span>, <span class="number">0</span>, <span class="kw-2">&amp;</span><span class="ident">user_key</span>);
+            <span class="ident">storage</span>.<span class="ident">store_snapshot</span>(<span class="kw-2">&amp;</span><span class="ident">stored</span>).<span class="kw">await</span>.<span class="ident">unwrap</span>();
+            <span class="ident">storage</span>
+                .<span class="ident">store_transaction</span>(<span class="ident">TransactionHistoryEntry</span> {
+                    <span class="ident">time</span>: <span class="ident">Local::now</span>(),
+                    <span class="ident">asset</span>: <span class="ident">AssetCode::native</span>(),
+                    <span class="ident">kind</span>: <span class="ident">TransactionKind</span>::<span class="op">&lt;</span><span class="ident">cap::Ledger</span><span class="op">&gt;</span><span class="ident">::send</span>(),
+                    <span class="ident">hash</span>: <span class="prelude-val">None</span>,
+                    <span class="ident">senders</span>: <span class="macro">vec!</span>[<span class="ident">user_key</span>.<span class="ident">address</span>()],
+                    <span class="ident">receivers</span>: <span class="macro">vec!</span>[],
+                    <span class="ident">fee_change</span>: <span class="prelude-val">None</span>,
+                    <span class="ident">asset_change</span>: <span class="prelude-val">None</span>,
+                    <span class="ident">receipt</span>: <span class="prelude-val">None</span>,
+                })
+                .<span class="kw">await</span>
+                .<span class="ident">unwrap</span>();
 
-            <span class="ident">storage</span>.<span class="ident">store_snapshot</span>(<span class="kw-2">&amp;</span><span class="ident">updated</span>).<span class="kw">await</span>.<span class="ident">unwrap</span>();
+            <span class="comment">// Revert the changes.</span>
+            <span class="ident">stored</span>
+                .<span class="ident">txn_state</span>
+                .<span class="ident">records</span>
+                .<span class="ident">remove_by_nullifier</span>(<span class="ident">nullifier</span>)
+                .<span class="ident">unwrap</span>();
             <span class="ident">storage</span>.<span class="ident">revert</span>().<span class="kw">await</span>;
+
             <span class="comment">// Loading after revert should be a no-op.</span>
             <span class="kw">let</span> <span class="ident">state</span> <span class="op">=</span> <span class="ident">storage</span>.<span class="ident">load</span>().<span class="kw">await</span>.<span class="ident">unwrap</span>();
-            <span class="ident">storage</span>.<span class="ident">commit</span>().<span class="kw">await</span>;
+            <span class="ident">assets</span>.<span class="ident">commit</span>::<span class="op">&lt;</span><span class="ident">cap::Ledger</span><span class="op">&gt;</span>().<span class="ident">unwrap</span>();
             <span class="ident">atomic_store</span>.<span class="ident">commit_version</span>().<span class="ident">unwrap</span>();
             <span class="ident">state</span>
         };
