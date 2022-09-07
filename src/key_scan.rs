@@ -7,7 +7,7 @@
 /// synchronizes with the main ledger follower.
 use crate::{
     events::{EventIndex, EventSource, LedgerEvent},
-    sparse_merkle_tree::SparseMerkleTree,
+    lw_merkle_tree::LWMerkleTree,
     transactions::TransactionParams,
     txn_builder::{TransactionStatus, TransactionUID},
 };
@@ -66,8 +66,8 @@ pub enum ScanStatus<L: Ledger> {
 /// A scan has a stream of events and a range of event indices of interest. The stream always
 /// includes the range of interest but may also include events before or after it. As the scan
 /// progresses through the event stream, it maintains a collection of newly discovered records as
-/// well as a sparse Merkle tree with paths for each of the discovered records. The Merkle tree
-/// allows it to update the paths as new commitments are added, and ultimately produce up-to-date
+/// well as a lightweight Merkle tree with paths for each of the discovered records. The Merkle
+/// tree allows it to update the paths as new commitments are added, and ultimately produce up-to-date
 /// paths for each record it discovers.
 ///
 /// The scan must be initialized with a Merkle frontier corresponding to the ledger state just
@@ -78,17 +78,17 @@ pub enum ScanStatus<L: Ledger> {
 /// interest, including possibly the initial one. The scan will start processing events from just
 /// after that frontier was valid, updating the frontier as it goes.
 ///
-/// At each event, the scan will update its sparse Merkle tree, including the paths for all of its
-/// discovered records, by appending the new commitments to the tree. It will also check any new
-/// nullifiers against its discovered records; if it finds a match, it will remove the nullified
-/// records and prune their paths from the tree. In addition, if the event falls within the range of
-/// interest, the scan will attempt to find new records belonging to its key in the event, either by
-/// decrypting memos or by checking record openings included in plaintext in a transaction. If it
-/// finds any records, it will add them to its collection, insert their paths into its Merkle tree,
-/// and add a transaction history entry for the transaction of which it is a recipient. It is able
-/// to create Merkle paths for the new records either by using the Merkle paths included in `Memos`
-/// events, or by using the frontier at the time it appends the commitment for an attached record
-/// opening to the tree.
+/// At each event, the scan will update its lightweight Merkle tree, including the paths for all of
+/// its discovered records, by appending the new commitments to the tree. It will also check any
+/// new nullifiers against its discovered records; if it finds a match, it will remove the
+/// nullified records and prune their paths from the tree. In addition, if the event falls within
+/// the range of interest, the scan will attempt to find new records belonging to its key in the
+/// event, either by decrypting memos or by checking record openings included in plaintext in a
+/// transaction. If it finds any records, it will add them to its collection, insert their paths
+/// into its Merkle tree, and add a transaction history entry for the transaction of which it is a
+/// recipient. It is able to create Merkle paths for the new records either by using the Merkle
+/// paths included in `Memos` events, or by using the frontier at the time it appends the
+/// commitment for an attached record opening to the tree.
 #[ser_test(arbitrary, ark(false), types(reef::cap::Ledger))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(bound = "L: Ledger")]
@@ -107,10 +107,10 @@ pub struct BackgroundKeyScan<L: Ledger> {
     records: HashMap<Nullifier, (RecordOpening, u64)>,
     // New history entries for transactions we received during the scan.
     history: Vec<(TransactionUID<L>, TransactionParams<L>)>,
-    // Sparse Merkle tree containing paths for the commitments of each record in `records`. This
-    // allows us to update the paths as we scan so that at the end of the scan, we have a path for
+    // Lightweight Merkle tree containing paths for the commitments of each record in `records`.
+    // This allows us to update the paths as we scan so that at the end of the scan, we have a path for
     // each record relative to the current Merkle root.
-    records_mt: SparseMerkleTree,
+    records_mt: LWMerkleTree,
 }
 
 impl<L: Ledger> PartialEq<Self> for BackgroundKeyScan<L> {
@@ -147,7 +147,7 @@ impl<L: Ledger> BackgroundKeyScan<L> {
         next_event: EventIndex,
         from: EventIndex,
         to: EventIndex,
-        records_mt: SparseMerkleTree,
+        records_mt: LWMerkleTree,
     ) -> Self {
         Self {
             key,

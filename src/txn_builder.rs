@@ -12,7 +12,7 @@
 use crate::{
     events::EventIndex,
     records::{Record, Records},
-    sparse_merkle_tree::SparseMerkleTree,
+    lw_merkle_tree::LWMerkleTree,
     transactions::{SignedMemos, TransactionParams},
 };
 use arbitrary::{Arbitrary, Unstructured};
@@ -312,8 +312,8 @@ pub struct TransactionState<L: Ledger> {
     pub validator: Validator<L>,
     // sparse nullifier set Merkle tree mirrored from validators
     pub nullifiers: NullifierSet<L>,
-    // sparse record Merkle tree mirrored from validators
-    pub record_mt: SparseMerkleTree,
+    // lightweight Merkle tree mirrored from validators
+    pub record_mt: LWMerkleTree,
 }
 
 impl<L: Ledger> PartialEq<Self> for TransactionState<L> {
