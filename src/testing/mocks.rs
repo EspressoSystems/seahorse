@@ -35,7 +35,7 @@ use std::collections::{HashMap, HashSet};
 use std::pin::Pin;
 
 pub struct MockNetworkWithHeight<'a, const H: u8> {
-    validator: cap::Validator,
+    validator: cap::Validator<H>,
     nullifiers: HashSet<Nullifier>,
     records: MerkleTree,
     committed_blocks: Vec<(cap::Block, Vec<Vec<u64>>)>,
@@ -52,9 +52,10 @@ impl<'a, const H: u8> MockNetworkWithHeight<'a, H> {
         initial_grants: Vec<(RecordOpening, u64)>,
     ) -> Self {
         let mut network = Self {
-            validator: cap::Validator {
+            validator: cap::Validator::<H> {
                 now: 0,
-                num_records: initial_grants.len() as u64,
+                records_commitment: records.commitment(),
+                records_frontier: records.frontier(),
             },
             records,
             nullifiers: Default::default(),
@@ -101,9 +102,14 @@ impl<'a, const H: u8> super::MockNetwork<'a, cap::LedgerWithHeight<H>>
         self.events.now()
     }
 
-    fn submit(&mut self, block: cap::Block) -> Result<(), KeystoreError<cap::LedgerWithHeight<H>>> {
+    fn submit(
+        &mut self,
+        block: cap::Block,
+    ) -> Result<usize, KeystoreError<cap::LedgerWithHeight<H>>> {
         match self.validator.validate_and_apply(block.clone()) {
-            Ok(mut uids) => {
+            Ok(validated) => {
+                let block_size = block.len();
+                let mut uids = validated.0;
                 // Add nullifiers
                 for txn in &block {
                     for nullifier in txn.input_nullifiers() {
@@ -130,11 +136,13 @@ impl<'a, const H: u8> super::MockNetwork<'a, cap::LedgerWithHeight<H>>
                     block_uids.push(this_txn_uids);
                 }
                 self.committed_blocks.push((block, block_uids));
+                Ok(block_size)
             }
-            Err(error) => self.generate_event(LedgerEvent::Reject { block, error }),
+            Err(error) => {
+                self.generate_event(LedgerEvent::Reject { block, error });
+                Ok(0)
+            }
         }
-
-        Ok(())
     }
 
     fn post_memos(
@@ -276,10 +284,12 @@ impl<'a, const H: u8> KeystoreBackend<'a, cap::LedgerWithHeight<H>>
 
     async fn get_nullifier_proof(
         &self,
+        block_height: u64,
         _set: &mut cap::NullifierSet,
         nullifier: Nullifier,
     ) -> Result<(bool, ()), KeystoreError<cap::LedgerWithHeight<H>>> {
         let mut ledger = self.ledger.lock().await;
+        assert_eq!(block_height, ledger.network().committed_blocks.len() as u64);
         Ok((ledger.network().nullifiers.contains(&nullifier), ()))
     }
 
