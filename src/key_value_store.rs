@@ -129,7 +129,10 @@ pub enum IndexChange<C> {
 }
 
 /// An Interface for an in memory index which can insert and remove items
-pub trait Map<C> {
+/// To create a persistable index type you can implement this trait for whatever in memory index
+/// you choose to use.  E.g. if you create a new type called CustomHashMap<K,V> you can implement
+/// Index<(K,V)> for it and then use the persitable type PersistableMap<(K,V), CustomHashMap<K,V>>.
+pub trait Index<C> {
     /// Insert an item into the index.  Returns the item value in the index before inserting if there was one
     /// Returns None if there was no item.
     fn insert(&mut self, change: C) -> Option<C>;
@@ -138,7 +141,7 @@ pub trait Map<C> {
     fn remove(&mut self, change: &C) -> Option<C>;
 }
 
-impl<K, V> Map<(K, V)> for HashMap<K, V>
+impl<K, V> Index<(K, V)> for HashMap<K, V>
 where
     K: Clone + Eq + Hash,
 {
@@ -150,15 +153,12 @@ where
         }
     }
     fn remove(&mut self, change: &(K, V)) -> Option<(K, V)> {
-        if let Some(removed) = self.remove(&change.0) {
-            Some((change.0.clone(), removed))
-        } else {
-            None
-        }
+        self.remove(&change.0)
+            .map(|removed| (change.0.clone(), removed))
     }
 }
 
-impl<C> Map<C> for HashSet<C>
+impl<C> Index<C> for HashSet<C>
 where
     C: Clone + Eq + Hash,
 {
@@ -178,7 +178,7 @@ where
     }
 }
 
-impl<K, V> Map<(K, V)> for HashMap<K, BTreeSet<V>>
+impl<K, V> Index<(K, V)> for HashMap<K, BTreeSet<V>>
 where
     K: Eq + Hash + Clone,
     V: Eq + Hash + Ord + Clone,
@@ -208,7 +208,7 @@ where
     }
 }
 
-impl<K, V> Map<(K, V)> for BTreeMap<K, HashSet<V>>
+impl<K, V> Index<(K, V)> for BTreeMap<K, HashSet<V>>
 where
     K: Eq + Hash + Clone + Ord,
     V: Eq + Hash + Clone,
@@ -238,14 +238,15 @@ where
     }
 }
 /// A persistable in-memory state.
-pub struct PersistableMap<C, I: Map<C>> {
+#[derive(Default)]
+pub struct PersistableMap<C, I: Index<C>> {
     /// In-memory index, including both committed and uncommitted changes.
     index: I,
     /// Changes that haven't been committed.
     pending_changes: Vec<IndexChange<C>>,
 }
 
-impl<C: Clone, I: Map<C> + Default> PersistableMap<C, I> {
+impl<C: Clone, I: Index<C> + Default> PersistableMap<C, I> {
     /// Get the index.
     pub fn index(&self) -> &I {
         &self.index
@@ -273,7 +274,7 @@ impl<C: Clone, I: Map<C> + Default> PersistableMap<C, I> {
     }
 
     pub fn remove(&mut self, change: &C) {
-        if let Some(removal) = self.index.remove(&change) {
+        if let Some(removal) = self.index.remove(change) {
             self.pending_changes.push(IndexChange::Remove(removal));
         }
     }
@@ -331,7 +332,7 @@ pub mod test {
 
     pub fn test_persistasble_impl<
         C: Clone + Debug + Eq + Hash,
-        I: Clone + Default + PartialEq + Debug + Map<C>,
+        I: Clone + Default + PartialEq + Debug + Index<C>,
     >(
         persistable: PersistableMap<C, I>,
         changes: Vec<PersistAction<C>>,
@@ -365,7 +366,7 @@ pub mod test {
 
     pub fn test_persistasble<
         C: Clone + Debug + Eq + Hash,
-        I: Clone + Default + PartialEq + Debug + Map<C>,
+        I: Clone + Default + PartialEq + Debug + Index<C>,
     >(
         _map: PersistableMap<C, I>,
         strat: impl Strategy<Value = Vec<PersistAction<C>>>,
