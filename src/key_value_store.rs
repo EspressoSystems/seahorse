@@ -145,6 +145,87 @@ pub trait Persistable<I> {
     fn commit(&mut self);
 }
 
+pub trait Set<V: Eq + Hash> {
+    fn insert(&mut self, value: V) -> bool;
+    fn remove(&mut self, value: &V) -> bool;
+}
+impl<V> Set<V> for HashSet<V>
+where
+    V: Eq + Hash,
+{
+    fn insert(&mut self, value: V) -> bool {
+        HashSet::insert(self, value)
+    }
+    fn remove(&mut self, value: &V) -> bool {
+        HashSet::remove(self, value)
+    }
+}
+
+pub trait Map<K: Eq + Hash, V> {
+    fn insert(&mut self, key: K, value: V) -> bool;
+    fn remove(&mut self, key: &K, value: &V) -> bool;
+}
+
+impl<K, V> Map<K, V> for HashMap<K, V>
+where
+    K: Eq + Hash,
+{
+    fn insert(&mut self, key: K, value: V) -> bool {
+        HashMap::insert(self, key, value).is_some()
+    }
+    fn remove(&mut self, key: &K, _value: &V) -> bool {
+        HashMap::remove(self, key).is_some()
+    }
+}
+
+impl<K, V> Map<K, V> for HashSet<K>
+where
+    K: Eq + Hash,
+{
+    fn insert(&mut self, key: K, _value: V) -> bool {
+        HashSet::insert(self, key)
+    }
+    fn remove(&mut self, key: &K, _value: &V) -> bool {
+        HashSet::remove(self, key)
+    }
+}
+
+impl<K, V> Map<K, V> for HashMap<K, BTreeSet<V>>
+where
+    K: Eq + Hash + Clone,
+    V: Eq + Hash + Ord,
+{
+    fn insert(&mut self, key: K, value: V) -> bool {
+        self.entry(key).or_insert_with(BTreeSet::new).insert(value)
+    }
+    fn remove(&mut self, key: &K, value: &V) -> bool {
+        let values = self.entry(key.clone()).or_default();
+        let removed = values.remove(value);
+        if values.is_empty() {
+            self.remove(key);
+        }
+        removed
+    }
+}
+
+impl<K, V> Map<K, V> for BTreeMap<K, HashSet<V>>
+where
+    K: Eq + Hash + Clone + Ord,
+    V: Eq + Hash + Ord,
+{
+    fn insert(&mut self, key: K, value: V) -> bool {
+        self.entry(key).or_insert_with(HashSet::new).insert(value)
+    }
+    fn remove(&mut self, key: &K, value: &V) -> bool {
+        let values = self.entry(key.clone()).or_default();
+        let removed = values.remove(value);
+        if values.is_empty() {
+            self.remove(key);
+        }
+        removed
+    }
+}
+
 /// A persistable in-memory state.
 pub struct PersistableMap<I, C> {
     /// In-memory index, including both committed and uncommitted changes.
@@ -316,11 +397,14 @@ impl<K: Clone + Eq + Hash, V: Clone + Eq + Hash + Ord> Persist<(K, V)>
     }
 
     fn insert(&mut self, change: (K, V)) {
-        self.index
+        if self
+            .index
             .entry(change.0.clone())
             .or_insert_with(BTreeSet::new)
-            .insert(change.1.clone());
-        self.pending_changes.push(IndexChange::Add(change));
+            .insert(change.1.clone())
+        {
+            self.pending_changes.push(IndexChange::Add(change));
+        }
     }
 
     fn remove(&mut self, change: (K, V)) {
@@ -364,86 +448,6 @@ pub mod test {
     use proptest::test_runner::{Config, TestRunner};
     use proptest::{collection::vec, prelude::*, prop_oneof, strategy::Strategy};
     use std::collections::HashMap;
-    pub trait Set<V: Eq + Hash> {
-        fn insert(&mut self, value: V) -> bool;
-        fn remove(&mut self, value: &V) -> bool;
-    }
-    impl<V> Set<V> for HashSet<V>
-    where
-        V: Eq + Hash,
-    {
-        fn insert(&mut self, value: V) -> bool {
-            HashSet::insert(self, value)
-        }
-        fn remove(&mut self, value: &V) -> bool {
-            HashSet::remove(self, value)
-        }
-    }
-
-    pub trait Map<K: Eq + Hash, V> {
-        fn insert(&mut self, key: K, value: V) -> bool;
-        fn remove(&mut self, key: &K, value: &V) -> bool;
-    }
-
-    impl<K, V> Map<K, V> for HashMap<K, V>
-    where
-        K: Eq + Hash,
-    {
-        fn insert(&mut self, key: K, value: V) -> bool {
-            HashMap::insert(self, key, value).is_some()
-        }
-        fn remove(&mut self, key: &K, _value: &V) -> bool {
-            HashMap::remove(self, key).is_some()
-        }
-    }
-
-    impl<K, V> Map<K, V> for HashSet<K>
-    where
-        K: Eq + Hash,
-    {
-        fn insert(&mut self, key: K, _value: V) -> bool {
-            HashSet::insert(self, key)
-        }
-        fn remove(&mut self, key: &K, _value: &V) -> bool {
-            HashSet::remove(self, key)
-        }
-    }
-
-    impl<K, V> Map<K, V> for HashMap<K, BTreeSet<V>>
-    where
-        K: Eq + Hash + Clone,
-        V: Eq + Hash + Ord,
-    {
-        fn insert(&mut self, key: K, value: V) -> bool {
-            self.entry(key).or_insert_with(BTreeSet::new).insert(value)
-        }
-        fn remove(&mut self, key: &K, value: &V) -> bool {
-            let values = self.entry(key.clone()).or_default();
-            let removed = values.remove(value);
-            if values.is_empty() {
-                self.remove(key);
-            }
-            removed
-        }
-    }
-
-    impl<K, V> Map<K, V> for BTreeMap<K, HashSet<V>>
-    where
-        K: Eq + Hash + Clone + Ord,
-        V: Eq + Hash + Ord,
-    {
-        fn insert(&mut self, key: K, value: V) -> bool {
-            self.entry(key).or_insert_with(HashSet::new).insert(value)
-        }
-        fn remove(&mut self, key: &K, value: &V) -> bool {
-            let values = self.entry(key.clone()).or_default();
-            let removed = values.remove(value);
-            if values.is_empty() {
-                self.remove(key);
-            }
-            removed
-        }
-    }
 
     #[derive(Clone, Debug, strum_macros::Display)]
     pub enum PersistAction<C: Clone + Debug> {
@@ -512,10 +516,12 @@ pub mod test {
         strat: impl Strategy<Value = Vec<PersistAction<(K, V)>>>,
     ) {
         let mut runner = TestRunner::new(Config::default());
-        runner.run(&strat, move |v| {
-            test_persistasble_impl(P::new(), v);
-            Ok(())
-        }).unwrap();
+        runner
+            .run(&strat, move |v| {
+                test_persistasble_impl(P::new(), v);
+                Ok(())
+            })
+            .unwrap();
     }
     #[test]
     pub fn proptest_persistable_hash_map() {
