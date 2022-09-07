@@ -199,7 +199,7 @@ impl<'a, L: Ledger> TransactionEditor<'a, L> {
         self.transaction.pending_uids.remove(&uid);
         self.store
             .uids_awaiting_memos
-            .remove((uid, self.transaction.uid().clone()));
+            .remove(&(uid, self.transaction.uid().clone()));
         if self.transaction.pending_uids().is_empty() {
             self.set_status(TransactionStatus::Retired)
         } else {
@@ -270,8 +270,8 @@ impl<L: Ledger> Transactions<L> {
         let store = TransactionsStore::<L>::new(log)?;
         let mut transactions = Self {
             store,
-            expiring_txns: Persistable::new(),
-            uids_awaiting_memos: Persistable::new(),
+            expiring_txns: PersistableMap::new(),
+            uids_awaiting_memos: PersistableMap::new(),
         };
         // Build the indices from what's loaded from storage
         for txn in transactions.store.iter() {
@@ -377,7 +377,7 @@ impl<L: Ledger> Transactions<L> {
                 } else {
                     editor.clear_timeout().save()?;
                 }
-                self.expiring_txns.remove((timeout, uid.clone()));
+                self.expiring_txns.remove(&(timeout, uid.clone()));
             }
         }
         Ok(removed)
@@ -444,11 +444,11 @@ impl<L: Ledger> Transactions<L> {
         let txn = self.store.delete(uid)?;
         // Remove from indices
         if let Some(timeout) = txn.timeout() {
-            self.expiring_txns.remove((timeout, txn.uid().clone()));
+            self.expiring_txns.remove(&(timeout, txn.uid().clone()));
         }
         for pending in &txn.pending_uids {
             self.uids_awaiting_memos
-                .remove((*pending, txn.uid().clone()));
+                .remove(&(*pending, txn.uid().clone()));
         }
         Ok(txn)
     }

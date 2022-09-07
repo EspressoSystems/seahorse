@@ -159,8 +159,8 @@ impl Records {
         let store = RecordsStore::new(log)?;
         let mut records = Self {
             store,
-            asset_records: Persistable::new(),
-            nullifier_records: Persistable::new(),
+            asset_records: PersistableMap::new(),
+            nullifier_records: PersistableMap::new(),
         };
         for record in records.store.iter() {
             let ro = &record.ro;
@@ -325,7 +325,7 @@ impl Records {
     pub fn delete<L: Ledger>(&mut self, uid: u64) -> Result<Record, KeystoreError<L>> {
         let record = self.store.delete(&uid)?;
         // Remove the record from  indices
-        self.asset_records.remove((
+        self.asset_records.remove(&(
             (
                 record.asset_definition().code,
                 record.pub_key().address(),
@@ -334,7 +334,7 @@ impl Records {
             (record.amount(), record.uid()),
         ));
         self.nullifier_records
-            .remove((record.nullifier, record.uid));
+            .remove(&(record.nullifier, record.uid));
         Ok(record)
     }
 

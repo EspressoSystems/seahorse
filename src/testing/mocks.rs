@@ -12,8 +12,7 @@ use crate::{
     lw_merkle_tree::LWMerkleTree,
     testing::{MockEventSource, MockNetwork as _},
     transactions::Transaction,
-    txn_builder::TransactionState,
-    CryptoSnafu, KeystoreBackend, KeystoreError, KeystoreState,
+    CryptoSnafu, KeystoreBackend, KeystoreError, LedgerState,
 };
 use async_std::sync::{Arc, Mutex};
 use async_trait::async_trait;
@@ -236,23 +235,18 @@ impl<'a, const H: u8> KeystoreBackend<'a, cap::LedgerWithHeight<H>>
 
     async fn create(
         &mut self,
-    ) -> Result<KeystoreState<'a, cap::LedgerWithHeight<H>>, KeystoreError<cap::LedgerWithHeight<H>>>
+    ) -> Result<LedgerState<'a, cap::LedgerWithHeight<H>>, KeystoreError<cap::LedgerWithHeight<H>>>
     {
         let state = {
             let mut ledger = self.ledger.lock().await;
             let network = ledger.network();
-
-            KeystoreState {
-                proving_keys: network.proving_keys.clone(),
-                txn_state: TransactionState {
-                    validator: network.validator.clone(),
-
-                    nullifiers: Default::default(),
-                    record_mt: LWMerkleTree::sparse(network.records.clone()),
-
-                    now: network.now(),
-                },
-            }
+            LedgerState::new(
+                network.proving_keys.clone(),
+                network.now(),
+                network.validator.clone(),
+                LWMerkleTree::sparse(network.records.clone()),
+                Default::default(),
+            )
         };
         Ok(state)
     }

@@ -17,8 +17,8 @@
 //! arguments to the options and flags required by the general CLI implementation. After that,
 //! [cli_main] can be used to run the CLI interactively.
 use crate::{
-    assets::Asset, events::EventIndex, io::SharedIO, loader::KeystoreLoader, reader::Reader,
-    txn_builder::TransactionUID, BincodeSnafu, IoSnafu, KeystoreBackend, KeystoreError,
+    assets::Asset, events::EventIndex, io::SharedIO, ledger_state::TransactionUID,
+    loader::KeystoreLoader, reader::Reader, BincodeSnafu, IoSnafu, KeystoreBackend, KeystoreError,
     RecordAmount, TransactionStatus,
 };
 use async_std::task::block_on;

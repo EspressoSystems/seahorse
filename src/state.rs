@@ -1,6 +1,6 @@
 use crate::{
-    EventIndex, KeystoreBackend, KeystoreError, KeystoreModel, KeystoreState, TransactionStatus,
-    TransactionUID,
+    ledger_state::LedgerState, EventIndex, KeystoreBackend, KeystoreError, KeystoreModel,
+    TransactionStatus, TransactionUID,
 };
 use async_std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use futures::{channel::oneshot, TryFuture, TryFutureExt};
@@ -17,18 +17,23 @@ pub struct KeystoreSharedState<
     Backend: KeystoreBackend<'a, L>,
     Meta: Serialize + DeserializeOwned + Send,
 > {
-    pub(crate) state: KeystoreState<'a, L>,
+    pub(crate) state: LedgerState<'a, L>,
     pub(crate) model: KeystoreModel<'a, L, Backend, Meta>,
     pub(crate) sync_handles: Vec<(EventIndex, oneshot::Sender<()>)>,
     pub(crate) txn_subscribers: HashMap<TransactionUID<L>, Vec<oneshot::Sender<TransactionStatus>>>,
     pub(crate) pending_key_scans: HashMap<UserAddress, Vec<oneshot::Sender<()>>>,
 }
 
-impl<'a, L: Ledger, Backend: KeystoreBackend<'a, L>, Meta: Serialize + DeserializeOwned + Send>
-    KeystoreSharedState<'a, L, Backend, Meta>
+impl<
+        'a,
+        L: 'static + Ledger,
+        Backend: KeystoreBackend<'a, L>,
+        Meta: Serialize + DeserializeOwned + Send,
+    > KeystoreSharedState<'a, L, Backend, Meta>
 {
     async fn commit(&mut self) -> Result<(), KeystoreError<L>> {
-        self.model.persistence.commit().await;
+        self.model.meta_store.commit();
+        self.model.ledger_states.commit()?;
         self.model.assets.commit()?;
         self.model.transactions.commit()?;
         self.model.records.commit()?;
@@ -47,9 +52,7 @@ impl<'a, L: Ledger, Backend: KeystoreBackend<'a, L>, Meta: Serialize + Deseriali
         self.model.viewing_accounts.revert()?;
         self.model.freezing_accounts.revert()?;
         self.model.sending_accounts.revert()?;
-        self.model.persistence.revert().await;
-        // Reload in-memory state after the revert.
-        self.state = self.model.persistence.load().await?;
+        self.model.meta_store.revert().await;
         Ok(())
     }
 }
@@ -58,7 +61,7 @@ impl<'a, L: Ledger, Backend: KeystoreBackend<'a, L>, Meta: Serialize + Deseriali
     KeystoreSharedState<'a, L, Backend, Meta>
 {
     pub fn new(
-        state: KeystoreState<'a, L>,
+        state: LedgerState<'a, L>,
         model: KeystoreModel<'a, L, Backend, Meta>,
         key_scans: impl IntoIterator<Item = UserAddress>,
     ) -> Self {
@@ -79,8 +82,8 @@ impl<'a, L: Ledger, Backend: KeystoreBackend<'a, L>, Meta: Serialize + Deseriali
         &mut self.model.backend
     }
 
-    pub fn state(&self) -> &KeystoreState<'a, L> {
-        &self.state
+    pub fn state(&self) -> LedgerState<'a, L> {
+        self.state.clone()
     }
 
     pub fn rng(&mut self) -> &mut ChaChaRng {
@@ -96,11 +99,15 @@ pub struct KeystoreSharedStateRwLock<
     Meta: Send + Serialize + DeserializeOwned,
 >(RwLock<KeystoreSharedState<'a, L, Backend, Meta>>);
 
-impl<'a, L: Ledger, Backend: KeystoreBackend<'a, L>, Meta: Send + Serialize + DeserializeOwned>
-    KeystoreSharedStateRwLock<'a, L, Backend, Meta>
+impl<
+        'a,
+        L: 'static + Ledger,
+        Backend: KeystoreBackend<'a, L>,
+        Meta: Send + Serialize + DeserializeOwned,
+    > KeystoreSharedStateRwLock<'a, L, Backend, Meta>
 {
     pub fn new(
-        state: KeystoreState<'a, L>,
+        state: LedgerState<'a, L>,
         model: KeystoreModel<'a, L, Backend, Meta>,
         key_scans: impl IntoIterator<Item = UserAddress>,
     ) -> Self {
@@ -140,7 +147,7 @@ pub type KeystoreSharedStateReadGuard<'l, 'a, L, Backend, Meta> =
 pub struct KeystoreSharedStateWriteGuard<
     'l,
     'a,
-    L: Ledger,
+    L: 'static + Ledger,
     Backend: KeystoreBackend<'a, L>,
     Meta: Send + Serialize + DeserializeOwned,
 > {
@@ -151,7 +158,7 @@ pub struct KeystoreSharedStateWriteGuard<
 impl<
         'l,
         'a,
-        L: Ledger,
+        L: 'static + Ledger,
         Backend: KeystoreBackend<'a, L>,
         Meta: Send + Serialize + DeserializeOwned,
     > KeystoreSharedStateWriteGuard<'l, 'a, L, Backend, Meta>
@@ -265,7 +272,7 @@ impl<
 impl<
         'l,
         'a,
-        L: Ledger,
+        L: 'static + Ledger,
         Backend: KeystoreBackend<'a, L>,
         Meta: Send + Serialize + DeserializeOwned,
     > Drop for KeystoreSharedStateWriteGuard<'l, 'a, L, Backend, Meta>

@@ -305,7 +305,7 @@ mod test {
 
     #[cfg(feature = "slow-tests")]
     #[quickcheck]
-    fn quickcheck_sparse_merkle_tree(ops: Vec<MerkleOp>) -> bool {
+    fn quickcheck_lw_merkle_tree(ops: Vec<MerkleOp>) -> bool {
         // We will do the same pushes to both `sparse_tree` and `full_tree`, but only forget/
         // remember using `sparse_tree`, so we can use `full_tree` to compare and to generate
         // proofs for remembering.

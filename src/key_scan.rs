@@ -2,14 +2,14 @@
 ///
 /// This module provides an interface for searching a ledger for records belonging to a particular
 /// key. It is completely independent from the main ledger scanning functionality in `lib.rs` and
-/// `txn_builder.rs`, which means it can be run asynchronously, and the results of an asnchronous
+/// `ledger_state.rs`, which means it can be run asynchronously, and the results of an asnchronous
 /// key-specific ledger scan can be folded back into the main keystore state once the scan
 /// synchronizes with the main ledger follower.
 use crate::{
     events::{EventIndex, EventSource, LedgerEvent},
+    ledger_state::{TransactionStatus, TransactionUID},
     lw_merkle_tree::LWMerkleTree,
     transactions::TransactionParams,
-    txn_builder::{TransactionStatus, TransactionUID},
 };
 use arbitrary::{Arbitrary, Unstructured};
 use arbitrary_wrappers::ArbitraryUserKeyPair;
