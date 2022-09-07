@@ -12,7 +12,7 @@ use reef::*;
 use serde::{de::DeserializeOwned, Serialize};
 use snafu::ResultExt;
 
-pub struct AtomicKeystoreStorage<Meta: Serialize + DeserializeOwned> {
+pub struct MetaStore<Meta: Serialize + DeserializeOwned> {
     // Metadata given at initialization time that may not have been written to disk yet.
     meta: Meta,
     // Persisted metadata, if the keystore has already been committed to disk. This is a snapshot log
@@ -24,7 +24,7 @@ pub struct AtomicKeystoreStorage<Meta: Serialize + DeserializeOwned> {
     root_key_tree: KeyTree,
 }
 
-impl<Meta: Send + Serialize + DeserializeOwned + Clone + PartialEq> AtomicKeystoreStorage<Meta> {
+impl<Meta: Send + Serialize + DeserializeOwned + Clone + PartialEq> MetaStore<Meta> {
     pub fn new<L: Ledger, Loader: KeystoreLoader<L, Meta = Meta>>(
         loader: &mut Loader,
         atomic_loader: &mut AtomicStoreLoader,
@@ -66,7 +66,7 @@ impl<Meta: Send + Serialize + DeserializeOwned + Clone + PartialEq> AtomicKeysto
     }
 }
 
-impl<Meta: Send + Serialize + DeserializeOwned> AtomicKeystoreStorage<Meta> {
+impl<Meta: Send + Serialize + DeserializeOwned> MetaStore<Meta> {
     pub async fn create<L: Ledger>(mut self: &mut Self) -> Result<(), KeystoreError<L>> {
         // Store the metadata.
         self.persisted_meta
@@ -89,7 +89,7 @@ impl<Meta: Send + Serialize + DeserializeOwned> AtomicKeystoreStorage<Meta> {
     }
 }
 
-impl<Meta: Send + Serialize + DeserializeOwned> AtomicKeystoreStorage<Meta> {
+impl<Meta: Send + Serialize + DeserializeOwned> MetaStore<Meta> {
     pub fn exists(&self) -> bool {
         self.persisted_meta.load_latest().is_ok()
     }
@@ -119,7 +119,7 @@ mod tests {
         loader::KeystoreLoader,
         sparse_merkle_tree::SparseMerkleTree,
         testing::assert_keystore_states_eq,
-        LedgerState, LedgerStateStore,
+        LedgerState, LedgerStates,
     };
     use atomic_store::AtomicStore;
     use jf_cap::{
@@ -225,22 +225,20 @@ mod tests {
                 "keystore",
             )
             .unwrap();
-            let mut persistence = AtomicKeystoreStorage::new::<cap::Ledger, MockKeystoreLoader>(
-                &mut loader,
-                &mut atomic_loader,
-            )
-            .unwrap();
-            let adaptor = persistence.encrypting_storage_adapter::<()>();
-            let mut ledger_state_store =
-                LedgerStateStore::new(&mut atomic_loader, adaptor.cast(), adaptor.cast(), 1024)
+            let mut meta_store =
+                MetaStore::new::<cap::Ledger, MockKeystoreLoader>(&mut loader, &mut atomic_loader)
+                    .unwrap();
+            let adaptor = meta_store.encrypting_storage_adapter::<()>();
+            let mut ledger_states =
+                LedgerStates::new(&mut atomic_loader, adaptor.cast(), adaptor.cast(), 1024)
                     .unwrap();
             let mut atomic_store = AtomicStore::open(atomic_loader).unwrap();
 
-            ledger_state_store.update(&state).unwrap();
-            ledger_state_store.commit().unwrap();
-            persistence.commit();
+            ledger_states.update(&state).unwrap();
+            ledger_states.commit().unwrap();
+            meta_store.commit();
             atomic_store.commit_version().unwrap();
-            assert!(!persistence.exists());
+            assert!(!meta_store.exists());
         }
 
         (state, loader, rng)
@@ -259,19 +257,17 @@ mod tests {
                 "keystore",
             )
             .unwrap();
-            let mut persistence = AtomicKeystoreStorage::new::<cap::Ledger, MockKeystoreLoader>(
-                &mut loader,
-                &mut atomic_loader,
-            )
-            .unwrap();
-            let adaptor = persistence.encrypting_storage_adapter::<()>();
-            let mut ledger_state_store =
-                LedgerStateStore::new(&mut atomic_loader, adaptor.cast(), adaptor.cast(), 1024)
+            let mut meta_store =
+                MetaStore::new::<cap::Ledger, MockKeystoreLoader>(&mut loader, &mut atomic_loader)
+                    .unwrap();
+            let adaptor = meta_store.encrypting_storage_adapter::<()>();
+            let mut ledger_states =
+                LedgerStates::new(&mut atomic_loader, adaptor.cast(), adaptor.cast(), 1024)
                     .unwrap();
             let mut atomic_store = AtomicStore::open(atomic_loader).unwrap();
-            let state = ledger_state_store.load().unwrap();
-            ledger_state_store.commit().unwrap();
-            persistence.commit();
+            let state = ledger_states.load().unwrap();
+            ledger_states.commit().unwrap();
+            meta_store.commit();
             atomic_store.commit_version().unwrap();
             state
         };
@@ -292,19 +288,17 @@ mod tests {
                 "keystore",
             )
             .unwrap();
-            let mut persistence = AtomicKeystoreStorage::new::<cap::Ledger, MockKeystoreLoader>(
-                &mut loader,
-                &mut atomic_loader,
-            )
-            .unwrap();
-            let adaptor = persistence.encrypting_storage_adapter::<()>();
-            let mut ledger_state_store =
-                LedgerStateStore::new(&mut atomic_loader, adaptor.cast(), adaptor.cast(), 1024)
+            let mut meta_store =
+                MetaStore::new::<cap::Ledger, MockKeystoreLoader>(&mut loader, &mut atomic_loader)
+                    .unwrap();
+            let adaptor = meta_store.encrypting_storage_adapter::<()>();
+            let mut ledger_states =
+                LedgerStates::new(&mut atomic_loader, adaptor.cast(), adaptor.cast(), 1024)
                     .unwrap();
             let mut atomic_store = AtomicStore::open(atomic_loader).unwrap();
-            ledger_state_store.update_dynamic(&stored).unwrap();
-            ledger_state_store.commit().unwrap();
-            persistence.commit();
+            ledger_states.update_dynamic(&stored).unwrap();
+            ledger_states.commit().unwrap();
+            meta_store.commit();
             atomic_store.commit_version().unwrap();
         }
         let loaded = {
@@ -313,19 +307,17 @@ mod tests {
                 "keystore",
             )
             .unwrap();
-            let mut persistence = AtomicKeystoreStorage::new::<cap::Ledger, MockKeystoreLoader>(
-                &mut loader,
-                &mut atomic_loader,
-            )
-            .unwrap();
-            let adaptor = persistence.encrypting_storage_adapter::<()>();
-            let mut ledger_state_store =
-                LedgerStateStore::new(&mut atomic_loader, adaptor.cast(), adaptor.cast(), 1024)
+            let mut meta_store =
+                MetaStore::new::<cap::Ledger, MockKeystoreLoader>(&mut loader, &mut atomic_loader)
+                    .unwrap();
+            let adaptor = meta_store.encrypting_storage_adapter::<()>();
+            let mut ledger_states =
+                LedgerStates::new(&mut atomic_loader, adaptor.cast(), adaptor.cast(), 1024)
                     .unwrap();
             let mut atomic_store = AtomicStore::open(atomic_loader).unwrap();
-            let state = ledger_state_store.load().unwrap();
-            ledger_state_store.commit().unwrap();
-            persistence.commit();
+            let state = ledger_states.load().unwrap();
+            ledger_states.commit().unwrap();
+            meta_store.commit();
             atomic_store.commit_version().unwrap();
             state
         };
@@ -344,27 +336,25 @@ mod tests {
                 "keystore",
             )
             .unwrap();
-            let mut persistence = AtomicKeystoreStorage::new::<cap::Ledger, MockKeystoreLoader>(
-                &mut loader,
-                &mut atomic_loader,
-            )
-            .unwrap();
-            let adaptor = persistence.encrypting_storage_adapter::<()>();
-            let mut ledger_state_store =
-                LedgerStateStore::new(&mut atomic_loader, adaptor.cast(), adaptor.cast(), 1024)
+            let mut meta_store =
+                MetaStore::new::<cap::Ledger, MockKeystoreLoader>(&mut loader, &mut atomic_loader)
+                    .unwrap();
+            let adaptor = meta_store.encrypting_storage_adapter::<()>();
+            let mut ledger_states =
+                LedgerStates::new(&mut atomic_loader, adaptor.cast(), adaptor.cast(), 1024)
                     .unwrap();
             let mut atomic_store = AtomicStore::open(atomic_loader).unwrap();
 
             let mut updated = stored.clone();
             updated.now = EventIndex::new(123, 456);
-            ledger_state_store.update_dynamic(&updated).unwrap();
-            ledger_state_store.revert().unwrap();
-            ledger_state_store.commit().unwrap();
-            persistence.commit();
+            ledger_states.update_dynamic(&updated).unwrap();
+            ledger_states.revert().unwrap();
+            ledger_states.commit().unwrap();
+            meta_store.commit();
             atomic_store.commit_version().unwrap();
 
             // Make sure loading after a revert does not return the reverted changes.
-            let state = ledger_state_store.load().unwrap();
+            let state = ledger_states.load().unwrap();
             state
         };
         assert_keystore_states_eq(&stored, &loaded);
@@ -376,14 +366,12 @@ mod tests {
                 "keystore",
             )
             .unwrap();
-            let mut persistence = AtomicKeystoreStorage::new::<cap::Ledger, MockKeystoreLoader>(
-                &mut loader,
-                &mut atomic_loader,
-            )
-            .unwrap();
-            let adaptor = persistence.encrypting_storage_adapter::<()>();
-            let mut ledger_state_store =
-                LedgerStateStore::new(&mut atomic_loader, adaptor.cast(), adaptor.cast(), 1024)
+            let mut meta_store =
+                MetaStore::new::<cap::Ledger, MockKeystoreLoader>(&mut loader, &mut atomic_loader)
+                    .unwrap();
+            let adaptor = meta_store.encrypting_storage_adapter::<()>();
+            let mut ledger_states =
+                LedgerStates::new(&mut atomic_loader, adaptor.cast(), adaptor.cast(), 1024)
                     .unwrap();
             let mut atomic_store = AtomicStore::open(atomic_loader).unwrap();
 
@@ -399,12 +387,12 @@ mod tests {
             updated.nullifiers.insert(nullifier.into());
             updated.now = EventIndex::new(123, 456);
 
-            ledger_state_store.update_dynamic(&updated).unwrap();
-            ledger_state_store.revert().unwrap();
+            ledger_states.update_dynamic(&updated).unwrap();
+            ledger_states.revert().unwrap();
             // Loading after revert should be a no-op.
-            let state = ledger_state_store.load().unwrap();
-            ledger_state_store.commit().unwrap();
-            persistence.commit();
+            let state = ledger_states.load().unwrap();
+            ledger_states.commit().unwrap();
+            meta_store.commit();
             atomic_store.commit_version().unwrap();
             state
         };

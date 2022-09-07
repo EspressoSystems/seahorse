@@ -32,8 +32,8 @@ impl<
     > KeystoreSharedState<'a, L, Backend, Meta>
 {
     async fn commit(&mut self) -> Result<(), KeystoreError<L>> {
-        self.model.persistence.commit();
-        self.model.ledger_state_store.commit()?;
+        self.model.meta_store.commit();
+        self.model.ledger_states.commit()?;
         self.model.assets.commit()?;
         self.model.transactions.commit()?;
         self.model.records.commit()?;
@@ -52,7 +52,7 @@ impl<
         self.model.viewing_accounts.revert()?;
         self.model.freezing_accounts.revert()?;
         self.model.sending_accounts.revert()?;
-        self.model.persistence.revert().await;
+        self.model.meta_store.revert().await;
         Ok(())
     }
 }

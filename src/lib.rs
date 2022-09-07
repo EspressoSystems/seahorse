@@ -29,7 +29,7 @@ mod key_scan;
 pub mod key_value_store;
 pub mod ledger_state;
 pub mod loader;
-pub mod persistence;
+pub mod meta;
 pub mod reader;
 pub mod records;
 mod secret;
@@ -38,11 +38,10 @@ mod state;
 #[cfg(any(test, bench, feature = "testing"))]
 pub mod testing;
 pub mod transactions;
-pub mod txn_builder;
 
 pub use crate::{
     assets::{Asset, AssetEditor, Assets, Icon, MintInfo},
-    txn_builder::RecordAmount,
+    ledger_state::RecordAmount,
 };
 pub use jf_cap;
 pub use reef;
@@ -54,16 +53,15 @@ use crate::{
     events::{EventIndex, EventSource, LedgerEvent},
     hd::KeyTree,
     key_scan::ScanOutputs,
-    ledger_state::{LedgerState, LedgerStateStore},
+    ledger_state::*,
     loader::KeystoreLoader,
-    persistence::AtomicKeystoreStorage,
+    meta::MetaStore,
     records::{Record, Records},
     state::{
         KeystoreSharedState, KeystoreSharedStateReadGuard, KeystoreSharedStateRwLock,
         KeystoreSharedStateWriteGuard,
     },
     transactions::{Transaction, TransactionParams, Transactions},
-    txn_builder::*,
 };
 use async_scoped::AsyncScope;
 use async_std::task::sleep;
@@ -163,7 +161,7 @@ pub enum KeystoreError<L: Ledger> {
     },
     CannotDecryptMemo {},
     TransactionError {
-        source: crate::txn_builder::TransactionError,
+        source: crate::ledger_state::TransactionError,
     },
     UserKeyExists {
         pub_key: UserPubKey,
@@ -189,8 +187,8 @@ impl<L: Ledger> From<ASPersistenceError> for KeystoreError<L> {
     }
 }
 
-impl<L: Ledger> From<crate::txn_builder::TransactionError> for KeystoreError<L> {
-    fn from(source: crate::txn_builder::TransactionError) -> Self {
+impl<L: Ledger> From<crate::ledger_state::TransactionError> for KeystoreError<L> {
+    fn from(source: crate::ledger_state::TransactionError) -> Self {
         Self::TransactionError { source }
     }
 }
@@ -299,8 +297,8 @@ pub struct KeystoreModel<
 > {
     backend: Backend,
     atomic_store: AtomicStore,
-    persistence: AtomicKeystoreStorage<Meta>,
-    ledger_state_store: LedgerStateStore<'a, L>,
+    meta_store: MetaStore<Meta>,
+    ledger_states: LedgerStates<'a, L>,
     assets: Assets,
     records: Records,
     transactions: Transactions<L>,
@@ -325,14 +323,14 @@ pub struct KeystoreModel<
 impl<'a, L: Ledger, Backend: KeystoreBackend<'a, L>, Meta: Serialize + DeserializeOwned + Send>
     KeystoreModel<'a, L, Backend, Meta>
 {
-    /// Access the persistent storage layer
-    pub fn persistence(&self) -> &AtomicKeystoreStorage<Meta> {
-        &self.persistence
+    /// Access the metadata storage layer
+    pub fn meta_store(&self) -> &MetaStore<Meta> {
+        &self.meta_store
     }
 
-    /// Access the persistent storage layer
-    pub fn persistence_mut(&mut self) -> &mut AtomicKeystoreStorage<Meta> {
-        &mut self.persistence
+    /// Access the metadata storage layer
+    pub fn meta_store_mut(&mut self) -> &mut MetaStore<Meta> {
+        &mut self.meta_store
     }
 
     /// Get the mutable assets.
@@ -502,8 +500,8 @@ pub struct KeystoreResources<
     Meta: 'a + Serialize + DeserializeOwned + Send + Sync + Clone + PartialEq,
 > {
     atomic_store: AtomicStore,
-    persistence: AtomicKeystoreStorage<Meta>,
-    ledger_state_store: LedgerStateStore<'a, L>,
+    meta_store: MetaStore<Meta>,
+    ledger_states: LedgerStates<'a, L>,
     assets: Assets,
     transactions: Transactions<L>,
     records: Records,
@@ -519,8 +517,8 @@ impl<
     > KeystoreResources<'a, L, Meta>
 {
     async fn commit(&mut self) -> Result<(), KeystoreError<L>> {
-        self.persistence.commit();
-        self.ledger_state_store.commit()?;
+        self.meta_store.commit();
+        self.ledger_states.commit()?;
         self.assets.commit()?;
         self.transactions.commit()?;
         self.records.commit()?;
@@ -566,9 +564,9 @@ impl<
     ) -> Result<KeystoreResources<'a, L, Meta>, KeystoreError<L>> {
         let mut atomic_loader = AtomicStoreLoader::load(&loader.location(), "keystore").unwrap();
         let file_fill_size = 1024;
-        let persistence = AtomicKeystoreStorage::new(loader, &mut atomic_loader)?;
-        let adaptor = persistence.encrypting_storage_adapter::<()>();
-        let ledger_state_store = LedgerStateStore::new(
+        let meta_store = MetaStore::new(loader, &mut atomic_loader)?;
+        let adaptor = meta_store.encrypting_storage_adapter::<()>();
+        let ledger_states = LedgerStates::new(
             &mut atomic_loader,
             adaptor.cast(),
             adaptor.cast(),
@@ -598,8 +596,8 @@ impl<
         let atomic_store = AtomicStore::open(atomic_loader)?;
         Ok(KeystoreResources {
             atomic_store,
-            persistence,
-            ledger_state_store,
+            meta_store,
+            ledger_states,
             assets,
             transactions,
             records,
@@ -626,12 +624,12 @@ impl<
     ) -> BoxFuture<'a, Result<Keystore<'a, Backend, L, Meta>, KeystoreError<L>>> {
         let mut resources = Self::create_stores(loader).unwrap();
         Box::pin(async move {
-            let state = if resources.persistence.exists() {
-                resources.ledger_state_store.load()?
+            let state = if resources.meta_store.exists() {
+                resources.ledger_states.load()?
             } else {
                 let state: LedgerState<'a, L> = backend.create().await?;
-                resources.persistence.create().await?;
-                resources.ledger_state_store.update(&state)?;
+                resources.meta_store.create().await?;
+                resources.ledger_states.update(&state)?;
                 state
             };
             resources.commit().await?;
@@ -677,8 +675,8 @@ impl<
                 .unwrap();
         }
         Box::pin(async move {
-            resources.persistence.create().await?;
-            resources.ledger_state_store.update(&state)?;
+            resources.meta_store.create().await?;
+            resources.ledger_states.update(&state)?;
             resources.commit().await?;
             Self::new_impl(backend, resources, state).await
         })
@@ -699,12 +697,12 @@ impl<
                 ));
             }
         }
-        let key_tree = resources.persistence.key_stream();
+        let key_tree = resources.meta_store.key_stream();
         let mut model = KeystoreModel {
             backend,
             atomic_store: resources.atomic_store,
-            persistence: resources.persistence,
-            ledger_state_store: resources.ledger_state_store,
+            meta_store: resources.meta_store,
+            ledger_states: resources.ledger_states,
             assets: resources.assets,
             transactions: resources.transactions,
             records: resources.records,
@@ -1716,7 +1714,7 @@ async fn update_key_scan<
         _ => false,
     };
 
-    model.ledger_state_store.update_dynamic(state)?;
+    model.ledger_states.update_dynamic(state)?;
     Ok(finished)
 }
 

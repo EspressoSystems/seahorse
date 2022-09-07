@@ -529,7 +529,7 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
     ) {
         for (keystore, _, _) in keystores {
             let KeystoreSharedState { state, model, .. } = &*keystore.mutex.read().await;
-            let loaded = &model.ledger_state_store.load().unwrap();
+            let loaded = &model.ledger_states.load().unwrap();
             assert_keystore_states_eq(&state, &loaded);
         }
     }
