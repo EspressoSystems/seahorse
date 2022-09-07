@@ -237,7 +237,6 @@ where
         }
     }
 }
-
 /// A persistable in-memory state.
 pub struct PersistableMap<C, I: Map<C>> {
     /// In-memory index, including both committed and uncommitted changes.
@@ -267,8 +266,7 @@ impl<C: Clone, I: Map<C> + Default> PersistableMap<C, I> {
 
     pub fn insert(&mut self, change: C) {
         if let Some(old) = self.index.insert(change.clone()) {
-            self.pending_changes
-                .push(IndexChange::Update(old))
+            self.pending_changes.push(IndexChange::Update(old))
         } else {
             self.pending_changes.push(IndexChange::Add(change));
         }
@@ -299,10 +297,9 @@ impl<C: Clone, I: Map<C> + Default> PersistableMap<C, I> {
 }
 
 pub type PersistableHashSet<K> = PersistableMap<K, HashSet<K>>;
-pub type PersistableHashMap<K, V> = PersistableMap<(K, V), HashMap<K, V>, >;
+pub type PersistableHashMap<K, V> = PersistableMap<(K, V), HashMap<K, V>>;
 pub type PersistableBTreeMultiMap<K, V> = PersistableMap<(K, V), BTreeMap<K, HashSet<V>>>;
 pub type PersistableHashMapBTreeMultiMap<K, V> = PersistableMap<(K, V), HashMap<K, BTreeSet<V>>>;
-
 
 #[cfg(test)]
 pub mod test {
@@ -336,7 +333,7 @@ pub mod test {
         C: Clone + Debug + Eq + Hash,
         I: Clone + Default + PartialEq + Debug + Map<C>,
     >(
-        persistable: PersistableMap<C,I>,
+        persistable: PersistableMap<C, I>,
         changes: Vec<PersistAction<C>>,
     ) {
         let mut map = persistable;
@@ -370,13 +367,13 @@ pub mod test {
         C: Clone + Debug + Eq + Hash,
         I: Clone + Default + PartialEq + Debug + Map<C>,
     >(
-        _map: PersistableMap<C,I>,
+        _map: PersistableMap<C, I>,
         strat: impl Strategy<Value = Vec<PersistAction<C>>>,
     ) {
         let mut runner = TestRunner::new(Config::default());
         runner
             .run(&strat, move |v| {
-                test_persistasble_impl(PersistableMap::<C,I>::new(), v);
+                test_persistasble_impl(PersistableMap::<C, I>::new(), v);
                 Ok(())
             })
             .unwrap();
