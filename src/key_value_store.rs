@@ -171,7 +171,7 @@ pub type PersistableHashMap<K, V> = PersistableMap<HashMap<K, V>, (K, V)>;
 pub type PersistableBTreeMultiMap<K, V> = PersistableMap<BTreeMap<K, HashSet<V>>, (K, V)>;
 pub type PersistableHashMapBTreeMultiMap<K, V> = PersistableMap<HashMap<K, BTreeSet<V>>, (K, V)>;
 
-impl<K: Copy + Eq + Hash> Persist<K> for PersistableHashSet<K> {
+impl<K: Clone + Eq + Hash> Persist<K> for PersistableHashSet<K> {
     fn new() -> Self {
         Self {
             index: HashSet::new(),
@@ -180,7 +180,7 @@ impl<K: Copy + Eq + Hash> Persist<K> for PersistableHashSet<K> {
     }
 
     fn insert(&mut self, change: K) {
-        if self.index.insert(change) {
+        if !self.index.insert(change.clone()) {
             self.pending_changes.push(IndexChange::Add(change));
         }
     }
@@ -198,7 +198,7 @@ impl<K: Copy + Eq + Hash> Persist<K> for PersistableHashSet<K> {
                     self.index.remove(key);
                 }
                 IndexChange::Remove(key) => {
-                    self.index.insert(*key);
+                    self.index.insert(key.clone());
                 }
                 IndexChange::Update(..) => {
                     panic!("Unreachable");
@@ -233,7 +233,7 @@ impl<K: Clone + Eq + Hash, V: Clone> Persist<(K, V)> for PersistableHashMap<K, V
     }
 
     fn revert(&mut self) {
-        for change in &self.pending_changes {
+        for change in self.pending_changes.iter().rev() {
             match change {
                 IndexChange::Add((key, _)) => {
                     self.index.remove(key);
@@ -273,15 +273,17 @@ impl<K: Copy + Eq + Hash + Ord, V: Clone + Eq + Hash> Persist<(K, V)>
 
     fn remove(&mut self, change: (K, V)) {
         let values = self.index.entry(change.0).or_default();
-        values.remove(&change.1);
+        let removed = values.remove(&change.1);
         if values.is_empty() {
             self.index.remove(&change.0);
         }
-        self.pending_changes.push(IndexChange::Remove(change));
+        if removed {
+            self.pending_changes.push(IndexChange::Remove(change));
+        }
     }
 
     fn revert(&mut self) {
-        for change in &self.pending_changes {
+        for change in self.pending_changes.iter().rev() {
             match change {
                 IndexChange::Add((key, value)) => {
                     let values = self.index.entry(*key).or_default();
@@ -333,7 +335,7 @@ impl<K: Clone + Eq + Hash, V: Clone + Eq + Hash + Ord> Persist<(K, V)>
     }
 
     fn revert(&mut self) {
-        for change in &self.pending_changes {
+        for change in self.pending_changes.iter().rev() {
             match change {
                 IndexChange::Add((key, value)) => {
                     let values = self.index.entry(key.clone()).or_default();
@@ -359,52 +361,61 @@ impl<K: Clone + Eq + Hash, V: Clone + Eq + Hash + Ord> Persist<(K, V)>
 pub mod test {
     use crate::key_value_store::*;
     use core::fmt::Debug;
-    use proptest::test_runner::{Config, FileFailurePersistence, TestError, TestRunner};
+    use proptest::test_runner::{Config, TestRunner};
     use proptest::{collection::vec, prelude::*, prop_oneof, strategy::Strategy};
     use std::collections::HashMap;
-    // pub trait Set<V: Eq + Hash> {
-    //     fn insert(&mut self, value: V) -> bool;
-    //     fn remove(&mut self, value: &V) -> bool;
-    // }
-    // impl<V> Set<V> for HashSet<V> 
-    // where V: Eq + Hash 
-    // {
-    //     fn insert(&mut self, value: V) -> bool {
-    //         HashSet::insert(self, value)
-    //     }
-    //     fn remove(&mut self, value: &V) -> bool {
-    //         HashSet::remove(self, value)
-    //     }
-    // }
+    pub trait Set<V: Eq + Hash> {
+        fn insert(&mut self, value: V) -> bool;
+        fn remove(&mut self, value: &V) -> bool;
+    }
+    impl<V> Set<V> for HashSet<V>
+    where
+        V: Eq + Hash,
+    {
+        fn insert(&mut self, value: V) -> bool {
+            HashSet::insert(self, value)
+        }
+        fn remove(&mut self, value: &V) -> bool {
+            HashSet::remove(self, value)
+        }
+    }
 
     pub trait Map<K: Eq + Hash, V> {
         fn insert(&mut self, key: K, value: V) -> bool;
         fn remove(&mut self, key: &K, value: &V) -> bool;
     }
 
-    impl<K,V> Map<K,V> for HashMap<K,V> where K: Eq + Hash {
+    impl<K, V> Map<K, V> for HashMap<K, V>
+    where
+        K: Eq + Hash,
+    {
         fn insert(&mut self, key: K, value: V) -> bool {
             HashMap::insert(self, key, value).is_some()
         }
-        fn remove(&mut self, key: &K, _value: &V) -> bool{
+        fn remove(&mut self, key: &K, _value: &V) -> bool {
             HashMap::remove(self, key).is_some()
         }
     }
 
-    impl<K> Map<K,()> for HashSet<K> where K: Eq + Hash {
-        fn insert(&mut self, key: K, _value: ()) -> bool {
+    impl<K, V> Map<K, V> for HashSet<K>
+    where
+        K: Eq + Hash,
+    {
+        fn insert(&mut self, key: K, _value: V) -> bool {
             HashSet::insert(self, key)
         }
-        fn remove(&mut self, key: &K, _value: &()) -> bool{
+        fn remove(&mut self, key: &K, _value: &V) -> bool {
             HashSet::remove(self, key)
         }
     }
 
-    impl<K,V> Map<K,V> for HashMap<K, BTreeSet<V>> where K: Eq + Hash + Clone, V: Eq + Hash + Ord {
+    impl<K, V> Map<K, V> for HashMap<K, BTreeSet<V>>
+    where
+        K: Eq + Hash + Clone,
+        V: Eq + Hash + Ord,
+    {
         fn insert(&mut self, key: K, value: V) -> bool {
-            self.entry(key)
-                .or_insert_with(BTreeSet::new)
-                .insert(value)
+            self.entry(key).or_insert_with(BTreeSet::new).insert(value)
         }
         fn remove(&mut self, key: &K, value: &V) -> bool {
             let values = self.entry(key.clone()).or_default();
@@ -416,6 +427,23 @@ pub mod test {
         }
     }
 
+    impl<K, V> Map<K, V> for BTreeMap<K, HashSet<V>>
+    where
+        K: Eq + Hash + Clone + Ord,
+        V: Eq + Hash + Ord,
+    {
+        fn insert(&mut self, key: K, value: V) -> bool {
+            self.entry(key).or_insert_with(HashSet::new).insert(value)
+        }
+        fn remove(&mut self, key: &K, value: &V) -> bool {
+            let values = self.entry(key.clone()).or_default();
+            let removed = values.remove(value);
+            if values.is_empty() {
+                self.remove(key);
+            }
+            removed
+        }
+    }
 
     #[derive(Clone, Debug, strum_macros::Display)]
     pub enum PersistAction<C: Clone + Debug> {
@@ -424,40 +452,41 @@ pub mod test {
         Revert,
         Commit,
     }
-    pub fn test_persistasble<
+    pub fn test_persistasble_impl<
         K: Clone + Debug + Eq + Hash,
         V: Clone + Debug,
-        I: Clone + Default + PartialEq + Debug + Map<K,V>,
+        I: Clone + Default + PartialEq + Debug + Map<K, V>,
         P: Persist<(K, V)> + Persistable<I>,
     >(
-        persistable: &mut P,
-        changes: Vec<PersistAction<(K,V)>>,
+        persistable: P,
+        changes: Vec<PersistAction<(K, V)>>,
     ) {
+        let mut map = persistable;
         let mut control = I::default();
         let mut revert_index = control.clone();
         for change in changes {
             match change {
                 PersistAction::Insert((key, value)) => {
                     control.insert(key.clone(), value.clone());
-                    // insert_fn(&mut control, change.clone());
-                    persistable.insert((key, value));
+                    map.insert((key, value));
                 }
                 PersistAction::Remove((key, value)) => {
                     control.remove(&key, &value);
                     // remove_fn(&mut control, change.clone());
-                    persistable.remove((key, value));
+                    map.remove((key, value));
                 }
                 PersistAction::Revert => {
-                    persistable.revert();
+                    map.revert();
                     control = revert_index.clone()
                 }
                 PersistAction::Commit => {
-                    persistable.commit();
+                    map.commit();
                     revert_index = control.clone();
                 }
             }
         }
-        assert_eq!(*persistable.index(), revert_index);
+        map.commit();
+        assert_eq!(*map.index(), control);
     }
 
     pub fn action_strategy(size: u32) -> impl Strategy<Value = PersistAction<(u32, String)>> {
@@ -469,49 +498,39 @@ pub mod test {
         ]
     }
 
-    pub fn actions<C>(size: usize) -> impl Strategy<Value = Vec<PersistAction<(u32, String)>>> {
-        vec(action_strategy(size as u32), 0..size)
+    pub fn actions(size: usize) -> impl Strategy<Value = Vec<PersistAction<(u32, String)>>> {
+        vec(action_strategy(size as u32), 1..=size)
     }
 
-    pub fn test_hash_map<K: Eq + Hash + Clone + Debug, V: Clone + Debug + PartialEq>(
-        changes: Vec<PersistAction<(K, V)>>,
+    pub fn test_persistasble<
+        K: Clone + Debug + Eq + Hash,
+        V: Eq + Hash + Debug + Clone,
+        I: Clone + Default + PartialEq + Debug + Map<K, V>,
+        P: Persist<(K, V)> + Persistable<I>,
+    >(
+        _map: P,
+        strat: impl Strategy<Value = Vec<PersistAction<(K, V)>>>,
     ) {
-        let mut map = PersistableHashMap::new();
-        test_persistasble(&mut map, changes)
+        let mut runner = TestRunner::new(Config::default());
+        runner.run(&strat, move |v| {
+            test_persistasble_impl(P::new(), v);
+            Ok(())
+        }).unwrap();
     }
-
-    // fn insert_hash_map<K: Eq + Hash, V>(map: &mut HashMap<K, V>, change: (K, V)) {
-    //     map.insert(change.0, change.1);
-    // }
-    // fn remove_hash_map<K: Eq + Hash, V>(map: &mut HashMap<K, V>, change: (K, V)) {
-    //     map.remove(&change.0);
-    // }
-    // fn insert_hash_set<V: Eq + Hash>(set: &mut HashSet<V>, item: V) {
-    //     set.insert(item);
-    // }
-    // fn remove_hash_set<V: Eq + Hash>(set: &mut HashSet<V>, item: &V) {
-    //     set.remove(item);
-    // }
-    // fn remove_multi_map<K: Eq + Hash, V: Eq + Hash>(map: &mut HashMap<K, HashSet<V>>, change: (K, V)) {
-
-    // }
-
     #[test]
     pub fn proptest_persistable_hash_map() {
-        let mut runner = TestRunner::new(Config {
-            // Turn failure persistence off for demonstration
-            failure_persistence: Some(Box::new(FileFailurePersistence::Off)),
-            ..Config::default()
-        });
-        let result = runner.run(&actions::<(u32, String)>(1000), |v| {
-            test_hash_map::<u32, String>(v);
-            Ok(())
-        });
-        match result {
-            Err(TestError::Fail(_, value)) => {
-                println!("Found minimal failing case: {:?}", value);
-            }
-            result => panic!("Unexpected result: {:?}", result),
-        }
+        test_persistasble(PersistableHashMap::new(), actions(1000));
+    }
+    // #[test]
+    // pub fn proptest_persistable_hash_set() {
+    //     test_persistasble(PersistableHashSet::new(), actions(1000));
+    // }
+    #[test]
+    pub fn proptest_persistable_hash_map_multi() {
+        test_persistasble(PersistableBTreeMultiMap::new(), actions(1000));
+    }
+    #[test]
+    pub fn proptest_persistable_hash_map_multi_tree() {
+        test_persistasble(PersistableHashMapBTreeMultiMap::new(), actions(1000));
     }
 }
