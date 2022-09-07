@@ -325,7 +325,7 @@ impl Records {
     pub fn delete<L: Ledger>(&mut self, uid: u64) -> Result<Record, KeystoreError<L>> {
         let record = self.store.delete(&uid)?;
         // Remove the record from  indices
-        self.asset_records.remove((
+        self.asset_records.remove(&(
             (
                 record.asset_definition().code,
                 record.pub_key().address(),
@@ -334,7 +334,7 @@ impl Records {
             (record.amount(), record.uid()),
         ));
         self.nullifier_records
-            .remove((record.nullifier, record.uid));
+            .remove(&(record.nullifier, record.uid));
         Ok(record)
     }
 
