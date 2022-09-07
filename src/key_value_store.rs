@@ -41,7 +41,7 @@ impl<L: Ledger> From<KeyValueStoreError> for KeystoreError<L> {
 
 /// A storage for key-value pairs.
 pub struct KeyValueStore<
-    K: DeserializeOwned + Eq + Hash + Serialize,
+    K: DeserializeOwned + Eq + Hash + Serialize + Clone,
     V: DeserializeOwned + Serialize,
 > {
     store: AppendLog<EncryptingResourceAdapter<(K, Option<V>)>>,
@@ -64,7 +64,7 @@ impl<
                 Some(val) => persistable_index.insert((key, val)),
                 None => {
                     if let Some(val) = persistable_index.index.get(&key).cloned() {
-                        persistable_index.remove((key, val));
+                        persistable_index.remove(&(key, val));
                     }
                 }
             };
@@ -114,7 +114,7 @@ impl<
     /// Returns the value associated with the deleted key.
     pub fn delete(&mut self, key: &K) -> Result<V, KeyValueStoreError> {
         let value = self.load(key)?;
-        self.persistable_index.remove((key.clone(), value.clone()));
+        self.persistable_index.remove(&(key.clone(), value.clone()));
         self.store.store_resource(&(key.clone(), None))?;
         Ok(value)
     }
@@ -128,27 +128,125 @@ pub enum IndexChange<C> {
     Update(C),
 }
 
-/// An interface for persisting in-memory state.
-pub trait Persist<C> {
-    /// Construct a persistable state.
-    fn new() -> Self;
-    /// Insert data to the index.
-    fn insert(&mut self, change: C);
-    /// Remove data from the index.
-    fn remove(&mut self, change: C);
-    /// Revert the uncommitted changes.
-    fn revert(&mut self);
+/// An Interface for an in memory index which can insert and remove items
+/// To create a persistable index type you can implement this trait for whatever in memory index
+/// you choose to use.  E.g. if you create a new type called CustomHashMap<K,V> you can implement
+/// Index<(K,V)> for it and then use the persitable type PersistableMap<(K,V), CustomHashMap<K,V>>.
+pub trait Index<C> {
+    /// Insert an item into the index.  Returns the item value in the index before inserting if there was one
+    /// Returns None if there was no item.
+    fn insert(&mut self, change: C) -> Option<C>;
+    /// Remove a value from the index.  Returns the removed item if something was removed.  None if the item
+    /// was not in the index.
+    fn remove(&mut self, change: &C) -> Option<C>;
 }
 
+impl<K, V> Index<(K, V)> for HashMap<K, V>
+where
+    K: Clone + Eq + Hash,
+{
+    fn insert(&mut self, change: (K, V)) -> Option<(K, V)> {
+        if let Some(inserted) = HashMap::insert(self, change.0.clone(), change.1) {
+            Some((change.0, inserted))
+        } else {
+            None
+        }
+    }
+    fn remove(&mut self, change: &(K, V)) -> Option<(K, V)> {
+        self.remove(&change.0)
+            .map(|removed| (change.0.clone(), removed))
+    }
+}
+
+impl<C> Index<C> for HashSet<C>
+where
+    C: Clone + Eq + Hash,
+{
+    fn insert(&mut self, value: C) -> Option<C> {
+        if HashSet::insert(self, value.clone()) {
+            None
+        } else {
+            Some(value)
+        }
+    }
+    fn remove(&mut self, value: &C) -> Option<C> {
+        if HashSet::remove(self, value) {
+            Some(value.clone())
+        } else {
+            None
+        }
+    }
+}
+
+impl<K, V> Index<(K, V)> for HashMap<K, BTreeSet<V>>
+where
+    K: Eq + Hash + Clone,
+    V: Eq + Hash + Ord + Clone,
+{
+    fn insert(&mut self, change: (K, V)) -> Option<(K, V)> {
+        if self
+            .entry(change.0.clone())
+            .or_insert_with(BTreeSet::new)
+            .insert(change.1.clone())
+        {
+            None
+        } else {
+            Some(change)
+        }
+    }
+    fn remove(&mut self, change: &(K, V)) -> Option<(K, V)> {
+        let values = self.entry(change.0.clone()).or_default();
+        let removed = values.remove(&change.1);
+        if values.is_empty() {
+            self.remove(&change.0);
+        }
+        if removed {
+            Some(change.clone())
+        } else {
+            None
+        }
+    }
+}
+
+impl<K, V> Index<(K, V)> for BTreeMap<K, HashSet<V>>
+where
+    K: Eq + Hash + Clone + Ord,
+    V: Eq + Hash + Clone,
+{
+    fn insert(&mut self, change: (K, V)) -> Option<(K, V)> {
+        if self
+            .entry(change.0.clone())
+            .or_insert_with(HashSet::new)
+            .insert(change.1.clone())
+        {
+            None
+        } else {
+            Some(change)
+        }
+    }
+    fn remove(&mut self, change: &(K, V)) -> Option<(K, V)> {
+        let values = self.entry(change.0.clone()).or_default();
+        let removed = values.remove(&change.1);
+        if values.is_empty() {
+            self.remove(&change.0);
+        }
+        if removed {
+            Some(change.clone())
+        } else {
+            None
+        }
+    }
+}
 /// A persistable in-memory state.
-pub struct Persistable<I, C> {
+#[derive(Default)]
+pub struct PersistableMap<C, I: Index<C>> {
     /// In-memory index, including both committed and uncommitted changes.
     index: I,
     /// Changes that haven't been committed.
     pending_changes: Vec<IndexChange<C>>,
 }
 
-impl<I, C> Persistable<I, C> {
+impl<C: Clone, I: Index<C> + Default> PersistableMap<C, I> {
     /// Get the index.
     pub fn index(&self) -> &I {
         &self.index
@@ -159,85 +257,39 @@ impl<I, C> Persistable<I, C> {
         // The index is always up-to-date, so commting only needs to clear the pending changes.
         self.pending_changes = Vec::new();
     }
-}
 
-pub type PersistableHashSet<K> = Persistable<HashSet<K>, K>;
-pub type PersistableHashMap<K, V> = Persistable<HashMap<K, V>, (K, V)>;
-pub type PersistableBTreeMultiMap<K, V> = Persistable<BTreeMap<K, HashSet<V>>, (K, V)>;
-pub type PersistableHashMapBTreeMultiMap<K, V> = Persistable<HashMap<K, BTreeSet<V>>, (K, V)>;
-
-impl<K: Copy + Eq + Hash> Persist<K> for PersistableHashSet<K> {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self {
-            index: HashSet::new(),
+            index: I::default(),
             pending_changes: Vec::new(),
         }
     }
 
-    fn insert(&mut self, change: K) {
-        if self.index.insert(change) {
-            self.pending_changes.push(IndexChange::Add(change));
-        }
-    }
-
-    fn remove(&mut self, change: K) {
-        if self.index.remove(&change) {
-            self.pending_changes.push(IndexChange::Remove(change));
-        }
-    }
-
-    fn revert(&mut self) {
-        for change in &self.pending_changes {
-            match change {
-                IndexChange::Add(key) => {
-                    self.index.remove(key);
-                }
-                IndexChange::Remove(key) => {
-                    self.index.insert(*key);
-                }
-                IndexChange::Update(..) => {
-                    panic!("Unreachable");
-                }
-            }
-        }
-        self.pending_changes = Vec::new();
-    }
-}
-
-impl<K: Clone + Eq + Hash, V: Clone> Persist<(K, V)> for PersistableHashMap<K, V> {
-    fn new() -> Self {
-        Self {
-            index: HashMap::new(),
-            pending_changes: Vec::new(),
-        }
-    }
-
-    fn insert(&mut self, change: (K, V)) {
-        if let Some(old) = self.index.insert(change.0.clone(), change.1.clone()) {
-            self.pending_changes
-                .push(IndexChange::Update((change.0, old)))
+    pub fn insert(&mut self, change: C) {
+        if let Some(old) = self.index.insert(change.clone()) {
+            self.pending_changes.push(IndexChange::Update(old))
         } else {
             self.pending_changes.push(IndexChange::Add(change));
         }
     }
 
-    fn remove(&mut self, change: (K, V)) {
-        if let Some(removal) = self.index.remove_entry(&change.0) {
+    pub fn remove(&mut self, change: &C) {
+        if let Some(removal) = self.index.remove(change) {
             self.pending_changes.push(IndexChange::Remove(removal));
         }
     }
 
-    fn revert(&mut self) {
-        for change in &self.pending_changes {
+    pub fn revert(&mut self) {
+        for change in self.pending_changes.iter().rev() {
             match change {
-                IndexChange::Add((key, _)) => {
-                    self.index.remove(key);
+                IndexChange::Add(change) => {
+                    self.index.remove(change);
                 }
-                IndexChange::Remove((key, value)) => {
-                    self.index.insert(key.clone(), value.clone());
+                IndexChange::Remove(change) => {
+                    self.index.insert(change.clone());
                 }
-                IndexChange::Update((old_key, old_val)) => {
-                    self.index.insert(old_key.clone(), old_val.clone());
+                IndexChange::Update(old) => {
+                    self.index.insert(old.clone());
                 }
             }
         }
@@ -245,107 +297,102 @@ impl<K: Clone + Eq + Hash, V: Clone> Persist<(K, V)> for PersistableHashMap<K, V
     }
 }
 
-impl<K: Copy + Eq + Hash + Ord, V: Clone + Eq + Hash> Persist<(K, V)>
-    for PersistableBTreeMultiMap<K, V>
-{
-    fn new() -> Self {
-        Self {
-            index: BTreeMap::new(),
-            pending_changes: Vec::new(),
-        }
+pub type PersistableHashSet<K> = PersistableMap<K, HashSet<K>>;
+pub type PersistableHashMap<K, V> = PersistableMap<(K, V), HashMap<K, V>>;
+pub type PersistableBTreeMultiMap<K, V> = PersistableMap<(K, V), BTreeMap<K, HashSet<V>>>;
+pub type PersistableHashMapBTreeMultiMap<K, V> = PersistableMap<(K, V), HashMap<K, BTreeSet<V>>>;
+
+#[cfg(test)]
+pub mod test {
+    use crate::key_value_store::*;
+    use core::fmt::Debug;
+    use proptest::test_runner::{Config, TestRunner};
+    use proptest::{collection::vec, prelude::*, prop_oneof, strategy::Strategy};
+
+    #[derive(Clone, Debug, strum_macros::Display)]
+    pub enum PersistAction<C: Clone + Debug> {
+        Insert(C),
+        Remove(C),
+        Revert,
+        Commit,
     }
 
-    fn insert(&mut self, change: (K, V)) {
-        if self
-            .index
-            .entry(change.0)
-            .or_insert_with(HashSet::new)
-            .insert(change.1.clone())
-        {
-            self.pending_changes.push(IndexChange::Add(change));
-        }
+    pub fn action_strategy(size: u32) -> impl Strategy<Value = PersistAction<(u32, String)>> {
+        prop_oneof![
+            Just(PersistAction::Revert),
+            Just(PersistAction::Commit),
+            (0..size, ".*").prop_map(|(a, b)| PersistAction::Insert((a, b))),
+            (0..size, ".*").prop_map(|(a, b)| PersistAction::Remove((a, b))),
+        ]
     }
 
-    fn remove(&mut self, change: (K, V)) {
-        let values = self.index.entry(change.0).or_default();
-        values.remove(&change.1);
-        if values.is_empty() {
-            self.index.remove(&change.0);
-        }
-        self.pending_changes.push(IndexChange::Remove(change));
+    pub fn actions(size: usize) -> impl Strategy<Value = Vec<PersistAction<(u32, String)>>> {
+        vec(action_strategy(size as u32), 1..=size)
     }
 
-    fn revert(&mut self) {
-        for change in &self.pending_changes {
+    pub fn test_persistasble_impl<
+        C: Clone + Debug + Eq + Hash,
+        I: Clone + Default + PartialEq + Debug + Index<C>,
+    >(
+        persistable: PersistableMap<C, I>,
+        changes: Vec<PersistAction<C>>,
+    ) {
+        let mut map = persistable;
+        let mut control = I::default();
+        let mut revert_index = control.clone();
+        for change in changes {
             match change {
-                IndexChange::Add((key, value)) => {
-                    let values = self.index.entry(*key).or_default();
-                    values.remove(value);
-                    if values.is_empty() {
-                        self.index.remove(key);
-                    }
+                PersistAction::Insert(change) => {
+                    control.insert(change.clone());
+                    map.insert(change);
                 }
-                IndexChange::Remove((key, value)) => {
-                    self.index
-                        .entry(*key)
-                        .or_insert_with(HashSet::new)
-                        .insert(value.clone());
+                PersistAction::Remove(change) => {
+                    control.remove(&change);
+                    map.remove(&change);
                 }
-                IndexChange::Update(..) => {}
+                PersistAction::Revert => {
+                    map.revert();
+                    control = revert_index.clone()
+                }
+                PersistAction::Commit => {
+                    map.commit();
+                    revert_index = control.clone();
+                }
             }
         }
-        self.pending_changes = Vec::new();
-    }
-}
-
-impl<K: Clone + Eq + Hash, V: Clone + Eq + Hash + Ord> Persist<(K, V)>
-    for PersistableHashMapBTreeMultiMap<K, V>
-{
-    fn new() -> Self {
-        Self {
-            index: HashMap::new(),
-            pending_changes: Vec::new(),
-        }
+        map.commit();
+        assert_eq!(*map.index(), control);
     }
 
-    fn insert(&mut self, change: (K, V)) {
-        self.index
-            .entry(change.0.clone())
-            .or_insert_with(BTreeSet::new)
-            .insert(change.1.clone());
-        self.pending_changes.push(IndexChange::Add(change));
+    pub fn test_persistasble<
+        C: Clone + Debug + Eq + Hash,
+        I: Clone + Default + PartialEq + Debug + Index<C>,
+    >(
+        _map: PersistableMap<C, I>,
+        strat: impl Strategy<Value = Vec<PersistAction<C>>>,
+    ) {
+        let mut runner = TestRunner::new(Config::default());
+        runner
+            .run(&strat, move |v| {
+                test_persistasble_impl(PersistableMap::<C, I>::new(), v);
+                Ok(())
+            })
+            .unwrap();
     }
-
-    fn remove(&mut self, change: (K, V)) {
-        let values = self.index.entry(change.0.clone()).or_default();
-        let removed = values.remove(&change.1);
-        if values.is_empty() {
-            self.index.remove(&change.0);
-        }
-        if removed {
-            self.pending_changes.push(IndexChange::Remove(change));
-        }
+    #[test]
+    pub fn proptest_persistable_hash_map() {
+        test_persistasble(PersistableHashMap::new(), actions(1000));
     }
-
-    fn revert(&mut self) {
-        for change in &self.pending_changes {
-            match change {
-                IndexChange::Add((key, value)) => {
-                    let values = self.index.entry(key.clone()).or_default();
-                    values.remove(value);
-                    if values.is_empty() {
-                        self.index.remove(key);
-                    }
-                }
-                IndexChange::Remove((key, value)) => {
-                    self.index
-                        .entry(key.clone())
-                        .or_insert_with(BTreeSet::new)
-                        .insert(value.clone());
-                }
-                IndexChange::Update(..) => {}
-            }
-        }
-        self.pending_changes = Vec::new();
+    #[test]
+    pub fn proptest_persistable_hash_set() {
+        test_persistasble(PersistableHashSet::new(), actions(1000));
+    }
+    #[test]
+    pub fn proptest_persistable_hash_map_multi() {
+        test_persistasble(PersistableBTreeMultiMap::new(), actions(1000));
+    }
+    #[test]
+    pub fn proptest_persistable_hash_map_multi_tree() {
+        test_persistasble(PersistableHashMapBTreeMultiMap::new(), actions(1000));
     }
 }

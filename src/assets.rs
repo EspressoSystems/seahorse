@@ -686,7 +686,7 @@ impl Assets {
         let store = AssetsStore::new(log)?;
         Ok(Self {
             store,
-            verified_assets: Persistable::new(),
+            verified_assets: PersistableMap::new(),
         })
     }
 
