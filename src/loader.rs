@@ -54,7 +54,7 @@ pub trait KeystoreLoader<L: Ledger> {
     /// The location of the keystore targetted by this loader.
     ///
     /// This tells users of the loader, like
-    /// [AtomicKeystoreStorage](crate::persistence::AtomicKeystoreStorage), where to load existing
+    /// [MetaStore](crate::meta::MetaStore), where to load existing
     /// metadata from when calling [load](Self::load).
     fn location(&self) -> PathBuf;
 

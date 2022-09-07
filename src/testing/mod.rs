@@ -20,9 +20,14 @@ use async_std::sync::{Arc, Mutex};
 use chrono::Local;
 use futures::{channel::mpsc, stream::iter};
 use hd::KeyTree;
-use jf_cap::{MerkleTree, Signature, TransactionVerifyingKey};
+use jf_cap::{structs::RecordOpening, MerkleTree, Signature, TransactionVerifyingKey};
 use key_set::{KeySet, OrderByOutputs, ProverKeySet, VerifierKeySet};
 use rand_chacha::rand_core::RngCore;
+use reef::{
+    traits::{Block as _, ValidationError as _, Validator as _},
+    types::*,
+    ValidationError,
+};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -201,21 +206,15 @@ impl<'a, L: Ledger, N: MockNetwork<'a, L>> MockLedger<'a, L, N> {
 // that cannot directly be compared for equality. It is sufficient for tests that want to compare
 // keystore states (like round-trip serialization tests) but since it is deterministic, we shouldn't
 // make it into a PartialEq instance.
-pub fn assert_keystore_states_eq<'a, L: Ledger>(
-    w1: &KeystoreState<'a, L>,
-    w2: &KeystoreState<'a, L>,
+pub fn assert_keystore_states_eq<'a, L: 'static + Ledger>(
+    w1: &LedgerState<'a, L>,
+    w2: &LedgerState<'a, L>,
 ) {
-    assert_eq!(w1.txn_state.now, w2.txn_state.now);
-    assert_eq!(
-        w1.txn_state.validator.commit(),
-        w2.txn_state.validator.commit()
-    );
-    assert_eq!(w1.proving_keys, w2.proving_keys);
-    assert_eq!(w1.txn_state.nullifiers, w2.txn_state.nullifiers);
-    assert_eq!(
-        w1.txn_state.record_mt.commitment(),
-        w2.txn_state.record_mt.commitment()
-    );
+    assert_eq!(w1.now(), w2.now());
+    assert_eq!(w1.validator.commit(), w2.validator.commit());
+    assert_eq!(w1.proving_keys(), w2.proving_keys());
+    assert_eq!(w1.nullifiers, w2.nullifiers);
+    assert_eq!(w1.record_mt.commitment(), w2.record_mt.commitment());
 }
 
 #[async_trait]
@@ -255,7 +254,7 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         &mut self,
         key_tree: KeyTree,
         ledger: &Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork>>>,
-        state: KeystoreState<'a, Self::Ledger>,
+        state: LedgerState<'a, Self::Ledger>,
         viewing_key: Option<(ViewerKeyPair, String)>,
         freezing_key: Option<(FreezerKeyPair, String)>,
         sending_key: Option<(UserKeyPair, String)>,
@@ -530,9 +529,7 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
     ) {
         for (keystore, _, _) in keystores {
             let KeystoreSharedState { state, model, .. } = &*keystore.mutex.read().await;
-            let persistence = &model.persistence;
-            let state = state.clone();
-            let loaded = persistence.load().await.unwrap();
+            let loaded = &model.ledger_states.load().unwrap();
             assert_keystore_states_eq(&state, &loaded);
         }
     }

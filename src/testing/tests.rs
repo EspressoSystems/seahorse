@@ -6,11 +6,12 @@
 // You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
 #![deny(warnings)]
 
-use super::*;
+use super::{transactions::Transaction, *};
 use chrono::Duration;
 use commit::Commitment;
 use espresso_macros::generic_tests;
 use futures::future::join_all;
+use reef::{traits::TransactionKind as _, TransactionKind};
 use std::env;
 
 #[derive(Clone, Debug)]
@@ -1945,7 +1946,7 @@ pub mod generic_keystore_tests {
                 .await
                 .update(|KeystoreSharedState { model, .. }| async move {
                     let key = model
-                        .persistence
+                        .meta_store
                         .key_stream()
                         .derive_sub_tree("user".as_bytes())
                         .derive_user_key_pair(&model.sending_accounts.index().to_le_bytes());

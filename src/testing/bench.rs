@@ -61,7 +61,7 @@ struct BenchLedgerScanner<'a, T: SystemUnderTest<'a> + Clone> {
     // A keystore state snapshotted from the initial state of the benchmark (after `start_time`). This
     // can be used to create a new keystore which will then scan all of the preopulated events in its
     // main event thread.
-    initial_state: KeystoreState<'a, T::Ledger>,
+    initial_state: LedgerState<'a, T::Ledger>,
 }
 
 type MockLedger<'a, T> = super::MockLedger<
@@ -238,7 +238,7 @@ async fn bench_ledger_scanner_setup<
     // Snapshot the state from which we want the benchmark keystores to start scanning the ledger.
     // Clear out any existing keys so that when we run the benchmark, we have full control over
     // which keys are in the keystore and whether it can receive, view, or freeze certain assets.
-    let initial_state = keystores[0].0.read().await.state().clone();
+    let initial_state = keystores[0].0.read().await.state();
 
     // Create events by making a number of transfers. We transfer from a number of different
     // keystores so we can easily parallelize the transfers, which speeds things up and allows
