@@ -420,7 +420,7 @@
 <span class="kw">use</span> <span class="kw">crate</span>::{
     <span class="ident">events</span>::{<span class="ident">EventIndex</span>, <span class="ident">EventSource</span>, <span class="ident">LedgerEvent</span>},
     <span class="ident">ledger_state</span>::{<span class="ident">TransactionStatus</span>, <span class="ident">TransactionUID</span>},
-    <span class="ident">sparse_merkle_tree::SparseMerkleTree</span>,
+    <span class="ident">lw_merkle_tree::LWMerkleTree</span>,
     <span class="ident">transactions::TransactionParams</span>,
 };
 <span class="kw">use</span> <span class="ident">arbitrary</span>::{<span class="ident">Arbitrary</span>, <span class="ident">Unstructured</span>};
@@ -478,8 +478,8 @@
 <span class="doccomment">/// A scan has a stream of events and a range of event indices of interest. The stream always</span>
 <span class="doccomment">/// includes the range of interest but may also include events before or after it. As the scan</span>
 <span class="doccomment">/// progresses through the event stream, it maintains a collection of newly discovered records as</span>
-<span class="doccomment">/// well as a sparse Merkle tree with paths for each of the discovered records. The Merkle tree</span>
-<span class="doccomment">/// allows it to update the paths as new commitments are added, and ultimately produce up-to-date</span>
+<span class="doccomment">/// well as a lightweight Merkle tree with paths for each of the discovered records. The Merkle</span>
+<span class="doccomment">/// tree allows it to update the paths as new commitments are added, and ultimately produce up-to-date</span>
 <span class="doccomment">/// paths for each record it discovers.</span>
 <span class="doccomment">///</span>
 <span class="doccomment">/// The scan must be initialized with a Merkle frontier corresponding to the ledger state just</span>
@@ -490,17 +490,17 @@
 <span class="doccomment">/// interest, including possibly the initial one. The scan will start processing events from just</span>
 <span class="doccomment">/// after that frontier was valid, updating the frontier as it goes.</span>
 <span class="doccomment">///</span>
-<span class="doccomment">/// At each event, the scan will update its sparse Merkle tree, including the paths for all of its</span>
-<span class="doccomment">/// discovered records, by appending the new commitments to the tree. It will also check any new</span>
-<span class="doccomment">/// nullifiers against its discovered records; if it finds a match, it will remove the nullified</span>
-<span class="doccomment">/// records and prune their paths from the tree. In addition, if the event falls within the range of</span>
-<span class="doccomment">/// interest, the scan will attempt to find new records belonging to its key in the event, either by</span>
-<span class="doccomment">/// decrypting memos or by checking record openings included in plaintext in a transaction. If it</span>
-<span class="doccomment">/// finds any records, it will add them to its collection, insert their paths into its Merkle tree,</span>
-<span class="doccomment">/// and add a transaction history entry for the transaction of which it is a recipient. It is able</span>
-<span class="doccomment">/// to create Merkle paths for the new records either by using the Merkle paths included in `Memos`</span>
-<span class="doccomment">/// events, or by using the frontier at the time it appends the commitment for an attached record</span>
-<span class="doccomment">/// opening to the tree.</span>
+<span class="doccomment">/// At each event, the scan will update its lightweight Merkle tree, including the paths for all of</span>
+<span class="doccomment">/// its discovered records, by appending the new commitments to the tree. It will also check any</span>
+<span class="doccomment">/// new nullifiers against its discovered records; if it finds a match, it will remove the</span>
+<span class="doccomment">/// nullified records and prune their paths from the tree. In addition, if the event falls within</span>
+<span class="doccomment">/// the range of interest, the scan will attempt to find new records belonging to its key in the</span>
+<span class="doccomment">/// event, either by decrypting memos or by checking record openings included in plaintext in a</span>
+<span class="doccomment">/// transaction. If it finds any records, it will add them to its collection, insert their paths</span>
+<span class="doccomment">/// into its Merkle tree, and add a transaction history entry for the transaction of which it is a</span>
+<span class="doccomment">/// recipient. It is able to create Merkle paths for the new records either by using the Merkle</span>
+<span class="doccomment">/// paths included in `Memos` events, or by using the frontier at the time it appends the</span>
+<span class="doccomment">/// commitment for an attached record opening to the tree.</span>
 <span class="attribute">#[<span class="ident">ser_test</span>(<span class="ident">arbitrary</span>, <span class="ident">ark</span>(<span class="bool-val">false</span>), <span class="ident">types</span>(<span class="ident">reef::cap::Ledger</span>))]</span>
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Debug</span>, <span class="ident">Clone</span>, <span class="ident">Serialize</span>, <span class="ident">Deserialize</span>)]</span>
 <span class="attribute">#[<span class="ident">serde</span>(<span class="ident">bound</span> <span class="op">=</span> <span class="string">&quot;L: Ledger&quot;</span>)]</span>
@@ -519,10 +519,10 @@
     <span class="ident">records</span>: <span class="ident">HashMap</span><span class="op">&lt;</span><span class="ident">Nullifier</span>, (<span class="ident">RecordOpening</span>, <span class="ident">u64</span>)<span class="op">&gt;</span>,
     <span class="comment">// New history entries for transactions we received during the scan.</span>
     <span class="ident">history</span>: <span class="ident">Vec</span><span class="op">&lt;</span>(<span class="ident">TransactionUID</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span>, <span class="ident">TransactionParams</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span>)<span class="op">&gt;</span>,
-    <span class="comment">// Sparse Merkle tree containing paths for the commitments of each record in `records`. This</span>
-    <span class="comment">// allows us to update the paths as we scan so that at the end of the scan, we have a path for</span>
+    <span class="comment">// Lightweight Merkle tree containing paths for the commitments of each record in `records`.</span>
+    <span class="comment">// This allows us to update the paths as we scan so that at the end of the scan, we have a path for</span>
     <span class="comment">// each record relative to the current Merkle root.</span>
-    <span class="ident">records_mt</span>: <span class="ident">SparseMerkleTree</span>,
+    <span class="ident">records_mt</span>: <span class="ident">LWMerkleTree</span>,
 }
 
 <span class="kw">impl</span><span class="op">&lt;</span><span class="ident">L</span>: <span class="ident">Ledger</span><span class="op">&gt;</span> <span class="ident">PartialEq</span><span class="op">&lt;</span><span class="self">Self</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">BackgroundKeyScan</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span> {
@@ -559,7 +559,7 @@
         <span class="ident">next_event</span>: <span class="ident">EventIndex</span>,
         <span class="ident">from</span>: <span class="ident">EventIndex</span>,
         <span class="ident">to</span>: <span class="ident">EventIndex</span>,
-        <span class="ident">records_mt</span>: <span class="ident">SparseMerkleTree</span>,
+        <span class="ident">records_mt</span>: <span class="ident">LWMerkleTree</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span> {
         <span class="self">Self</span> {
             <span class="ident">key</span>,

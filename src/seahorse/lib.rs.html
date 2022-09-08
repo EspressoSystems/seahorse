@@ -1720,7 +1720,6 @@
 <span id="1720">1720</span>
 <span id="1721">1721</span>
 <span id="1722">1722</span>
-<span id="1723">1723</span>
 </pre><pre class="rust"><code><span class="comment">// Copyright (c) 2022 Espresso Systems (espressosys.com)</span>
 <span class="comment">// This file is part of the Seahorse library.</span>
 
@@ -1752,16 +1751,15 @@
 <span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">key_value_store</span>;
 <span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">ledger_state</span>;
 <span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">loader</span>;
+<span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">lw_merkle_tree</span>;
 <span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">meta</span>;
 <span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">reader</span>;
 <span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">records</span>;
 <span class="kw">mod</span> <span class="ident">secret</span>;
-<span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">sparse_merkle_tree</span>;
 <span class="kw">mod</span> <span class="ident">state</span>;
 <span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">any</span>(<span class="ident">test</span>, <span class="ident">bench</span>, <span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;testing&quot;</span>))]</span>
 <span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">testing</span>;
 <span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">transactions</span>;
-
 <span class="kw">pub</span> <span class="kw">use</span> <span class="kw">crate</span>::{
     <span class="ident">assets</span>::{<span class="ident">Asset</span>, <span class="ident">AssetEditor</span>, <span class="ident">Assets</span>, <span class="ident">Icon</span>, <span class="ident">MintInfo</span>},
     <span class="ident">ledger_state::RecordAmount</span>,

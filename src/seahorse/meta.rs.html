@@ -520,7 +520,7 @@
     <span class="kw">use</span> <span class="kw">crate</span>::{
         <span class="ident">events</span>::{<span class="ident">EventIndex</span>, <span class="ident">EventSource</span>},
         <span class="ident">loader::KeystoreLoader</span>,
-        <span class="ident">sparse_merkle_tree::SparseMerkleTree</span>,
+        <span class="ident">lw_merkle_tree::LWMerkleTree</span>,
         <span class="ident">testing::assert_keystore_states_eq</span>,
         <span class="ident">LedgerState</span>, <span class="ident">LedgerStates</span>,
     };
@@ -603,7 +603,7 @@
             <span class="ident">jf_cap::proof::mint::preprocess</span>(<span class="kw-2">&amp;</span><span class="kw-2">*</span><span class="ident">srs</span>, <span class="ident">cap::Ledger::merkle_height</span>()).<span class="ident">unwrap</span>();
         <span class="kw">let</span> (<span class="ident">freeze_prove_key</span>, <span class="kw">_</span>, <span class="kw">_</span>) <span class="op">=</span>
             <span class="ident">jf_cap::proof::freeze::preprocess</span>(<span class="kw-2">&amp;</span><span class="kw-2">*</span><span class="ident">srs</span>, <span class="number">2</span>, <span class="ident">cap::Ledger::merkle_height</span>()).<span class="ident">unwrap</span>();
-        <span class="kw">let</span> <span class="ident">record_merkle_tree</span> <span class="op">=</span> <span class="ident">SparseMerkleTree::new</span>(<span class="ident">cap::Ledger::merkle_height</span>()).<span class="ident">unwrap</span>();
+        <span class="kw">let</span> <span class="ident">record_merkle_tree</span> <span class="op">=</span> <span class="ident">LWMerkleTree::new</span>(<span class="ident">cap::Ledger::merkle_height</span>()).<span class="ident">unwrap</span>();
         <span class="kw">let</span> <span class="ident">validator</span> <span class="op">=</span> <span class="ident">cap::Validator::default</span>();
 
         <span class="kw">let</span> <span class="ident">state</span> <span class="op">=</span> <span class="ident">LedgerState::new</span>(
