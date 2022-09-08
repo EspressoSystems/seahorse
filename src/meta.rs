@@ -117,7 +117,7 @@ mod tests {
     use crate::{
         events::{EventIndex, EventSource},
         loader::KeystoreLoader,
-        sparse_merkle_tree::SparseMerkleTree,
+        lw_merkle_tree::LWMerkleTree,
         testing::assert_keystore_states_eq,
         LedgerState, LedgerStates,
     };
@@ -200,7 +200,7 @@ mod tests {
             jf_cap::proof::mint::preprocess(&*srs, cap::Ledger::merkle_height()).unwrap();
         let (freeze_prove_key, _, _) =
             jf_cap::proof::freeze::preprocess(&*srs, 2, cap::Ledger::merkle_height()).unwrap();
-        let record_merkle_tree = SparseMerkleTree::new(cap::Ledger::merkle_height()).unwrap();
+        let record_merkle_tree = LWMerkleTree::new(cap::Ledger::merkle_height()).unwrap();
         let validator = cap::Validator::default();
 
         let state = LedgerState::new(

@@ -13,8 +13,8 @@
 use crate::{
     events::{EventIndex, EventSource, LedgerEvent},
     key_scan::{receive_history_entry, BackgroundKeyScan},
+    lw_merkle_tree::LWMerkleTree,
     records::{Record, Records},
-    sparse_merkle_tree::SparseMerkleTree,
     transactions::{SignedMemos, Transaction, TransactionParams, Transactions},
     Captures, EncryptingResourceAdapter, EventSummary, KeystoreBackend, KeystoreError,
     KeystoreModel, MintInfo,
@@ -597,8 +597,8 @@ pub struct LedgerState<'a, L: Ledger> {
     pub now: EventIndex,
     /// The Validator.
     pub validator: Validator<L>,
-    /// Sparse record Merkle tree mirrored from validators.
-    pub record_mt: SparseMerkleTree,
+    /// Lightweight record Merkle tree mirrored from validators.
+    pub record_mt: LWMerkleTree,
     /// Sparse nullifier set Merkle tree mirrored from validators
     pub nullifiers: NullifierSet<L>,
 }
@@ -609,7 +609,7 @@ impl<'a, L: 'static + Ledger> LedgerState<'a, L> {
         proving_keys: Arc<ProverKeySet<'a, key_set::OrderByOutputs>>,
         now: EventIndex,
         validator: Validator<L>,
-        record_mt: SparseMerkleTree,
+        record_mt: LWMerkleTree,
         nullifiers: NullifierSet<L>,
     ) -> Self {
         Self {
@@ -2095,7 +2095,7 @@ impl<'a, L: 'static + Ledger> LedgerState<'a, L> {
                 next_event,
                 scan_from,
                 self.now(),
-                SparseMerkleTree::sparse(frontier),
+                LWMerkleTree::sparse(frontier),
             );
             (Some(scan), Some(events))
         } else {
@@ -2402,7 +2402,7 @@ impl<'a, L: Ledger> From<&LedgerState<'a, L>> for StaticState<'a> {
 pub(crate) struct DynamicState<L: Ledger> {
     now: EventIndex,
     validator: Validator<L>,
-    record_mt: SparseMerkleTree,
+    record_mt: LWMerkleTree,
     nullifiers: NullifierSet<L>,
 }
 

@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 pub use jf_cap::{MerkleCommitment, MerkleFrontier, MerkleLeafProof, NodeValue};
 pub use jf_primitives::merkle_tree::{FilledMTBuilder, LookupResult};
 
-/// A Merkle tree which supports arbitrarily sparse representations.
+/// A lightweight Merkle tree which supports arbitrarily sparse representations.
 ///
 /// A Merkle tree is an authenticated data structure representing a sequence of elements. It
 /// supports appending new elements and querying for existing elements, much like a [Vec]. However,
@@ -42,7 +42,7 @@ pub use jf_primitives::merkle_tree::{FilledMTBuilder, LookupResult};
 ///   [forget](Self::forget) or [get_leaf](Self::get_leaf)) and, if successful, add the element back
 ///   into the representation of the tree.
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
-pub struct SparseMerkleTree {
+pub struct LWMerkleTree {
     tree: MerkleTree,
     // We can't forget the last leaf in a Merkle tree, because the tree always maintains the full
     // frontier (which includes the last leaf) as it is necessary to append more elements. Calling
@@ -56,11 +56,11 @@ pub struct SparseMerkleTree {
     forget_last_leaf: bool,
 }
 
-impl From<MerkleTree> for SparseMerkleTree {
+impl From<MerkleTree> for LWMerkleTree {
     fn from(tree: MerkleTree) -> Self {
         Self {
             tree,
-            // In this conversion, we want to create a sparse Merkle tree which matches exactly the
+            // In this conversion, we want to create a lightweight Merkle tree which matches exactly the
             // representation of the given [MerkleTree]. In the given [MerkleTree], the last leaf is
             // included in the representation (since the last leaf is always included) so we
             // shouldn't forget it.
@@ -69,13 +69,13 @@ impl From<MerkleTree> for SparseMerkleTree {
     }
 }
 
-impl From<SparseMerkleTree> for MerkleTree {
-    fn from(tree: SparseMerkleTree) -> Self {
+impl From<LWMerkleTree> for MerkleTree {
+    fn from(tree: LWMerkleTree) -> Self {
         tree.tree
     }
 }
 
-impl<'a> Arbitrary<'a> for SparseMerkleTree {
+impl<'a> Arbitrary<'a> for LWMerkleTree {
     fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
         Ok(Self {
             tree: u.arbitrary::<ArbitraryMerkleTree>()?.0,
@@ -84,7 +84,7 @@ impl<'a> Arbitrary<'a> for SparseMerkleTree {
     }
 }
 
-impl SparseMerkleTree {
+impl LWMerkleTree {
     /// Create a new Merkle with a specific height
     ///
     /// * `height` - height of the tree (number of hops from the root to a leaf). Returns [None] if
@@ -93,7 +93,7 @@ impl SparseMerkleTree {
         MerkleTree::new(height).map(Self::from)
     }
 
-    /// Create a completely sparse version of the given [MerkleTree].
+    /// Create a completely lightweight version of the given [MerkleTree].
     ///
     /// The resulting tree is merely a commitment to a sequence. It does not contain a
     /// representation of any actual elements, _even_ if those elements are represented in `tree`.
@@ -110,7 +110,7 @@ impl SparseMerkleTree {
         }
     }
 
-    /// Recreates a completely sparse Merkle tree from the rightmost leaf and proof to the root.
+    /// Recreates a completely lightweight Merkle tree from the rightmost leaf and proof to the root.
     ///
     /// Returns [None] if the capacity of the tree overflows a [u64]
     pub fn restore_from_frontier(
@@ -134,7 +134,7 @@ impl SparseMerkleTree {
     /// The frontier is a membership proof for the rightmost leaf. Since new elements are appended
     /// onto the right side of the tree, the frontier is all that is needed to append new elements
     /// to the tree. Indeed, [restore_from_frontier](Self::restore_from_frontier) can be used to
-    /// create a new [SparseMerkleTree] from just a frontier.
+    /// create a new [LWMerkleTree] from just a frontier.
     pub fn frontier(&self) -> MerkleFrontier {
         self.tree.frontier()
     }
@@ -230,7 +230,7 @@ impl SparseMerkleTree {
     }
 }
 
-impl Extend<BaseField> for SparseMerkleTree {
+impl Extend<BaseField> for LWMerkleTree {
     fn extend<T: IntoIterator<Item = BaseField>>(&mut self, leaves: T) {
         let mut leaves = leaves.into_iter().peekable();
         if leaves.peek().is_none() {
@@ -263,7 +263,7 @@ impl Extend<BaseField> for SparseMerkleTree {
     }
 }
 
-impl Extend<RecordCommitment> for SparseMerkleTree {
+impl Extend<RecordCommitment> for LWMerkleTree {
     fn extend<T: IntoIterator<Item = RecordCommitment>>(&mut self, comms: T) {
         self.extend(comms.into_iter().map(|comm| comm.to_field_element()))
     }
@@ -305,12 +305,12 @@ mod test {
 
     #[cfg(feature = "slow-tests")]
     #[quickcheck]
-    fn quickcheck_sparse_merkle_tree(ops: Vec<MerkleOp>) -> bool {
+    fn quickcheck_lw_merkle_tree(ops: Vec<MerkleOp>) -> bool {
         // We will do the same pushes to both `sparse_tree` and `full_tree`, but only forget/
         // remember using `sparse_tree`, so we can use `full_tree` to compare and to generate
         // proofs for remembering.
-        let mut sparse_tree = SparseMerkleTree::new(10).unwrap();
-        let mut full_tree = SparseMerkleTree::new(10).unwrap();
+        let mut sparse_tree = LWMerkleTree::new(10).unwrap();
+        let mut full_tree = LWMerkleTree::new(10).unwrap();
         let mut forgotten = HashSet::new();
 
         // The first operation must always be a push, as the other operations won't work without at

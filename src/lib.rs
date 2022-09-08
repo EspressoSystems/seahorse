@@ -29,16 +29,15 @@ mod key_scan;
 pub mod key_value_store;
 pub mod ledger_state;
 pub mod loader;
+pub mod lw_merkle_tree;
 pub mod meta;
 pub mod reader;
 pub mod records;
 mod secret;
-pub mod sparse_merkle_tree;
 mod state;
 #[cfg(any(test, bench, feature = "testing"))]
 pub mod testing;
 pub mod transactions;
-
 pub use crate::{
     assets::{Asset, AssetEditor, Assets, Icon, MintInfo},
     ledger_state::RecordAmount,

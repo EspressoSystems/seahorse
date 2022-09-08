@@ -9,7 +9,7 @@ pub use crate::testing::MockLedger;
 
 use crate::{
     events::{EventIndex, EventSource, LedgerEvent},
-    sparse_merkle_tree::SparseMerkleTree,
+    lw_merkle_tree::LWMerkleTree,
     testing::{MockEventSource, MockNetwork as _},
     transactions::Transaction,
     CryptoSnafu, KeystoreBackend, KeystoreError, LedgerState,
@@ -240,12 +240,11 @@ impl<'a, const H: u8> KeystoreBackend<'a, cap::LedgerWithHeight<H>>
         let state = {
             let mut ledger = self.ledger.lock().await;
             let network = ledger.network();
-
             LedgerState::new(
                 network.proving_keys.clone(),
                 network.now(),
                 network.validator.clone(),
-                SparseMerkleTree::sparse(network.records.clone()),
+                LWMerkleTree::sparse(network.records.clone()),
                 Default::default(),
             )
         };
