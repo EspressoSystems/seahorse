@@ -13,9 +13,9 @@ use std::collections::HashMap;
 /// Keystore state which is shared with event handling threads.
 pub struct KeystoreSharedState<
     'a,
-    L: Ledger,
+    L: 'static + Ledger,
     Backend: KeystoreBackend<'a, L>,
-    Meta: Serialize + DeserializeOwned + Send,
+    Meta: Serialize + DeserializeOwned + Send + Sync + Clone + PartialEq,
 > {
     pub(crate) state: LedgerState<'a, L>,
     pub(crate) model: KeystoreModel<'a, L, Backend, Meta>,
@@ -28,37 +28,42 @@ impl<
         'a,
         L: 'static + Ledger,
         Backend: KeystoreBackend<'a, L>,
-        Meta: Serialize + DeserializeOwned + Send,
+        Meta: Serialize + DeserializeOwned + Send + Sync + Clone + PartialEq,
     > KeystoreSharedState<'a, L, Backend, Meta>
 {
     async fn commit(&mut self) -> Result<(), KeystoreError<L>> {
-        self.model.meta_store.commit();
-        self.model.ledger_states.commit()?;
-        self.model.assets.commit()?;
-        self.model.transactions.commit()?;
-        self.model.records.commit()?;
-        self.model.viewing_accounts.commit()?;
-        self.model.freezing_accounts.commit()?;
-        self.model.sending_accounts.commit()?;
+        self.model.stores.meta_store.commit();
+        self.model.stores.ledger_states.commit()?;
+        self.model.stores.assets.commit()?;
+        self.model.stores.transactions.commit()?;
+        self.model.stores.records.commit()?;
+        self.model.stores.viewing_accounts.commit()?;
+        self.model.stores.freezing_accounts.commit()?;
+        self.model.stores.sending_accounts.commit()?;
         self.model
+            .stores
             .atomic_store
             .commit_version()
             .map_err(KeystoreError::from)
     }
 
     async fn revert(&mut self) -> Result<(), KeystoreError<L>> {
-        self.model.assets.revert()?;
-        self.model.transactions.revert()?;
-        self.model.viewing_accounts.revert()?;
-        self.model.freezing_accounts.revert()?;
-        self.model.sending_accounts.revert()?;
-        self.model.meta_store.revert().await;
+        self.model.stores.assets.revert()?;
+        self.model.stores.transactions.revert()?;
+        self.model.stores.viewing_accounts.revert()?;
+        self.model.stores.freezing_accounts.revert()?;
+        self.model.stores.sending_accounts.revert()?;
+        self.model.stores.meta_store.revert().await;
         Ok(())
     }
 }
 
-impl<'a, L: Ledger, Backend: KeystoreBackend<'a, L>, Meta: Serialize + DeserializeOwned + Send>
-    KeystoreSharedState<'a, L, Backend, Meta>
+impl<
+        'a,
+        L: Ledger,
+        Backend: KeystoreBackend<'a, L>,
+        Meta: Serialize + DeserializeOwned + Send + Sync + Clone + PartialEq,
+    > KeystoreSharedState<'a, L, Backend, Meta>
 {
     pub fn new(
         state: LedgerState<'a, L>,
@@ -94,16 +99,16 @@ impl<'a, L: Ledger, Backend: KeystoreBackend<'a, L>, Meta: Serialize + Deseriali
 /// A read-write lock where writes must go through atomic storage transactions.
 pub struct KeystoreSharedStateRwLock<
     'a,
-    L: Ledger,
+    L: 'static + Ledger,
     Backend: KeystoreBackend<'a, L>,
-    Meta: Send + Serialize + DeserializeOwned,
+    Meta: Send + Serialize + DeserializeOwned + Sync + Clone + PartialEq,
 >(RwLock<KeystoreSharedState<'a, L, Backend, Meta>>);
 
 impl<
         'a,
         L: 'static + Ledger,
         Backend: KeystoreBackend<'a, L>,
-        Meta: Send + Serialize + DeserializeOwned,
+        Meta: Send + Serialize + DeserializeOwned + Sync + Clone + PartialEq,
     > KeystoreSharedStateRwLock<'a, L, Backend, Meta>
 {
     pub fn new(
@@ -149,7 +154,7 @@ pub struct KeystoreSharedStateWriteGuard<
     'a,
     L: 'static + Ledger,
     Backend: KeystoreBackend<'a, L>,
-    Meta: Send + Serialize + DeserializeOwned,
+    Meta: Send + Serialize + DeserializeOwned + Sync + Clone + PartialEq,
 > {
     guard: RwLockWriteGuard<'l, KeystoreSharedState<'a, L, Backend, Meta>>,
     failed: bool,
@@ -160,7 +165,7 @@ impl<
         'a,
         L: 'static + Ledger,
         Backend: KeystoreBackend<'a, L>,
-        Meta: Send + Serialize + DeserializeOwned,
+        Meta: Send + Serialize + DeserializeOwned + Sync + Clone + PartialEq,
     > KeystoreSharedStateWriteGuard<'l, 'a, L, Backend, Meta>
 {
     async fn new(
@@ -274,7 +279,7 @@ impl<
         'a,
         L: 'static + Ledger,
         Backend: KeystoreBackend<'a, L>,
-        Meta: Send + Serialize + DeserializeOwned,
+        Meta: Send + Serialize + DeserializeOwned + Sync + Clone + PartialEq,
     > Drop for KeystoreSharedStateWriteGuard<'l, 'a, L, Backend, Meta>
 {
     fn drop(&mut self) {
