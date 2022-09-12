@@ -17,7 +17,7 @@ use crate::{
     records::{Record, Records},
     transactions::{SignedMemos, Transaction, TransactionParams, Transactions},
     Captures, EncryptingResourceAdapter, EventSummary, KeystoreBackend, KeystoreError,
-    KeystoreModel, MintInfo,
+    KeystoreModel, KeystoreStores, MintInfo,
 };
 use arbitrary::{Arbitrary, Unstructured};
 use ark_serialize::*;
@@ -351,7 +351,7 @@ async fn try_open_memos<
     L: Ledger,
     Meta: Serialize + DeserializeOwned + Send + Sync + Clone + PartialEq,
 >(
-    model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
+    stores: &mut KeystoreStores<'a, L, Meta>,
     key_pair: &UserKeyPair,
     memos: &[(ReceiverMemo, RecordCommitment, u64, MerklePath)],
     transaction: Option<(u64, u64, TransactionHash<L>, TransactionKind<L>)>,
@@ -371,7 +371,7 @@ async fn try_open_memos<
     if add_to_history && !records.is_empty() {
         if let Some((_block_id, _txn_id, hash, kind)) = transaction {
             add_receive_history(
-                model,
+                stores,
                 kind,
                 hash,
                 &records
@@ -391,7 +391,7 @@ async fn receive_attached_records<
     L: Ledger,
     Meta: Serialize + DeserializeOwned + Send + Sync + Clone + PartialEq,
 >(
-    model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
+    stores: &mut KeystoreStores<'a, L, Meta>,
     txn: &reef::Transaction<L>,
     uids: &mut [(u64, bool)],
     add_to_history: bool,
@@ -399,17 +399,17 @@ async fn receive_attached_records<
     let records = txn.output_openings().into_iter().flatten().zip(uids);
     let mut my_records = vec![];
     for (ro, (uid, remember)) in records {
-        if let Ok(account_editor) = model.stores.sending_accounts.get_mut(&ro.pub_key.address()) {
+        if let Ok(account_editor) = stores.sending_accounts.get_mut(&ro.pub_key.address()) {
             // If this record is for us, add it to the keystore and include it in the
             // list of received records for created a received transaction history
             // entry.
             *remember = true;
             // Add the asset type if it is not already in the asset library.
-            model.stores.assets.create(ro.asset_def.clone(), None)?;
+            stores.assets.create(ro.asset_def.clone(), None)?;
             // Mark the account receiving the records used.
             let account = account_editor.set_used().save()?;
             // Add the record.
-            model.stores.records.create::<L>(
+            stores.records.create::<L>(
                 *uid,
                 ro.clone(),
                 account.key().nullify(
@@ -419,8 +419,7 @@ async fn receive_attached_records<
                 ),
             )?;
             my_records.push(ro);
-        } else if let Ok(account_editor) = model
-            .stores
+        } else if let Ok(account_editor) = stores
             .freezing_accounts
             .get_mut(ro.asset_def.policy_ref().freezer_pub_key())
         {
@@ -429,11 +428,11 @@ async fn receive_attached_records<
             // records, but do not include it in the history entry.
             *remember = true;
             // Add the asset type if it is not already in the asset library.
-            model.stores.assets.create(ro.asset_def.clone(), None)?;
+            stores.assets.create(ro.asset_def.clone(), None)?;
             // Mark the freezing account which is tracking the record used.
             let account = account_editor.set_used().save()?;
             // Add the record.
-            model.stores.records.create::<L>(
+            stores.records.create::<L>(
                 *uid,
                 ro.clone(),
                 account
@@ -444,7 +443,7 @@ async fn receive_attached_records<
     }
 
     if add_to_history && !my_records.is_empty() {
-        add_receive_history(model, txn.kind(), txn.hash().clone(), &my_records).await?;
+        add_receive_history(stores, txn.kind(), txn.hash().clone(), &my_records).await?;
     }
 
     Ok(())
@@ -455,14 +454,14 @@ async fn add_receive_history<
     L: Ledger,
     Meta: Serialize + DeserializeOwned + Send + Sync + Clone + PartialEq,
 >(
-    model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
+    stores: &mut KeystoreStores<'a, L, Meta>,
     kind: TransactionKind<L>,
     hash: TransactionHash<L>,
     records: &[RecordOpening],
 ) -> Result<(), KeystoreError<L>> {
     let uid = TransactionUID::<L>(hash);
     let history = receive_history_entry(kind, records);
-    model.stores.transactions.create(uid, history)?;
+    stores.transactions.create(uid, history)?;
     Ok(())
 }
 
@@ -1543,14 +1542,14 @@ impl<'a, L: 'static + Ledger> LedgerState<'a, L> {
     /// Compute the spendable balance of the given asset owned by the given addresses.
     pub fn balance<Meta: Serialize + DeserializeOwned + Send + Sync + Clone + PartialEq>(
         &self,
-        model: &KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
+        stores: &KeystoreStores<'a, L, Meta>,
         addresses: impl Iterator<Item = UserAddress>,
         asset: &AssetCode,
         frozen: FreezeFlag,
     ) -> U256 {
         let mut balance = U256::zero();
         for address in addresses {
-            balance += self.balance_breakdown(model, &address, asset, frozen);
+            balance += self.balance_breakdown(stores, &address, asset, frozen);
         }
         balance
     }
@@ -1560,15 +1559,12 @@ impl<'a, L: 'static + Ledger> LedgerState<'a, L> {
         Meta: Serialize + DeserializeOwned + Send + Sync + Clone + PartialEq,
     >(
         &self,
-        model: &KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
+        stores: &KeystoreStores<'a, L, Meta>,
         address: &UserAddress,
         asset: &AssetCode,
         frozen: FreezeFlag,
     ) -> U256 {
-        let spendable = model
-            .stores
-            .records
-            .get_spendable::<L>(asset, address, frozen);
+        let spendable = stores.records.get_spendable::<L>(asset, address, frozen);
         if let Some(records) = spendable {
             records
                 .filter(move |record| !record.on_hold(self.block_height()))
@@ -1694,7 +1690,7 @@ impl<'a, L: 'static + Ledger> LedgerState<'a, L> {
                     let mut self_published = false;
                     if let Some(pending) = self
                         .clear_pending_transaction(
-                            model,
+                            &mut model.stores,
                             &txn,
                             Some((block_id, txn_id as u64, &mut this_txn_uids)),
                         )
@@ -1735,7 +1731,7 @@ impl<'a, L: 'static + Ledger> LedgerState<'a, L> {
                     // If this transaction has record openings attached, check if they are for us
                     // and add them immediately, without waiting for memos.
                     if let Err(err) = receive_attached_records(
-                        model,
+                        &mut model.stores,
                         &txn,
                         &mut this_txn_uids,
                         !self_published,
@@ -1811,10 +1807,15 @@ impl<'a, L: 'static + Ledger> LedgerState<'a, L> {
                     .iter_keys()
                     .collect::<Vec<UserKeyPair>>()
                 {
-                    let records =
-                        try_open_memos(model, key, &outputs, transaction.clone(), !self_published)
-                            .await?;
-                    if let Err(err) = self.add_records(model, key, records).await {
+                    let records = try_open_memos(
+                        &mut model.stores,
+                        key,
+                        &outputs,
+                        transaction.clone(),
+                        !self_published,
+                    )
+                    .await?;
+                    if let Err(err) = self.add_records(&mut model.stores, key, records).await {
                         tracing::error!("error saving received records: {}", err);
                     }
                 }
@@ -1824,7 +1825,10 @@ impl<'a, L: 'static + Ledger> LedgerState<'a, L> {
                     summary
                         .rejected_nullifiers
                         .append(&mut txn.input_nullifiers());
-                    if let Some(pending) = self.clear_pending_transaction(model, &txn, None).await {
+                    if let Some(pending) = self
+                        .clear_pending_transaction(&mut model.stores, &txn, None)
+                        .await
+                    {
                         // Try to resubmit if the error is recoverable.
                         let uid = pending.uid();
                         if error.is_bad_nullifier_proof() {
@@ -1863,7 +1867,7 @@ impl<'a, L: 'static + Ledger> LedgerState<'a, L> {
         Meta: Serialize + DeserializeOwned + Send + Sync + Clone + PartialEq,
     >(
         &mut self,
-        model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
+        stores: &mut KeystoreStores<'a, L, Meta>,
         key_pair: &UserKeyPair,
         records: Vec<(RecordOpening, u64, MerklePath)>,
     ) -> Result<(), KeystoreError<L>> {
@@ -1879,21 +1883,17 @@ impl<'a, L: 'static + Ledger> LedgerState<'a, L> {
             }
 
             // Add the asset type if it is not already in the asset library.
-            model
-                .stores
-                .assets_mut()
-                .create(record.asset_def.clone(), None)?;
+            stores.assets_mut().create(record.asset_def.clone(), None)?;
 
             // Mark the account receiving the record as used.
-            model
-                .stores
+            stores
                 .sending_accounts
                 .get_mut(&key_pair.address())
                 .unwrap()
                 .set_used()
                 .save()?;
             // Save the record.
-            model.stores.records.create::<L>(
+            stores.records.create::<L>(
                 uid,
                 record.clone(),
                 key_pair.nullify(
@@ -1910,20 +1910,19 @@ impl<'a, L: 'static + Ledger> LedgerState<'a, L> {
         Meta: Serialize + DeserializeOwned + Send + Sync + Clone + PartialEq,
     >(
         &mut self,
-        model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
+        stores: &mut KeystoreStores<'a, L, Meta>,
         memo: ReceiverMemo,
         comm: RecordCommitment,
         uid: u64,
         proof: MerklePath,
     ) -> Result<(), KeystoreError<L>> {
-        for key in model
-            .stores
+        for key in stores
             .sending_accounts
             .iter_keys()
             .collect::<Vec<UserKeyPair>>()
         {
             let records = try_open_memos(
-                model,
+                stores,
                 &key,
                 &[(memo.clone(), comm, uid, proof.clone())],
                 None,
@@ -1931,7 +1930,7 @@ impl<'a, L: 'static + Ledger> LedgerState<'a, L> {
             )
             .await?;
             if !records.is_empty() {
-                return self.add_records(model, &key, records).await;
+                return self.add_records(stores, &key, records).await;
             }
         }
 
@@ -1943,18 +1942,17 @@ impl<'a, L: 'static + Ledger> LedgerState<'a, L> {
         Meta: Serialize + DeserializeOwned + Send + Sync + Clone + PartialEq,
     >(
         &mut self,
-        model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
+        stores: &mut KeystoreStores<'a, L, Meta>,
         txn: &reef::Transaction<L>,
         res: Option<CommittedTxn<'t>>,
     ) -> Option<Transaction<L>> {
         let now = self.block_height();
-        let pending = model
-            .stores
+        let pending = stores
             .transactions
             .get(&TransactionUID::<L>(txn.hash()))
             .ok();
         for nullifier in txn.input_nullifiers() {
-            if let Ok(record) = model.stores.records.with_nullifier_mut::<L>(&nullifier) {
+            if let Ok(record) = stores.records.with_nullifier_mut::<L>(&nullifier) {
                 if pending.is_some() {
                     // If we started this transaction, all of its inputs should have been on hold,
                     // to preserve the invariant that all input nullifiers of all pending
@@ -1983,15 +1981,13 @@ impl<'a, L: 'static + Ledger> LedgerState<'a, L> {
                     // the first uid corresponds to the fee change output, which is not one of the
                     // `freeze_outputs`, so we skip that one
                     for ((uid, remember), ro) in uids.iter_mut().zip(pending.outputs()).skip(1) {
-                        let key_pair = model
-                            .stores
+                        let key_pair = stores
                             .freezing_accounts
                             .get(ro.asset_def.policy_ref().freezer_pub_key())
                             .unwrap()
                             .key()
                             .clone();
-                        model
-                            .stores
+                        stores
                             .records
                             .create::<L>(
                                 *uid,

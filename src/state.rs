@@ -31,30 +31,12 @@ impl<
         Meta: Serialize + DeserializeOwned + Send + Sync + Clone + PartialEq,
     > KeystoreSharedState<'a, L, Backend, Meta>
 {
-    async fn commit(&mut self) -> Result<(), KeystoreError<L>> {
-        self.model.stores.meta_store.commit();
-        self.model.stores.ledger_states.commit()?;
-        self.model.stores.assets.commit()?;
-        self.model.stores.transactions.commit()?;
-        self.model.stores.records.commit()?;
-        self.model.stores.viewing_accounts.commit()?;
-        self.model.stores.freezing_accounts.commit()?;
-        self.model.stores.sending_accounts.commit()?;
-        self.model
-            .stores
-            .atomic_store
-            .commit_version()
-            .map_err(KeystoreError::from)
+    fn commit(&mut self) -> Result<(), KeystoreError<L>> {
+        self.model.stores.commit()
     }
 
     async fn revert(&mut self) -> Result<(), KeystoreError<L>> {
-        self.model.stores.assets.revert()?;
-        self.model.stores.transactions.revert()?;
-        self.model.stores.viewing_accounts.revert()?;
-        self.model.stores.freezing_accounts.revert()?;
-        self.model.stores.sending_accounts.revert()?;
-        self.model.stores.meta_store.revert().await;
-        Ok(())
+        self.model.stores.revert().await
     }
 }
 
@@ -287,7 +269,7 @@ impl<
             if self.failed {
                 self.guard.revert().await.unwrap();
             } else {
-                self.guard.commit().await.unwrap();
+                self.guard.commit().unwrap();
             }
         });
     }

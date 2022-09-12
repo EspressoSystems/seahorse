@@ -367,7 +367,7 @@ impl<
         &mut self.sending_accounts
     }
 
-    async fn commit(&mut self) -> Result<(), KeystoreError<L>> {
+    fn commit(&mut self) -> Result<(), KeystoreError<L>> {
         self.meta_store.commit();
         self.ledger_states.commit()?;
         self.assets.commit()?;
@@ -379,6 +379,17 @@ impl<
         self.atomic_store.commit_version()?;
         Ok(())
     }
+
+    async fn revert(&mut self) -> Result<(), KeystoreError<L>> {
+        self.meta_store.revert().await;
+        self.ledger_states.revert()?;
+        self.assets.revert()?;
+        self.transactions.revert()?;
+        self.viewing_accounts.revert()?;
+        self.freezing_accounts.revert()?;
+        self.sending_accounts.revert()?;
+        Ok(())
+    }
 }
 
 /// Load a verified asset library with its trusted signer.
@@ -387,11 +398,11 @@ pub fn verify_assets<
     L: Ledger,
     Meta: Serialize + DeserializeOwned + Send + Sync + Clone + PartialEq,
 >(
-    model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
+    stores: &mut KeystoreStores<'a, L, Meta>,
     trusted_signer: &VerKey,
     library: VerifiedAssetLibrary,
 ) -> Result<Vec<AssetDefinition>, KeystoreError<L>> {
-    model.stores.assets.verify_assets(trusted_signer, library)
+    stores.assets.verify_assets(trusted_signer, library)
 }
 
 /// Import an unverified asset.
@@ -403,12 +414,11 @@ pub fn import_asset<
     L: Ledger,
     Meta: Serialize + DeserializeOwned + Send + Sync + Clone + PartialEq,
 >(
-    model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
+    stores: &mut KeystoreStores<'a, L, Meta>,
     asset: Asset,
 ) -> Result<(), KeystoreError<L>> {
     assert!(!asset.verified());
-    model
-        .stores
+    stores
         .assets
         .create_internal(
             asset.definition().clone(),
@@ -622,7 +632,7 @@ impl<
                 stores.ledger_states.update(&state)?;
                 state
             };
-            stores.commit().await?;
+            stores.commit()?;
             Self::new_impl(backend, stores, state).await
         })
     }
@@ -667,7 +677,7 @@ impl<
         Box::pin(async move {
             stores.meta_store.create().await?;
             stores.ledger_states.update(&state)?;
-            stores.commit().await?;
+            stores.commit()?;
             Self::new_impl(backend, stores, state).await
         })
     }
@@ -832,7 +842,7 @@ impl<
     pub async fn balance(&self, asset: &AssetCode) -> U256 {
         let KeystoreSharedState { state, model, .. } = &*self.read().await;
         state.balance(
-            model,
+            &model.stores,
             model.stores.sending_accounts.iter_pub_keys(),
             asset,
             FreezeFlag::Unfrozen,
@@ -843,9 +853,12 @@ impl<
     pub async fn balance_breakdown(&self, address: &UserAddress, asset: &AssetCode) -> U256 {
         let KeystoreSharedState { state, model, .. } = &*self.read().await;
         match model.stores.sending_accounts.get(address) {
-            Ok(account) => {
-                state.balance_breakdown(model, &account.pub_key(), asset, FreezeFlag::Unfrozen)
-            }
+            Ok(account) => state.balance_breakdown(
+                &model.stores,
+                &account.pub_key(),
+                asset,
+                FreezeFlag::Unfrozen,
+            ),
             _ => U256::zero(),
         }
     }
@@ -854,9 +867,12 @@ impl<
     pub async fn frozen_balance_breakdown(&self, address: &UserAddress, asset: &AssetCode) -> U256 {
         let KeystoreSharedState { state, model, .. } = &*self.read().await;
         match model.stores.sending_accounts.get(address) {
-            Ok(account) => {
-                state.balance_breakdown(model, &account.pub_key(), asset, FreezeFlag::Frozen)
-            }
+            Ok(account) => state.balance_breakdown(
+                &model.stores,
+                &account.pub_key(),
+                asset,
+                FreezeFlag::Frozen,
+            ),
             _ => U256::zero(),
         }
     }
@@ -1020,7 +1036,9 @@ impl<
     pub async fn import_asset(&mut self, asset: Asset) -> Result<(), KeystoreError<L>> {
         self.write()
             .await
-            .update(|KeystoreSharedState { model, .. }| async move { import_asset(model, asset) })
+            .update(|KeystoreSharedState { model, .. }| async move {
+                import_asset(&mut model.stores, asset)
+            })
             .await
     }
 
@@ -1044,7 +1062,7 @@ impl<
         self.write()
             .await
             .update(|KeystoreSharedState { model, .. }| async move {
-                verify_assets(model, trusted_signer, library)
+                verify_assets(&mut model.stores, trusted_signer, library)
             })
             .await
     }
@@ -1241,7 +1259,7 @@ impl<
         self.write()
             .await
             .update(|KeystoreSharedState { state, model, .. }| {
-                state.import_memo(model, memo, comm, uid, proof)
+                state.import_memo(&mut model.stores, memo, comm, uid, proof)
             })
             .await
     }
@@ -1687,7 +1705,7 @@ async fn update_key_scan<
             editor.save()?;
             match scan_info {
                 Some((key, ScanOutputs { records, history })) => {
-                    if let Err(err) = state.add_records(model, &key, records).await {
+                    if let Err(err) = state.add_records(&mut model.stores, &key, records).await {
                         tracing::error!("Error saving records from key scan {}: {}", address, err);
                     }
                     for (uid, t) in history {
