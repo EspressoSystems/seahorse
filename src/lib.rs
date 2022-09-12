@@ -410,11 +410,10 @@ pub fn verify_assets<
 /// Note that this function cannot be used to import verified assets. Verified assets can only be
 /// imported using [verify_assets], conditional on a signature check.
 pub fn import_asset<
-    'a,
     L: Ledger,
     Meta: Serialize + DeserializeOwned + Send + Sync + Clone + PartialEq,
 >(
-    stores: &mut KeystoreStores<'a, L, Meta>,
+    stores: &mut KeystoreStores<L, Meta>,
     asset: Asset,
 ) -> Result<(), KeystoreError<L>> {
     assert!(!asset.verified());
