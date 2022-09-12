@@ -347,11 +347,10 @@ fn received_memos<L: Ledger>(
 }
 
 async fn try_open_memos<
-    'a,
     L: Ledger,
     Meta: Serialize + DeserializeOwned + Send + Sync + Clone + PartialEq,
 >(
-    stores: &mut KeystoreStores<'a, L, Meta>,
+    stores: &mut KeystoreStores<'_, L, Meta>,
     key_pair: &UserKeyPair,
     memos: &[(ReceiverMemo, RecordCommitment, u64, MerklePath)],
     transaction: Option<(u64, u64, TransactionHash<L>, TransactionKind<L>)>,
@@ -387,11 +386,10 @@ async fn try_open_memos<
 }
 
 async fn receive_attached_records<
-    'a,
     L: Ledger,
     Meta: Serialize + DeserializeOwned + Send + Sync + Clone + PartialEq,
 >(
-    stores: &mut KeystoreStores<'a, L, Meta>,
+    stores: &mut KeystoreStores<'_, L, Meta>,
     txn: &reef::Transaction<L>,
     uids: &mut [(u64, bool)],
     add_to_history: bool,
@@ -450,11 +448,10 @@ async fn receive_attached_records<
 }
 
 async fn add_receive_history<
-    'a,
     L: Ledger,
     Meta: Serialize + DeserializeOwned + Send + Sync + Clone + PartialEq,
 >(
-    stores: &mut KeystoreStores<'a, L, Meta>,
+    stores: &mut KeystoreStores<'_, L, Meta>,
     kind: TransactionKind<L>,
     hash: TransactionHash<L>,
     records: &[RecordOpening],
