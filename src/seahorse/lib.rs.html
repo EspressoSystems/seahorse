@@ -1720,6 +1720,19 @@
 <span id="1720">1720</span>
 <span id="1721">1721</span>
 <span id="1722">1722</span>
+<span id="1723">1723</span>
+<span id="1724">1724</span>
+<span id="1725">1725</span>
+<span id="1726">1726</span>
+<span id="1727">1727</span>
+<span id="1728">1728</span>
+<span id="1729">1729</span>
+<span id="1730">1730</span>
+<span id="1731">1731</span>
+<span id="1732">1732</span>
+<span id="1733">1733</span>
+<span id="1734">1734</span>
+<span id="1735">1735</span>
 </pre><pre class="rust"><code><span class="comment">// Copyright (c) 2022 Espresso Systems (espressosys.com)</span>
 <span class="comment">// This file is part of the Seahorse library.</span>
 
@@ -2009,30 +2022,15 @@
     }
 }
 
-<span class="doccomment">/// Transient state derived from the persistent [LedgerState].</span>
+<span class="doccomment">/// Transient state derived from the persistent [LedgerState] and [KeystoreStores].</span>
 <span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">KeystoreModel</span><span class="op">&lt;</span>
     <span class="lifetime">&#39;a</span>,
-    <span class="ident">L</span>: <span class="ident">Ledger</span>,
+    <span class="ident">L</span>: <span class="lifetime">&#39;static</span> <span class="op">+</span> <span class="ident">Ledger</span>,
     <span class="ident">Backend</span>: <span class="ident">KeystoreBackend</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span><span class="op">&gt;</span>,
-    <span class="ident">Meta</span>: <span class="ident">Serialize</span> <span class="op">+</span> <span class="ident">DeserializeOwned</span> <span class="op">+</span> <span class="ident">Send</span>,
+    <span class="ident">Meta</span>: <span class="ident">Serialize</span> <span class="op">+</span> <span class="ident">DeserializeOwned</span> <span class="op">+</span> <span class="ident">Send</span> <span class="op">+</span> <span class="ident">Sync</span> <span class="op">+</span> <span class="ident">Clone</span> <span class="op">+</span> <span class="ident">PartialEq</span>,
 <span class="op">&gt;</span> {
     <span class="ident">backend</span>: <span class="ident">Backend</span>,
-    <span class="ident">atomic_store</span>: <span class="ident">AtomicStore</span>,
-    <span class="ident">meta_store</span>: <span class="ident">MetaStore</span><span class="op">&lt;</span><span class="ident">Meta</span><span class="op">&gt;</span>,
-    <span class="ident">ledger_states</span>: <span class="ident">LedgerStates</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span><span class="op">&gt;</span>,
-    <span class="ident">assets</span>: <span class="ident">Assets</span>,
-    <span class="ident">records</span>: <span class="ident">Records</span>,
-    <span class="ident">transactions</span>: <span class="ident">Transactions</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span>,
-    <span class="doccomment">/// Viewing accounts.</span>
-    <span class="ident">viewing_accounts</span>: <span class="ident">Accounts</span><span class="op">&lt;</span><span class="ident">L</span>, <span class="ident">ViewerKeyPair</span><span class="op">&gt;</span>,
-    <span class="doccomment">/// Freezing accounts.</span>
-    <span class="ident">freezing_accounts</span>: <span class="ident">Accounts</span><span class="op">&lt;</span><span class="ident">L</span>, <span class="ident">FreezerKeyPair</span><span class="op">&gt;</span>,
-    <span class="doccomment">/// Sending accounts, for spending owned records and receiving new records.</span>
-    <span class="doccomment">///</span>
-    <span class="doccomment">/// Each public key in this set also includes a [UserAddress], which can be used to sign</span>
-    <span class="doccomment">/// outgoing transactions, as well as an encryption public key used by other users to encrypt</span>
-    <span class="doccomment">/// owner memos when sending records to this keystore.</span>
-    <span class="ident">sending_accounts</span>: <span class="ident">Accounts</span><span class="op">&lt;</span><span class="ident">L</span>, <span class="ident">UserKeyPair</span><span class="op">&gt;</span>,
+    <span class="ident">stores</span>: <span class="ident">KeystoreStores</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span>, <span class="ident">Meta</span><span class="op">&gt;</span>,
     <span class="ident">viewer_key_stream</span>: <span class="ident">hd::KeyTree</span>,
     <span class="ident">user_key_stream</span>: <span class="ident">hd::KeyTree</span>,
     <span class="ident">freezer_key_stream</span>: <span class="ident">hd::KeyTree</span>,
@@ -2041,8 +2039,28 @@
     <span class="ident">_marker2</span>: <span class="ident">std::marker::PhantomData</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span>,
 }
 
-<span class="kw">impl</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span>: <span class="ident">Ledger</span>, <span class="ident">Backend</span>: <span class="ident">KeystoreBackend</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span><span class="op">&gt;</span>, <span class="ident">Meta</span>: <span class="ident">Serialize</span> <span class="op">+</span> <span class="ident">DeserializeOwned</span> <span class="op">+</span> <span class="ident">Send</span><span class="op">&gt;</span>
-    <span class="ident">KeystoreModel</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span>, <span class="ident">Backend</span>, <span class="ident">Meta</span><span class="op">&gt;</span>
+<span class="doccomment">/// Storage for keystore resources.</span>
+<span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">KeystoreStores</span><span class="op">&lt;</span>
+    <span class="lifetime">&#39;a</span>,
+    <span class="ident">L</span>: <span class="lifetime">&#39;static</span> <span class="op">+</span> <span class="ident">Ledger</span>,
+    <span class="ident">Meta</span>: <span class="lifetime">&#39;a</span> <span class="op">+</span> <span class="ident">Serialize</span> <span class="op">+</span> <span class="ident">DeserializeOwned</span> <span class="op">+</span> <span class="ident">Send</span> <span class="op">+</span> <span class="ident">Sync</span> <span class="op">+</span> <span class="ident">Clone</span> <span class="op">+</span> <span class="ident">PartialEq</span>,
+<span class="op">&gt;</span> {
+    <span class="ident">atomic_store</span>: <span class="ident">AtomicStore</span>,
+    <span class="ident">meta_store</span>: <span class="ident">MetaStore</span><span class="op">&lt;</span><span class="ident">Meta</span><span class="op">&gt;</span>,
+    <span class="ident">ledger_states</span>: <span class="ident">LedgerStates</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span><span class="op">&gt;</span>,
+    <span class="ident">assets</span>: <span class="ident">Assets</span>,
+    <span class="ident">transactions</span>: <span class="ident">Transactions</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span>,
+    <span class="ident">records</span>: <span class="ident">Records</span>,
+    <span class="ident">viewing_accounts</span>: <span class="ident">Accounts</span><span class="op">&lt;</span><span class="ident">L</span>, <span class="ident">ViewerKeyPair</span><span class="op">&gt;</span>,
+    <span class="ident">freezing_accounts</span>: <span class="ident">Accounts</span><span class="op">&lt;</span><span class="ident">L</span>, <span class="ident">FreezerKeyPair</span><span class="op">&gt;</span>,
+    <span class="ident">sending_accounts</span>: <span class="ident">Accounts</span><span class="op">&lt;</span><span class="ident">L</span>, <span class="ident">UserKeyPair</span><span class="op">&gt;</span>,
+}
+
+<span class="kw">impl</span><span class="op">&lt;</span>
+        <span class="lifetime">&#39;a</span>,
+        <span class="ident">L</span>: <span class="lifetime">&#39;static</span> <span class="op">+</span> <span class="ident">Ledger</span>,
+        <span class="ident">Meta</span>: <span class="lifetime">&#39;a</span> <span class="op">+</span> <span class="ident">Serialize</span> <span class="op">+</span> <span class="ident">DeserializeOwned</span> <span class="op">+</span> <span class="ident">Send</span> <span class="op">+</span> <span class="ident">Sync</span> <span class="op">+</span> <span class="ident">Clone</span> <span class="op">+</span> <span class="ident">PartialEq</span>,
+    <span class="op">&gt;</span> <span class="ident">KeystoreStores</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span>, <span class="ident">Meta</span><span class="op">&gt;</span>
 {
     <span class="doccomment">/// Access the metadata storage layer</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">meta_store</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="kw-2">&amp;</span><span class="ident">MetaStore</span><span class="op">&lt;</span><span class="ident">Meta</span><span class="op">&gt;</span> {
@@ -2083,27 +2101,58 @@
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">sending_accounts_mut</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">Accounts</span><span class="op">&lt;</span><span class="ident">L</span>, <span class="ident">UserKeyPair</span><span class="op">&gt;</span> {
         <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>.<span class="ident">sending_accounts</span>
     }
+
+    <span class="kw">fn</span> <span class="ident">commit</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(), <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
+        <span class="self">self</span>.<span class="ident">meta_store</span>.<span class="ident">commit</span>();
+        <span class="self">self</span>.<span class="ident">ledger_states</span>.<span class="ident">commit</span>()<span class="question-mark">?</span>;
+        <span class="self">self</span>.<span class="ident">assets</span>.<span class="ident">commit</span>()<span class="question-mark">?</span>;
+        <span class="self">self</span>.<span class="ident">transactions</span>.<span class="ident">commit</span>()<span class="question-mark">?</span>;
+        <span class="self">self</span>.<span class="ident">records</span>.<span class="ident">commit</span>()<span class="question-mark">?</span>;
+        <span class="self">self</span>.<span class="ident">viewing_accounts</span>.<span class="ident">commit</span>()<span class="question-mark">?</span>;
+        <span class="self">self</span>.<span class="ident">freezing_accounts</span>.<span class="ident">commit</span>()<span class="question-mark">?</span>;
+        <span class="self">self</span>.<span class="ident">sending_accounts</span>.<span class="ident">commit</span>()<span class="question-mark">?</span>;
+        <span class="self">self</span>.<span class="ident">atomic_store</span>.<span class="ident">commit_version</span>()<span class="question-mark">?</span>;
+        <span class="prelude-val">Ok</span>(())
+    }
+
+    <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">revert</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(), <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
+        <span class="self">self</span>.<span class="ident">meta_store</span>.<span class="ident">revert</span>().<span class="kw">await</span>;
+        <span class="self">self</span>.<span class="ident">ledger_states</span>.<span class="ident">revert</span>()<span class="question-mark">?</span>;
+        <span class="self">self</span>.<span class="ident">assets</span>.<span class="ident">revert</span>()<span class="question-mark">?</span>;
+        <span class="self">self</span>.<span class="ident">transactions</span>.<span class="ident">revert</span>()<span class="question-mark">?</span>;
+        <span class="self">self</span>.<span class="ident">viewing_accounts</span>.<span class="ident">revert</span>()<span class="question-mark">?</span>;
+        <span class="self">self</span>.<span class="ident">freezing_accounts</span>.<span class="ident">revert</span>()<span class="question-mark">?</span>;
+        <span class="self">self</span>.<span class="ident">sending_accounts</span>.<span class="ident">revert</span>()<span class="question-mark">?</span>;
+        <span class="prelude-val">Ok</span>(())
+    }
 }
 
 <span class="doccomment">/// Load a verified asset library with its trusted signer.</span>
-<span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">verify_assets</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span>: <span class="ident">Ledger</span>, <span class="ident">Meta</span>: <span class="ident">Serialize</span> <span class="op">+</span> <span class="ident">DeserializeOwned</span> <span class="op">+</span> <span class="ident">Send</span><span class="op">&gt;</span>(
-    <span class="ident">model</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">KeystoreModel</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span>, <span class="kw">impl</span> <span class="ident">KeystoreBackend</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span><span class="op">&gt;</span>, <span class="ident">Meta</span><span class="op">&gt;</span>,
+<span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">verify_assets</span><span class="op">&lt;</span>
+    <span class="lifetime">&#39;a</span>,
+    <span class="ident">L</span>: <span class="ident">Ledger</span>,
+    <span class="ident">Meta</span>: <span class="ident">Serialize</span> <span class="op">+</span> <span class="ident">DeserializeOwned</span> <span class="op">+</span> <span class="ident">Send</span> <span class="op">+</span> <span class="ident">Sync</span> <span class="op">+</span> <span class="ident">Clone</span> <span class="op">+</span> <span class="ident">PartialEq</span>,
+<span class="op">&gt;</span>(
+    <span class="ident">stores</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">KeystoreStores</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span>, <span class="ident">Meta</span><span class="op">&gt;</span>,
     <span class="ident">trusted_signer</span>: <span class="kw-2">&amp;</span><span class="ident">VerKey</span>,
     <span class="ident">library</span>: <span class="ident">VerifiedAssetLibrary</span>,
 ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">AssetDefinition</span><span class="op">&gt;</span>, <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
-    <span class="ident">model</span>.<span class="ident">assets</span>.<span class="ident">verify_assets</span>(<span class="ident">trusted_signer</span>, <span class="ident">library</span>)
+    <span class="ident">stores</span>.<span class="ident">assets</span>.<span class="ident">verify_assets</span>(<span class="ident">trusted_signer</span>, <span class="ident">library</span>)
 }
 
 <span class="doccomment">/// Import an unverified asset.</span>
 <span class="doccomment">///</span>
 <span class="doccomment">/// Note that this function cannot be used to import verified assets. Verified assets can only be</span>
 <span class="doccomment">/// imported using [verify_assets], conditional on a signature check.</span>
-<span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">import_asset</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span>: <span class="ident">Ledger</span>, <span class="ident">Meta</span>: <span class="ident">Serialize</span> <span class="op">+</span> <span class="ident">DeserializeOwned</span> <span class="op">+</span> <span class="ident">Send</span><span class="op">&gt;</span>(
-    <span class="ident">model</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">KeystoreModel</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span>, <span class="kw">impl</span> <span class="ident">KeystoreBackend</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span><span class="op">&gt;</span>, <span class="ident">Meta</span><span class="op">&gt;</span>,
+<span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">import_asset</span><span class="op">&lt;</span>
+    <span class="ident">L</span>: <span class="ident">Ledger</span>,
+    <span class="ident">Meta</span>: <span class="ident">Serialize</span> <span class="op">+</span> <span class="ident">DeserializeOwned</span> <span class="op">+</span> <span class="ident">Send</span> <span class="op">+</span> <span class="ident">Sync</span> <span class="op">+</span> <span class="ident">Clone</span> <span class="op">+</span> <span class="ident">PartialEq</span>,
+<span class="op">&gt;</span>(
+    <span class="ident">stores</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">KeystoreStores</span><span class="op">&lt;</span><span class="ident">L</span>, <span class="ident">Meta</span><span class="op">&gt;</span>,
     <span class="ident">asset</span>: <span class="ident">Asset</span>,
 ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(), <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
     <span class="macro">assert!</span>(<span class="op">!</span><span class="ident">asset</span>.<span class="ident">verified</span>());
-    <span class="ident">model</span>
+    <span class="ident">stores</span>
         .<span class="ident">assets</span>
         .<span class="ident">create_internal</span>(
             <span class="ident">asset</span>.<span class="ident">definition</span>().<span class="ident">clone</span>(),
@@ -2150,8 +2199,8 @@
 <span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">Keystore</span><span class="op">&lt;</span>
     <span class="lifetime">&#39;a</span>,
     <span class="ident">Backend</span>: <span class="ident">KeystoreBackend</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span><span class="op">&gt;</span>,
-    <span class="ident">L</span>: <span class="ident">Ledger</span>,
-    <span class="ident">Meta</span>: <span class="ident">Serialize</span> <span class="op">+</span> <span class="ident">DeserializeOwned</span> <span class="op">+</span> <span class="ident">Send</span>,
+    <span class="ident">L</span>: <span class="lifetime">&#39;static</span> <span class="op">+</span> <span class="ident">Ledger</span>,
+    <span class="ident">Meta</span>: <span class="ident">Serialize</span> <span class="op">+</span> <span class="ident">DeserializeOwned</span> <span class="op">+</span> <span class="ident">Send</span> <span class="op">+</span> <span class="ident">Sync</span> <span class="op">+</span> <span class="ident">Clone</span> <span class="op">+</span> <span class="ident">PartialEq</span>,
 <span class="op">&gt;</span> {
     <span class="comment">// Data shared between the main thread and the event handling thread:</span>
     <span class="comment">//  * the trusted, persistent keystore state</span>
@@ -2215,42 +2264,6 @@
     }
 }
 
-<span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">KeystoreResources</span><span class="op">&lt;</span>
-    <span class="lifetime">&#39;a</span>,
-    <span class="ident">L</span>: <span class="lifetime">&#39;static</span> <span class="op">+</span> <span class="ident">Ledger</span>,
-    <span class="ident">Meta</span>: <span class="lifetime">&#39;a</span> <span class="op">+</span> <span class="ident">Serialize</span> <span class="op">+</span> <span class="ident">DeserializeOwned</span> <span class="op">+</span> <span class="ident">Send</span> <span class="op">+</span> <span class="ident">Sync</span> <span class="op">+</span> <span class="ident">Clone</span> <span class="op">+</span> <span class="ident">PartialEq</span>,
-<span class="op">&gt;</span> {
-    <span class="ident">atomic_store</span>: <span class="ident">AtomicStore</span>,
-    <span class="ident">meta_store</span>: <span class="ident">MetaStore</span><span class="op">&lt;</span><span class="ident">Meta</span><span class="op">&gt;</span>,
-    <span class="ident">ledger_states</span>: <span class="ident">LedgerStates</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span><span class="op">&gt;</span>,
-    <span class="ident">assets</span>: <span class="ident">Assets</span>,
-    <span class="ident">transactions</span>: <span class="ident">Transactions</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span>,
-    <span class="ident">records</span>: <span class="ident">Records</span>,
-    <span class="ident">viewing_accounts</span>: <span class="ident">Accounts</span><span class="op">&lt;</span><span class="ident">L</span>, <span class="ident">ViewerKeyPair</span><span class="op">&gt;</span>,
-    <span class="ident">freezing_accounts</span>: <span class="ident">Accounts</span><span class="op">&lt;</span><span class="ident">L</span>, <span class="ident">FreezerKeyPair</span><span class="op">&gt;</span>,
-    <span class="ident">sending_accounts</span>: <span class="ident">Accounts</span><span class="op">&lt;</span><span class="ident">L</span>, <span class="ident">UserKeyPair</span><span class="op">&gt;</span>,
-}
-
-<span class="kw">impl</span><span class="op">&lt;</span>
-        <span class="lifetime">&#39;a</span>,
-        <span class="ident">L</span>: <span class="lifetime">&#39;static</span> <span class="op">+</span> <span class="ident">Ledger</span>,
-        <span class="ident">Meta</span>: <span class="lifetime">&#39;a</span> <span class="op">+</span> <span class="ident">Serialize</span> <span class="op">+</span> <span class="ident">DeserializeOwned</span> <span class="op">+</span> <span class="ident">Send</span> <span class="op">+</span> <span class="ident">Sync</span> <span class="op">+</span> <span class="ident">Clone</span> <span class="op">+</span> <span class="ident">PartialEq</span>,
-    <span class="op">&gt;</span> <span class="ident">KeystoreResources</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span>, <span class="ident">Meta</span><span class="op">&gt;</span>
-{
-    <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">commit</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(), <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
-        <span class="self">self</span>.<span class="ident">meta_store</span>.<span class="ident">commit</span>();
-        <span class="self">self</span>.<span class="ident">ledger_states</span>.<span class="ident">commit</span>()<span class="question-mark">?</span>;
-        <span class="self">self</span>.<span class="ident">assets</span>.<span class="ident">commit</span>()<span class="question-mark">?</span>;
-        <span class="self">self</span>.<span class="ident">transactions</span>.<span class="ident">commit</span>()<span class="question-mark">?</span>;
-        <span class="self">self</span>.<span class="ident">records</span>.<span class="ident">commit</span>()<span class="question-mark">?</span>;
-        <span class="self">self</span>.<span class="ident">viewing_accounts</span>.<span class="ident">commit</span>()<span class="question-mark">?</span>;
-        <span class="self">self</span>.<span class="ident">freezing_accounts</span>.<span class="ident">commit</span>()<span class="question-mark">?</span>;
-        <span class="self">self</span>.<span class="ident">sending_accounts</span>.<span class="ident">commit</span>()<span class="question-mark">?</span>;
-        <span class="self">self</span>.<span class="ident">atomic_store</span>.<span class="ident">commit_version</span>()<span class="question-mark">?</span>;
-        <span class="prelude-val">Ok</span>(())
-    }
-}
-
 <span class="comment">// Fun fact: replacing `std::pin::Pin` with `Pin` and adding `use std::pin::Pin` causes the compiler</span>
 <span class="comment">// to panic where this type alias is used in `Keystore::new`. As a result, the type alias `BoxFuture`</span>
 <span class="comment">// from `futures::future` does not work, so we define our own.</span>
@@ -2282,7 +2295,7 @@
 {
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">create_stores</span>(
         <span class="ident">loader</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="kw">impl</span> <span class="ident">KeystoreLoader</span><span class="op">&lt;</span><span class="ident">L</span>, <span class="ident">Meta</span> <span class="op">=</span> <span class="ident">Meta</span><span class="op">&gt;</span>,
-    ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">KeystoreResources</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span>, <span class="ident">Meta</span><span class="op">&gt;</span>, <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
+    ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">KeystoreStores</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span>, <span class="ident">Meta</span><span class="op">&gt;</span>, <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
         <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">atomic_loader</span> <span class="op">=</span> <span class="ident">AtomicStoreLoader::load</span>(<span class="kw-2">&amp;</span><span class="ident">loader</span>.<span class="ident">location</span>(), <span class="string">&quot;keystore&quot;</span>).<span class="ident">unwrap</span>();
         <span class="kw">let</span> <span class="ident">file_fill_size</span> <span class="op">=</span> <span class="number">1024</span>;
         <span class="kw">let</span> <span class="ident">meta_store</span> <span class="op">=</span> <span class="ident">MetaStore::new</span>(<span class="ident">loader</span>, <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">atomic_loader</span>)<span class="question-mark">?</span>;
@@ -2315,7 +2328,7 @@
             <span class="ident">file_fill_size</span>,
         )<span class="question-mark">?</span>;
         <span class="kw">let</span> <span class="ident">atomic_store</span> <span class="op">=</span> <span class="ident">AtomicStore::open</span>(<span class="ident">atomic_loader</span>)<span class="question-mark">?</span>;
-        <span class="prelude-val">Ok</span>(<span class="ident">KeystoreResources</span> {
+        <span class="prelude-val">Ok</span>(<span class="ident">KeystoreStores</span> {
             <span class="ident">atomic_store</span>,
             <span class="ident">meta_store</span>,
             <span class="ident">ledger_states</span>,
@@ -2343,18 +2356,18 @@
         <span class="kw-2">mut</span> <span class="ident">backend</span>: <span class="ident">Backend</span>,
         <span class="ident">loader</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="kw">impl</span> <span class="ident">KeystoreLoader</span><span class="op">&lt;</span><span class="ident">L</span>, <span class="ident">Meta</span> <span class="op">=</span> <span class="ident">Meta</span><span class="op">&gt;</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">BoxFuture</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">Keystore</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">Backend</span>, <span class="ident">L</span>, <span class="ident">Meta</span><span class="op">&gt;</span>, <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span><span class="op">&gt;</span> {
-        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">resources</span> <span class="op">=</span> <span class="ident"><span class="self">Self</span>::create_stores</span>(<span class="ident">loader</span>).<span class="ident">unwrap</span>();
+        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">stores</span> <span class="op">=</span> <span class="ident"><span class="self">Self</span>::create_stores</span>(<span class="ident">loader</span>).<span class="ident">unwrap</span>();
         <span class="ident">Box::pin</span>(<span class="kw">async</span> <span class="kw">move</span> {
-            <span class="kw">let</span> <span class="ident">state</span> <span class="op">=</span> <span class="kw">if</span> <span class="ident">resources</span>.<span class="ident">meta_store</span>.<span class="ident">exists</span>() {
-                <span class="ident">resources</span>.<span class="ident">ledger_states</span>.<span class="ident">load</span>()<span class="question-mark">?</span>
+            <span class="kw">let</span> <span class="ident">state</span> <span class="op">=</span> <span class="kw">if</span> <span class="ident">stores</span>.<span class="ident">meta_store</span>.<span class="ident">exists</span>() {
+                <span class="ident">stores</span>.<span class="ident">ledger_states</span>.<span class="ident">load</span>()<span class="question-mark">?</span>
             } <span class="kw">else</span> {
                 <span class="kw">let</span> <span class="ident">state</span>: <span class="ident">LedgerState</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span><span class="op">&gt;</span> <span class="op">=</span> <span class="ident">backend</span>.<span class="ident">create</span>().<span class="kw">await</span><span class="question-mark">?</span>;
-                <span class="ident">resources</span>.<span class="ident">meta_store</span>.<span class="ident">create</span>().<span class="kw">await</span><span class="question-mark">?</span>;
-                <span class="ident">resources</span>.<span class="ident">ledger_states</span>.<span class="ident">update</span>(<span class="kw-2">&amp;</span><span class="ident">state</span>)<span class="question-mark">?</span>;
+                <span class="ident">stores</span>.<span class="ident">meta_store</span>.<span class="ident">create</span>().<span class="kw">await</span><span class="question-mark">?</span>;
+                <span class="ident">stores</span>.<span class="ident">ledger_states</span>.<span class="ident">update</span>(<span class="kw-2">&amp;</span><span class="ident">state</span>)<span class="question-mark">?</span>;
                 <span class="ident">state</span>
             };
-            <span class="ident">resources</span>.<span class="ident">commit</span>().<span class="kw">await</span><span class="question-mark">?</span>;
-            <span class="ident"><span class="self">Self</span>::new_impl</span>(<span class="ident">backend</span>, <span class="ident">resources</span>, <span class="ident">state</span>).<span class="kw">await</span>
+            <span class="ident">stores</span>.<span class="ident">commit</span>()<span class="question-mark">?</span>;
+            <span class="ident"><span class="self">Self</span>::new_impl</span>(<span class="ident">backend</span>, <span class="ident">stores</span>, <span class="ident">state</span>).<span class="kw">await</span>
         })
     }
 
@@ -2367,9 +2380,9 @@
         <span class="ident">freezing_key</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span>(<span class="ident">FreezerKeyPair</span>, <span class="ident">String</span>)<span class="op">&gt;</span>,
         <span class="ident">sending_key</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span>(<span class="ident">UserKeyPair</span>, <span class="ident">String</span>)<span class="op">&gt;</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">BoxFuture</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">Keystore</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">Backend</span>, <span class="ident">L</span>, <span class="ident">Meta</span><span class="op">&gt;</span>, <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span><span class="op">&gt;</span> {
-        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">resources</span> <span class="op">=</span> <span class="ident"><span class="self">Self</span>::create_stores</span>(<span class="ident">loader</span>).<span class="ident">unwrap</span>();
+        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">stores</span> <span class="op">=</span> <span class="ident"><span class="self">Self</span>::create_stores</span>(<span class="ident">loader</span>).<span class="ident">unwrap</span>();
         <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>((<span class="ident">key</span>, <span class="ident">description</span>)) <span class="op">=</span> <span class="ident">viewing_key</span> {
-            <span class="ident">resources</span>
+            <span class="ident">stores</span>
                 .<span class="ident">viewing_accounts</span>
                 .<span class="ident">create</span>(<span class="ident">key</span>, <span class="prelude-val">None</span>)
                 .<span class="ident">unwrap</span>()
@@ -2378,7 +2391,7 @@
                 .<span class="ident">unwrap</span>();
         }
         <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>((<span class="ident">key</span>, <span class="ident">description</span>)) <span class="op">=</span> <span class="ident">freezing_key</span> {
-            <span class="ident">resources</span>
+            <span class="ident">stores</span>
                 .<span class="ident">freezing_accounts</span>
                 .<span class="ident">create</span>(<span class="ident">key</span>, <span class="prelude-val">None</span>)
                 .<span class="ident">unwrap</span>()
@@ -2387,7 +2400,7 @@
                 .<span class="ident">unwrap</span>();
         }
         <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>((<span class="ident">key</span>, <span class="ident">description</span>)) <span class="op">=</span> <span class="ident">sending_key</span> {
-            <span class="ident">resources</span>
+            <span class="ident">stores</span>
                 .<span class="ident">sending_accounts</span>
                 .<span class="ident">create</span>(<span class="ident">key</span>, <span class="prelude-val">None</span>)
                 .<span class="ident">unwrap</span>()
@@ -2396,21 +2409,21 @@
                 .<span class="ident">unwrap</span>();
         }
         <span class="ident">Box::pin</span>(<span class="kw">async</span> <span class="kw">move</span> {
-            <span class="ident">resources</span>.<span class="ident">meta_store</span>.<span class="ident">create</span>().<span class="kw">await</span><span class="question-mark">?</span>;
-            <span class="ident">resources</span>.<span class="ident">ledger_states</span>.<span class="ident">update</span>(<span class="kw-2">&amp;</span><span class="ident">state</span>)<span class="question-mark">?</span>;
-            <span class="ident">resources</span>.<span class="ident">commit</span>().<span class="kw">await</span><span class="question-mark">?</span>;
-            <span class="ident"><span class="self">Self</span>::new_impl</span>(<span class="ident">backend</span>, <span class="ident">resources</span>, <span class="ident">state</span>).<span class="kw">await</span>
+            <span class="ident">stores</span>.<span class="ident">meta_store</span>.<span class="ident">create</span>().<span class="kw">await</span><span class="question-mark">?</span>;
+            <span class="ident">stores</span>.<span class="ident">ledger_states</span>.<span class="ident">update</span>(<span class="kw-2">&amp;</span><span class="ident">state</span>)<span class="question-mark">?</span>;
+            <span class="ident">stores</span>.<span class="ident">commit</span>()<span class="question-mark">?</span>;
+            <span class="ident"><span class="self">Self</span>::new_impl</span>(<span class="ident">backend</span>, <span class="ident">stores</span>, <span class="ident">state</span>).<span class="kw">await</span>
         })
     }
 
     <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">new_impl</span>(
         <span class="ident">backend</span>: <span class="ident">Backend</span>,
-        <span class="ident">resources</span>: <span class="ident">KeystoreResources</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span>, <span class="ident">Meta</span><span class="op">&gt;</span>,
+        <span class="ident">stores</span>: <span class="ident">KeystoreStores</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span>, <span class="ident">Meta</span><span class="op">&gt;</span>,
         <span class="ident">state</span>: <span class="ident">LedgerState</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span><span class="op">&gt;</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">Keystore</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">Backend</span>, <span class="ident">L</span>, <span class="ident">Meta</span><span class="op">&gt;</span>, <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
         <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">events</span> <span class="op">=</span> <span class="ident">backend</span>.<span class="ident">subscribe</span>(<span class="ident">state</span>.<span class="ident">now</span>(), <span class="prelude-val">None</span>).<span class="kw">await</span>;
         <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">key_scans</span> <span class="op">=</span> <span class="macro">vec!</span>[];
-        <span class="kw">for</span> <span class="ident">account</span> <span class="kw">in</span> <span class="ident">resources</span>.<span class="ident">viewing_accounts</span>.<span class="ident">iter</span>() {
+        <span class="kw">for</span> <span class="ident">account</span> <span class="kw">in</span> <span class="ident">stores</span>.<span class="ident">viewing_accounts</span>.<span class="ident">iter</span>() {
             <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">scan</span>) <span class="op">=</span> <span class="kw-2">&amp;</span><span class="ident">account</span>.<span class="ident">scan</span>() {
                 <span class="ident">key_scans</span>.<span class="ident">push</span>((
                     <span class="ident">scan</span>.<span class="ident">address</span>(),
@@ -2418,18 +2431,20 @@
                 ));
             }
         }
-        <span class="kw">let</span> <span class="ident">key_tree</span> <span class="op">=</span> <span class="ident">resources</span>.<span class="ident">meta_store</span>.<span class="ident">key_stream</span>();
+        <span class="kw">let</span> <span class="ident">key_tree</span> <span class="op">=</span> <span class="ident">stores</span>.<span class="ident">meta_store</span>.<span class="ident">key_stream</span>();
         <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">model</span> <span class="op">=</span> <span class="ident">KeystoreModel</span> {
             <span class="ident">backend</span>,
-            <span class="ident">atomic_store</span>: <span class="ident">resources</span>.<span class="ident">atomic_store</span>,
-            <span class="ident">meta_store</span>: <span class="ident">resources</span>.<span class="ident">meta_store</span>,
-            <span class="ident">ledger_states</span>: <span class="ident">resources</span>.<span class="ident">ledger_states</span>,
-            <span class="ident">assets</span>: <span class="ident">resources</span>.<span class="ident">assets</span>,
-            <span class="ident">transactions</span>: <span class="ident">resources</span>.<span class="ident">transactions</span>,
-            <span class="ident">records</span>: <span class="ident">resources</span>.<span class="ident">records</span>,
-            <span class="ident">viewing_accounts</span>: <span class="ident">resources</span>.<span class="ident">viewing_accounts</span>,
-            <span class="ident">freezing_accounts</span>: <span class="ident">resources</span>.<span class="ident">freezing_accounts</span>,
-            <span class="ident">sending_accounts</span>: <span class="ident">resources</span>.<span class="ident">sending_accounts</span>,
+            <span class="ident">stores</span>: <span class="ident">KeystoreStores</span> {
+                <span class="ident">atomic_store</span>: <span class="ident">stores</span>.<span class="ident">atomic_store</span>,
+                <span class="ident">meta_store</span>: <span class="ident">stores</span>.<span class="ident">meta_store</span>,
+                <span class="ident">ledger_states</span>: <span class="ident">stores</span>.<span class="ident">ledger_states</span>,
+                <span class="ident">assets</span>: <span class="ident">stores</span>.<span class="ident">assets</span>,
+                <span class="ident">transactions</span>: <span class="ident">stores</span>.<span class="ident">transactions</span>,
+                <span class="ident">records</span>: <span class="ident">stores</span>.<span class="ident">records</span>,
+                <span class="ident">viewing_accounts</span>: <span class="ident">stores</span>.<span class="ident">viewing_accounts</span>,
+                <span class="ident">freezing_accounts</span>: <span class="ident">stores</span>.<span class="ident">freezing_accounts</span>,
+                <span class="ident">sending_accounts</span>: <span class="ident">stores</span>.<span class="ident">sending_accounts</span>,
+            },
             <span class="ident">viewer_key_stream</span>: <span class="ident">key_tree</span>.<span class="ident">derive_sub_tree</span>(<span class="string">&quot;viewer&quot;</span>.<span class="ident">as_bytes</span>()),
             <span class="ident">freezer_key_stream</span>: <span class="ident">key_tree</span>.<span class="ident">derive_sub_tree</span>(<span class="string">&quot;freezer&quot;</span>.<span class="ident">as_bytes</span>()),
             <span class="ident">user_key_stream</span>: <span class="ident">key_tree</span>.<span class="ident">derive_sub_tree</span>(<span class="string">&quot;user&quot;</span>.<span class="ident">as_bytes</span>()),
@@ -2438,7 +2453,7 @@
             <span class="ident">_marker2</span>: <span class="ident">Default::default</span>(),
         };
         <span class="comment">// Ensure the native asset type is always recognized.</span>
-        <span class="ident">model</span>.<span class="ident">assets_mut</span>().<span class="ident">create_native</span>()<span class="question-mark">?</span>;
+        <span class="ident">model</span>.<span class="ident">stores</span>.<span class="ident">assets_mut</span>().<span class="ident">create_native</span>()<span class="question-mark">?</span>;
 
         <span class="kw">let</span> <span class="ident">mutex</span> <span class="op">=</span> <span class="ident">Arc::new</span>(<span class="ident">KeystoreSharedStateRwLock::new</span>(
             <span class="ident">state</span>,
@@ -2509,25 +2524,25 @@
     <span class="doccomment">/// Get the viewing public keys.</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">viewing_pub_keys</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">ViewerPubKey</span><span class="op">&gt;</span> {
         <span class="kw">let</span> <span class="ident">KeystoreSharedState</span> { <span class="ident">model</span>, .. } <span class="op">=</span> <span class="kw-2">&amp;</span><span class="kw-2">*</span><span class="self">self</span>.<span class="ident">read</span>().<span class="kw">await</span>;
-        <span class="ident">model</span>.<span class="ident">viewing_accounts</span>.<span class="ident">iter_pub_keys</span>().<span class="ident">collect</span>()
+        <span class="ident">model</span>.<span class="ident">stores</span>.<span class="ident">viewing_accounts</span>.<span class="ident">iter_pub_keys</span>().<span class="ident">collect</span>()
     }
 
     <span class="doccomment">/// Get the freezing public keys.</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">freezing_pub_keys</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">FreezerPubKey</span><span class="op">&gt;</span> {
         <span class="kw">let</span> <span class="ident">KeystoreSharedState</span> { <span class="ident">model</span>, .. } <span class="op">=</span> <span class="kw-2">&amp;</span><span class="kw-2">*</span><span class="self">self</span>.<span class="ident">read</span>().<span class="kw">await</span>;
-        <span class="ident">model</span>.<span class="ident">freezing_accounts</span>.<span class="ident">iter_pub_keys</span>().<span class="ident">collect</span>()
+        <span class="ident">model</span>.<span class="ident">stores</span>.<span class="ident">freezing_accounts</span>.<span class="ident">iter_pub_keys</span>().<span class="ident">collect</span>()
     }
 
     <span class="doccomment">/// Get the sending addresses.</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">sending_addresses</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">UserAddress</span><span class="op">&gt;</span> {
         <span class="kw">let</span> <span class="ident">KeystoreSharedState</span> { <span class="ident">model</span>, .. } <span class="op">=</span> <span class="kw-2">&amp;</span><span class="kw-2">*</span><span class="self">self</span>.<span class="ident">read</span>().<span class="kw">await</span>;
-        <span class="ident">model</span>.<span class="ident">sending_accounts</span>.<span class="ident">iter_pub_keys</span>().<span class="ident">collect</span>()
+        <span class="ident">model</span>.<span class="ident">stores</span>.<span class="ident">sending_accounts</span>.<span class="ident">iter_pub_keys</span>().<span class="ident">collect</span>()
     }
 
     <span class="doccomment">/// Get the sending keys.</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">sending_keys</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">UserKeyPair</span><span class="op">&gt;</span> {
         <span class="kw">let</span> <span class="ident">KeystoreSharedState</span> { <span class="ident">model</span>, .. } <span class="op">=</span> <span class="kw-2">&amp;</span><span class="kw-2">*</span><span class="self">self</span>.<span class="ident">read</span>().<span class="kw">await</span>;
-        <span class="ident">model</span>.<span class="ident">sending_accounts</span>.<span class="ident">iter_keys</span>().<span class="ident">collect</span>()
+        <span class="ident">model</span>.<span class="ident">stores</span>.<span class="ident">sending_accounts</span>.<span class="ident">iter_keys</span>().<span class="ident">collect</span>()
     }
 
     <span class="doccomment">/// Get the viewing account by the public key.</span>
@@ -2536,7 +2551,7 @@
         <span class="ident">pub_key</span>: <span class="kw-2">&amp;</span><span class="ident">ViewerPubKey</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">Account</span><span class="op">&lt;</span><span class="ident">L</span>, <span class="ident">ViewerKeyPair</span><span class="op">&gt;</span>, <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
         <span class="kw">let</span> <span class="ident">KeystoreSharedState</span> { <span class="ident">model</span>, .. } <span class="op">=</span> <span class="kw-2">&amp;</span><span class="kw-2">*</span><span class="self">self</span>.<span class="ident">read</span>().<span class="kw">await</span>;
-        <span class="ident">model</span>.<span class="ident">viewing_accounts</span>.<span class="ident">get</span>(<span class="ident">pub_key</span>)
+        <span class="ident">model</span>.<span class="ident">stores</span>.<span class="ident">viewing_accounts</span>.<span class="ident">get</span>(<span class="ident">pub_key</span>)
     }
 
     <span class="doccomment">/// Get the freezing account by the public key.</span>
@@ -2545,7 +2560,7 @@
         <span class="ident">pub_key</span>: <span class="kw-2">&amp;</span><span class="ident">FreezerPubKey</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">Account</span><span class="op">&lt;</span><span class="ident">L</span>, <span class="ident">FreezerKeyPair</span><span class="op">&gt;</span>, <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
         <span class="kw">let</span> <span class="ident">KeystoreSharedState</span> { <span class="ident">model</span>, .. } <span class="op">=</span> <span class="kw-2">&amp;</span><span class="kw-2">*</span><span class="self">self</span>.<span class="ident">read</span>().<span class="kw">await</span>;
-        <span class="ident">model</span>.<span class="ident">freezing_accounts</span>.<span class="ident">get</span>(<span class="ident">pub_key</span>)
+        <span class="ident">model</span>.<span class="ident">stores</span>.<span class="ident">freezing_accounts</span>.<span class="ident">get</span>(<span class="ident">pub_key</span>)
     }
 
     <span class="doccomment">/// Get the sending account by the address.</span>
@@ -2554,15 +2569,15 @@
         <span class="ident">address</span>: <span class="kw-2">&amp;</span><span class="ident">UserAddress</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">Account</span><span class="op">&lt;</span><span class="ident">L</span>, <span class="ident">UserKeyPair</span><span class="op">&gt;</span>, <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
         <span class="kw">let</span> <span class="ident">KeystoreSharedState</span> { <span class="ident">model</span>, .. } <span class="op">=</span> <span class="kw-2">&amp;</span><span class="kw-2">*</span><span class="self">self</span>.<span class="ident">read</span>().<span class="kw">await</span>;
-        <span class="ident">model</span>.<span class="ident">sending_accounts</span>.<span class="ident">get</span>(<span class="ident">address</span>)
+        <span class="ident">model</span>.<span class="ident">stores</span>.<span class="ident">sending_accounts</span>.<span class="ident">get</span>(<span class="ident">address</span>)
     }
 
     <span class="doccomment">/// Compute the spendable balance of the given asset owned by the given addresses.</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">balance</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">asset</span>: <span class="kw-2">&amp;</span><span class="ident">AssetCode</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">U256</span> {
         <span class="kw">let</span> <span class="ident">KeystoreSharedState</span> { <span class="ident">state</span>, <span class="ident">model</span>, .. } <span class="op">=</span> <span class="kw-2">&amp;</span><span class="kw-2">*</span><span class="self">self</span>.<span class="ident">read</span>().<span class="kw">await</span>;
         <span class="ident">state</span>.<span class="ident">balance</span>(
-            <span class="ident">model</span>,
-            <span class="ident">model</span>.<span class="ident">sending_accounts</span>.<span class="ident">iter_pub_keys</span>(),
+            <span class="kw-2">&amp;</span><span class="ident">model</span>.<span class="ident">stores</span>,
+            <span class="ident">model</span>.<span class="ident">stores</span>.<span class="ident">sending_accounts</span>.<span class="ident">iter_pub_keys</span>(),
             <span class="ident">asset</span>,
             <span class="ident">FreezeFlag::Unfrozen</span>,
         )
@@ -2571,10 +2586,13 @@
     <span class="doccomment">/// Compute the spendable balance of the given asset owned by the given address.</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">balance_breakdown</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">address</span>: <span class="kw-2">&amp;</span><span class="ident">UserAddress</span>, <span class="ident">asset</span>: <span class="kw-2">&amp;</span><span class="ident">AssetCode</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">U256</span> {
         <span class="kw">let</span> <span class="ident">KeystoreSharedState</span> { <span class="ident">state</span>, <span class="ident">model</span>, .. } <span class="op">=</span> <span class="kw-2">&amp;</span><span class="kw-2">*</span><span class="self">self</span>.<span class="ident">read</span>().<span class="kw">await</span>;
-        <span class="kw">match</span> <span class="ident">model</span>.<span class="ident">sending_accounts</span>.<span class="ident">get</span>(<span class="ident">address</span>) {
-            <span class="prelude-val">Ok</span>(<span class="ident">account</span>) <span class="op">=</span><span class="op">&gt;</span> {
-                <span class="ident">state</span>.<span class="ident">balance_breakdown</span>(<span class="ident">model</span>, <span class="kw-2">&amp;</span><span class="ident">account</span>.<span class="ident">pub_key</span>(), <span class="ident">asset</span>, <span class="ident">FreezeFlag::Unfrozen</span>)
-            }
+        <span class="kw">match</span> <span class="ident">model</span>.<span class="ident">stores</span>.<span class="ident">sending_accounts</span>.<span class="ident">get</span>(<span class="ident">address</span>) {
+            <span class="prelude-val">Ok</span>(<span class="ident">account</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">state</span>.<span class="ident">balance_breakdown</span>(
+                <span class="kw-2">&amp;</span><span class="ident">model</span>.<span class="ident">stores</span>,
+                <span class="kw-2">&amp;</span><span class="ident">account</span>.<span class="ident">pub_key</span>(),
+                <span class="ident">asset</span>,
+                <span class="ident">FreezeFlag::Unfrozen</span>,
+            ),
             <span class="kw">_</span> <span class="op">=</span><span class="op">&gt;</span> <span class="ident">U256::zero</span>(),
         }
     }
@@ -2582,10 +2600,13 @@
     <span class="doccomment">/// Compute the balance frozen records of the given asset type owned by the given address.</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">frozen_balance_breakdown</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">address</span>: <span class="kw-2">&amp;</span><span class="ident">UserAddress</span>, <span class="ident">asset</span>: <span class="kw-2">&amp;</span><span class="ident">AssetCode</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">U256</span> {
         <span class="kw">let</span> <span class="ident">KeystoreSharedState</span> { <span class="ident">state</span>, <span class="ident">model</span>, .. } <span class="op">=</span> <span class="kw-2">&amp;</span><span class="kw-2">*</span><span class="self">self</span>.<span class="ident">read</span>().<span class="kw">await</span>;
-        <span class="kw">match</span> <span class="ident">model</span>.<span class="ident">sending_accounts</span>.<span class="ident">get</span>(<span class="ident">address</span>) {
-            <span class="prelude-val">Ok</span>(<span class="ident">account</span>) <span class="op">=</span><span class="op">&gt;</span> {
-                <span class="ident">state</span>.<span class="ident">balance_breakdown</span>(<span class="ident">model</span>, <span class="kw-2">&amp;</span><span class="ident">account</span>.<span class="ident">pub_key</span>(), <span class="ident">asset</span>, <span class="ident">FreezeFlag::Frozen</span>)
-            }
+        <span class="kw">match</span> <span class="ident">model</span>.<span class="ident">stores</span>.<span class="ident">sending_accounts</span>.<span class="ident">get</span>(<span class="ident">address</span>) {
+            <span class="prelude-val">Ok</span>(<span class="ident">account</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">state</span>.<span class="ident">balance_breakdown</span>(
+                <span class="kw-2">&amp;</span><span class="ident">model</span>.<span class="ident">stores</span>,
+                <span class="kw-2">&amp;</span><span class="ident">account</span>.<span class="ident">pub_key</span>(),
+                <span class="ident">asset</span>,
+                <span class="ident">FreezeFlag::Frozen</span>,
+            ),
             <span class="kw">_</span> <span class="op">=</span><span class="op">&gt;</span> <span class="ident">U256::zero</span>(),
         }
     }
@@ -2593,19 +2614,19 @@
     <span class="doccomment">/// List records owned or viewable by this keystore.</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">records</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">Record</span><span class="op">&gt;</span> {
         <span class="kw">let</span> <span class="ident">KeystoreSharedState</span> { <span class="ident">model</span>, .. } <span class="op">=</span> <span class="kw-2">&amp;</span><span class="kw-2">*</span><span class="self">self</span>.<span class="ident">read</span>().<span class="kw">await</span>;
-        <span class="ident">model</span>.<span class="ident">records</span>.<span class="ident">iter</span>().<span class="ident">collect</span>::<span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="kw">_</span><span class="op">&gt;</span><span class="op">&gt;</span>()
+        <span class="ident">model</span>.<span class="ident">stores</span>.<span class="ident">records</span>.<span class="ident">iter</span>().<span class="ident">collect</span>::<span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="kw">_</span><span class="op">&gt;</span><span class="op">&gt;</span>()
     }
 
     <span class="doccomment">/// List assets discovered or imported by this keystore.</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">assets</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">Asset</span><span class="op">&gt;</span> {
         <span class="kw">let</span> <span class="ident">KeystoreSharedState</span> { <span class="ident">model</span>, .. } <span class="op">=</span> <span class="kw-2">&amp;</span><span class="kw-2">*</span><span class="self">self</span>.<span class="ident">read</span>().<span class="kw">await</span>;
-        <span class="ident">model</span>.<span class="ident">assets</span>()
+        <span class="ident">model</span>.<span class="ident">stores</span>.<span class="ident">assets</span>()
     }
 
     <span class="doccomment">/// Get details about an asset type using its code.</span>
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">asset</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">code</span>: <span class="ident">AssetCode</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">Asset</span><span class="op">&gt;</span> {
         <span class="kw">let</span> <span class="ident">KeystoreSharedState</span> { <span class="ident">model</span>, .. } <span class="op">=</span> <span class="kw-2">&amp;</span><span class="kw-2">*</span><span class="self">self</span>.<span class="ident">read</span>().<span class="kw">await</span>;
-        <span class="ident">model</span>.<span class="ident">asset</span>(<span class="kw-2">&amp;</span><span class="ident">code</span>).<span class="ident">ok</span>()
+        <span class="ident">model</span>.<span class="ident">stores</span>.<span class="ident">asset</span>(<span class="kw-2">&amp;</span><span class="ident">code</span>).<span class="ident">ok</span>()
     }
 
     <span class="doccomment">/// List past transactions involving this keystore.</span>
@@ -2616,7 +2637,7 @@
     {
         <span class="ident">Box::pin</span>(<span class="kw">async</span> <span class="kw">move</span> {
             <span class="kw">let</span> <span class="ident">KeystoreSharedState</span> { <span class="ident">model</span>, .. } <span class="op">=</span> <span class="kw-2">&amp;</span><span class="kw-2">*</span><span class="self">self</span>.<span class="ident">read</span>().<span class="kw">await</span>;
-            <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">history</span> <span class="op">=</span> <span class="ident">model</span>.<span class="ident">transactions</span>.<span class="ident">iter</span>().<span class="ident">collect</span>::<span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="kw">_</span><span class="op">&gt;</span><span class="op">&gt;</span>();
+            <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">history</span> <span class="op">=</span> <span class="ident">model</span>.<span class="ident">stores</span>.<span class="ident">transactions</span>.<span class="ident">iter</span>().<span class="ident">collect</span>::<span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="kw">_</span><span class="op">&gt;</span><span class="op">&gt;</span>();
             <span class="ident">history</span>.<span class="ident">sort_by_key</span>(<span class="op">|</span><span class="ident">txn</span><span class="op">|</span> <span class="kw-2">*</span><span class="ident">txn</span>.<span class="ident">created_time</span>());
             <span class="prelude-val">Ok</span>(<span class="ident">history</span>)
         })
@@ -2674,9 +2695,9 @@
                 <span class="kw">async</span> <span class="kw">move</span> {
                     <span class="kw">let</span> <span class="ident">sender_key_pairs</span> <span class="op">=</span> <span class="kw">match</span> <span class="ident">sender</span> {
                         <span class="prelude-val">Some</span>(<span class="ident">addr</span>) <span class="op">=</span><span class="op">&gt;</span> {
-                            <span class="macro">vec!</span>[<span class="ident">model</span>.<span class="ident">sending_accounts</span>.<span class="ident">get</span>(<span class="ident">addr</span>)<span class="question-mark">?</span>.<span class="ident">key</span>().<span class="ident">clone</span>()]
+                            <span class="macro">vec!</span>[<span class="ident">model</span>.<span class="ident">stores</span>.<span class="ident">sending_accounts</span>.<span class="ident">get</span>(<span class="ident">addr</span>)<span class="question-mark">?</span>.<span class="ident">key</span>().<span class="ident">clone</span>()]
                         }
-                        <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> <span class="ident">model</span>.<span class="ident">sending_accounts</span>.<span class="ident">iter_keys</span>().<span class="ident">collect</span>(),
+                        <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> <span class="ident">model</span>.<span class="ident">stores</span>.<span class="ident">sending_accounts</span>.<span class="ident">iter_keys</span>().<span class="ident">collect</span>(),
                     };
                     <span class="kw">let</span> <span class="ident">spec</span> <span class="op">=</span> <span class="ident">TransferSpec</span> {
                         <span class="ident">sender_key_pairs</span>: <span class="kw-2">&amp;</span><span class="ident">sender_key_pairs</span>,
@@ -2749,7 +2770,9 @@
     <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">import_asset</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">asset</span>: <span class="ident">Asset</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(), <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
         <span class="self">self</span>.<span class="ident">write</span>()
             .<span class="kw">await</span>
-            .<span class="ident">update</span>(<span class="op">|</span><span class="ident">KeystoreSharedState</span> { <span class="ident">model</span>, .. }<span class="op">|</span> <span class="kw">async</span> <span class="kw">move</span> { <span class="ident">import_asset</span>(<span class="ident">model</span>, <span class="ident">asset</span>) })
+            .<span class="ident">update</span>(<span class="op">|</span><span class="ident">KeystoreSharedState</span> { <span class="ident">model</span>, .. }<span class="op">|</span> <span class="kw">async</span> <span class="kw">move</span> {
+                <span class="ident">import_asset</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">model</span>.<span class="ident">stores</span>, <span class="ident">asset</span>)
+            })
             .<span class="kw">await</span>
     }
 
@@ -2773,7 +2796,7 @@
         <span class="self">self</span>.<span class="ident">write</span>()
             .<span class="kw">await</span>
             .<span class="ident">update</span>(<span class="op">|</span><span class="ident">KeystoreSharedState</span> { <span class="ident">model</span>, .. }<span class="op">|</span> <span class="kw">async</span> <span class="kw">move</span> {
-                <span class="ident">verify_assets</span>(<span class="ident">model</span>, <span class="ident">trusted_signer</span>, <span class="ident">library</span>)
+                <span class="ident">verify_assets</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">model</span>.<span class="ident">stores</span>, <span class="ident">trusted_signer</span>, <span class="ident">library</span>)
             })
             .<span class="kw">await</span>
     }
@@ -2970,7 +2993,7 @@
         <span class="self">self</span>.<span class="ident">write</span>()
             .<span class="kw">await</span>
             .<span class="ident">update</span>(<span class="op">|</span><span class="ident">KeystoreSharedState</span> { <span class="ident">state</span>, <span class="ident">model</span>, .. }<span class="op">|</span> {
-                <span class="ident">state</span>.<span class="ident">import_memo</span>(<span class="ident">model</span>, <span class="ident">memo</span>, <span class="ident">comm</span>, <span class="ident">uid</span>, <span class="ident">proof</span>)
+                <span class="ident">state</span>.<span class="ident">import_memo</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">model</span>.<span class="ident">stores</span>, <span class="ident">memo</span>, <span class="ident">comm</span>, <span class="ident">uid</span>, <span class="ident">proof</span>)
             })
             .<span class="kw">await</span>
     }
@@ -3130,7 +3153,7 @@
         <span class="ident">uid</span>: <span class="kw-2">&amp;</span><span class="ident">TransactionUID</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">TransactionStatus</span>, <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
         <span class="kw">let</span> <span class="ident">KeystoreSharedState</span> { <span class="ident">model</span>, .. } <span class="op">=</span> <span class="kw-2">&amp;</span><span class="kw-2">*</span><span class="self">self</span>.<span class="ident">read</span>().<span class="kw">await</span>;
-        <span class="prelude-val">Ok</span>(<span class="ident">model</span>.<span class="ident">transactions</span>.<span class="ident">get</span>(<span class="ident">uid</span>)<span class="question-mark">?</span>.<span class="ident">status</span>())
+        <span class="prelude-val">Ok</span>(<span class="ident">model</span>.<span class="ident">stores</span>.<span class="ident">transactions</span>.<span class="ident">get</span>(<span class="ident">uid</span>)<span class="question-mark">?</span>.<span class="ident">status</span>())
     }
 
     <span class="doccomment">/// A future which completes when the transaction is finalized (committed or rejected).</span>
@@ -3151,7 +3174,7 @@
                          <span class="ident">txn_subscribers</span>,
                          ..
                      }<span class="op">|</span> <span class="kw">async</span> <span class="kw">move</span> {
-                        <span class="kw">let</span> <span class="ident">status</span> <span class="op">=</span> <span class="ident">model</span>.<span class="ident">transactions</span>.<span class="ident">get</span>(<span class="ident">uid</span>)<span class="question-mark">?</span>.<span class="ident">status</span>();
+                        <span class="kw">let</span> <span class="ident">status</span> <span class="op">=</span> <span class="ident">model</span>.<span class="ident">stores</span>.<span class="ident">transactions</span>.<span class="ident">get</span>(<span class="ident">uid</span>)<span class="question-mark">?</span>.<span class="ident">status</span>();
                         <span class="kw">if</span> <span class="ident">status</span>.<span class="ident">is_final</span>() {
                             <span class="prelude-val">Ok</span>(<span class="prelude-val">Ok</span>(<span class="ident">status</span>))
                         } <span class="kw">else</span> {
@@ -3290,7 +3313,7 @@
         <span class="self">self</span>.<span class="ident">write</span>()
             .<span class="kw">await</span>
             .<span class="ident">update</span>(<span class="op">|</span><span class="ident">KeystoreSharedState</span> { <span class="ident">model</span>, .. }<span class="op">|</span> <span class="kw">async</span> <span class="kw">move</span> {
-                <span class="ident">model</span>.<span class="ident">assets_mut</span>().<span class="ident">insert</span>(<span class="ident">asset</span>)<span class="question-mark">?</span>.<span class="ident">save</span>()<span class="question-mark">?</span>;
+                <span class="ident">model</span>.<span class="ident">stores</span>.<span class="ident">assets_mut</span>().<span class="ident">insert</span>(<span class="ident">asset</span>)<span class="question-mark">?</span>.<span class="ident">save</span>()<span class="question-mark">?</span>;
                 <span class="prelude-val">Ok</span>(())
             })
             .<span class="kw">await</span>
@@ -3310,6 +3333,7 @@
             .<span class="kw">await</span>
             .<span class="ident">update</span>(<span class="op">|</span><span class="ident">KeystoreSharedState</span> { <span class="ident">model</span>, .. }<span class="op">|</span> <span class="kw">async</span> <span class="kw">move</span> {
                 <span class="ident">model</span>
+                    .<span class="ident">stores</span>
                     .<span class="ident">assets_mut</span>()
                     .<span class="ident">create</span>(<span class="ident">definition</span>, <span class="ident">mint_info</span>)<span class="question-mark">?</span>
                     .<span class="ident">set_name</span>(<span class="ident">name</span>)
@@ -3331,6 +3355,7 @@
             .<span class="kw">await</span>
             .<span class="ident">update</span>(<span class="op">|</span><span class="ident">KeystoreSharedState</span> { <span class="ident">model</span>, .. }<span class="op">|</span> <span class="kw">async</span> <span class="kw">move</span> {
                 <span class="ident">model</span>
+                    .<span class="ident">stores</span>
                     .<span class="ident">assets_mut</span>()
                     .<span class="ident">create_native</span>()<span class="question-mark">?</span>
                     .<span class="ident">set_icon</span>(<span class="ident">icon</span>)
@@ -3345,7 +3370,7 @@
     <span class="lifetime">&#39;a</span>,
     <span class="ident">L</span>: <span class="lifetime">&#39;static</span> <span class="op">+</span> <span class="ident">Ledger</span>,
     <span class="ident">Backend</span>: <span class="ident">KeystoreBackend</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span><span class="op">&gt;</span>,
-    <span class="ident">Meta</span>: <span class="ident">Send</span> <span class="op">+</span> <span class="ident">DeserializeOwned</span> <span class="op">+</span> <span class="ident">Serialize</span>,
+    <span class="ident">Meta</span>: <span class="ident">Send</span> <span class="op">+</span> <span class="ident">DeserializeOwned</span> <span class="op">+</span> <span class="ident">Serialize</span> <span class="op">+</span> <span class="ident">Sync</span> <span class="op">+</span> <span class="ident">Clone</span> <span class="op">+</span> <span class="ident">PartialEq</span>,
 <span class="op">&gt;</span>(
     <span class="ident">event</span>: <span class="ident">LedgerEvent</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span>,
     <span class="ident">source</span>: <span class="ident">EventSource</span>,
@@ -3388,7 +3413,7 @@
     <span class="lifetime">&#39;a</span>,
     <span class="ident">L</span>: <span class="lifetime">&#39;static</span> <span class="op">+</span> <span class="ident">Ledger</span>,
     <span class="ident">Backend</span>: <span class="ident">KeystoreBackend</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span><span class="op">&gt;</span>,
-    <span class="ident">Meta</span>: <span class="ident">Send</span> <span class="op">+</span> <span class="ident">DeserializeOwned</span> <span class="op">+</span> <span class="ident">Serialize</span>,
+    <span class="ident">Meta</span>: <span class="ident">Send</span> <span class="op">+</span> <span class="ident">DeserializeOwned</span> <span class="op">+</span> <span class="ident">Serialize</span> <span class="op">+</span> <span class="ident">Sync</span> <span class="op">+</span> <span class="ident">Clone</span> <span class="op">+</span> <span class="ident">PartialEq</span>,
 <span class="op">&gt;</span>(
     <span class="ident">address</span>: <span class="kw-2">&amp;</span><span class="ident">UserAddress</span>,
     <span class="ident">event</span>: <span class="ident">LedgerEvent</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span>,
@@ -3403,6 +3428,7 @@
     } <span class="op">=</span> <span class="ident">shared_state</span>;
 
     <span class="kw">let</span> <span class="ident">finished</span> <span class="op">=</span> <span class="kw">match</span> <span class="ident">model</span>
+        .<span class="ident">stores</span>
         .<span class="ident">sending_accounts</span>
         .<span class="ident">get_mut</span>(<span class="ident">address</span>)
         .<span class="ident">unwrap</span>()
@@ -3413,11 +3439,11 @@
             <span class="ident">editor</span>.<span class="ident">save</span>()<span class="question-mark">?</span>;
             <span class="kw">match</span> <span class="ident">scan_info</span> {
                 <span class="prelude-val">Some</span>((<span class="ident">key</span>, <span class="ident">ScanOutputs</span> { <span class="ident">records</span>, <span class="ident">history</span> })) <span class="op">=</span><span class="op">&gt;</span> {
-                    <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span> <span class="ident">state</span>.<span class="ident">add_records</span>(<span class="ident">model</span>, <span class="kw-2">&amp;</span><span class="ident">key</span>, <span class="ident">records</span>).<span class="kw">await</span> {
+                    <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span> <span class="ident">state</span>.<span class="ident">add_records</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">model</span>.<span class="ident">stores</span>, <span class="kw-2">&amp;</span><span class="ident">key</span>, <span class="ident">records</span>).<span class="kw">await</span> {
                         <span class="macro">tracing::error!</span>(<span class="string">&quot;Error saving records from key scan {}: {}&quot;</span>, <span class="ident">address</span>, <span class="ident">err</span>);
                     }
                     <span class="kw">for</span> (<span class="ident">uid</span>, <span class="ident">t</span>) <span class="kw">in</span> <span class="ident">history</span> {
-                        <span class="ident">model</span>.<span class="ident">transactions</span>.<span class="ident">create</span>(<span class="ident">uid</span>, <span class="ident">t</span>)<span class="question-mark">?</span>;
+                        <span class="ident">model</span>.<span class="ident">stores</span>.<span class="ident">transactions</span>.<span class="ident">create</span>(<span class="ident">uid</span>, <span class="ident">t</span>)<span class="question-mark">?</span>;
                     }
 
                     <span class="comment">// Signal anyone waiting for a notification that this scan finished.</span>
@@ -3435,7 +3461,7 @@
         <span class="kw">_</span> <span class="op">=</span><span class="op">&gt;</span> <span class="bool-val">false</span>,
     };
 
-    <span class="ident">model</span>.<span class="ident">ledger_states</span>.<span class="ident">update_dynamic</span>(<span class="ident">state</span>)<span class="question-mark">?</span>;
+    <span class="ident">model</span>.<span class="ident">stores</span>.<span class="ident">ledger_states</span>.<span class="ident">update_dynamic</span>(<span class="ident">state</span>)<span class="question-mark">?</span>;
     <span class="prelude-val">Ok</span>(<span class="ident">finished</span>)
 }
 

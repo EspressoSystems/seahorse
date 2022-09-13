@@ -274,19 +274,6 @@
 <span id="274">274</span>
 <span id="275">275</span>
 <span id="276">276</span>
-<span id="277">277</span>
-<span id="278">278</span>
-<span id="279">279</span>
-<span id="280">280</span>
-<span id="281">281</span>
-<span id="282">282</span>
-<span id="283">283</span>
-<span id="284">284</span>
-<span id="285">285</span>
-<span id="286">286</span>
-<span id="287">287</span>
-<span id="288">288</span>
-<span id="289">289</span>
 </pre><pre class="rust"><code><span class="kw">use</span> <span class="kw">crate</span>::{
     <span class="ident">ledger_state::LedgerState</span>, <span class="ident">EventIndex</span>, <span class="ident">KeystoreBackend</span>, <span class="ident">KeystoreError</span>, <span class="ident">KeystoreModel</span>,
     <span class="ident">TransactionStatus</span>, <span class="ident">TransactionUID</span>,
@@ -302,9 +289,9 @@
 <span class="doccomment">/// Keystore state which is shared with event handling threads.</span>
 <span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">KeystoreSharedState</span><span class="op">&lt;</span>
     <span class="lifetime">&#39;a</span>,
-    <span class="ident">L</span>: <span class="ident">Ledger</span>,
+    <span class="ident">L</span>: <span class="lifetime">&#39;static</span> <span class="op">+</span> <span class="ident">Ledger</span>,
     <span class="ident">Backend</span>: <span class="ident">KeystoreBackend</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span><span class="op">&gt;</span>,
-    <span class="ident">Meta</span>: <span class="ident">Serialize</span> <span class="op">+</span> <span class="ident">DeserializeOwned</span> <span class="op">+</span> <span class="ident">Send</span>,
+    <span class="ident">Meta</span>: <span class="ident">Serialize</span> <span class="op">+</span> <span class="ident">DeserializeOwned</span> <span class="op">+</span> <span class="ident">Send</span> <span class="op">+</span> <span class="ident">Sync</span> <span class="op">+</span> <span class="ident">Clone</span> <span class="op">+</span> <span class="ident">PartialEq</span>,
 <span class="op">&gt;</span> {
     <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="ident">state</span>: <span class="ident">LedgerState</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span><span class="op">&gt;</span>,
     <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="ident">model</span>: <span class="ident">KeystoreModel</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span>, <span class="ident">Backend</span>, <span class="ident">Meta</span><span class="op">&gt;</span>,
@@ -317,37 +304,24 @@
         <span class="lifetime">&#39;a</span>,
         <span class="ident">L</span>: <span class="lifetime">&#39;static</span> <span class="op">+</span> <span class="ident">Ledger</span>,
         <span class="ident">Backend</span>: <span class="ident">KeystoreBackend</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span><span class="op">&gt;</span>,
-        <span class="ident">Meta</span>: <span class="ident">Serialize</span> <span class="op">+</span> <span class="ident">DeserializeOwned</span> <span class="op">+</span> <span class="ident">Send</span>,
+        <span class="ident">Meta</span>: <span class="ident">Serialize</span> <span class="op">+</span> <span class="ident">DeserializeOwned</span> <span class="op">+</span> <span class="ident">Send</span> <span class="op">+</span> <span class="ident">Sync</span> <span class="op">+</span> <span class="ident">Clone</span> <span class="op">+</span> <span class="ident">PartialEq</span>,
     <span class="op">&gt;</span> <span class="ident">KeystoreSharedState</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span>, <span class="ident">Backend</span>, <span class="ident">Meta</span><span class="op">&gt;</span>
 {
-    <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">commit</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(), <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
-        <span class="self">self</span>.<span class="ident">model</span>.<span class="ident">meta_store</span>.<span class="ident">commit</span>();
-        <span class="self">self</span>.<span class="ident">model</span>.<span class="ident">ledger_states</span>.<span class="ident">commit</span>()<span class="question-mark">?</span>;
-        <span class="self">self</span>.<span class="ident">model</span>.<span class="ident">assets</span>.<span class="ident">commit</span>()<span class="question-mark">?</span>;
-        <span class="self">self</span>.<span class="ident">model</span>.<span class="ident">transactions</span>.<span class="ident">commit</span>()<span class="question-mark">?</span>;
-        <span class="self">self</span>.<span class="ident">model</span>.<span class="ident">records</span>.<span class="ident">commit</span>()<span class="question-mark">?</span>;
-        <span class="self">self</span>.<span class="ident">model</span>.<span class="ident">viewing_accounts</span>.<span class="ident">commit</span>()<span class="question-mark">?</span>;
-        <span class="self">self</span>.<span class="ident">model</span>.<span class="ident">freezing_accounts</span>.<span class="ident">commit</span>()<span class="question-mark">?</span>;
-        <span class="self">self</span>.<span class="ident">model</span>.<span class="ident">sending_accounts</span>.<span class="ident">commit</span>()<span class="question-mark">?</span>;
-        <span class="self">self</span>.<span class="ident">model</span>
-            .<span class="ident">atomic_store</span>
-            .<span class="ident">commit_version</span>()
-            .<span class="ident">map_err</span>(<span class="ident">KeystoreError::from</span>)
+    <span class="kw">fn</span> <span class="ident">commit</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(), <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
+        <span class="self">self</span>.<span class="ident">model</span>.<span class="ident">stores</span>.<span class="ident">commit</span>()
     }
 
     <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">revert</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(), <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
-        <span class="self">self</span>.<span class="ident">model</span>.<span class="ident">assets</span>.<span class="ident">revert</span>()<span class="question-mark">?</span>;
-        <span class="self">self</span>.<span class="ident">model</span>.<span class="ident">transactions</span>.<span class="ident">revert</span>()<span class="question-mark">?</span>;
-        <span class="self">self</span>.<span class="ident">model</span>.<span class="ident">viewing_accounts</span>.<span class="ident">revert</span>()<span class="question-mark">?</span>;
-        <span class="self">self</span>.<span class="ident">model</span>.<span class="ident">freezing_accounts</span>.<span class="ident">revert</span>()<span class="question-mark">?</span>;
-        <span class="self">self</span>.<span class="ident">model</span>.<span class="ident">sending_accounts</span>.<span class="ident">revert</span>()<span class="question-mark">?</span>;
-        <span class="self">self</span>.<span class="ident">model</span>.<span class="ident">meta_store</span>.<span class="ident">revert</span>().<span class="kw">await</span>;
-        <span class="prelude-val">Ok</span>(())
+        <span class="self">self</span>.<span class="ident">model</span>.<span class="ident">stores</span>.<span class="ident">revert</span>().<span class="kw">await</span>
     }
 }
 
-<span class="kw">impl</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span>: <span class="ident">Ledger</span>, <span class="ident">Backend</span>: <span class="ident">KeystoreBackend</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span><span class="op">&gt;</span>, <span class="ident">Meta</span>: <span class="ident">Serialize</span> <span class="op">+</span> <span class="ident">DeserializeOwned</span> <span class="op">+</span> <span class="ident">Send</span><span class="op">&gt;</span>
-    <span class="ident">KeystoreSharedState</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span>, <span class="ident">Backend</span>, <span class="ident">Meta</span><span class="op">&gt;</span>
+<span class="kw">impl</span><span class="op">&lt;</span>
+        <span class="lifetime">&#39;a</span>,
+        <span class="ident">L</span>: <span class="ident">Ledger</span>,
+        <span class="ident">Backend</span>: <span class="ident">KeystoreBackend</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span><span class="op">&gt;</span>,
+        <span class="ident">Meta</span>: <span class="ident">Serialize</span> <span class="op">+</span> <span class="ident">DeserializeOwned</span> <span class="op">+</span> <span class="ident">Send</span> <span class="op">+</span> <span class="ident">Sync</span> <span class="op">+</span> <span class="ident">Clone</span> <span class="op">+</span> <span class="ident">PartialEq</span>,
+    <span class="op">&gt;</span> <span class="ident">KeystoreSharedState</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span>, <span class="ident">Backend</span>, <span class="ident">Meta</span><span class="op">&gt;</span>
 {
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">new</span>(
         <span class="ident">state</span>: <span class="ident">LedgerState</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span><span class="op">&gt;</span>,
@@ -383,16 +357,16 @@
 <span class="doccomment">/// A read-write lock where writes must go through atomic storage transactions.</span>
 <span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">KeystoreSharedStateRwLock</span><span class="op">&lt;</span>
     <span class="lifetime">&#39;a</span>,
-    <span class="ident">L</span>: <span class="ident">Ledger</span>,
+    <span class="ident">L</span>: <span class="lifetime">&#39;static</span> <span class="op">+</span> <span class="ident">Ledger</span>,
     <span class="ident">Backend</span>: <span class="ident">KeystoreBackend</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span><span class="op">&gt;</span>,
-    <span class="ident">Meta</span>: <span class="ident">Send</span> <span class="op">+</span> <span class="ident">Serialize</span> <span class="op">+</span> <span class="ident">DeserializeOwned</span>,
+    <span class="ident">Meta</span>: <span class="ident">Send</span> <span class="op">+</span> <span class="ident">Serialize</span> <span class="op">+</span> <span class="ident">DeserializeOwned</span> <span class="op">+</span> <span class="ident">Sync</span> <span class="op">+</span> <span class="ident">Clone</span> <span class="op">+</span> <span class="ident">PartialEq</span>,
 <span class="op">&gt;</span>(<span class="ident">RwLock</span><span class="op">&lt;</span><span class="ident">KeystoreSharedState</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span>, <span class="ident">Backend</span>, <span class="ident">Meta</span><span class="op">&gt;</span><span class="op">&gt;</span>);
 
 <span class="kw">impl</span><span class="op">&lt;</span>
         <span class="lifetime">&#39;a</span>,
         <span class="ident">L</span>: <span class="lifetime">&#39;static</span> <span class="op">+</span> <span class="ident">Ledger</span>,
         <span class="ident">Backend</span>: <span class="ident">KeystoreBackend</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span><span class="op">&gt;</span>,
-        <span class="ident">Meta</span>: <span class="ident">Send</span> <span class="op">+</span> <span class="ident">Serialize</span> <span class="op">+</span> <span class="ident">DeserializeOwned</span>,
+        <span class="ident">Meta</span>: <span class="ident">Send</span> <span class="op">+</span> <span class="ident">Serialize</span> <span class="op">+</span> <span class="ident">DeserializeOwned</span> <span class="op">+</span> <span class="ident">Sync</span> <span class="op">+</span> <span class="ident">Clone</span> <span class="op">+</span> <span class="ident">PartialEq</span>,
     <span class="op">&gt;</span> <span class="ident">KeystoreSharedStateRwLock</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span>, <span class="ident">Backend</span>, <span class="ident">Meta</span><span class="op">&gt;</span>
 {
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">new</span>(
@@ -438,7 +412,7 @@
     <span class="lifetime">&#39;a</span>,
     <span class="ident">L</span>: <span class="lifetime">&#39;static</span> <span class="op">+</span> <span class="ident">Ledger</span>,
     <span class="ident">Backend</span>: <span class="ident">KeystoreBackend</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span><span class="op">&gt;</span>,
-    <span class="ident">Meta</span>: <span class="ident">Send</span> <span class="op">+</span> <span class="ident">Serialize</span> <span class="op">+</span> <span class="ident">DeserializeOwned</span>,
+    <span class="ident">Meta</span>: <span class="ident">Send</span> <span class="op">+</span> <span class="ident">Serialize</span> <span class="op">+</span> <span class="ident">DeserializeOwned</span> <span class="op">+</span> <span class="ident">Sync</span> <span class="op">+</span> <span class="ident">Clone</span> <span class="op">+</span> <span class="ident">PartialEq</span>,
 <span class="op">&gt;</span> {
     <span class="ident">guard</span>: <span class="ident">RwLockWriteGuard</span><span class="op">&lt;</span><span class="lifetime">&#39;l</span>, <span class="ident">KeystoreSharedState</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span>, <span class="ident">Backend</span>, <span class="ident">Meta</span><span class="op">&gt;</span><span class="op">&gt;</span>,
     <span class="ident">failed</span>: <span class="ident">bool</span>,
@@ -449,7 +423,7 @@
         <span class="lifetime">&#39;a</span>,
         <span class="ident">L</span>: <span class="lifetime">&#39;static</span> <span class="op">+</span> <span class="ident">Ledger</span>,
         <span class="ident">Backend</span>: <span class="ident">KeystoreBackend</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span><span class="op">&gt;</span>,
-        <span class="ident">Meta</span>: <span class="ident">Send</span> <span class="op">+</span> <span class="ident">Serialize</span> <span class="op">+</span> <span class="ident">DeserializeOwned</span>,
+        <span class="ident">Meta</span>: <span class="ident">Send</span> <span class="op">+</span> <span class="ident">Serialize</span> <span class="op">+</span> <span class="ident">DeserializeOwned</span> <span class="op">+</span> <span class="ident">Sync</span> <span class="op">+</span> <span class="ident">Clone</span> <span class="op">+</span> <span class="ident">PartialEq</span>,
     <span class="op">&gt;</span> <span class="ident">KeystoreSharedStateWriteGuard</span><span class="op">&lt;</span><span class="lifetime">&#39;l</span>, <span class="lifetime">&#39;a</span>, <span class="ident">L</span>, <span class="ident">Backend</span>, <span class="ident">Meta</span><span class="op">&gt;</span>
 {
     <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">new</span>(
@@ -563,7 +537,7 @@
         <span class="lifetime">&#39;a</span>,
         <span class="ident">L</span>: <span class="lifetime">&#39;static</span> <span class="op">+</span> <span class="ident">Ledger</span>,
         <span class="ident">Backend</span>: <span class="ident">KeystoreBackend</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span><span class="op">&gt;</span>,
-        <span class="ident">Meta</span>: <span class="ident">Send</span> <span class="op">+</span> <span class="ident">Serialize</span> <span class="op">+</span> <span class="ident">DeserializeOwned</span>,
+        <span class="ident">Meta</span>: <span class="ident">Send</span> <span class="op">+</span> <span class="ident">Serialize</span> <span class="op">+</span> <span class="ident">DeserializeOwned</span> <span class="op">+</span> <span class="ident">Sync</span> <span class="op">+</span> <span class="ident">Clone</span> <span class="op">+</span> <span class="ident">PartialEq</span>,
     <span class="op">&gt;</span> <span class="ident">Drop</span> <span class="kw">for</span> <span class="ident">KeystoreSharedStateWriteGuard</span><span class="op">&lt;</span><span class="lifetime">&#39;l</span>, <span class="lifetime">&#39;a</span>, <span class="ident">L</span>, <span class="ident">Backend</span>, <span class="ident">Meta</span><span class="op">&gt;</span>
 {
     <span class="kw">fn</span> <span class="ident">drop</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>) {
@@ -571,7 +545,7 @@
             <span class="kw">if</span> <span class="self">self</span>.<span class="ident">failed</span> {
                 <span class="self">self</span>.<span class="ident">guard</span>.<span class="ident">revert</span>().<span class="kw">await</span>.<span class="ident">unwrap</span>();
             } <span class="kw">else</span> {
-                <span class="self">self</span>.<span class="ident">guard</span>.<span class="ident">commit</span>().<span class="kw">await</span>.<span class="ident">unwrap</span>();
+                <span class="self">self</span>.<span class="ident">guard</span>.<span class="ident">commit</span>().<span class="ident">unwrap</span>();
             }
         });
     }
