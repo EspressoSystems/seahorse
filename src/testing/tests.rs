@@ -1946,10 +1946,11 @@ pub mod generic_keystore_tests {
                 .await
                 .update(|KeystoreSharedState { model, .. }| async move {
                     let key = model
+                        .stores
                         .meta_store
                         .key_stream()
                         .derive_sub_tree("user".as_bytes())
-                        .derive_user_key_pair(&model.sending_accounts.index().to_le_bytes());
+                        .derive_user_key_pair(&model.stores.sending_accounts.index().to_le_bytes());
                     model.backend.register_user_key(&key).await.unwrap();
                     Ok(key)
                 })
