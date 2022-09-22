@@ -3025,12 +3025,11 @@ pub mod generic_keystore_tests {
         );
 
         // Submit an empty block.
-        ledger
-            .lock()
-            .await
-            .network()
-            .submit(Block::<T::Ledger>::new(vec![]))
-            .unwrap();
+        {
+            let mut ledger = ledger.lock().await;
+            let block = ledger.network().state().next_block();
+            ledger.network().submit(block).unwrap();
+        }
         t.sync(&ledger, &keystores).await;
 
         // Submit a non-empty block after the empty one. If we don't do this, the background scan

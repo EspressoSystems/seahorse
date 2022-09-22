@@ -101,6 +101,10 @@ impl<'a, const H: u8> super::MockNetwork<'a, cap::LedgerWithHeight<H>>
         self.events.now()
     }
 
+    fn state(&self) -> &cap::Validator<H> {
+        &self.validator
+    }
+
     fn submit(
         &mut self,
         block: cap::Block,
