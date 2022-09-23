@@ -38,7 +38,7 @@ jobs:
         uses: actions-rs/clippy-check@v1
         with:
           token: ${{ github.token }}
-          args: --workspace -- -D warnings
+          args: --workspace --all-targets --all-features -- -D warnings
 
       - name: Audit
         run: cargo audit --ignore RUSTSEC-2020-0159 --ignore RUSTSEC-2020-0071

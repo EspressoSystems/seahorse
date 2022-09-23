@@ -27,9 +27,9 @@ impl<L: Ledger> PartialEq<Self> for TxnHistoryWithTimeTolerantEq<L> {
         };
         let time_tolerance = Duration::minutes(time_tolerance_minutes);
         let times_eq = if self.0.created_time() < other.0.created_time() {
-            other.0.created_time().clone() - self.0.created_time().clone() < time_tolerance
+            *other.0.created_time() - *self.0.created_time() < time_tolerance
         } else {
-            self.0.created_time().clone() - other.0.created_time().clone() < time_tolerance
+            *self.0.created_time() - *other.0.created_time() < time_tolerance
         };
         println!("time eq {}", times_eq);
         println!(
@@ -387,7 +387,7 @@ pub mod generic_keystore_tests {
                 );
                 assert_eq!(
                     keystore.0.balance(&AssetCode::native()).await,
-                    (starting_native_balance - fees_paid).into()
+                    starting_native_balance - fees_paid
                 );
             }
         }
@@ -2185,13 +2185,13 @@ pub mod generic_keystore_tests {
         let alice_addresses = alice_pub_keys
             .clone()
             .into_iter()
-            .map(|pub_key| pub_key.clone().address())
+            .map(|pub_key| pub_key.address())
             .collect::<Vec<_>>();
         let bob_pub_keys = keystores[1].1.clone();
         let bob_addresses = bob_pub_keys
             .clone()
             .into_iter()
-            .map(|pub_key| pub_key.clone().address())
+            .map(|pub_key| pub_key.address())
             .collect::<Vec<_>>();
 
         // Verify initial keystore state.

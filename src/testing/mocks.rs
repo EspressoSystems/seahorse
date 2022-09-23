@@ -325,7 +325,7 @@ impl<'a, const H: u8> KeystoreBackend<'a, cap::LedgerWithHeight<H>>
                     .post_memos(
                         block_id,
                         txn_id,
-                        signed_memos.memos.iter().cloned().flatten().collect(),
+                        signed_memos.memos.iter().flatten().cloned().collect(),
                         signed_memos.sig.clone(),
                     )
                     .unwrap();

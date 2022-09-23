@@ -382,7 +382,7 @@ mod tests {
         assert_invalid_hmac(&cipher, &corrupt_nonce);
 
         // Corrupt a random byte in the payload.
-        let mut corrupt_payload = ciphertext.clone();
+        let mut corrupt_payload = ciphertext;
         corrupt(&mut rng, &mut corrupt_payload.bytes);
         assert_invalid_hmac(&cipher, &corrupt_payload);
     }

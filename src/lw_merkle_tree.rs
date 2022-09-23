@@ -361,7 +361,7 @@ mod test {
                         .get_leaf(pos % full_tree.num_leaves())
                         .expect_ok()
                         .unwrap()
-                        .0;
+                        .1;
                     if !forgotten.contains(&(pos % sparse_tree.num_leaves())) {
                         assert_eq!(
                             elem,
@@ -369,7 +369,7 @@ mod test {
                                 .get_leaf(pos % sparse_tree.num_leaves())
                                 .expect_ok()
                                 .unwrap()
-                                .0
+                                .1
                         );
                     }
                 }

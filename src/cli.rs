@@ -1155,7 +1155,7 @@ mod test {
         }
     }
     fn write_key_file(path: PathBuf, key: UserKeyPair) -> PathBuf {
-        let full_path = path.clone().join("keys");
+        let full_path = path.join("keys");
         let mut file = File::create(full_path.clone()).unwrap();
         let bytes = bincode::serialize(&key).unwrap();
         file.write_all(&bytes).unwrap();
@@ -1219,7 +1219,7 @@ mod test {
     fn add_funded_keys(
         input: &mut impl Write,
         output: &mut impl BufRead,
-        private_keys: &Vec<UserKeyPair>,
+        private_keys: &[UserKeyPair],
         path: PathBuf,
     ) -> Vec<(String, String)> {
         let mut keys = vec![];
