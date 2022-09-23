@@ -291,7 +291,7 @@ fn bench_ledger_scanner_run<
     mut bench: BenchLedgerScanner<'a, T>,
     cfg: BenchLedgerScannerConfig,
 ) {
-    let scan_key = if cfg.role.clone() == ScannerRole::Receiver {
+    let scan_key = if cfg.role == ScannerRole::Receiver {
         bench.receiver.clone()
     } else {
         UserKeyPair::generate(&mut bench.rng)

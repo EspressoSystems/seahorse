@@ -46,23 +46,14 @@ fn test_create_loader() {
     assert_eq!(meta, loaded);
 
     // Check that an exclusive loader fails with existing metadata.
-    let mut loader = CreateLoader::exclusive(
-        &mut rng,
-        dir.path().to_owned(),
-        mnemonic.clone(),
-        password.clone(),
-    );
+    let mut loader =
+        CreateLoader::exclusive(&mut rng, dir.path().to_owned(), mnemonic.clone(), password);
     KeystoreLoader::<cap::Ledger>::load(&mut loader, &mut loaded).unwrap_err();
     assert_eq!(loaded, meta);
 
     // Check that we fail to open an existing keystore with the wrong password.
     let password = Alphanumeric.sample_string(&mut rng, 16);
-    let mut loader = CreateLoader::new(
-        &mut rng,
-        dir.path().to_owned(),
-        mnemonic.clone(),
-        password.clone(),
-    );
+    let mut loader = CreateLoader::new(&mut rng, dir.path().to_owned(), mnemonic, password);
     KeystoreLoader::<cap::Ledger>::load(&mut loader, &mut loaded).unwrap_err();
     assert_eq!(loaded, meta);
 }
@@ -87,7 +78,7 @@ fn test_login_loader() {
 
     // Check that loading fails with the incorrect password.
     let password = Alphanumeric.sample_string(&mut rand::thread_rng(), 16);
-    let mut loader = LoginLoader::new(dir.path().to_owned(), password.clone());
+    let mut loader = LoginLoader::new(dir.path().to_owned(), password);
     KeystoreLoader::<cap::Ledger>::load(&mut loader, &mut loaded).unwrap_err();
     assert_eq!(loaded, meta);
 }
@@ -140,11 +131,6 @@ fn test_recovery_loader() {
 
     // Loading fails if we use the wrong mnemonic.
     let mnemonic = KeyTree::random(&mut rng).1;
-    let mut loader = RecoveryLoader::new(
-        &mut rng,
-        dir.path().to_owned(),
-        mnemonic.clone(),
-        password.clone(),
-    );
+    let mut loader = RecoveryLoader::new(&mut rng, dir.path().to_owned(), mnemonic, password);
     KeystoreLoader::<cap::Ledger>::load(&mut loader, &mut meta).unwrap_err();
 }
