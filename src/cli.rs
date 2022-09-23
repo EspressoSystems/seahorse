@@ -1219,7 +1219,7 @@ mod test {
     fn add_funded_keys(
         input: &mut impl Write,
         output: &mut impl BufRead,
-        private_keys: &Vec<UserKeyPair>,
+        private_keys: &[UserKeyPair],
         path: PathBuf,
     ) -> Vec<(String, String)> {
         let mut keys = vec![];
