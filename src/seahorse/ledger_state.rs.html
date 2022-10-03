@@ -2599,6 +2599,7 @@
 <span id="2599">2599</span>
 <span id="2600">2600</span>
 <span id="2601">2601</span>
+<span id="2602">2602</span>
 </pre><pre class="rust"><code><span class="comment">// Copyright (c) 2022 Espresso Systems (espressosys.com)</span>
 <span class="comment">// This file is part of the Seahorse library.</span>
 
@@ -3250,7 +3251,7 @@
 
     <span class="doccomment">/// Get the block height of the validator.</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">block_height</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">u64</span> {
-        <span class="self">self</span>.<span class="ident">validator</span>.<span class="ident">now</span>()
+        <span class="self">self</span>.<span class="ident">validator</span>.<span class="ident">block_height</span>()
     }
 
     <span class="kw">fn</span> <span class="ident">forget_merkle_leaf</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">leaf</span>: <span class="ident">u64</span>) {
@@ -3924,7 +3925,7 @@
         <span class="ident">max_records</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">usize</span><span class="op">&gt;</span>,
         <span class="ident">allow_insufficient</span>: <span class="ident">bool</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(<span class="ident">Vec</span><span class="op">&lt;</span>(<span class="ident">RecordOpening</span>, <span class="ident">u64</span>)<span class="op">&gt;</span>, <span class="ident">BigInt</span>), <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
-        <span class="kw">let</span> <span class="ident">now</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">validator</span>.<span class="ident">now</span>();
+        <span class="kw">let</span> <span class="ident">now</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">validator</span>.<span class="ident">block_height</span>();
 
         <span class="comment">// If we have a record with the exact size required, use it to avoid</span>
         <span class="comment">// fragmenting big records into smaller change records. First make</span>
@@ -4079,7 +4080,7 @@
             <span class="comment">//</span>
             <span class="comment">// We can handle both of these constraints by simply finding the smallest native record</span>
             <span class="comment">// in any of the available accounts.</span>
-            <span class="kw">let</span> <span class="ident">now</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">validator</span>.<span class="ident">now</span>();
+            <span class="kw">let</span> <span class="ident">now</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">validator</span>.<span class="ident">block_height</span>();
             <span class="ident">key_pairs</span>
                 .<span class="ident">iter</span>()
                 .<span class="ident">flat_map</span>(<span class="op">|</span><span class="ident">key</span><span class="op">|</span> {
@@ -4187,10 +4188,11 @@
                 <span class="ident">block</span>,
                 <span class="ident">block_id</span>,
                 <span class="ident">state_comm</span>,
+                <span class="ident">proof</span>,
             } <span class="op">=</span><span class="op">&gt;</span> {
                 <span class="comment">// Don&#39;t trust the network connection that provided us this event; validate it</span>
                 <span class="comment">// against our local mirror of the ledger and bail out if it is invalid.</span>
-                <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">uids</span> <span class="op">=</span> <span class="kw">match</span> <span class="self">self</span>.<span class="ident">validator</span>.<span class="ident">validate_and_apply</span>(<span class="ident">block</span>.<span class="ident">clone</span>()) {
+                <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">uids</span> <span class="op">=</span> <span class="kw">match</span> <span class="self">self</span>.<span class="ident">validator</span>.<span class="ident">validate_and_apply</span>(<span class="ident">block</span>.<span class="ident">clone</span>(), <span class="ident">proof</span>) {
                     <span class="prelude-val">Ok</span>(<span class="ident">uids</span>) <span class="op">=</span><span class="op">&gt;</span> {
                         <span class="kw">if</span> <span class="ident">state_comm</span> <span class="op">!</span><span class="op">=</span> <span class="self">self</span>.<span class="ident">validator</span>.<span class="ident">commit</span>() {
                             <span class="comment">// Received a block which validates, but our state commitment does not</span>
