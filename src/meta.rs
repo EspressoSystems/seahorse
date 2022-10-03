@@ -278,7 +278,7 @@ mod tests {
         let ro = random_ro(&mut rng, &user_key);
         let comm = RecordCommitment::from(&ro);
         stored.record_mt.push(comm.to_field_element());
-        stored.validator.now += 1;
+        stored.validator.block_height += 1;
         stored.now += EventIndex::from_source(EventSource::QueryService, 1);
 
         // Snapshot the modified dynamic state and then reload.

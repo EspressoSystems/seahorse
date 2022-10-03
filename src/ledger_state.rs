@@ -649,7 +649,7 @@ impl<'a, L: 'static + Ledger> LedgerState<'a, L> {
 
     /// Get the block height of the validator.
     pub fn block_height(&self) -> u64 {
-        self.validator.now()
+        self.validator.block_height()
     }
 
     fn forget_merkle_leaf(&mut self, leaf: u64) {
@@ -1323,7 +1323,7 @@ impl<'a, L: 'static + Ledger> LedgerState<'a, L> {
         max_records: Option<usize>,
         allow_insufficient: bool,
     ) -> Result<(Vec<(RecordOpening, u64)>, BigInt), KeystoreError<L>> {
-        let now = self.validator.now();
+        let now = self.validator.block_height();
 
         // If we have a record with the exact size required, use it to avoid
         // fragmenting big records into smaller change records. First make
@@ -1478,7 +1478,7 @@ impl<'a, L: 'static + Ledger> LedgerState<'a, L> {
             //
             // We can handle both of these constraints by simply finding the smallest native record
             // in any of the available accounts.
-            let now = self.validator.now();
+            let now = self.validator.block_height();
             key_pairs
                 .iter()
                 .flat_map(|key| {
@@ -1586,10 +1586,11 @@ impl<'a, L: 'static + Ledger> LedgerState<'a, L> {
                 block,
                 block_id,
                 state_comm,
+                proof,
             } => {
                 // Don't trust the network connection that provided us this event; validate it
                 // against our local mirror of the ledger and bail out if it is invalid.
-                let mut uids = match self.validator.validate_and_apply(block.clone()) {
+                let mut uids = match self.validator.validate_and_apply(block.clone(), proof) {
                     Ok(uids) => {
                         if state_comm != self.validator.commit() {
                             // Received a block which validates, but our state commitment does not
