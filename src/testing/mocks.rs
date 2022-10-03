@@ -52,7 +52,7 @@ impl<'a, const H: u8> MockNetworkWithHeight<'a, H> {
     ) -> Self {
         let mut network = Self {
             validator: cap::Validator::<H> {
-                now: 0,
+                block_height: 0,
                 records_commitment: records.commitment(),
                 records_frontier: records.frontier(),
             },
@@ -109,7 +109,7 @@ impl<'a, const H: u8> super::MockNetwork<'a, cap::LedgerWithHeight<H>>
         &mut self,
         block: cap::Block,
     ) -> Result<usize, KeystoreError<cap::LedgerWithHeight<H>>> {
-        match self.validator.validate_and_apply(block.clone()) {
+        match self.validator.validate_and_apply(block.clone(), ()) {
             Ok(validated) => {
                 let block_size = block.len();
                 let mut uids = validated.0;
@@ -128,6 +128,7 @@ impl<'a, const H: u8> super::MockNetwork<'a, cap::LedgerWithHeight<H>>
                     block: block.clone(),
                     block_id: self.committed_blocks.len() as u64,
                     state_comm: self.validator.commit(),
+                    proof: (),
                 });
 
                 // Store the block in the history

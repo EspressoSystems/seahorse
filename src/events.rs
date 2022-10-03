@@ -31,6 +31,7 @@ pub enum LedgerEvent<L: Ledger> {
         block: Block<L>,
         block_id: u64,
         state_comm: StateCommitment<L>,
+        proof: BlockProof<L>,
     },
 
     /// A proposed block was rejected.
