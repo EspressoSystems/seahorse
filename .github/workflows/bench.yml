@@ -23,7 +23,7 @@ jobs:
         with:
           access_token: ${{ github.token }}
 
-      - uses: actions/checkout@v3.0.2
+      - uses: actions/checkout@v3.1.0
         name: Checkout Repository
 
       - name: Enable Rust Caching
