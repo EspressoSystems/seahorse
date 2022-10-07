@@ -66,7 +66,7 @@ use chacha20::{cipher, ChaCha20};
 use cipher::{NewCipher, StreamCipher};
 use generic_array::GenericArray;
 pub use hd::Salt;
-use hmac::{crypto_mac::MacError, Hmac, Mac, NewMac};
+use hmac::{digest::MacError, Hmac, Mac};
 use jf_utils::{deserialize_canonical_bytes, CanonicalBytes};
 use rand_chacha::rand_core::{CryptoRng, RngCore};
 use rand_chacha::ChaChaRng;
@@ -141,7 +141,7 @@ impl CipherState {
     pub fn decrypt(&self, ciphertext: &CipherText) -> Result<Vec<u8>> {
         // Verify the HMAC before doing anything else.
         self.hmac(&self.hmac_key, &ciphertext.nonce, &ciphertext.bytes)
-            .verify(&ciphertext.hmac)
+            .verify((&ciphertext.hmac).into())
             .map_err(|source| Error::InvalidHmac { source })?;
 
         // If authentication succeeded, re-generate the key which was used to encrypt and
@@ -260,7 +260,7 @@ pub fn decrypt(ciphertext: &CipherText, key: hd::KeyTree) -> Result<Vec<u8>> {
 }
 
 /// Encrypted and authenticated data.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Default)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(from = "CanonicalBytes", into = "CanonicalBytes")]
 pub struct CipherText {
     hmac: [u8; 32],

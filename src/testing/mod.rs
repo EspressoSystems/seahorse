@@ -199,21 +199,6 @@ impl<'a, L: Ledger, N: MockNetwork<'a, L>> MockLedger<'a, L, N> {
     }
 }
 
-// This function checks probabilistic equality for two keystore states, comparing hashes for fields
-// that cannot directly be compared for equality. It is sufficient for tests that want to compare
-// keystore states (like round-trip serialization tests) but since it is deterministic, we shouldn't
-// make it into a PartialEq instance.
-pub fn assert_keystore_states_eq<'a, L: 'static + Ledger>(
-    w1: &LedgerState<'a, L>,
-    w2: &LedgerState<'a, L>,
-) {
-    assert_eq!(w1.now(), w2.now());
-    assert_eq!(w1.validator.commit(), w2.validator.commit());
-    assert_eq!(w1.proving_keys(), w2.proving_keys());
-    assert_eq!(w1.nullifiers, w2.nullifiers);
-    assert_eq!(w1.record_mt.commitment(), w2.record_mt.commitment());
-}
-
 #[async_trait]
 pub trait SystemUnderTest<'a>: Default + Send + Sync {
     type Ledger: 'static + Ledger;
@@ -527,7 +512,7 @@ pub trait SystemUnderTest<'a>: Default + Send + Sync {
         for (keystore, _, _) in keystores {
             let KeystoreSharedState { state, model, .. } = &*keystore.mutex.read().await;
             let loaded = &model.stores.ledger_states.load().unwrap();
-            assert_keystore_states_eq(state, loaded);
+            assert_eq!(state, loaded);
         }
     }
 }

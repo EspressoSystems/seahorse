@@ -17,7 +17,7 @@ jobs:
   build:
     runs-on: self-hosted
     container:
-      image: registry.gitlab.com/asuran-rs/containers/rust-sccache-docker:1.56
+      image: ghcr.io/espressosystems/devops-rust:1.63
     steps:
       - name: Cancel Outdated Builds
         uses: styfle/cancel-workflow-action@0.10.1
@@ -41,7 +41,7 @@ jobs:
           args: --workspace --all-targets --all-features -- -D warnings
 
       - name: Audit
-        run: cargo audit --ignore RUSTSEC-2020-0159 --ignore RUSTSEC-2020-0071
+        run: cargo audit --ignore RUSTSEC-2020-0071
 
       - name: Build Tests
         run: |

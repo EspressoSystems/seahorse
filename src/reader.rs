@@ -12,7 +12,7 @@
 //! has an automated mode to circumvent the interactive features when scripting for the CLI.
 use crate::{io::SharedIO, KeystoreError};
 use reef::Ledger;
-use rpassword::prompt_password_stdout;
+use rpassword::prompt_password;
 use std::io::{BufRead, Write};
 
 pub enum Reader {
@@ -40,11 +40,9 @@ impl Reader {
 
     pub fn read_password<L: Ledger>(&mut self, prompt: &str) -> Result<String, KeystoreError<L>> {
         match self {
-            Self::Interactive(_) => {
-                prompt_password_stdout(prompt).map_err(|err| KeystoreError::Failed {
-                    msg: err.to_string(),
-                })
-            }
+            Self::Interactive(_) => prompt_password(prompt).map_err(|err| KeystoreError::Failed {
+                msg: err.to_string(),
+            }),
             Self::Automated(io) => {
                 writeln!(io, "{}", prompt).map_err(|err| KeystoreError::Failed {
                     msg: err.to_string(),

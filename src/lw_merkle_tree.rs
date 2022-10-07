@@ -41,7 +41,7 @@ pub use jf_primitives::merkle_tree::{FilledMTBuilder, LookupResult};
 /// * [remember](Self::remember) can be used to check a membership proof (obtained from
 ///   [forget](Self::forget) or [get_leaf](Self::get_leaf)) and, if successful, add the element back
 ///   into the representation of the tree.
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub struct LWMerkleTree {
     tree: MerkleTree,
     // We can't forget the last leaf in a Merkle tree, because the tree always maintains the full

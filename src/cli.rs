@@ -21,16 +21,22 @@ use crate::{
     loader::KeystoreLoader, reader::Reader, BincodeSnafu, IoSnafu, KeystoreBackend, KeystoreError,
     RecordAmount, TransactionStatus,
 };
+use ark_serialize::*;
 use async_std::task::block_on;
 use async_trait::async_trait;
+use derive_more::{Deref, From, Into};
 use fmt::{Display, Formatter};
 use futures::future::BoxFuture;
 use jf_cap::{
-    keys::{FreezerKeyPair, FreezerPubKey, UserKeyPair, ViewerKeyPair, ViewerPubKey},
+    keys::{
+        FreezerKeyPair, FreezerPubKey, UserAddress, UserKeyPair, UserPubKey, ViewerKeyPair,
+        ViewerPubKey,
+    },
     proof::UniversalParam,
     structs::{AssetCode, AssetPolicy, FreezeFlag, ReceiverMemo, RecordCommitment},
+    MerklePath,
 };
-use net::{MerklePath, UserAddress, UserPubKey};
+use jf_utils::tagged_blob;
 use primitive_types::U256;
 use reef::Ledger;
 use serde::{de::DeserializeOwned, Serialize};
@@ -158,6 +164,12 @@ pub trait CLIInput<'a, C: CLI<'a>>: Sized {
     fn parse_for_keystore(keystore: &mut Keystore<'a, C>, s: &str) -> Option<Self>;
 }
 
+#[tagged_blob("RECPROOF")]
+#[derive(
+    Clone, Debug, Deref, From, Into, PartialEq, Eq, CanonicalDeserialize, CanonicalSerialize,
+)]
+pub struct CLIMerklePath(MerklePath);
+
 macro_rules! cli_input_from_str {
     ($($t:ty),*) => {
         $(
@@ -171,7 +183,7 @@ macro_rules! cli_input_from_str {
 }
 
 cli_input_from_str! {
-    bool, u64, Asset, AssetCode, EventIndex, FreezerPubKey, MerklePath, PathBuf, ReceiverMemo,
+    bool, u64, Asset, AssetCode, EventIndex, FreezerPubKey, CLIMerklePath, PathBuf, ReceiverMemo,
     RecordAmount, RecordCommitment, String, UserAddress, UserPubKey, ViewerPubKey
 }
 
@@ -403,7 +415,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             C,
             |io, keystore| {
                 for address in keystore.sending_addresses().await {
-                    cli_writeln!(io, "{}", UserAddress(address));
+                    cli_writeln!(io, "{}", address);
                 }
             }
         ),
@@ -496,7 +508,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                     cli_writeln!(
                         io,
                         "{} {}",
-                        UserAddress(address.clone()),
+                        address,
                         keystore.balance_breakdown(&address, &asset.item).await
                     );
                 }
@@ -513,7 +525,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             C,
             |io, keystore, asset: ListItem<AssetCode>, to: UserPubKey, amount: RecordAmount, fee: RecordAmount;
              from: Option<UserAddress>, wait: Option<bool>| {
-                let res = keystore.transfer(from.as_ref().map(|addr| &addr.0), &asset.item, &[(to, amount)], fee).await;
+                let res = keystore.transfer(from.as_ref(), &asset.item, &[(to, amount)], fee).await;
                 finish_transaction::<C>(io, keystore, res, wait, "transferred").await;
             }
         ),
@@ -578,7 +590,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             C,
             |io, keystore, asset: ListItem<AssetCode>, to: UserPubKey, amount: RecordAmount, fee: RecordAmount;
              fee_account: Option<UserAddress>, wait: Option<bool>| {
-                let res = keystore.mint(fee_account.as_ref().map(|addr| &addr.0), fee, &asset.item, amount, to).await;
+                let res = keystore.mint(fee_account.as_ref(), fee, &asset.item, amount, to).await;
                 finish_transaction::<C>(io, keystore, res, wait, "minted").await;
             }
         ),
@@ -589,7 +601,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             |io, keystore, asset: ListItem<AssetCode>, target: UserAddress, amount: U256, fee: RecordAmount;
              fee_account: Option<UserAddress>, wait: Option<bool>|
             {
-                let res = keystore.freeze(fee_account.as_ref().map(|addr| &addr.0), fee, &asset.item, amount, target.0).await;
+                let res = keystore.freeze(fee_account.as_ref(), fee, &asset.item, amount, target).await;
                 finish_transaction::<C>(io, keystore, res, wait, "frozen").await;
             }
         ),
@@ -600,7 +612,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             |io, keystore, asset: ListItem<AssetCode>, target: UserAddress, amount: U256, fee: RecordAmount;
              fee_account: Option<UserAddress>, wait: Option<bool>|
             {
-                let res = keystore.unfreeze(fee_account.as_ref().map(|addr| &addr.0), fee, &asset.item, amount, target.0).await;
+                let res = keystore.unfreeze(fee_account.as_ref(), fee, &asset.item, amount, target).await;
                 finish_transaction::<C>(io, keystore, res, wait, "unfrozen").await;
             }
         ),
@@ -642,7 +654,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                             let senders = if !txn.senders().is_empty() {
                                 txn.senders()
                                     .iter()
-                                    .map(|sender| UserAddress(sender.clone()).to_string())
+                                    .map(|sender| sender.to_string())
                                     .collect::<Vec<String>>()
                             } else {
                                 vec![String::from("unknown")]
@@ -657,7 +669,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                                 senders
                             );
                             for (receiver, amount) in txn.receivers() {
-                                cli_write!(io, "{} {} ", UserAddress(receiver.clone()), amount);
+                                cli_write!(io, "{} {} ", receiver, amount);
                             }
                             cli_write!(io, "{}", txn.uid());
                             cli_writeln!(io);
@@ -718,7 +730,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                             // Output both the public key and the address when generating a
                             // sending key.
                             cli_writeln!(io, "{}", pub_key);
-                            cli_writeln!(io, "{}", UserAddress(pub_key.address()));
+                            cli_writeln!(io, "{}", pub_key.address());
                         }
                         Err(err) => cli_writeln!(io, "Error generating sending key: {}", err),
                     },
@@ -786,7 +798,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                                 // Output both the public key and the address when loading a
                                 // sending key.
                                 cli_writeln!(io, "{}", key.pub_key());
-                                cli_writeln!(io, "{}", UserAddress(key.address()));
+                                cli_writeln!(io, "{}", key.address());
                             }
                             Err(err) => cli_writeln!(io, "Error saving sending key: {}", err),
                         },
@@ -806,8 +818,8 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
              memo: ReceiverMemo,
              comm: RecordCommitment,
              uid: u64,
-             proof: MerklePath| {
-                if let Err(err) = keystore.import_memo(memo, comm, uid, proof.0).await {
+             proof: CLIMerklePath| {
+                if let Err(err) = keystore.import_memo(memo, comm, uid, proof.into()).await {
                     cli_writeln!(io, "{}", err);
                 }
             }
@@ -819,7 +831,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
             |io, keystore| {
                 cli_writeln!(io, "Addresses:");
                 for address in keystore.sending_addresses().await {
-                    cli_writeln!(io, "  {}", UserAddress(address));
+                    cli_writeln!(io, "  {}", address);
                 }
                 print_keys::<C>(io, keystore).await;
             }
@@ -834,7 +846,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                     .await
                     .into_iter()
                     .filter(|rec| rec.asset_code() == asset.item && match &account {
-                        Some(address) => rec.pub_key().address() == address.0,
+                        Some(address) => rec.pub_key().address() == *address,
                         None => true
                     });
 
@@ -850,7 +862,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                         record.freeze_flag() == FreezeFlag::Frozen
                     );
                     if account.is_none() {
-                        cli_write!(io, "\t{}", UserAddress::from(record.pub_key().address()));
+                        cli_write!(io, "\t{}", record.pub_key().address());
                     }
                     cli_writeln!(io);
                 }

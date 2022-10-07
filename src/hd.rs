@@ -38,7 +38,7 @@ use jf_cap::keys::{FreezerKeyPair, UserKeyPair, ViewerKeyPair};
 use rand_chacha::rand_core::SeedableRng;
 use rand_chacha::rand_core::{CryptoRng, RngCore};
 use rand_chacha::ChaChaRng;
-use sha3::{Digest, Sha3_256, Sha3_512};
+use sha3::{digest::Update, Digest, Sha3_256, Sha3_512};
 use std::convert::TryInto;
 use zeroize::Zeroize;
 

@@ -38,7 +38,7 @@ type IconPixel = Rgba<u8>;
 /// A small icon to display with an asset in a GUI interface.
 #[ser_test(arbitrary)]
 #[tagged_blob("ICON")]
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Icon(ImageBuffer<IconPixel, Vec<u8>>);
 
 impl CanonicalSerialize for Icon {
@@ -168,7 +168,7 @@ impl From<ImageBuffer<IconPixel, Vec<u8>>> for Icon {
 }
 
 /// Information required to mint an asset.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MintInfo {
     pub seed: AssetCodeSeed,
     pub description: Vec<u8>,
@@ -278,7 +278,7 @@ impl VerifiedAssetLibrary {
 }
 
 /// An asset with its code as the primary key.
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Asset {
     definition: AssetDefinition,
     /// Optional asset name.

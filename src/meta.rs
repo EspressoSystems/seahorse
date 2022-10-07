@@ -118,7 +118,6 @@ mod tests {
         events::{EventIndex, EventSource},
         loader::KeystoreLoader,
         lw_merkle_tree::LWMerkleTree,
-        testing::assert_keystore_states_eq,
         LedgerState, LedgerStates,
     };
     use atomic_store::AtomicStore;
@@ -187,7 +186,7 @@ mod tests {
         let mut xfr_verif_keys = vec![];
         for (num_inputs, num_outputs) in xfr_sizes {
             let (xfr_prove_key, xfr_verif_key, _) = jf_cap::proof::transfer::preprocess(
-                &*srs,
+                srs,
                 num_inputs,
                 num_outputs,
                 cap::Ledger::merkle_height(),
@@ -197,9 +196,9 @@ mod tests {
             xfr_verif_keys.push(TransactionVerifyingKey::Transfer(xfr_verif_key));
         }
         let (mint_prove_key, _, _) =
-            jf_cap::proof::mint::preprocess(&*srs, cap::Ledger::merkle_height()).unwrap();
+            jf_cap::proof::mint::preprocess(srs, cap::Ledger::merkle_height()).unwrap();
         let (freeze_prove_key, _, _) =
-            jf_cap::proof::freeze::preprocess(&*srs, 2, cap::Ledger::merkle_height()).unwrap();
+            jf_cap::proof::freeze::preprocess(srs, 2, cap::Ledger::merkle_height()).unwrap();
         let record_merkle_tree = LWMerkleTree::new(cap::Ledger::merkle_height()).unwrap();
         let validator = cap::Validator::default();
 
@@ -271,7 +270,7 @@ mod tests {
             atomic_store.commit_version().unwrap();
             state
         };
-        assert_keystore_states_eq(&stored, &loaded);
+        assert_eq!(stored, loaded);
 
         // Modify some dynamic state and load the keystore again.
         let user_key = UserKeyPair::generate(&mut rng);
@@ -321,7 +320,7 @@ mod tests {
             atomic_store.commit_version().unwrap();
             state
         };
-        assert_keystore_states_eq(&stored, &loaded);
+        assert_eq!(stored, loaded);
 
         Ok(())
     }
@@ -357,7 +356,7 @@ mod tests {
             let state = ledger_states.load().unwrap();
             state
         };
-        assert_keystore_states_eq(&stored, &loaded);
+        assert_eq!(stored, loaded);
 
         // Change multiple data structures and revert.
         let loaded = {
@@ -396,7 +395,7 @@ mod tests {
             atomic_store.commit_version().unwrap();
             state
         };
-        assert_keystore_states_eq(&stored, &loaded);
+        assert_eq!(stored, loaded);
 
         Ok(())
     }
