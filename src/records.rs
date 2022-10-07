@@ -7,7 +7,7 @@
 
 //! The records module.
 //!
-//! This module defines [Record], [RecordsEditor], and [Records], which provide CURD (create, read,
+//! This module defines [Record], [RecordEditor], and [Records], which provide CURD (create, read,
 //! update, and delete) operations, with the use of [KeyValueStore] to control the transactions resource.
 
 use crate::{

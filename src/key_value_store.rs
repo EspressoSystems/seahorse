@@ -7,7 +7,7 @@
 
 //! The key-value store.
 //!
-//! This module defines [KeyValueStore] and [Persistable], which provide interfaces to keystore
+//! This module defines [KeyValueStore] and [PersistableMap], which provide interfaces to keystore
 //! resources (e.g., assets and transactions) to create, read, update, and delete data.
 
 use crate::{EncryptingResourceAdapter, KeystoreError, Ledger};
