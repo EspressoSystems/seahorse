@@ -413,7 +413,7 @@
 <span class="comment">// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.</span>
 <span class="comment">// You should have received a copy of the GNU General Public License along with this program. If not, see &lt;https://www.gnu.org/licenses/&gt;.</span>
 
-<span class="doccomment">//! Ledger-agnostic implementation of [KeystoreStores].</span>
+<span class="doccomment">//! Storage for [KeystoreLoader] metadata.</span>
 <span class="kw">use</span> <span class="kw">crate</span>::{<span class="ident">hd::KeyTree</span>, <span class="ident">loader::KeystoreLoader</span>, <span class="ident">EncryptingResourceAdapter</span>, <span class="ident">KeystoreError</span>};
 <span class="kw">use</span> <span class="ident">atomic_store</span>::{<span class="ident">load_store::BincodeLoadStore</span>, <span class="ident">AtomicStoreLoader</span>, <span class="ident">RollingLog</span>};
 <span class="kw">use</span> <span class="ident">reef</span>::<span class="kw-2">*</span>;
