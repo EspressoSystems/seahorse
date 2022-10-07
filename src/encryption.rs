@@ -165,7 +165,8 @@ impl CipherState {
     }
 
     fn hmac(&self, hmac_key: &hd::Key, nonce: &[u8], ciphertext: &[u8]) -> Hmac<Sha3_256> {
-        let mut hmac = <Hmac<Sha3_256> as Mac>::new_from_slice(hmac_key.as_bytes().open_secret()).unwrap();
+        let mut hmac =
+            <Hmac<Sha3_256> as Mac>::new_from_slice(hmac_key.as_bytes().open_secret()).unwrap();
         hmac.update(nonce);
         // Note: the ciphertext must be the last field, since it is variable sized and we do not
         // explicitly commit to its length. If we included another variably sized field after the
