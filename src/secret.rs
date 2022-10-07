@@ -160,12 +160,12 @@ impl<S: Zeroize> DerefMut for SecretBuilder<S> {
 
 impl<S: Zeroize> AsRef<S> for SecretBuilder<S> {
     fn as_ref(&self) -> &S {
-        &*self
+        self
     }
 }
 
 impl<S: Zeroize> AsMut<S> for SecretBuilder<S> {
     fn as_mut(&mut self) -> &mut S {
-        &mut *self
+        self
     }
 }

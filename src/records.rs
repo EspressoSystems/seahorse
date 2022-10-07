@@ -16,10 +16,9 @@ use crate::{
 use atomic_store::{AppendLog, AtomicStoreLoader};
 use chrono::{DateTime, Local};
 use jf_cap::{
-    keys::UserAddress,
+    keys::{UserAddress, UserPubKey},
     structs::{AssetDefinition, FreezeFlag, Nullifier, RecordOpening},
 };
-use net::UserPubKey;
 use serde::{Deserialize, Serialize};
 use std::ops::{Deref, DerefMut};
 

@@ -15,20 +15,17 @@
       let
         overlays = [ (import rust-overlay) ];
         pkgs = import nixpkgs { inherit system overlays; };
-        stableToolchain = pkgs.rust-bin.stable."1.59.0".minimal.override {
-          extensions = [ "rustfmt" "clippy" "llvm-tools-preview" "rust-src" ];
-        };
-        sixtyStableToolchain = pkgs.rust-bin.stable."1.60.0".minimal.override {
+        stableToolchain = pkgs.rust-bin.stable."1.63.0".minimal.override {
           extensions = [ "rustfmt" "clippy" "llvm-tools-preview" "rust-src" ];
         };
         stableMuslRustToolchain =
-          pkgs.rust-bin.stable."1.59.0".minimal.override {
+          pkgs.rust-bin.stable."1.63.0".minimal.override {
             extensions = [ "rustfmt" "clippy" "llvm-tools-preview" "rust-src" ];
             targets = [ "x86_64-unknown-linux-musl" ];
           };
         rustDeps = with pkgs;
           [
-            pkgconfig
+            pkg-config
             openssl
             bash
 
@@ -50,7 +47,7 @@
         # nixWithFlakes allows pre v2.4 nix installations to use
         # flake commands (like `nix flake update`)
         nixWithFlakes = pkgs.writeShellScriptBin "nix" ''
-          exec ${pkgs.nixFlakes}/bin/nix --experimental-features "nix-command flakes" "$@"
+          exec ${pkgs.nixVersions.stable}/bin/nix --experimental-features "nix-command flakes" "$@"
         '';
         cargo-llvm-cov = pkgs.rustPlatform.buildRustPackage rec {
           pname = "cargo-llvm-cov";
@@ -94,7 +91,7 @@
           crossSystem = { config = "x86_64-unknown-linux-musl"; };
         };
         muslRustDeps = with muslPkgs.pkgsStatic; [
-          pkgconfig
+          pkg-config
           opensslMusl.dev
           opensslMusl.out
         ];
@@ -116,7 +113,7 @@
         devShells = {
           perfShell = pkgs.mkShell {
             buildInputs = with pkgs;
-              [ cargo-llvm-cov sixtyStableToolchain ] ++ rustDeps;
+              [ cargo-llvm-cov stableToolchain ] ++ rustDeps;
           };
           staticShell = pkgs.mkShell {
             shellHook = ''

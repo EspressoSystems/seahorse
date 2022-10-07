@@ -143,7 +143,7 @@ pub trait KeystoreLoader<L: Ledger> {
 /// original metadata is not available in this case, there is no way to report an error if the user
 /// enters the wrong mnemonic. If they do, they will simply be unable to recover their on-chain
 /// assets.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MnemonicPasswordLogin {
     version: (u8, u8, u8),
     salt: Salt,

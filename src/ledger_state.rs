@@ -24,6 +24,7 @@ use ark_serialize::*;
 use ark_std::future::Future;
 use atomic_store::{AtomicStoreLoader, RollingLog};
 use chrono::Local;
+use derivative::Derivative;
 use derive_more::*;
 use espresso_macros::ser_test;
 use futures::stream::Stream;
@@ -245,7 +246,7 @@ fn input_records<'a, L: Ledger + 'a>(
     frozen: FreezeFlag,
     now: u64,
 ) -> Option<impl Iterator<Item = Record> + 'a> {
-    let spendable = records.get_spendable::<L>(&*asset, owner, frozen);
+    let spendable = records.get_spendable::<L>(asset, owner, frozen);
     spendable.map(|r| r.into_iter().filter(move |record| !record.on_hold(now)))
 }
 
@@ -571,8 +572,14 @@ fn u256_to_signed(u: U256) -> BigInt {
     BigInt::from_bytes_le(Sign::Plus, &bytes)
 }
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Derivative)]
 #[serde(bound = "")]
+#[derivative(
+    Clone(bound = ""),
+    Debug(bound = ""),
+    PartialEq(bound = ""),
+    Eq(bound = "")
+)]
 /// The state of the global ledger.
 pub struct LedgerState<'a, L: Ledger> {
     // For persistence, the fields in this struct are grouped into two categories based on how they
@@ -605,6 +612,7 @@ pub struct LedgerState<'a, L: Ledger> {
     /// transaction types supported by the verifying keys maintained by validators.
     ///
     /// These keys are constructed when the keystore is created, and they never change afterwards.
+    #[serde(with = "serde_ark_unchecked")]
     proving_keys: Arc<ProverKeySet<'a, key_set::OrderByOutputs>>,
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
