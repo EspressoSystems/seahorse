@@ -63,7 +63,7 @@
 use super::hd;
 use ark_serialize::*;
 use chacha20::{cipher, ChaCha20};
-use cipher::{NewCipher, StreamCipher};
+use cipher::{KeyIvInit, StreamCipher, StreamCipherError};
 use generic_array::GenericArray;
 pub use hd::Salt;
 use hmac::{digest::MacError, Hmac, Mac};
@@ -78,7 +78,7 @@ use snafu::Snafu;
 pub enum Error {
     DataTooLong {
         #[snafu(source(false))]
-        source: cipher::errors::LoopError,
+        source: StreamCipherError,
     },
     ArgonError {
         #[snafu(source(false))]
@@ -165,7 +165,7 @@ impl CipherState {
     }
 
     fn hmac(&self, hmac_key: &hd::Key, nonce: &[u8], ciphertext: &[u8]) -> Hmac<Sha3_256> {
-        let mut hmac = Hmac::<Sha3_256>::new_from_slice(hmac_key.as_bytes().open_secret()).unwrap();
+        let mut hmac = <Hmac<Sha3_256> as Mac>::new_from_slice(hmac_key.as_bytes().open_secret()).unwrap();
         hmac.update(nonce);
         // Note: the ciphertext must be the last field, since it is variable sized and we do not
         // explicitly commit to its length. If we included another variably sized field after the
