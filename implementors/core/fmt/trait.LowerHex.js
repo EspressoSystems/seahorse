@@ -1,3 +1,3 @@
 (function() {var implementors = {};
-implementors["seahorse"] = [{"text":"impl <a class=\"trait\" href=\"https://doc.rust-lang.org/1.56.1/core/fmt/trait.LowerHex.html\" title=\"trait core::fmt::LowerHex\">LowerHex</a> for <a class=\"struct\" href=\"seahorse/ledger_state/struct.RecordAmount.html\" title=\"struct seahorse::ledger_state::RecordAmount\">RecordAmount</a>","synthetic":false,"types":["seahorse::ledger_state::RecordAmount"]}];
+implementors["seahorse"] = [{"text":"impl <a class=\"trait\" href=\"https://doc.rust-lang.org/1.63.0/core/fmt/trait.LowerHex.html\" title=\"trait core::fmt::LowerHex\">LowerHex</a> for <a class=\"struct\" href=\"seahorse/ledger_state/struct.RecordAmount.html\" title=\"struct seahorse::ledger_state::RecordAmount\">RecordAmount</a>","synthetic":false,"types":["seahorse::ledger_state::RecordAmount"]}];
 if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

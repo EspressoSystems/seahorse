@@ -1,1 +1,1 @@
-initSidebarItems({"mod":[["create",""],["interactive",""],["login",""],["recovery",""]],"struct":[["MnemonicPasswordLogin","Metadata that supports login with a password and backup/recovery with a mnemonic."]],"trait":[["KeystoreLoader",""]]});
+window.SIDEBAR_ITEMS = {"mod":[["create",""],["interactive",""],["login",""],["recovery",""]],"struct":[["MnemonicPasswordLogin","Metadata that supports login with a password and backup/recovery with a mnemonic."]],"trait":[["KeystoreLoader",""]]};

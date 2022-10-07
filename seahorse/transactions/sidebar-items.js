@@ -1,1 +1,1 @@
-initSidebarItems({"struct":[["SignedMemos",""],["Transaction","A Transactionwith its UID as the primary key."],["TransactionEditor","An editor to create or update the transaction or transactions store."],["TransactionParams",""],["Transactions",""]]});
+window.SIDEBAR_ITEMS = {"struct":[["SignedMemos",""],["Transaction","A Transactionwith its UID as the primary key."],["TransactionEditor","An editor to create or update the transaction or transactions store."],["TransactionParams",""],["Transactions",""]]};

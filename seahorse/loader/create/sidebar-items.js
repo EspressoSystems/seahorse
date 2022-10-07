@@ -1,1 +1,1 @@
-initSidebarItems({"struct":[["CreateLoader","Create or log into a keystore using a given password and mnemonic."]]});
+window.SIDEBAR_ITEMS = {"struct":[["CreateLoader","Create or log into a keystore using a given password and mnemonic."]]};

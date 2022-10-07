@@ -1,1 +1,1 @@
-initSidebarItems({"struct":[["Record","A Record with it’s uid (u64) as the key"],["RecordEditor","An editor to update a record or records store"],["Records",""]]});
+window.SIDEBAR_ITEMS = {"struct":[["Record","A Record with it’s uid (u64) as the key"],["RecordEditor","An editor to update a record or records store"],["Records",""]]};

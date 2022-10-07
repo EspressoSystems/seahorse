@@ -1,1 +1,1 @@
-initSidebarItems({"struct":[["SharedIO","Wrapper around an input stream and an output stream"],["Tee","Adapter for an input or output stream which echoes all I/O passing through the stream to stdout."]]});
+window.SIDEBAR_ITEMS = {"struct":[["SharedIO","Wrapper around an input stream and an output stream"],["Tee","Adapter for an input or output stream which echoes all I/O passing through the stream to stdout."]]};

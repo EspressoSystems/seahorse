@@ -1,1 +1,1 @@
-initSidebarItems({"struct":[["MetaStore",""]]});
+window.SIDEBAR_ITEMS = {"struct":[["MetaStore",""]]};

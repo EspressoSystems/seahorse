@@ -1,1 +1,1 @@
-initSidebarItems({"struct":[["RecoveryLoader","Recover a keystore from a mnemonic phrase."]]});
+window.SIDEBAR_ITEMS = {"struct":[["RecoveryLoader","Recover a keystore from a mnemonic phrase."]]};
