@@ -5,6 +5,7 @@
 // This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 // You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+use crate::{async_writeln, io::async_read_line};
 use regex::Regex;
 use std::collections::HashMap;
 use std::io::{BufRead, Write};
@@ -29,11 +30,14 @@ impl MatchResult {
 ///
 /// Named patterns (`(?P<name>pattern)`) in the regexes are added to a MatchResult dictionary,
 /// which is returned at the end of the operation.
-pub fn match_output(output: &mut impl BufRead, patterns: &[impl AsRef<str>]) -> MatchResult {
+pub async fn match_output(
+    output: &(impl Clone + BufRead + Send + 'static),
+    patterns: &[impl AsRef<str>],
+) -> MatchResult {
     // Read output until we get a prompt or EOF.
     let mut lines = vec![];
     let mut line = String::new();
-    while let Ok(n) = output.read_line(&mut line) {
+    while let Ok(n) = async_read_line(output, &mut line).await {
         if n == 0 || line.trim() == ">" {
             break;
         }
@@ -65,29 +69,35 @@ pub fn match_output(output: &mut impl BufRead, patterns: &[impl AsRef<str>]) -> 
     matches
 }
 
-pub fn wait_for_prompt(output: &mut impl BufRead) {
-    match_output(output, &Vec::<&str>::new());
+pub async fn wait_for_prompt(output: &(impl Clone + BufRead + Send + 'static)) {
+    match_output(output, &Vec::<&str>::new()).await;
 }
 
 // A version of `testing::await_transaction` that uses the CLI.
-pub fn await_transaction(
+pub async fn await_transaction(
     receipt: &str,
-    sender: (&mut impl Write, &mut impl BufRead),
-    receivers: &mut [(&mut impl Write, &mut impl BufRead)],
+    sender: (
+        &(impl Clone + Write + Send + 'static),
+        &(impl Clone + BufRead + Send + 'static),
+    ),
+    receivers: &[(
+        &(impl Clone + Write + Send + 'static),
+        &(impl Clone + BufRead + Send + 'static),
+    )],
 ) {
     // Wait for the sender to verify the transaction is complete, and get the index of an event
     // equal to or later than the last event related to this transaction.
-    writeln!(sender.0, "wait {}", receipt).unwrap();
-    wait_for_prompt(sender.1);
-    writeln!(sender.0, "now").unwrap();
-    let matches = match_output(sender.1, &["(?P<t>.*)"]);
+    async_writeln!(sender.0, "wait {}", receipt);
+    wait_for_prompt(sender.1).await;
+    async_writeln!(sender.0, "now");
+    let matches = match_output(sender.1, &["(?P<t>.*)"]).await;
     let t = matches.get("t");
 
     // Wait for each receiver to process up to the last relevant event.
-    for receiver in receivers.iter_mut() {
-        writeln!(receiver.0, "sync {}", t).unwrap();
+    for receiver in receivers {
+        async_writeln!(receiver.0, "sync {}", t);
     }
-    for receiver in receivers.iter_mut() {
-        wait_for_prompt(receiver.1);
+    for receiver in receivers {
+        wait_for_prompt(receiver.1).await;
     }
 }

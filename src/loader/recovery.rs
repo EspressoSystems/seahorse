@@ -10,6 +10,7 @@ use crate::{
     loader::{KeystoreLoader, MnemonicPasswordLogin},
     KeystoreError,
 };
+use async_trait::async_trait;
 use rand_chacha::{rand_core::SeedableRng, ChaChaRng};
 use reef::Ledger;
 use std::path::PathBuf;
@@ -52,6 +53,7 @@ impl RecoveryLoader {
     }
 }
 
+#[async_trait]
 impl<L: Ledger> KeystoreLoader<L> for RecoveryLoader {
     type Meta = MnemonicPasswordLogin;
 
@@ -59,7 +61,7 @@ impl<L: Ledger> KeystoreLoader<L> for RecoveryLoader {
         self.dir.clone()
     }
 
-    fn create(&mut self) -> Result<(Self::Meta, KeyTree), KeystoreError<L>> {
+    async fn create(&mut self) -> Result<(Self::Meta, KeyTree), KeystoreError<L>> {
         let meta = MnemonicPasswordLogin::new(
             &mut self.rng,
             &self.mnemonic,
@@ -69,7 +71,7 @@ impl<L: Ledger> KeystoreLoader<L> for RecoveryLoader {
         Ok((meta, key))
     }
 
-    fn load(&mut self, meta: &mut Self::Meta) -> Result<KeyTree, KeystoreError<L>> {
+    async fn load(&mut self, meta: &mut Self::Meta) -> Result<KeyTree, KeystoreError<L>> {
         meta.set_password(&mut self.rng, &self.mnemonic, self.new_password.as_bytes())?;
         Ok(KeyTree::from_mnemonic(&self.mnemonic))
     }

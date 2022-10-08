@@ -7,7 +7,7 @@ on:
 
 jobs:
   code-coverage:
-    runs-on: [self-hosted, X64]
+    runs-on: ubuntu-latest
     container:
       image: ghcr.io/espressosystems/nix:2.8.1
       volumes:

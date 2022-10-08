@@ -21,6 +21,7 @@ use crate::{
     hd::{KeyTree, Mnemonic, Salt},
     EncryptionSnafu, KeySnafu, KeystoreError, Ledger,
 };
+use async_trait::async_trait;
 use rand_chacha::{
     rand_core::{RngCore, SeedableRng},
     ChaChaRng,
@@ -42,6 +43,7 @@ pub use interactive::InteractiveLoader;
 pub use login::LoginLoader;
 pub use recovery::RecoveryLoader;
 
+#[async_trait]
 pub trait KeystoreLoader<L: Ledger> {
     /// Metadata about a keystore which is always stored unencrypted.
     ///
@@ -64,7 +66,7 @@ pub trait KeystoreLoader<L: Ledger> {
     /// will create the metadata for a new keystore and return it, along with the key tree to use
     /// when deriving keys for the new keystore. The caller should persist the new metadata in
     /// `self.location()`.
-    fn create(&mut self) -> Result<(Self::Meta, KeyTree), KeystoreError<L>>;
+    async fn create(&mut self) -> Result<(Self::Meta, KeyTree), KeystoreError<L>>;
 
     /// Load an existing keystore.
     ///
@@ -79,7 +81,7 @@ pub trait KeystoreLoader<L: Ledger> {
     /// `self.location()`.
     ///
     /// If [load](Self::load) fails, it will not change `meta`.
-    fn load(&mut self, meta: &mut Self::Meta) -> Result<KeyTree, KeystoreError<L>>;
+    async fn load(&mut self, meta: &mut Self::Meta) -> Result<KeyTree, KeystoreError<L>>;
 }
 
 /// Metadata that supports login with a password and backup/recovery with a mnemonic.

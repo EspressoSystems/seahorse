@@ -10,6 +10,7 @@ use crate::{
     loader::{KeystoreLoader, MnemonicPasswordLogin},
     reader, KeystoreError,
 };
+use async_trait::async_trait;
 use hd::{KeyTree, Mnemonic};
 use rand_chacha::{rand_core::SeedableRng, ChaChaRng};
 use reader::Reader;
@@ -45,10 +46,10 @@ impl InteractiveLoader {
         &self.dir
     }
 
-    fn create_password<L: Ledger>(&mut self) -> Result<String, KeystoreError<L>> {
+    async fn create_password<L: 'static + Ledger>(&mut self) -> Result<String, KeystoreError<L>> {
         loop {
-            let password = self.input.read_password("Create password: ")?;
-            let confirm = self.input.read_password("Retype password: ")?;
+            let password = self.input.read_password("Create password: ").await?;
+            let confirm = self.input.read_password("Retype password: ").await?;
             if password == confirm {
                 return Ok(password);
             } else {
@@ -57,9 +58,9 @@ impl InteractiveLoader {
         }
     }
 
-    fn read_mnemonic<L: Ledger>(&mut self) -> Result<Mnemonic, KeystoreError<L>> {
+    async fn read_mnemonic<L: 'static + Ledger>(&mut self) -> Result<Mnemonic, KeystoreError<L>> {
         loop {
-            let phrase = self.input.read_password("Enter mnemonic phrase: ")?;
+            let phrase = self.input.read_password("Enter mnemonic phrase: ").await?;
             match Mnemonic::from_phrase(&phrase) {
                 Ok(mnemonic) => return Ok(mnemonic),
                 Err(err) => {
@@ -70,14 +71,15 @@ impl InteractiveLoader {
     }
 }
 
-impl<L: Ledger> KeystoreLoader<L> for InteractiveLoader {
+#[async_trait]
+impl<L: 'static + Ledger> KeystoreLoader<L> for InteractiveLoader {
     type Meta = MnemonicPasswordLogin;
 
     fn location(&self) -> PathBuf {
         self.dir.clone()
     }
 
-    fn create(&mut self) -> Result<(MnemonicPasswordLogin, KeyTree), KeystoreError<L>> {
+    async fn create(&mut self) -> Result<(MnemonicPasswordLogin, KeyTree), KeystoreError<L>> {
         println!(
             "Your keystore will be identified by a secret mnemonic phrase. This phrase will \
              allow you to recover your keystore if you lose access to it. Anyone who has access \
@@ -92,11 +94,11 @@ impl<L: Ledger> KeystoreLoader<L> for InteractiveLoader {
                 println!("1) Accept phrase and create keystore");
                 println!("2) Generate a new phrase");
                 println!("3) Manually enter a mnemonic (use this to recover a lost keystore)");
-                match self.input.read_line() {
+                match self.input.read_line().await {
                     Some(line) => match line.as_str().trim() {
                         "1" => break 'outer (mnemonic),
                         "2" => continue 'outer,
-                        "3" => break 'outer (self.read_mnemonic()?),
+                        "3" => break 'outer (self.read_mnemonic().await?),
                         _ => continue 'inner,
                     },
                     None => {
@@ -108,19 +110,19 @@ impl<L: Ledger> KeystoreLoader<L> for InteractiveLoader {
             }
         };
         let key = KeyTree::from_mnemonic(&mnemonic);
-        let password = self.create_password()?;
+        let password = self.create_password().await?;
         let meta = MnemonicPasswordLogin::new(&mut self.rng, &mnemonic, password.as_bytes())?;
 
         Ok((meta, key))
     }
 
-    fn load(&mut self, meta: &mut Self::Meta) -> Result<KeyTree, KeystoreError<L>> {
+    async fn load(&mut self, meta: &mut Self::Meta) -> Result<KeyTree, KeystoreError<L>> {
         let key = loop {
             let password = loop {
                 println!("Forgot your password? Want to change it? [y/n]");
-                match self.input.read_line() {
+                match self.input.read_line().await {
                     Some(line) => match line.as_str().trim() {
-                        "n" => break Some(self.input.read_password("Enter password: ")?),
+                        "n" => break Some(self.input.read_password("Enter password: ").await?),
                         "y" => break None,
                         _ => println!("Please enter 'y' or 'n'."),
                     },
@@ -140,9 +142,9 @@ impl<L: Ledger> KeystoreLoader<L> for InteractiveLoader {
                 }
             } else {
                 // Reset password using mnemonic.
-                let mnemonic = self.read_mnemonic()?;
+                let mnemonic = self.read_mnemonic().await?;
                 if meta.check_mnemonic(&mnemonic) {
-                    let password = self.create_password()?;
+                    let password = self.create_password().await?;
                     // This should never fail after we have verified the mnemonic.
                     meta.set_password::<L>(&mut self.rng, &mnemonic, password.as_bytes())
                         .unwrap();

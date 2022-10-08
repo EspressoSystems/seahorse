@@ -10,6 +10,7 @@ use crate::{
     loader::{KeystoreLoader, MnemonicPasswordLogin},
     KeystoreError,
 };
+use async_trait::async_trait;
 use reef::Ledger;
 use std::path::PathBuf;
 
@@ -28,6 +29,7 @@ impl LoginLoader {
     }
 }
 
+#[async_trait]
 impl<L: Ledger> KeystoreLoader<L> for LoginLoader {
     type Meta = MnemonicPasswordLogin;
 
@@ -35,13 +37,13 @@ impl<L: Ledger> KeystoreLoader<L> for LoginLoader {
         self.dir.clone()
     }
 
-    fn create(&mut self) -> Result<(Self::Meta, KeyTree), KeystoreError<L>> {
+    async fn create(&mut self) -> Result<(Self::Meta, KeyTree), KeystoreError<L>> {
         Err(KeystoreError::Failed {
             msg: String::from("LoginLoader does not support creating a new keystore"),
         })
     }
 
-    fn load(&mut self, meta: &mut Self::Meta) -> Result<KeyTree, KeystoreError<L>> {
+    async fn load(&mut self, meta: &mut Self::Meta) -> Result<KeyTree, KeystoreError<L>> {
         let mnemonic = meta
             .decrypt_mnemonic(self.password.as_bytes())
             .ok_or_else(|| KeystoreError::Failed {
