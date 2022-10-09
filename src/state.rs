@@ -35,8 +35,8 @@ impl<
         self.model.stores.commit()
     }
 
-    async fn revert(&mut self) -> Result<(), KeystoreError<L>> {
-        self.model.stores.revert().await
+    fn revert(&mut self) -> Result<(), KeystoreError<L>> {
+        self.model.stores.revert()
     }
 }
 
@@ -265,12 +265,10 @@ impl<
     > Drop for KeystoreSharedStateWriteGuard<'l, 'a, L, Backend, Meta>
 {
     fn drop(&mut self) {
-        async_std::task::block_on(async move {
-            if self.failed {
-                self.guard.revert().await.unwrap();
-            } else {
-                self.guard.commit().unwrap();
-            }
-        });
+        if self.failed {
+            self.guard.revert().unwrap();
+        } else {
+            self.guard.commit().unwrap();
+        }
     }
 }

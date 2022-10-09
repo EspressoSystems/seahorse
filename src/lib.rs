@@ -368,7 +368,7 @@ impl<
     }
 
     fn commit(&mut self) -> Result<(), KeystoreError<L>> {
-        self.meta_store.commit();
+        self.meta_store.commit()?;
         self.ledger_states.commit()?;
         self.assets.commit()?;
         self.transactions.commit()?;
@@ -380,8 +380,8 @@ impl<
         Ok(())
     }
 
-    async fn revert(&mut self) -> Result<(), KeystoreError<L>> {
-        self.meta_store.revert().await;
+    fn revert(&mut self) -> Result<(), KeystoreError<L>> {
+        self.meta_store.revert()?;
         self.ledger_states.revert()?;
         self.assets.revert()?;
         self.transactions.revert()?;

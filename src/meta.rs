@@ -94,20 +94,21 @@ impl<Meta: Send + Serialize + DeserializeOwned> MetaStore<Meta> {
         self.persisted_meta.load_latest().is_ok()
     }
 
-    pub fn commit(&mut self) {
+    pub fn commit<L: Ledger>(&mut self) -> Result<(), KeystoreError<L>> {
         {
             if self.meta_dirty {
-                self.persisted_meta.commit_version().unwrap();
+                self.persisted_meta.commit_version()?;
             } else {
-                self.persisted_meta.skip_version().unwrap();
+                self.persisted_meta.skip_version()?;
             }
         }
 
         self.meta_dirty = false;
+        Ok(())
     }
 
-    pub async fn revert(&mut self) {
-        self.persisted_meta.revert_version().unwrap();
+    pub fn revert<L: Ledger>(&mut self) -> Result<(), KeystoreError<L>> {
+        Ok(self.persisted_meta.revert_version()?)
     }
 }
 
@@ -238,7 +239,7 @@ mod tests {
 
             ledger_states.update(&state).unwrap();
             ledger_states.commit().unwrap();
-            meta_store.commit();
+            meta_store.commit::<cap::Ledger>().unwrap();
             atomic_store.commit_version().unwrap();
             assert!(!meta_store.exists());
         }
@@ -270,7 +271,7 @@ mod tests {
             let mut atomic_store = AtomicStore::open(atomic_loader).unwrap();
             let state = ledger_states.load().unwrap();
             ledger_states.commit().unwrap();
-            meta_store.commit();
+            meta_store.commit::<cap::Ledger>().unwrap();
             atomic_store.commit_version().unwrap();
             state
         };
@@ -302,7 +303,7 @@ mod tests {
             let mut atomic_store = AtomicStore::open(atomic_loader).unwrap();
             ledger_states.update_dynamic(&stored).unwrap();
             ledger_states.commit().unwrap();
-            meta_store.commit();
+            meta_store.commit::<cap::Ledger>().unwrap();
             atomic_store.commit_version().unwrap();
         }
         let loaded = {
@@ -322,7 +323,7 @@ mod tests {
             let mut atomic_store = AtomicStore::open(atomic_loader).unwrap();
             let state = ledger_states.load().unwrap();
             ledger_states.commit().unwrap();
-            meta_store.commit();
+            meta_store.commit::<cap::Ledger>().unwrap();
             atomic_store.commit_version().unwrap();
             state
         };
@@ -356,7 +357,7 @@ mod tests {
             ledger_states.update_dynamic(&updated).unwrap();
             ledger_states.revert().unwrap();
             ledger_states.commit().unwrap();
-            meta_store.commit();
+            meta_store.commit::<cap::Ledger>().unwrap();
             atomic_store.commit_version().unwrap();
 
             // Make sure loading after a revert does not return the reverted changes.
@@ -399,7 +400,7 @@ mod tests {
             // Loading after revert should be a no-op.
             let state = ledger_states.load().unwrap();
             ledger_states.commit().unwrap();
-            meta_store.commit();
+            meta_store.commit::<cap::Ledger>().unwrap();
             atomic_store.commit_version().unwrap();
             state
         };
