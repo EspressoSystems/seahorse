@@ -56,6 +56,8 @@
 <span id="50">50</span>
 <span id="51">51</span>
 <span id="52">52</span>
+<span id="53">53</span>
+<span id="54">54</span>
 </pre><pre class="rust"><code><span class="comment">// Copyright (c) 2022 Espresso Systems (espressosys.com)</span>
 <span class="comment">// This file is part of the Seahorse library.</span>
 
@@ -68,6 +70,7 @@
     <span class="ident">loader</span>::{<span class="ident">KeystoreLoader</span>, <span class="ident">MnemonicPasswordLogin</span>},
     <span class="ident">KeystoreError</span>,
 };
+<span class="kw">use</span> <span class="ident">async_trait::async_trait</span>;
 <span class="kw">use</span> <span class="ident">reef::Ledger</span>;
 <span class="kw">use</span> <span class="ident">std::path::PathBuf</span>;
 
@@ -86,6 +89,7 @@
     }
 }
 
+<span class="attribute">#[<span class="ident">async_trait</span>]</span>
 <span class="kw">impl</span><span class="op">&lt;</span><span class="ident">L</span>: <span class="ident">Ledger</span><span class="op">&gt;</span> <span class="ident">KeystoreLoader</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">LoginLoader</span> {
     <span class="kw">type</span> <span class="ident">Meta</span> <span class="op">=</span> <span class="ident">MnemonicPasswordLogin</span>;
 
@@ -93,13 +97,13 @@
         <span class="self">self</span>.<span class="ident">dir</span>.<span class="ident">clone</span>()
     }
 
-    <span class="kw">fn</span> <span class="ident">create</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span><span class="op">&lt;</span>(<span class="ident"><span class="self">Self</span>::Meta</span>, <span class="ident">KeyTree</span>), <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
+    <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">create</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span><span class="op">&lt;</span>(<span class="ident"><span class="self">Self</span>::Meta</span>, <span class="ident">KeyTree</span>), <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
         <span class="prelude-val">Err</span>(<span class="ident">KeystoreError::Failed</span> {
             <span class="ident">msg</span>: <span class="ident">String::from</span>(<span class="string">&quot;LoginLoader does not support creating a new keystore&quot;</span>),
         })
     }
 
-    <span class="kw">fn</span> <span class="ident">load</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>, <span class="ident">meta</span>: <span class="kw-2">&amp;mut</span> <span class="ident"><span class="self">Self</span>::Meta</span>) -&gt; <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">KeyTree</span>, <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
+    <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">load</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>, <span class="ident">meta</span>: <span class="kw-2">&amp;mut</span> <span class="ident"><span class="self">Self</span>::Meta</span>) -&gt; <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">KeyTree</span>, <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
         <span class="kw">let</span> <span class="ident">mnemonic</span> <span class="op">=</span> <span class="ident">meta</span>
             .<span class="ident">decrypt_mnemonic</span>(<span class="self">self</span>.<span class="ident">password</span>.<span class="ident">as_bytes</span>())
             .<span class="ident">ok_or_else</span>(<span class="op">|</span><span class="op">|</span> <span class="ident">KeystoreError::Failed</span> {

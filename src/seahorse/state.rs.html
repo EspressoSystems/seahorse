@@ -278,8 +278,6 @@
 <span id="272">272</span>
 <span id="273">273</span>
 <span id="274">274</span>
-<span id="275">275</span>
-<span id="276">276</span>
 </pre><pre class="rust"><code><span class="kw">use</span> <span class="kw">crate</span>::{
     <span class="ident">ledger_state::LedgerState</span>, <span class="ident">EventIndex</span>, <span class="ident">KeystoreBackend</span>, <span class="ident">KeystoreError</span>, <span class="ident">KeystoreModel</span>,
     <span class="ident">TransactionStatus</span>, <span class="ident">TransactionUID</span>,
@@ -317,8 +315,8 @@
         <span class="self">self</span>.<span class="ident">model</span>.<span class="ident">stores</span>.<span class="ident">commit</span>()
     }
 
-    <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">revert</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span><span class="op">&lt;</span>(), <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
-        <span class="self">self</span>.<span class="ident">model</span>.<span class="ident">stores</span>.<span class="ident">revert</span>().<span class="kw">await</span>
+    <span class="kw">fn</span> <span class="ident">revert</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span><span class="op">&lt;</span>(), <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
+        <span class="self">self</span>.<span class="ident">model</span>.<span class="ident">stores</span>.<span class="ident">revert</span>()
     }
 }
 
@@ -547,13 +545,11 @@
     <span class="op">&gt;</span> <span class="ident">Drop</span> <span class="kw">for</span> <span class="ident">KeystoreSharedStateWriteGuard</span><span class="op">&lt;</span><span class="lifetime">&#39;l</span>, <span class="lifetime">&#39;a</span>, <span class="ident">L</span>, <span class="ident">Backend</span>, <span class="ident">Meta</span><span class="op">&gt;</span>
 {
     <span class="kw">fn</span> <span class="ident">drop</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>) {
-        <span class="ident">async_std::task::block_on</span>(<span class="kw">async</span> <span class="kw">move</span> {
-            <span class="kw">if</span> <span class="self">self</span>.<span class="ident">failed</span> {
-                <span class="self">self</span>.<span class="ident">guard</span>.<span class="ident">revert</span>().<span class="kw">await</span>.<span class="ident">unwrap</span>();
-            } <span class="kw">else</span> {
-                <span class="self">self</span>.<span class="ident">guard</span>.<span class="ident">commit</span>().<span class="ident">unwrap</span>();
-            }
-        });
+        <span class="kw">if</span> <span class="self">self</span>.<span class="ident">failed</span> {
+            <span class="self">self</span>.<span class="ident">guard</span>.<span class="ident">revert</span>().<span class="ident">unwrap</span>();
+        } <span class="kw">else</span> {
+            <span class="self">self</span>.<span class="ident">guard</span>.<span class="ident">commit</span>().<span class="ident">unwrap</span>();
+        }
     }
 }
 </code></pre></div>

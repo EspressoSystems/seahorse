@@ -274,6 +274,8 @@
 <span id="268">268</span>
 <span id="269">269</span>
 <span id="270">270</span>
+<span id="271">271</span>
+<span id="272">272</span>
 </pre><pre class="rust"><code><span class="comment">// Copyright (c) 2022 Espresso Systems (espressosys.com)</span>
 <span class="comment">// This file is part of the Seahorse library.</span>
 
@@ -297,6 +299,7 @@
     <span class="ident">hd</span>::{<span class="ident">KeyTree</span>, <span class="ident">Mnemonic</span>, <span class="ident">Salt</span>},
     <span class="ident">EncryptionSnafu</span>, <span class="ident">KeySnafu</span>, <span class="ident">KeystoreError</span>, <span class="ident">Ledger</span>,
 };
+<span class="kw">use</span> <span class="ident">async_trait::async_trait</span>;
 <span class="kw">use</span> <span class="ident">rand_chacha</span>::{
     <span class="ident">rand_core</span>::{<span class="ident">RngCore</span>, <span class="ident">SeedableRng</span>},
     <span class="ident">ChaChaRng</span>,
@@ -318,6 +321,7 @@
 <span class="kw">pub</span> <span class="kw">use</span> <span class="ident">login::LoginLoader</span>;
 <span class="kw">pub</span> <span class="kw">use</span> <span class="ident">recovery::RecoveryLoader</span>;
 
+<span class="attribute">#[<span class="ident">async_trait</span>]</span>
 <span class="kw">pub</span> <span class="kw">trait</span> <span class="ident">KeystoreLoader</span><span class="op">&lt;</span><span class="ident">L</span>: <span class="ident">Ledger</span><span class="op">&gt;</span> {
     <span class="doccomment">/// Metadata about a keystore which is always stored unencrypted.</span>
     <span class="doccomment">///</span>
@@ -340,7 +344,7 @@
     <span class="doccomment">/// will create the metadata for a new keystore and return it, along with the key tree to use</span>
     <span class="doccomment">/// when deriving keys for the new keystore. The caller should persist the new metadata in</span>
     <span class="doccomment">/// `self.location()`.</span>
-    <span class="kw">fn</span> <span class="ident">create</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span><span class="op">&lt;</span>(<span class="ident"><span class="self">Self</span>::Meta</span>, <span class="ident">KeyTree</span>), <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span>;
+    <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">create</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span><span class="op">&lt;</span>(<span class="ident"><span class="self">Self</span>::Meta</span>, <span class="ident">KeyTree</span>), <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span>;
 
     <span class="doccomment">/// Load an existing keystore.</span>
     <span class="doccomment">///</span>
@@ -355,7 +359,7 @@
     <span class="doccomment">/// `self.location()`.</span>
     <span class="doccomment">///</span>
     <span class="doccomment">/// If [load](Self::load) fails, it will not change `meta`.</span>
-    <span class="kw">fn</span> <span class="ident">load</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>, <span class="ident">meta</span>: <span class="kw-2">&amp;mut</span> <span class="ident"><span class="self">Self</span>::Meta</span>) -&gt; <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">KeyTree</span>, <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span>;
+    <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">load</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>, <span class="ident">meta</span>: <span class="kw-2">&amp;mut</span> <span class="ident"><span class="self">Self</span>::Meta</span>) -&gt; <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">KeyTree</span>, <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span>;
 }
 
 <span class="doccomment">/// Metadata that supports login with a password and backup/recovery with a mnemonic.</span>
