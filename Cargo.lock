@@ -2134,7 +2134,7 @@ checksum = "4217ad341ebadf8d8e724e264f13e593e0648f5b3e94b3896a5df283be015ecc"
 [[package]]
 name = "jf-cap"
 version = "0.0.4"
-source = "git+https://github.com/EspressoSystems/cap.git?branch=testnet-v1#e3ce95c6fc1cdac1bd3a052b29dc5c0fcc6d3a28"
+source = "git+https://github.com/EspressoSystems/cap.git?branch=testnet-v1#ad9f4d87b7c4ba3ad434a098c92152464485843c"
 dependencies = [
  "anyhow",
  "ark-bn254",
@@ -2155,7 +2155,7 @@ dependencies = [
  "jf-plonk",
  "jf-primitives",
  "jf-rescue",
- "jf-utils 0.1.1",
+ "jf-utils",
  "num_cpus",
  "percentage",
  "rand 0.8.5",
@@ -2190,7 +2190,7 @@ dependencies = [
  "espresso-systems-common",
  "itertools",
  "jf-rescue",
- "jf-utils 0.1.2",
+ "jf-utils",
  "merlin",
  "num-bigint 0.4.3",
  "rand_chacha 0.3.1",
@@ -2221,7 +2221,7 @@ dependencies = [
  "itertools",
  "jf-plonk",
  "jf-rescue",
- "jf-utils 0.1.2",
+ "jf-utils",
  "rand_chacha 0.3.1",
  "rayon",
  "serde",
@@ -2248,28 +2248,10 @@ dependencies = [
  "derivative",
  "displaydoc",
  "generic-array",
- "jf-utils 0.1.2",
+ "jf-utils",
  "rayon",
  "serde",
  "zeroize",
-]
-
-[[package]]
-name = "jf-utils"
-version = "0.1.1"
-source = "git+https://github.com/EspressoSystems/jellyfish.git?tag=0.1.1#fbbe665698ae5d55c3c2f8ab66f8f3bd722f3a17"
-dependencies = [
- "anyhow",
- "ark-ec",
- "ark-ff",
- "ark-serialize",
- "ark-std",
- "digest 0.10.5",
- "jf-utils-derive 0.1.1",
- "serde",
- "sha2 0.10.6",
- "snafu",
- "tagged-base64 0.2.0 (git+https://github.com/EspressoSystems/tagged-base64.git?tag=0.2.0)",
 ]
 
 [[package]]
@@ -2283,21 +2265,11 @@ dependencies = [
  "ark-serialize",
  "ark-std",
  "digest 0.10.5",
- "jf-utils-derive 0.1.2",
+ "jf-utils-derive",
  "serde",
  "sha2 0.10.6",
  "snafu",
  "tagged-base64 0.2.0 (git+https://github.com/EspressoSystems/tagged-base64.git?tag=0.2.0)",
-]
-
-[[package]]
-name = "jf-utils-derive"
-version = "0.1.1"
-source = "git+https://github.com/EspressoSystems/jellyfish.git?tag=0.1.1#fbbe665698ae5d55c3c2f8ab66f8f3bd722f3a17"
-dependencies = [
- "ark-std",
- "quote",
- "syn",
 ]
 
 [[package]]
@@ -3491,7 +3463,7 @@ dependencies = [
  "itertools",
  "jf-cap",
  "jf-primitives",
- "jf-utils 0.1.2",
+ "jf-utils",
  "key-set",
  "lazy_static",
  "num-bigint 0.4.3",
