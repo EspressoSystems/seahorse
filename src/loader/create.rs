@@ -10,6 +10,7 @@ use crate::{
     loader::{KeystoreLoader, MnemonicPasswordLogin},
     KeystoreError,
 };
+use async_trait::async_trait;
 use rand_chacha::{rand_core::SeedableRng, ChaChaRng};
 use reef::Ledger;
 use std::path::PathBuf;
@@ -56,6 +57,7 @@ impl CreateLoader {
     }
 }
 
+#[async_trait]
 impl<L: Ledger> KeystoreLoader<L> for CreateLoader {
     type Meta = MnemonicPasswordLogin;
 
@@ -63,14 +65,14 @@ impl<L: Ledger> KeystoreLoader<L> for CreateLoader {
         self.dir.clone()
     }
 
-    fn create(&mut self) -> Result<(Self::Meta, KeyTree), KeystoreError<L>> {
+    async fn create(&mut self) -> Result<(Self::Meta, KeyTree), KeystoreError<L>> {
         let meta =
             MnemonicPasswordLogin::new(&mut self.rng, &self.mnemonic, self.password.as_bytes())?;
         let key = KeyTree::from_mnemonic(&self.mnemonic);
         Ok((meta, key))
     }
 
-    fn load(&mut self, meta: &mut Self::Meta) -> Result<KeyTree, KeystoreError<L>> {
+    async fn load(&mut self, meta: &mut Self::Meta) -> Result<KeyTree, KeystoreError<L>> {
         if self.exclusive {
             return Err(KeystoreError::Failed {
                 msg: String::from("using an exclusive CreateLoader with an existing keystore"),

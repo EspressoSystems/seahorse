@@ -368,7 +368,7 @@ impl<
     }
 
     fn commit(&mut self) -> Result<(), KeystoreError<L>> {
-        self.meta_store.commit();
+        self.meta_store.commit()?;
         self.ledger_states.commit()?;
         self.assets.commit()?;
         self.transactions.commit()?;
@@ -380,8 +380,8 @@ impl<
         Ok(())
     }
 
-    async fn revert(&mut self) -> Result<(), KeystoreError<L>> {
-        self.meta_store.revert().await;
+    fn revert(&mut self) -> Result<(), KeystoreError<L>> {
+        self.meta_store.revert()?;
         self.ledger_states.revert()?;
         self.assets.revert()?;
         self.transactions.revert()?;
@@ -558,12 +558,12 @@ impl<
         Meta: 'a + Serialize + DeserializeOwned + Send + Sync + Clone + PartialEq,
     > Keystore<'a, Backend, L, Meta>
 {
-    pub fn create_stores(
+    pub async fn create_stores(
         loader: &mut impl KeystoreLoader<L, Meta = Meta>,
     ) -> Result<KeystoreStores<'a, L, Meta>, KeystoreError<L>> {
         let mut atomic_loader = AtomicStoreLoader::load(&loader.location(), "keystore").unwrap();
         let file_fill_size = 1024;
-        let meta_store = MetaStore::new(loader, &mut atomic_loader)?;
+        let meta_store = MetaStore::new(loader, &mut atomic_loader).await?;
         let adaptor = meta_store.encrypting_storage_adapter::<()>();
         let ledger_states = LedgerStates::new(
             &mut atomic_loader,
@@ -617,12 +617,15 @@ impl<
     // manually write out the opaque return type so that we can explicitly add the `Send` bound. The
     // difference is that we use dynamic type erasure (Pin<Box<dyn Future>>) instead of static type
     // erasure. I don't know why this doesn't crash the compiler, but it doesn't.
-    pub fn new(
+    pub fn new<'l>(
         mut backend: Backend,
-        loader: &mut impl KeystoreLoader<L, Meta = Meta>,
-    ) -> BoxFuture<'a, Result<Keystore<'a, Backend, L, Meta>, KeystoreError<L>>> {
-        let mut stores = Self::create_stores(loader).unwrap();
+        loader: &'l mut (impl KeystoreLoader<L, Meta = Meta> + Send),
+    ) -> BoxFuture<'l, Result<Keystore<'a, Backend, L, Meta>, KeystoreError<L>>>
+    where
+        'a: 'l,
+    {
         Box::pin(async move {
+            let mut stores = Self::create_stores(loader).await?;
             let state = if stores.meta_store.exists() {
                 stores.ledger_states.load()?
             } else {
@@ -637,43 +640,47 @@ impl<
     }
 
     #[cfg(any(test, bench, feature = "testing"))]
-    pub fn with_state_and_keys(
+    pub fn with_state_and_keys<'l>(
         backend: Backend,
-        loader: &mut (impl 'a + KeystoreLoader<L, Meta = Meta>),
+        loader: &'l mut (impl 'a + KeystoreLoader<L, Meta = Meta> + Send),
         state: LedgerState<'a, L>,
         viewing_key: Option<(ViewerKeyPair, String)>,
         freezing_key: Option<(FreezerKeyPair, String)>,
         sending_key: Option<(UserKeyPair, String)>,
-    ) -> BoxFuture<'a, Result<Keystore<'a, Backend, L, Meta>, KeystoreError<L>>> {
-        let mut stores = Self::create_stores(loader).unwrap();
-        if let Some((key, description)) = viewing_key {
-            stores
-                .viewing_accounts
-                .create(key, None)
-                .unwrap()
-                .with_description(description)
-                .save()
-                .unwrap();
-        }
-        if let Some((key, description)) = freezing_key {
-            stores
-                .freezing_accounts
-                .create(key, None)
-                .unwrap()
-                .with_description(description)
-                .save()
-                .unwrap();
-        }
-        if let Some((key, description)) = sending_key {
-            stores
-                .sending_accounts
-                .create(key, None)
-                .unwrap()
-                .with_description(description)
-                .save()
-                .unwrap();
-        }
+    ) -> BoxFuture<'l, Result<Keystore<'a, Backend, L, Meta>, KeystoreError<L>>>
+    where
+        'a: 'l,
+    {
         Box::pin(async move {
+            let mut stores = Self::create_stores(loader).await?;
+            if let Some((key, description)) = viewing_key {
+                stores
+                    .viewing_accounts
+                    .create(key, None)
+                    .unwrap()
+                    .with_description(description)
+                    .save()
+                    .unwrap();
+            }
+            if let Some((key, description)) = freezing_key {
+                stores
+                    .freezing_accounts
+                    .create(key, None)
+                    .unwrap()
+                    .with_description(description)
+                    .save()
+                    .unwrap();
+            }
+            if let Some((key, description)) = sending_key {
+                stores
+                    .sending_accounts
+                    .create(key, None)
+                    .unwrap()
+                    .with_description(description)
+                    .save()
+                    .unwrap();
+            }
+
             stores.meta_store.create().await?;
             stores.ledger_states.update(&state)?;
             stores.commit()?;

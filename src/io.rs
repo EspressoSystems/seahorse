@@ -10,6 +10,7 @@
 //! Having an interface for I/O which can be implemented with any underlying I/O primitive makes it
 //! easy to swap out the actual I/O implementation used by the CLI for testing and automation
 //! purposes.
+use async_std::task::spawn_blocking;
 use pipe::{pipe, PipeReader, PipeWriter};
 use std::io;
 use std::io::{stdin, stdout, BufRead, Read, Write};
@@ -151,4 +152,53 @@ impl<R: BufRead> BufRead for Tee<R> {
             .unwrap();
         self.stream.consume(amt);
     }
+}
+
+#[macro_export]
+macro_rules! async_writeln {
+    ($io:expr, $fmt:expr, $($arg:expr),* $(,)?) => {
+        {
+            let args = format_args!($fmt, $($arg),*).to_string();
+            let mut io = $io.clone();
+            async_std::task::spawn_blocking(move || { writeln!(io, "{}", args).unwrap() }).await
+        }
+    };
+    ($io:expr$(, $fmt:expr)?) => {
+        {
+            let mut io = $io.clone();
+            async_std::task::spawn_blocking(move || { writeln!(io, $($fmt)?).unwrap() }).await
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! async_write {
+    ($io:expr, $fmt:expr, $($arg:expr),* $(,)?) => {
+        {
+            let args = format_args!($fmt, $($arg),*).to_string();
+            let mut io = $io.clone();
+            async_std::task::spawn_blocking(move || { write!(io, "{}", args).unwrap() }).await
+        }
+    };
+    ($io:expr$(, $fmt:expr)?) => {
+        {
+            let mut io = $io.clone();
+            async_std::task::spawn_blocking(move || { write!(io, $($fmt)?).unwrap() }).await
+        }
+    };
+}
+
+pub async fn async_read_line(
+    output: &(impl Clone + BufRead + Send + 'static),
+    line: &mut String,
+) -> io::Result<usize> {
+    let mut output = output.clone();
+    let (res, buf) = spawn_blocking(move || {
+        let mut buf = String::new();
+        let res = output.read_line(&mut buf);
+        (res, buf)
+    })
+    .await;
+    *line = buf;
+    res
 }

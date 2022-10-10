@@ -22,7 +22,6 @@ use crate::{
     RecordAmount, TransactionStatus,
 };
 use ark_serialize::*;
-use async_std::task::block_on;
 use async_trait::async_trait;
 use derive_more::{Deref, From, Into};
 use fmt::{Display, Formatter};
@@ -59,7 +58,7 @@ pub trait CLI<'a> {
     /// The [KeystoreBackend] implementation to use for the keystore.
     type Backend: 'a + KeystoreBackend<'a, Self::Ledger> + Send + Sync;
     /// The [KeystoreLoader] implementation to use to create or load the keystore.
-    type Loader: KeystoreLoader<Self::Ledger, Meta = Self::Meta>;
+    type Loader: KeystoreLoader<Self::Ledger, Meta = Self::Meta> + Send;
     /// The type of metadata used by [Self::Loader].
     type Meta: 'a + Send + Sync + Serialize + DeserializeOwned + Clone + PartialEq;
     /// The type of command line options for use when configuring the CLI.
@@ -160,8 +159,9 @@ impl<'a, C: CLI<'a>> Display for Command<'a, C> {
 }
 
 /// Types which can be parsed from a string relative to a particular [Keystore].Stream
+#[async_trait]
 pub trait CLIInput<'a, C: CLI<'a>>: Sized {
-    fn parse_for_keystore(keystore: &mut Keystore<'a, C>, s: &str) -> Option<Self>;
+    async fn parse_for_keystore(keystore: &mut Keystore<'a, C>, s: &str) -> Option<Self>;
 }
 
 #[tagged_blob("RECPROOF")]
@@ -173,8 +173,9 @@ pub struct CLIMerklePath(MerklePath);
 macro_rules! cli_input_from_str {
     ($($t:ty),*) => {
         $(
+            #[async_trait]
             impl<'a, C: CLI<'a>> CLIInput<'a, C> for $t {
-                fn parse_for_keystore(_keystore: &mut Keystore<'a, C>, s: &str) -> Option<Self> {
+                async fn parse_for_keystore(_keystore: &mut Keystore<'a, C>, s: &str) -> Option<Self> {
                     Self::from_str(s).ok()
                 }
             }
@@ -187,8 +188,9 @@ cli_input_from_str! {
     RecordAmount, RecordCommitment, String, UserAddress, UserPubKey, ViewerPubKey
 }
 
+#[async_trait]
 impl<'a, C: CLI<'a>, L: Ledger> CLIInput<'a, C> for TransactionUID<L> {
-    fn parse_for_keystore(_keystore: &mut Keystore<'a, C>, s: &str) -> Option<Self> {
+    async fn parse_for_keystore(_keystore: &mut Keystore<'a, C>, s: &str) -> Option<Self> {
         Self::from_str(s).ok()
     }
 }
@@ -196,25 +198,15 @@ impl<'a, C: CLI<'a>, L: Ledger> CLIInput<'a, C> for TransactionUID<L> {
 // Annoyingly, FromStr for U256 always interprets the input as hex. This implementation checks for a
 // 0x prefix. If present, it interprets the remainder of the string as hex, otherwise it interprets
 // the entire string as decimal.
+#[async_trait]
 impl<'a, C: CLI<'a>> CLIInput<'a, C> for U256 {
-    fn parse_for_keystore(_wallet: &mut Keystore<'a, C>, s: &str) -> Option<Self> {
+    async fn parse_for_keystore(_wallet: &mut Keystore<'a, C>, s: &str) -> Option<Self> {
         if s.starts_with("0x") {
             s.parse().ok()
         } else {
             U256::from_dec_str(s).ok()
         }
     }
-}
-
-/// Convenience macro for panicking if output fails.
-#[macro_export]
-macro_rules! cli_writeln {
-    ($($arg:expr),+ $(,)?) => { writeln!($($arg),+).expect("failed to write CLI output") };
-}
-/// Convenience macro for panicking if output fails.
-#[macro_export]
-macro_rules! cli_write {
-    ($($arg:expr),+ $(,)?) => { write!($($arg),+).expect("failed to write CLI output") };
 }
 
 /// Create a [Command] from a help string and a function.
@@ -249,7 +241,7 @@ macro_rules! command {
                 #[allow(unused_variables)]
                 let mut args = args.into_iter();
                 $(
-                    let $arg = match <$argty as CLIInput<$cli>>::parse_for_keystore(keystore, args.next().unwrap().as_str()) {
+                    let $arg = match <$argty as CLIInput<$cli>>::parse_for_keystore(keystore, args.next().unwrap().as_str()).await {
                         Some(arg) => arg,
                         None => {
                             cli_writeln!(
@@ -267,7 +259,7 @@ macro_rules! command {
                 // `kwarg` in `kwargs` to tye type `ty`.
                 $($(
                     let $kwarg = match kwargs.get(stringify!($kwarg)) {
-                        Some(val) => match <$kwargty as CLIInput<$cli>>::parse_for_keystore(keystore, val) {
+                        Some(val) => match <$kwargty as CLIInput<$cli>>::parse_for_keystore(keystore, val).await {
                             Some(arg) => Some(arg),
                             None => {
                                 cli_writeln!(
@@ -309,19 +301,14 @@ macro_rules! count {
 }
 
 // Export macros as items of this module (since #[macro_export] puts them at the crate root).
-pub use crate::cli_write;
-pub use crate::cli_writeln;
 pub use crate::command;
 pub use crate::count;
+pub use crate::{async_write as cli_write, async_writeln as cli_writeln};
 
 /// Types which can be listed in terminal output and parsed from a list index.
 #[async_trait]
 pub trait Listable<'a, C: CLI<'a>>: Sized {
     async fn list(keystore: &mut Keystore<'a, C>) -> Vec<ListItem<Self>>;
-
-    fn list_sync(keystore: &mut Keystore<'a, C>) -> Vec<ListItem<Self>> {
-        block_on(Self::list(keystore))
-    }
 }
 
 pub struct ListItem<T> {
@@ -340,12 +327,13 @@ impl<T: Display> Display for ListItem<T> {
     }
 }
 
+#[async_trait]
 impl<'a, C: CLI<'a>, T: Listable<'a, C> + CLIInput<'a, C>> CLIInput<'a, C> for ListItem<T> {
-    fn parse_for_keystore(keystore: &mut Keystore<'a, C>, s: &str) -> Option<Self> {
+    async fn parse_for_keystore(keystore: &mut Keystore<'a, C>, s: &str) -> Option<Self> {
         if let Ok(index) = usize::from_str(s) {
             // If the input looks like a list index, build the list for type T and get an element of
             // type T by indexing.
-            let mut items = T::list_sync(keystore);
+            let mut items = T::list(keystore).await;
             if index < items.len() {
                 Some(items.remove(index))
             } else {
@@ -353,11 +341,13 @@ impl<'a, C: CLI<'a>, T: Listable<'a, C> + CLIInput<'a, C>> CLIInput<'a, C> for L
             }
         } else {
             // Otherwise, just parse a T directly.
-            T::parse_for_keystore(keystore, s).map(|item| ListItem {
-                item,
-                index: 0,
-                annotation: None,
-            })
+            T::parse_for_keystore(keystore, s)
+                .await
+                .map(|item| ListItem {
+                    item,
+                    index: 0,
+                    annotation: None,
+                })
         }
     }
 }
@@ -929,8 +919,9 @@ pub enum KeyType {
     Sending,
 }
 
+#[async_trait]
 impl<'a, C: CLI<'a>> CLIInput<'a, C> for KeyType {
-    fn parse_for_keystore(_keystore: &mut Keystore<'a, C>, s: &str) -> Option<Self> {
+    async fn parse_for_keystore(_keystore: &mut Keystore<'a, C>, s: &str) -> Option<Self> {
         match s {
             "view" | "viewing" => Some(Self::Viewing),
             "freeze" | "freezing" => Some(Self::Freezing),
@@ -1025,7 +1016,7 @@ async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
         }
     };
 
-    let (mut io, mut input) = match args.io() {
+    let (io, mut input) = match args.io() {
         Some(io) => (io.clone(), Reader::automated(io)),
         None => (SharedIO::std(), Reader::interactive()),
     };
@@ -1048,7 +1039,7 @@ async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
     cli_writeln!(io, "Type 'help' for a list of commands.");
     let commands = init_commands::<C>();
 
-    'repl: while let Some(line) = input.read_line() {
+    'repl: while let Some(line) = input.read_line().await {
         let tokens = line.split_whitespace().collect::<Vec<_>>();
         if tokens.is_empty() {
             continue;
@@ -1095,7 +1086,7 @@ async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
 mod test {
     use super::*;
     use crate::{
-        io::Tee,
+        io::{async_read_line, Tee},
         loader::{InteractiveLoader, MnemonicPasswordLogin},
         testing::{
             cli_match::*,
@@ -1195,7 +1186,7 @@ mod test {
         (ledger, key_streams)
     }
 
-    fn create_keystore(
+    async fn create_keystore(
         ledger: MockCapLedger<'static>,
         path: PathBuf,
     ) -> (Tee<PipeWriter>, Tee<PipeReader>) {
@@ -1212,39 +1203,38 @@ mod test {
         });
 
         // Wait for the CLI to start up and then return the input and output pipes.
-        let mut input = Tee::new(input);
-        let mut output = Tee::new(output);
-        wait_for_prompt(&mut output);
+        let input = Tee::new(input);
+        let output = Tee::new(output);
+        wait_for_prompt(&output).await;
         // Loader wants to verify the keyphase.  Input 1 here to accept the generated phrase.
-        writeln!(input, "1").unwrap();
+        cli_writeln!(input, "1");
         let mut line = String::new();
         // Enter a password for the loader
-        output.read_line(&mut line).unwrap();
-        writeln!(input, "password").unwrap();
-        output.read_line(&mut line).unwrap();
-        writeln!(input, "password").unwrap();
-        wait_for_prompt(&mut output);
+        async_read_line(&output, &mut line).await.unwrap();
+        cli_writeln!(input, "password");
+        async_read_line(&output, &mut line).await.unwrap();
+        cli_writeln!(input, "password");
+        wait_for_prompt(&output).await;
 
         (input, output)
     }
 
-    fn add_funded_keys(
-        input: &mut impl Write,
-        output: &mut impl BufRead,
+    async fn add_funded_keys(
+        input: &(impl Clone + Write + Send + 'static),
+        output: &(impl Clone + BufRead + Send + 'static),
         private_keys: &[UserKeyPair],
         path: PathBuf,
     ) -> Vec<(String, String)> {
         let mut keys = vec![];
         for pk in private_keys {
             let file_name = write_key_file(path.clone(), pk.clone());
-            writeln!(
+            cli_writeln!(
                 input,
                 "load_key sending {} scan_from=start wait=true",
                 file_name.to_str().unwrap()
-            )
-            .unwrap();
+            );
             let matches =
-                match_output(output, &["(?P<pub_key>USERPUBKEY~.*)", "(?P<addr>ADDR~.*)"]);
+                match_output(output, &["(?P<pub_key>USERPUBKEY~.*)", "(?P<addr>ADDR~.*)"]).await;
             let pub_key = matches.get("pub_key");
             let address = matches.get("addr");
             keys.push((address, pub_key));
@@ -1263,188 +1253,204 @@ mod test {
         // Create three keystore clients: one to mint and view an asset, one to make an anonymous
         // transfer, and one to receive an anonymous transfer. We will see if the viewer can
         // discover the output record of the anonymous transfer, in which it is not a participant.
-        let (mut viewer_input, mut viewer_output) =
-            create_keystore(ledger.clone(), PathBuf::from(tmp_dir1.path()));
-        let (mut sender_input, mut sender_output) =
-            create_keystore(ledger.clone(), PathBuf::from(tmp_dir2.path()));
-        let (mut receiver_input, mut receiver_output) =
-            create_keystore(ledger, PathBuf::from(tmp_dir3.path()));
+        let (viewer_input, viewer_output) =
+            create_keystore(ledger.clone(), PathBuf::from(tmp_dir1.path())).await;
+        let (sender_input, sender_output) =
+            create_keystore(ledger.clone(), PathBuf::from(tmp_dir2.path())).await;
+        let (receiver_input, receiver_output) =
+            create_keystore(ledger, PathBuf::from(tmp_dir3.path())).await;
 
         // Get the viewer's address.
         let (viewer_address, _) = add_funded_keys(
-            &mut viewer_input,
-            &mut viewer_output,
+            &viewer_input,
+            &viewer_output,
             &private_keys[0],
             PathBuf::from(tmp_dir1.path()),
-        )[0]
-        .clone();
+        )
+        .await[0]
+            .clone();
 
         // Get the sender's funded public key and address.
         let (sender_address, sender_pub_key) = add_funded_keys(
-            &mut sender_input,
-            &mut sender_output,
+            &sender_input,
+            &sender_output,
             &private_keys[1],
             PathBuf::from(tmp_dir1.path()),
-        )[0]
-        .clone();
+        )
+        .await[0]
+            .clone();
 
         // Get the receiver's (unfunded) public key and address.
-        writeln!(receiver_input, "gen_key sending").unwrap();
+        cli_writeln!(receiver_input, "gen_key sending");
         let matches = match_output(
-            &mut receiver_output,
+            &receiver_output,
             &["(?P<pub_key>USERPUBKEY~.*)", "(?P<addr>ADDR~.*)"],
-        );
+        )
+        .await;
         let receiver_pub_key = matches.get("pub_key");
         let receiver_address = matches.get("addr");
 
         // Generate a viewing key.
-        writeln!(viewer_input, "gen_key viewing").unwrap();
-        let matches = match_output(&mut viewer_output, &["(?P<view_key>AUDPUBKEY~.*)"]);
+        cli_writeln!(viewer_input, "gen_key viewing");
+        let matches = match_output(&viewer_output, &["(?P<view_key>AUDPUBKEY~.*)"]).await;
         let view_key = matches.get("view_key");
         // Currently we only view assets that we can freeze, so we need a freeze key.
-        writeln!(viewer_input, "gen_key freezing").unwrap();
-        let matches = match_output(&mut viewer_output, &["(?P<freeze_key>FREEZEPUBKEY~.*)"]);
+        cli_writeln!(viewer_input, "gen_key freezing");
+        let matches = match_output(&viewer_output, &["(?P<freeze_key>FREEZEPUBKEY~.*)"]).await;
         let freeze_key = matches.get("freeze_key");
         // Define an viewable asset.
-        writeln!(
+        cli_writeln!(
             viewer_input,
             "create_asset my_asset viewing_key={} freezing_key={} view_amount=true view_address=true view_blind=true",
             view_key, freeze_key
-        )
-        .unwrap();
-        let matches = match_output(&mut viewer_output, &["(?P<asset_code>ASSET_CODE~.*)"]);
+        );
+        let matches = match_output(&viewer_output, &["(?P<asset_code>ASSET_CODE~.*)"]).await;
         let asset_code = matches.get("asset_code");
         // Mint some of the asset on behalf of `sender`.
-        writeln!(
+        cli_writeln!(
             viewer_input,
             "mint {} {} 1000 1 fee_account={}",
-            asset_code, sender_pub_key, viewer_address,
-        )
-        .unwrap();
-        let matches = match_output(&mut viewer_output, &["(?P<txn>TXUID~.*)"]);
+            asset_code,
+            sender_pub_key,
+            viewer_address,
+        );
+        let matches = match_output(&viewer_output, &["(?P<txn>TXUID~.*)"]).await;
         let receipt = matches.get("txn");
         await_transaction(
             &receipt,
-            (&mut viewer_input, &mut viewer_output),
-            &mut [(&mut sender_input, &mut sender_output)],
-        );
-        writeln!(sender_input, "balance {}", asset_code).unwrap();
-        match_output(&mut sender_output, &[format!("{} 1000", sender_address)]);
+            (&viewer_input, &viewer_output),
+            &[(&sender_input, &sender_output)],
+        )
+        .await;
+        cli_writeln!(sender_input, "balance {}", asset_code);
+        match_output(&sender_output, &[format!("{} 1000", sender_address)]).await;
 
         // Make an anonymous transfer that doesn't involve the viewer (so we can check that the
         // viewer nonetheless discovers the details of the transaction).
-        writeln!(
+        cli_writeln!(
             sender_input,
             "transfer {} {} 50 1 from={}",
-            asset_code, receiver_pub_key, sender_address,
-        )
-        .unwrap();
-        let matches = match_output(&mut sender_output, &["(?P<txn>TXUID~.*)"]);
+            asset_code,
+            receiver_pub_key,
+            sender_address,
+        );
+        let matches = match_output(&sender_output, &["(?P<txn>TXUID~.*)"]).await;
         let receipt = matches.get("txn");
         await_transaction(
             &receipt,
-            (&mut sender_input, &mut sender_output),
-            &mut [
-                (&mut receiver_input, &mut receiver_output),
-                (&mut viewer_input, &mut viewer_output),
+            (&sender_input, &sender_output),
+            &[
+                (&receiver_input, &receiver_output),
+                (&viewer_input, &viewer_output),
             ],
-        );
+        )
+        .await;
 
         // View the transaction. We should find two unspent records: first the amount-50 transaction
         // output, and second the amount-950 change output. These records have UIDs 7 and 8, because
         // we already have 7 records: 5 initial grants, a mint output, and a mint fee change record.
-        writeln!(viewer_input, "view {}", asset_code).unwrap();
+        cli_writeln!(viewer_input, "view {}", asset_code);
         match_output(
-            &mut viewer_output,
+            &viewer_output,
             &[
                 "^UID\\s+AMOUNT\\s+FROZEN\\s+OWNER$",
                 format!("^7\\s+50\\s+false\\s+{}$", receiver_address).as_str(),
                 format!("^8\\s+950\\s+false\\s+{}$", sender_address).as_str(),
             ],
-        );
+        )
+        .await;
         // Filter by account.
-        writeln!(
+        cli_writeln!(
             viewer_input,
             "view {} account={}",
-            asset_code, receiver_address
-        )
-        .unwrap();
+            asset_code,
+            receiver_address
+        );
         match_output(
-            &mut viewer_output,
+            &viewer_output,
             &["^UID\\s+AMOUNT\\s+FROZEN$", "^7\\s+50\\s+false$"],
-        );
-        writeln!(
+        )
+        .await;
+        cli_writeln!(
             viewer_input,
             "view {} account={}",
-            asset_code, sender_address
-        )
-        .unwrap();
-        match_output(
-            &mut viewer_output,
-            &["^UID\\s+AMOUNT\\s+FROZEN$", "^8\\s+950\\s+false$"],
+            asset_code,
+            sender_address
         );
+        match_output(
+            &viewer_output,
+            &["^UID\\s+AMOUNT\\s+FROZEN$", "^8\\s+950\\s+false$"],
+        )
+        .await;
 
         // If we can see the record openings and we hold the freezer key, we should be able to
         // freeze them.
-        writeln!(
+        cli_writeln!(
             viewer_input,
             "freeze {} {} 950 1 fee_account={}",
-            asset_code, sender_address, viewer_address,
-        )
-        .unwrap();
-        let matches = match_output(&mut viewer_output, &["(?P<txn>TXUID~.*)"]);
+            asset_code,
+            sender_address,
+            viewer_address,
+        );
+        let matches = match_output(&viewer_output, &["(?P<txn>TXUID~.*)"]).await;
         let receipt = matches.get("txn");
         await_transaction(
             &receipt,
-            (&mut viewer_input, &mut viewer_output),
-            &mut [(&mut sender_input, &mut sender_output)],
-        );
-        writeln!(viewer_input, "view {}", asset_code).unwrap();
+            (&viewer_input, &viewer_output),
+            &[(&sender_input, &sender_output)],
+        )
+        .await;
+        cli_writeln!(viewer_input, "view {}", asset_code);
         // Note that the UID changes after freezing, because the freeze consume the unfrozen record
         // and creates a new frozen one.
         match_output(
-            &mut viewer_output,
+            &viewer_output,
             &[
                 "^UID\\s+AMOUNT\\s+FROZEN\\s+OWNER$",
                 format!("^7\\s+50\\s+false\\s+{}$", receiver_address).as_str(),
                 format!("^10\\s+950\\s+true\\s+{}$", sender_address).as_str(),
             ],
-        );
+        )
+        .await;
 
         // Transfers that need the frozen record as an input should now fail.
-        writeln!(
+        cli_writeln!(
             sender_input,
             "transfer {} {} 50 1 from={}",
-            asset_code, receiver_pub_key, sender_address
-        )
-        .unwrap();
+            asset_code,
+            receiver_pub_key,
+            sender_address
+        );
         // Search for error message with a slightly permissive regex to allow the CLI some freedom
         // in reporting a readable error.
-        match_output(&mut sender_output, &["[Ii]nsufficient.*[Bb]alance"]);
+        match_output(&sender_output, &["[Ii]nsufficient.*[Bb]alance"]).await;
 
         // Unfreezing the record makes it available again.
-        writeln!(
+        cli_writeln!(
             viewer_input,
             "unfreeze {} {} 950 1 fee_account={}",
-            asset_code, sender_address, viewer_address,
-        )
-        .unwrap();
-        let matches = match_output(&mut viewer_output, &["(?P<txn>TXUID~.*)"]);
+            asset_code,
+            sender_address,
+            viewer_address,
+        );
+        let matches = match_output(&viewer_output, &["(?P<txn>TXUID~.*)"]).await;
         let receipt = matches.get("txn");
         await_transaction(
             &receipt,
-            (&mut viewer_input, &mut viewer_output),
-            &mut [(&mut sender_input, &mut sender_output)],
-        );
-        writeln!(viewer_input, "view {}", asset_code).unwrap();
+            (&viewer_input, &viewer_output),
+            &[(&sender_input, &sender_output)],
+        )
+        .await;
+        cli_writeln!(viewer_input, "view {}", asset_code);
         match_output(
-            &mut viewer_output,
+            &viewer_output,
             &[
                 "^UID\\s+AMOUNT\\s+FROZEN\\s+OWNER$",
                 format!("^7\\s+50\\s+false\\s+{}$", receiver_address).as_str(),
                 format!("^12\\s+950\\s+false\\s+{}$", sender_address).as_str(),
             ],
-        );
+        )
+        .await;
     }
 
     #[async_std::test]
@@ -1457,40 +1463,41 @@ mod test {
 
         let mut t = MockSystem::default();
         let (ledger, _keys) = create_network(&mut t, &[0]).await;
-        let (mut input, mut output) =
-            create_keystore(ledger.clone(), PathBuf::from(tmp_dir.path()));
+        let (input, output) = create_keystore(ledger.clone(), PathBuf::from(tmp_dir.path())).await;
 
         // Load without mint info.
-        writeln!(input, "import_asset definition:{}", definition).unwrap();
-        wait_for_prompt(&mut output);
-        writeln!(input, "asset {}", definition.code).unwrap();
+        cli_writeln!(input, "import_asset definition:{}", definition);
+        wait_for_prompt(&output).await;
+        cli_writeln!(input, "asset {}", definition.code);
         match_output(
-            &mut output,
+            &output,
             &[
                 format!("Asset {}", definition.code).as_str(),
                 "Not viewable",
                 "Not freezeable",
                 "Minter: unknown",
             ],
-        );
+        )
+        .await;
 
         // Update later with mint info.
-        writeln!(
+        cli_writeln!(
             input,
             "import_asset definition:{},seed:{},mint_description:my_asset",
-            definition, seed
-        )
-        .unwrap();
-        wait_for_prompt(&mut output);
-        writeln!(input, "asset {}", definition.code).unwrap();
-        match_output(
-            &mut output,
-            &["my_asset", "Not viewable", "Not freezeable", "Minter: me"],
+            definition,
+            seed
         );
+        wait_for_prompt(&output).await;
+        cli_writeln!(input, "asset {}", definition.code);
+        match_output(
+            &output,
+            &["my_asset", "Not viewable", "Not freezeable", "Minter: me"],
+        )
+        .await;
 
         // Make sure the asset was only loaded once (the second command should have updated the
         // original instance).
-        writeln!(input, "asset 2").unwrap();
-        match_output(&mut output, &["invalid value for argument asset"]);
+        cli_writeln!(input, "asset 2");
+        match_output(&output, &["invalid value for argument asset"]).await;
     }
 }

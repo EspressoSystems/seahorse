@@ -17,6 +17,7 @@
 /// test suite for the generic keystore interface, which is instantiated for each ledger/backend.
 use super::*;
 use async_std::sync::{Arc, Mutex};
+use async_trait::async_trait;
 use chrono::Local;
 use futures::{channel::mpsc, stream::iter};
 use hd::KeyTree;
@@ -40,6 +41,7 @@ pub struct TrivialKeystoreLoader {
     pub key_tree: KeyTree,
 }
 
+#[async_trait]
 impl<L: Ledger> KeystoreLoader<L> for TrivialKeystoreLoader {
     type Meta = ();
 
@@ -47,11 +49,11 @@ impl<L: Ledger> KeystoreLoader<L> for TrivialKeystoreLoader {
         self.dir.clone()
     }
 
-    fn create(&mut self) -> Result<((), KeyTree), KeystoreError<L>> {
+    async fn create(&mut self) -> Result<((), KeyTree), KeystoreError<L>> {
         Ok(((), self.key_tree.clone()))
     }
 
-    fn load(&mut self, _meta: &mut ()) -> Result<KeyTree, KeystoreError<L>> {
+    async fn load(&mut self, _meta: &mut ()) -> Result<KeyTree, KeystoreError<L>> {
         Ok(self.key_tree.clone())
     }
 }

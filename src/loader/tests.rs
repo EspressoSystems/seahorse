@@ -4,8 +4,8 @@ use rand_chacha::{rand_core::SeedableRng, ChaChaRng};
 use reef::cap;
 use tempdir::TempDir;
 
-#[test]
-fn test_create_loader() {
+#[async_std::test]
+async fn test_create_loader() {
     let dir = TempDir::new("create-loader").unwrap();
     let mut rng = ChaChaRng::from_seed([0; 32]);
     let mnemonic = KeyTree::random(&mut rng).1;
@@ -22,7 +22,9 @@ fn test_create_loader() {
         KeystoreLoader::<cap::Ledger>::location(&loader),
         dir.path().to_owned()
     );
-    let (meta, key) = KeystoreLoader::<cap::Ledger>::create(&mut loader).unwrap();
+    let (meta, key) = KeystoreLoader::<cap::Ledger>::create(&mut loader)
+        .await
+        .unwrap();
     assert_eq!(
         meta.decrypt_mnemonic(password.as_bytes()),
         Some(mnemonic.clone())
@@ -41,25 +43,31 @@ fn test_create_loader() {
     );
     assert_eq!(
         key,
-        KeystoreLoader::<cap::Ledger>::load(&mut loader, &mut loaded).unwrap()
+        KeystoreLoader::<cap::Ledger>::load(&mut loader, &mut loaded)
+            .await
+            .unwrap()
     );
     assert_eq!(meta, loaded);
 
     // Check that an exclusive loader fails with existing metadata.
     let mut loader =
         CreateLoader::exclusive(&mut rng, dir.path().to_owned(), mnemonic.clone(), password);
-    KeystoreLoader::<cap::Ledger>::load(&mut loader, &mut loaded).unwrap_err();
+    KeystoreLoader::<cap::Ledger>::load(&mut loader, &mut loaded)
+        .await
+        .unwrap_err();
     assert_eq!(loaded, meta);
 
     // Check that we fail to open an existing keystore with the wrong password.
     let password = Alphanumeric.sample_string(&mut rng, 16);
     let mut loader = CreateLoader::new(&mut rng, dir.path().to_owned(), mnemonic, password);
-    KeystoreLoader::<cap::Ledger>::load(&mut loader, &mut loaded).unwrap_err();
+    KeystoreLoader::<cap::Ledger>::load(&mut loader, &mut loaded)
+        .await
+        .unwrap_err();
     assert_eq!(loaded, meta);
 }
 
-#[test]
-fn test_login_loader() {
+#[async_std::test]
+async fn test_login_loader() {
     let dir = TempDir::new("login-loader").unwrap();
     let mut rng = ChaChaRng::from_seed([0; 32]);
     let mnemonic = KeyTree::random(&mut rng).1;
@@ -72,19 +80,23 @@ fn test_login_loader() {
     // Check that we can correctly load a key tree from this metadata using only a password.
     let mut loader = LoginLoader::new(dir.path().to_owned(), password.clone());
     let mut loaded = meta.clone();
-    let key = KeystoreLoader::<cap::Ledger>::load(&mut loader, &mut loaded).unwrap();
+    let key = KeystoreLoader::<cap::Ledger>::load(&mut loader, &mut loaded)
+        .await
+        .unwrap();
     assert_eq!(loaded, meta);
     assert_eq!(key, KeyTree::from_mnemonic(&mnemonic));
 
     // Check that loading fails with the incorrect password.
     let password = Alphanumeric.sample_string(&mut rand::thread_rng(), 16);
     let mut loader = LoginLoader::new(dir.path().to_owned(), password);
-    KeystoreLoader::<cap::Ledger>::load(&mut loader, &mut loaded).unwrap_err();
+    KeystoreLoader::<cap::Ledger>::load(&mut loader, &mut loaded)
+        .await
+        .unwrap_err();
     assert_eq!(loaded, meta);
 }
 
-#[test]
-fn test_recovery_loader() {
+#[async_std::test]
+async fn test_recovery_loader() {
     let dir = TempDir::new("recovery-loader").unwrap();
     let mut rng = ChaChaRng::from_seed([0; 32]);
     let mnemonic = KeyTree::random(&mut rng).1;
@@ -102,7 +114,9 @@ fn test_recovery_loader() {
         KeystoreLoader::<cap::Ledger>::location(&loader),
         dir.path().to_owned()
     );
-    let (mut meta, key) = KeystoreLoader::<cap::Ledger>::create(&mut loader).unwrap();
+    let (mut meta, key) = KeystoreLoader::<cap::Ledger>::create(&mut loader)
+        .await
+        .unwrap();
     assert_eq!(
         meta.decrypt_mnemonic(password.as_bytes()),
         Some(mnemonic.clone())
@@ -120,7 +134,9 @@ fn test_recovery_loader() {
     );
     assert_eq!(
         key,
-        KeystoreLoader::<cap::Ledger>::load(&mut loader, &mut meta).unwrap()
+        KeystoreLoader::<cap::Ledger>::load(&mut loader, &mut meta)
+            .await
+            .unwrap()
     );
     assert_eq!(
         meta.decrypt_mnemonic(password.as_bytes()),
@@ -132,5 +148,7 @@ fn test_recovery_loader() {
     // Loading fails if we use the wrong mnemonic.
     let mnemonic = KeyTree::random(&mut rng).1;
     let mut loader = RecoveryLoader::new(&mut rng, dir.path().to_owned(), mnemonic, password);
-    KeystoreLoader::<cap::Ledger>::load(&mut loader, &mut meta).unwrap_err();
+    KeystoreLoader::<cap::Ledger>::load(&mut loader, &mut meta)
+        .await
+        .unwrap_err();
 }
