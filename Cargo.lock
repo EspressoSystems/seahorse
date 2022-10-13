@@ -3207,7 +3207,7 @@ dependencies = [
 [[package]]
 name = "reef"
 version = "0.3.0"
-source = "git+https://github.com/EspressoSystems/reef.git#93e4d90b7355f12f0b4ed053ec4020985b4054a7"
+source = "git+https://github.com/EspressoSystems/reef.git#ecc967e90921b843472fd7acdcde621457025cf2"
 dependencies = [
  "arbitrary",
  "arbitrary-wrappers",
