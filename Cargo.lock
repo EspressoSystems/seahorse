@@ -136,7 +136,7 @@ dependencies = [
 [[package]]
 name = "arbitrary-wrappers"
 version = "0.2.1"
-source = "git+https://github.com/EspressoSystems/arbitrary-wrappers.git#88a3571988dd74721e6b9d19407df71d190af43b"
+source = "git+https://github.com/EspressoSystems/arbitrary-wrappers.git#691a65234f605400c4f824af1fb600a6f460d938"
 dependencies = [
  "arbitrary",
  "ark-std",
@@ -3207,7 +3207,7 @@ dependencies = [
 [[package]]
 name = "reef"
 version = "0.3.0"
-source = "git+https://github.com/EspressoSystems/reef.git#93e4d90b7355f12f0b4ed053ec4020985b4054a7"
+source = "git+https://github.com/EspressoSystems/reef.git#55249f801cb9f744ba9342318e4109277c255055"
 dependencies = [
  "arbitrary",
  "arbitrary-wrappers",
