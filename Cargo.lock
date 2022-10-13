@@ -136,7 +136,7 @@ dependencies = [
 [[package]]
 name = "arbitrary-wrappers"
 version = "0.2.1"
-source = "git+https://github.com/EspressoSystems/arbitrary-wrappers.git#88a3571988dd74721e6b9d19407df71d190af43b"
+source = "git+https://github.com/EspressoSystems/arbitrary-wrappers.git#691a65234f605400c4f824af1fb600a6f460d938"
 dependencies = [
  "arbitrary",
  "ark-std",
