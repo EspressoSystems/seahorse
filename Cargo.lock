@@ -2300,7 +2300,7 @@ checksum = "f9b7d56ba4a8344d6be9729995e6b06f928af29998cdf79fe390cbf6b1fee838"
 [[package]]
 name = "key-set"
 version = "0.3.0"
-source = "git+https://github.com/EspressoSystems/key-set.git#03993a0807693133b9099a2f57ee0f9604d88cd1"
+source = "git+https://github.com/EspressoSystems/key-set.git#e340c4006f07f15044d6333b8a39e1e3cf4230d0"
 dependencies = [
  "ark-serialize",
  "bincode",
