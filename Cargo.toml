@@ -20,7 +20,7 @@ chrono = { version = "0.4", features = ["serde"] }
 criterion = {version = "0.3.6", features = ["async_std", "html_reports", "cargo_bench_support", "csv_output"], optional = true }
 derivative = "2.2"
 derive_more = "0.99"
-futures = "0.3.16"
+futures = "0.3.25"
 generic-array = { version = "0.14.4", features = ["serde"] }
 hmac = "0.12"
 image = "0.24"
