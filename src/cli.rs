@@ -1079,6 +1079,7 @@ async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
         );
     }
 
+    keystore.close().await;
     Ok(())
 }
 
