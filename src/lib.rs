@@ -783,6 +783,11 @@ impl<
         Ok(keystore)
     }
 
+    pub async fn close(mut self) {
+        self.task_scope.cancel();
+        self.task_scope.collect::<Vec<_>>().await;
+    }
+
     /// Access the shared state directly.
     pub async fn write(&self) -> KeystoreSharedStateWriteGuard<'_, 'a, L, Backend, Meta> {
         self.mutex.write().await
