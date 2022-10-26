@@ -1746,6 +1746,11 @@
 <span id="1740">1740</span>
 <span id="1741">1741</span>
 <span id="1742">1742</span>
+<span id="1743">1743</span>
+<span id="1744">1744</span>
+<span id="1745">1745</span>
+<span id="1746">1746</span>
+<span id="1747">1747</span>
 </pre><pre class="rust"><code><span class="comment">// Copyright (c) 2022 Espresso Systems (espressosys.com)</span>
 <span class="comment">// This file is part of the Seahorse library.</span>
 
@@ -2529,6 +2534,11 @@
         }
 
         <span class="prelude-val">Ok</span>(<span class="ident">keystore</span>)
+    }
+
+    <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">close</span>(<span class="kw-2">mut</span> <span class="self">self</span>) {
+        <span class="self">self</span>.<span class="ident">task_scope</span>.<span class="ident">cancel</span>();
+        <span class="self">self</span>.<span class="ident">task_scope</span>.<span class="ident">collect</span>::<span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="kw">_</span><span class="op">&gt;</span><span class="op">&gt;</span>().<span class="kw">await</span>;
     }
 
     <span class="doccomment">/// Access the shared state directly.</span>
