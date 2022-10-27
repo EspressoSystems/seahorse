@@ -19,10 +19,7 @@ use crate::{
 use atomic_store::{AppendLog, AtomicStoreLoader};
 use chrono::{DateTime, Local};
 use derivative::Derivative;
-use jf_cap::{
-    keys::{FreezerKeyPair, UserKeyPair, ViewerKeyPair},
-    MerkleCommitment,
-};
+use jf_cap::MerkleCommitment;
 use reef::Ledger;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::ops::{Deref, DerefMut};
@@ -125,6 +122,37 @@ impl<'a, L: Ledger, Key: KeyPair + DeserializeOwned + Serialize> AccountEditor<'
         self
     }
 
+    /// Update the ledger scan.
+    ///
+    /// Returns
+    /// * `Err` if the scan isn't found, or
+    /// * `Ok((self, scan_info))`, where `scan_info` contains the scanned information if and only
+    /// if the scan is complete.
+    pub(crate) async fn update_scan(
+        mut self,
+        event: LedgerEvent<L>,
+        source: EventSource,
+        records_commitment: MerkleCommitment,
+    ) -> Result<(AccountEditor<'a, L, Key>, Option<(Key, ScanOutputs<L>)>), KeystoreError<L>> {
+        let mut scan = match self.account.scan.take() {
+            Some(scan) => scan,
+            None => return Err(KeystoreError::ScanNotFound),
+        };
+        scan.handle_event(event, source);
+        // Check if the scan is complete.
+        match scan.finalize(records_commitment) {
+            ScanStatus::Finished {
+                key,
+                records,
+                history,
+            } => Ok((self, Some((key, ScanOutputs { records, history })))),
+            ScanStatus::InProgress(scan) => {
+                self.account.scan = Some(scan);
+                Ok((self, None))
+            }
+        }
+    }
+
     /// Save the account to the store.
     ///
     /// Returns the stored account.
@@ -132,123 +160,6 @@ impl<'a, L: Ledger, Key: KeyPair + DeserializeOwned + Serialize> AccountEditor<'
         self.store.store(&self.account.pub_key(), &self.account)?;
         self.account.modified_time = Local::now();
         Ok(self.account.clone())
-    }
-}
-
-impl<'a, L: Ledger> AccountEditor<'a, L, ViewerKeyPair> {
-    /// Update the ledger scan.
-    ///
-    /// Returns
-    /// * `Err` if the scan isn't found, or
-    /// * `Ok((self, scan_info))`, where `scan_info` contains the scanned information if and only
-    /// if the scan is complete.
-    pub(crate) async fn update_scan(
-        mut self,
-        event: LedgerEvent<L>,
-        source: EventSource,
-        records_commitment: MerkleCommitment,
-    ) -> Result<
-        (
-            AccountEditor<'a, L, ViewerKeyPair>,
-            Option<(ViewerKeyPair, ScanOutputs<L>)>,
-        ),
-        KeystoreError<L>,
-    > {
-        let mut scan = match self.account.scan.take() {
-            Some(scan) => scan,
-            None => return Err(KeystoreError::ScanNotFound),
-        };
-        scan.handle_event(event, source);
-        // Check if the scan is complete.
-        match scan.finalize(records_commitment) {
-            ScanStatus::Finished {
-                key,
-                records,
-                history,
-            } => Ok((self, Some((key, ScanOutputs { records, history })))),
-            ScanStatus::InProgress(scan) => {
-                self.account.scan = Some(scan);
-                Ok((self, None))
-            }
-        }
-    }
-}
-
-impl<'a, L: Ledger> AccountEditor<'a, L, FreezerKeyPair> {
-    /// Update the ledger scan.
-    ///
-    /// Returns
-    /// * `Err` if the scan isn't found, or
-    /// * `Ok((self, scan_info))`, where `scan_info` contains the scanned information if and only
-    /// if the scan is complete.
-    pub(crate) async fn update_scan(
-        mut self,
-        event: LedgerEvent<L>,
-        source: EventSource,
-        records_commitment: MerkleCommitment,
-    ) -> Result<
-        (
-            AccountEditor<'a, L, FreezerKeyPair>,
-            Option<(FreezerKeyPair, ScanOutputs<L>)>,
-        ),
-        KeystoreError<L>,
-    > {
-        let mut scan = match self.account.scan.take() {
-            Some(scan) => scan,
-            None => return Err(KeystoreError::ScanNotFound),
-        };
-        scan.handle_event(event, source);
-        // Check if the scan is complete.
-        match scan.finalize(records_commitment) {
-            ScanStatus::Finished {
-                key,
-                records,
-                history,
-            } => Ok((self, Some((key, ScanOutputs { records, history })))),
-            ScanStatus::InProgress(scan) => {
-                self.account.scan = Some(scan);
-                Ok((self, None))
-            }
-        }
-    }
-}
-
-impl<'a, L: Ledger> AccountEditor<'a, L, UserKeyPair> {
-    /// Update the ledger scan.
-    ///
-    /// Returns
-    /// * `Err` if the scan isn't found, or
-    /// * `Ok((self, scan_info))`, where `scan_info` contains the scanned information if and only
-    /// if the scan is complete.
-    pub(crate) async fn update_scan(
-        mut self,
-        event: LedgerEvent<L>,
-        source: EventSource,
-        records_commitment: MerkleCommitment,
-    ) -> Result<
-        (
-            AccountEditor<'a, L, UserKeyPair>,
-            Option<(UserKeyPair, ScanOutputs<L>)>,
-        ),
-        KeystoreError<L>,
-    > {
-        let mut scan = match self.account.scan.take() {
-            Some(scan) => scan,
-            None => return Err(KeystoreError::ScanNotFound),
-        };
-        scan.handle_event(event, source);
-        // Check if the scan is complete.
-        match scan.finalize(records_commitment) {
-            ScanStatus::Finished {
-                key,
-                records,
-                history,
-            } => Ok((self, Some((key, ScanOutputs { records, history })))),
-            ScanStatus::InProgress(scan) => {
-                self.account.scan = Some(scan);
-                Ok((self, None))
-            }
-        }
     }
 }
 

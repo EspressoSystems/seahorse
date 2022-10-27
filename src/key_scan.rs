@@ -32,14 +32,26 @@ use std::hash::Hash;
 /// The information about each discovered record returned by a key-specific scan.
 pub type ScannedRecord = (RecordOpening, u64, MerklePath);
 
+/// Types of keys.
+pub enum KeyType {
+    Viewing(ViewerKeyPair),
+    Freezing(FreezerKeyPair),
+    Sending(UserKeyPair),
+}
+
 /// Keys with a public part.
 pub trait KeyPair: Clone + Send + Sync {
     type PubKey: Clone + DeserializeOwned + Display + Eq + Hash + Serialize;
+    fn key_type(self) -> KeyType;
     fn pub_key(&self) -> Self::PubKey;
 }
 
 impl KeyPair for ViewerKeyPair {
     type PubKey = ViewerPubKey;
+
+    fn key_type(self) -> KeyType {
+        KeyType::Viewing(self)
+    }
 
     fn pub_key(&self) -> Self::PubKey {
         self.pub_key()
@@ -48,6 +60,10 @@ impl KeyPair for ViewerKeyPair {
 
 impl KeyPair for FreezerKeyPair {
     type PubKey = FreezerPubKey;
+
+    fn key_type(self) -> KeyType {
+        KeyType::Freezing(self)
+    }
 
     fn pub_key(&self) -> Self::PubKey {
         self.pub_key()
@@ -59,6 +75,10 @@ impl KeyPair for UserKeyPair {
     // `UserKeyPairs`. We typically want to look up `UserKeyPairs` by `Address`, not `UserPubKey`,
     // because if we have a `UserPubKey` we can always get an `Address` to do the lookup.
     type PubKey = UserAddress;
+
+    fn key_type(self) -> KeyType {
+        KeyType::Sending(self)
+    }
 
     fn pub_key(&self) -> Self::PubKey {
         self.address()
@@ -283,162 +303,6 @@ impl<L: Ledger, Key: KeyPair + DeserializeOwned + Serialize> BackgroundKeyScan<L
         (self.next_event, self.to_event)
     }
 
-    fn handle_event_out_of_range(&mut self, event: LedgerEvent<L>) {
-        if let LedgerEvent::Commit { block, .. } = event {
-            // Remove records invalidated by the new block's nullifiers.
-            for n in block
-                .txns()
-                .into_iter()
-                .flat_map(|txn| txn.input_nullifiers())
-            {
-                if let Some((_, uid)) = self.records.remove(&n) {
-                    // If we removed a record that we had already discovered, prune it's path from
-                    // the Merkle tree.
-                    self.records_mt.forget(uid);
-                }
-            }
-
-            // Add new commitments to the Merkle tree in order to update the root, then forget the
-            // new Merkle paths since we don't care about records in this range.
-            let first_uid = self.records_mt.num_leaves();
-            self.records_mt.extend(
-                block
-                    .txns()
-                    .into_iter()
-                    .flat_map(|txn| txn.output_commitments()),
-            );
-            for uid in first_uid..self.records_mt.num_leaves() {
-                self.records_mt.forget(uid);
-            }
-        }
-    }
-}
-
-impl<L: Ledger> BackgroundKeyScan<L, ViewerKeyPair> {
-    pub fn handle_event(&mut self, event: LedgerEvent<L>, source: EventSource) {
-        if self.from_event.index(source) <= self.next_event.index(source)
-            && self.next_event.index(source) < self.to_event.index(source)
-        {
-            // If this event falls in the range from which we want to discover records, try and do
-            // so.
-            self.handle_event_in_range(event);
-        } else {
-            // Otherwise, just update our data structures.
-            self.handle_event_out_of_range(event);
-        }
-
-        self.next_event += EventIndex::from_source(source, 1);
-    }
-
-    fn handle_event_in_range(&mut self, event: LedgerEvent<L>) {
-        if let LedgerEvent::Commit { block, .. } = event {
-            let mut uid = self.records_mt.num_leaves();
-
-            // Add the record commitments from this block.
-            self.records_mt.extend(
-                block
-                    .txns()
-                    .into_iter()
-                    .flat_map(|txn| txn.output_commitments()),
-            );
-
-            for txn in block.txns() {
-                if let Some(records) = txn.output_openings() {
-                    // If the transaction exposes its records, add the records themselves if
-                    // they are viewable by us; forget their Merkle paths if they do not.
-                    let mut viewable_records = vec![];
-                    for record in records {
-                        if record.asset_def.policy_ref().viewer_pub_key() == &self.key.pub_key() {
-                            viewable_records.push(record.clone());
-                        } else {
-                            self.records_mt.forget(uid);
-                        }
-
-                        uid += 1;
-                    }
-                    if !viewable_records.is_empty() {
-                        self.history.push((
-                            TransactionUID::<L>(txn.hash().clone()),
-                            receive_history_entry(txn.kind(), &viewable_records),
-                        ));
-                    }
-                } else {
-                    // If the transaction does not expose its records forget all of the Merkle
-                    // paths we added for it. If we are a receiver of this transaction, we will
-                    // remember the relevant paths later on when we get the owner memos.
-                    for _ in txn.output_commitments() {
-                        self.records_mt.forget(uid);
-                        uid += 1;
-                    }
-                }
-            }
-        }
-    }
-}
-
-impl<L: Ledger> BackgroundKeyScan<L, FreezerKeyPair> {
-    pub fn handle_event(&mut self, event: LedgerEvent<L>, source: EventSource) {
-        if self.from_event.index(source) <= self.next_event.index(source)
-            && self.next_event.index(source) < self.to_event.index(source)
-        {
-            // If this event falls in the range from which we want to discover records, try and do
-            // so.
-            self.handle_event_in_range(event);
-        } else {
-            // Otherwise, just update our data structures.
-            self.handle_event_out_of_range(event);
-        }
-
-        self.next_event += EventIndex::from_source(source, 1);
-    }
-
-    fn handle_event_in_range(&mut self, event: LedgerEvent<L>) {
-        if let LedgerEvent::Commit { block, .. } = event {
-            let mut uid = self.records_mt.num_leaves();
-
-            // Add the record commitments from this block.
-            self.records_mt.extend(
-                block
-                    .txns()
-                    .into_iter()
-                    .flat_map(|txn| txn.output_commitments()),
-            );
-
-            for txn in block.txns() {
-                if let Some(records) = txn.output_openings() {
-                    // If the transaction exposes its records, add the records themselves if
-                    // they are freezable by us; forget their Merkle paths if they do not.
-                    let mut freezable_records = vec![];
-                    for record in records {
-                        if record.asset_def.policy_ref().freezer_pub_key() == &self.key.pub_key() {
-                            freezable_records.push(record.clone());
-                        } else {
-                            self.records_mt.forget(uid);
-                        }
-
-                        uid += 1;
-                    }
-                    if !freezable_records.is_empty() {
-                        self.history.push((
-                            TransactionUID::<L>(txn.hash().clone()),
-                            receive_history_entry(txn.kind(), &freezable_records),
-                        ));
-                    }
-                } else {
-                    // If the transaction does not expose its records forget all of the Merkle
-                    // paths we added for it. If we are a receiver of this transaction, we will
-                    // remember the relevant paths later on when we get the owner memos.
-                    for _ in txn.output_commitments() {
-                        self.records_mt.forget(uid);
-                        uid += 1;
-                    }
-                }
-            }
-        }
-    }
-}
-
-impl<L: Ledger> BackgroundKeyScan<L, UserKeyPair> {
     pub fn handle_event(&mut self, event: LedgerEvent<L>, source: EventSource) {
         if self.from_event.index(source) <= self.next_event.index(source)
             && self.next_event.index(source) < self.to_event.index(source)
@@ -468,32 +332,57 @@ impl<L: Ledger> BackgroundKeyScan<L, UserKeyPair> {
                 );
 
                 for txn in block.txns() {
-                    // Remove any records that were spent by this transaction.
-                    for n in txn.input_nullifiers() {
-                        if let Some((_, uid)) = self.records.remove(&n) {
-                            // If we removed a record that we had already discovered, prune it's
-                            // path from the Merkle tree.
-                            self.records_mt.forget(uid);
+                    if let KeyType::Sending(_) = self.key.clone().key_type() {
+                        // Remove any records that were spent by this transaction.
+                        for n in txn.input_nullifiers() {
+                            if let Some((_, uid)) = self.records.remove(&n) {
+                                // If we removed a record that we had already discovered, prune it's
+                                // path from the Merkle tree.
+                                self.records_mt.forget(uid);
+                            }
                         }
                     }
 
                     if let Some(records) = txn.output_openings() {
-                        // If the transaction exposes its records, add the records themselves if
-                        // they belong to us; forget their Merkle paths if they do not.
+                        // If the transaction exposes its records, add the records themselves if they
+                        // are viewable or freezable by, or belong to us; forget their Merkle paths if
+                        // they do not.
                         let mut received_records = vec![];
                         for record in records {
-                            let comm = RecordCommitment::from(&record);
-                            if record.pub_key == self.key.pub_key() {
-                                received_records.push(record.clone());
-                                let nullifier = self.key.nullify(
-                                    record.asset_def.policy_ref().freezer_pub_key(),
-                                    uid,
-                                    &comm,
-                                );
-                                // If the record belongs to us, add it to our records.
-                                self.records.insert(nullifier, (record, uid));
-                            } else {
-                                self.records_mt.forget(uid);
+                            match self.key.clone().key_type() {
+                                KeyType::Viewing(viewing_key) => {
+                                    if record.asset_def.policy_ref().viewer_pub_key()
+                                        == &viewing_key.pub_key()
+                                    {
+                                        received_records.push(record.clone());
+                                    } else {
+                                        self.records_mt.forget(uid);
+                                    }
+                                }
+                                KeyType::Freezing(freezing_key) => {
+                                    if record.asset_def.policy_ref().freezer_pub_key()
+                                        == &freezing_key.pub_key()
+                                    {
+                                        received_records.push(record.clone());
+                                    } else {
+                                        self.records_mt.forget(uid);
+                                    }
+                                }
+                                KeyType::Sending(sending_key) => {
+                                    let comm = RecordCommitment::from(&record);
+                                    if record.pub_key == sending_key.pub_key() {
+                                        received_records.push(record.clone());
+                                        let nullifier = sending_key.nullify(
+                                            record.asset_def.policy_ref().freezer_pub_key(),
+                                            uid,
+                                            &comm,
+                                        );
+                                        // If the record belongs to us, add it to our records.
+                                        self.records.insert(nullifier, (record, uid));
+                                    } else {
+                                        self.records_mt.forget(uid);
+                                    }
+                                }
                             }
 
                             uid += 1;
@@ -521,50 +410,82 @@ impl<L: Ledger> BackgroundKeyScan<L, UserKeyPair> {
                 transaction,
                 ..
             } => {
-                let mut records = Vec::new();
-                for (memo, comm, uid, proof) in outputs {
-                    if let Ok(record_opening) = memo.decrypt(&self.key, &comm, &[]) {
-                        if !record_opening.is_dummy() {
-                            // If this record is for us (i.e. its corresponding memo decrypts under
-                            // our key) and not a dummy, then add it to our received records.
-                            records.push((
-                                record_opening,
-                                uid,
-                                MerkleLeafProof::new(comm.to_field_element(), proof.clone()),
-                            ));
+                if let KeyType::Sending(sending_key) = self.key.clone().key_type() {
+                    let mut records = Vec::new();
+                    for (memo, comm, uid, proof) in outputs {
+                        if let Ok(record_opening) = memo.decrypt(&sending_key, &comm, &[]) {
+                            if !record_opening.is_dummy() {
+                                // If this record is for us (i.e. its corresponding memo decrypts under
+                                // our key) and not a dummy, then add it to our received records.
+                                records.push((
+                                    record_opening,
+                                    uid,
+                                    MerkleLeafProof::new(comm.to_field_element(), proof.clone()),
+                                ));
+                            }
                         }
                     }
-                }
 
-                // Add received records to our collection.
-                for (ro, uid, proof) in &records {
-                    let nullifier = self.key.nullify(
-                        ro.asset_def.policy_ref().freezer_pub_key(),
-                        *uid,
-                        &RecordCommitment::from(ro),
-                    );
-                    if self.records_mt.remember(*uid, proof).is_ok() {
-                        self.records.insert(nullifier, (ro.clone(), *uid));
-                    } else {
-                        tracing::error!("Got bad Merkle proof. Unable to add record {}", uid);
+                    // Add received records to our collection.
+                    for (ro, uid, proof) in &records {
+                        let nullifier = sending_key.nullify(
+                            ro.asset_def.policy_ref().freezer_pub_key(),
+                            *uid,
+                            &RecordCommitment::from(ro),
+                        );
+                        if self.records_mt.remember(*uid, proof).is_ok() {
+                            self.records.insert(nullifier, (ro.clone(), *uid));
+                        } else {
+                            tracing::error!("Got bad Merkle proof. Unable to add record {}", uid);
+                        }
                     }
-                }
 
-                if !records.is_empty() {
-                    // Add a history entry for the received transaction.
-                    if let Some((_, _, hash, txn_kind)) = transaction {
-                        self.history.push((
-                            TransactionUID::<L>(hash),
-                            receive_history_entry(
-                                txn_kind,
-                                &records.into_iter().map(|(ro, _, _)| ro).collect::<Vec<_>>(),
-                            ),
-                        ));
+                    if !records.is_empty() {
+                        // Add a history entry for the received transaction.
+                        if let Some((_, _, hash, txn_kind)) = transaction {
+                            self.history.push((
+                                TransactionUID::<L>(hash),
+                                receive_history_entry(
+                                    txn_kind,
+                                    &records.into_iter().map(|(ro, _, _)| ro).collect::<Vec<_>>(),
+                                ),
+                            ));
+                        }
                     }
                 }
             }
 
             LedgerEvent::Reject { .. } => {}
+        }
+    }
+
+    fn handle_event_out_of_range(&mut self, event: LedgerEvent<L>) {
+        if let LedgerEvent::Commit { block, .. } = event {
+            // Remove records invalidated by the new block's nullifiers.
+            for n in block
+                .txns()
+                .into_iter()
+                .flat_map(|txn| txn.input_nullifiers())
+            {
+                if let Some((_, uid)) = self.records.remove(&n) {
+                    // If we removed a record that we had already discovered, prune it's path from
+                    // the Merkle tree.
+                    self.records_mt.forget(uid);
+                }
+            }
+
+            // Add new commitments to the Merkle tree in order to update the root, then forget the
+            // new Merkle paths since we don't care about records in this range.
+            let first_uid = self.records_mt.num_leaves();
+            self.records_mt.extend(
+                block
+                    .txns()
+                    .into_iter()
+                    .flat_map(|txn| txn.output_commitments()),
+            );
+            for uid in first_uid..self.records_mt.num_leaves() {
+                self.records_mt.forget(uid);
+            }
         }
     }
 }
