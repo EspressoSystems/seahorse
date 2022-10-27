@@ -334,7 +334,7 @@ fn bench_ledger_scanner_run<
                     w.add_sending_account(scan_key.clone(), "key".into(), bench.start_time)
                         .await
                         .unwrap();
-                    w.await_key_scan(&scan_key.address()).await.unwrap();
+                    w.await_sending_key_scan(&scan_key.address()).await.unwrap();
                     dur += start.elapsed();
 
                     // Ensure the wallet gets dropped before `_tmp_dir`.

@@ -12,11 +12,11 @@ use crate::{
     transactions::TransactionParams,
 };
 use arbitrary::{Arbitrary, Unstructured};
-use arbitrary_wrappers::ArbitraryUserKeyPair;
+use arbitrary_wrappers::{ArbitraryFreezerKeyPair, ArbitraryUserKeyPair, ArbitraryViewerKeyPair};
 use chrono::Local;
 use espresso_macros::ser_test;
 use jf_cap::{
-    keys::{UserAddress, UserKeyPair},
+    keys::{FreezerKeyPair, FreezerPubKey, UserAddress, UserKeyPair, ViewerKeyPair, ViewerPubKey},
     structs::{FreezeFlag, Nullifier, RecordCommitment, RecordOpening},
     MerkleCommitment, MerkleLeafProof, MerklePath,
 };
@@ -24,11 +24,46 @@ use reef::{
     traits::{Block as _, Transaction as _, TransactionKind as _},
     Ledger, TransactionHash, TransactionKind,
 };
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fmt::Display;
+use std::hash::Hash;
 
 /// The information about each discovered record returned by a key-specific scan.
 pub type ScannedRecord = (RecordOpening, u64, MerklePath);
+
+/// Keys with a public part.
+pub trait KeyPair: Clone + Send + Sync {
+    type PubKey: Clone + DeserializeOwned + Display + Eq + Hash + Serialize;
+    fn pub_key(&self) -> Self::PubKey;
+}
+
+impl KeyPair for ViewerKeyPair {
+    type PubKey = ViewerPubKey;
+
+    fn pub_key(&self) -> Self::PubKey {
+        self.pub_key()
+    }
+}
+
+impl KeyPair for FreezerKeyPair {
+    type PubKey = FreezerPubKey;
+
+    fn pub_key(&self) -> Self::PubKey {
+        self.pub_key()
+    }
+}
+
+impl KeyPair for UserKeyPair {
+    // The `PubKey` here is supposed to be a conceptual "primary key" for looking up
+    // `UserKeyPairs`. We typically want to look up `UserKeyPairs` by `Address`, not `UserPubKey`,
+    // because if we have a `UserPubKey` we can always get an `Address` to do the lookup.
+    type PubKey = UserAddress;
+
+    fn pub_key(&self) -> Self::PubKey {
+        self.address()
+    }
+}
 
 /// All the outputs of a key-specific ledger scan.
 ///
@@ -42,17 +77,17 @@ pub struct ScanOutputs<L: Ledger> {
 
 /// The status of a ledger scan.
 #[derive(Clone)]
-pub enum ScanStatus<L: Ledger> {
+pub enum ScanStatus<L: Ledger, Key: KeyPair + DeserializeOwned + Serialize> {
     Finished {
         /// The scanned key.
-        key: UserKeyPair,
+        key: Key,
         /// The list of records discovered by the scan.
         records: Vec<ScannedRecord>,
         /// The list of transaction history entries corresponding to transactions received by the
         /// scan.
         history: Vec<(TransactionUID<L>, TransactionParams<L>)>,
     },
-    InProgress(BackgroundKeyScan<L>),
+    InProgress(BackgroundKeyScan<L, Key>),
 }
 
 /// An in-progress scan of past ledger events.
@@ -89,31 +124,40 @@ pub enum ScanStatus<L: Ledger> {
 /// recipient. It is able to create Merkle paths for the new records either by using the Merkle
 /// paths included in `Memos` events, or by using the frontier at the time it appends the
 /// commitment for an attached record opening to the tree.
-#[ser_test(arbitrary, ark(false), types(reef::cap::Ledger))]
+#[ser_test(
+    arbitrary,
+    ark(false),
+    types(reef::cap::Ledger, ViewerKeyPair),
+    types(reef::cap::Ledger, FreezerKeyPair),
+    types(reef::cap::Ledger, UserKeyPair)
+)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(bound = "L: Ledger")]
-pub struct BackgroundKeyScan<L: Ledger> {
-    key: UserKeyPair,
+pub struct BackgroundKeyScan<L: Ledger, Key: KeyPair + DeserializeOwned + Serialize> {
+    key: Key,
     // The index of the next event in the event stream.
     next_event: EventIndex,
     // The first event of interest.
     from_event: EventIndex,
     // The first event after the range of interest.
     to_event: EventIndex,
-    // Record openings we have discovered which belong to these key. These records are kept in a
-    // separate pool until the scan is complete so that if the scan encounters an event which spends
-    // some of these records, we can remove the spent records without ever reflecting them in the
-    // keystore's balance.
+    // Record openings we have discovered which are viewable, freezable, or belong to these key.
+    // These records are kept in a separate pool until the scan is complete so that if the scan
+    // encounters an event which spends some of these records, we can remove the spent records
+    // without ever reflecting them in the keystore's balance.
     records: HashMap<Nullifier, (RecordOpening, u64)>,
-    // New history entries for transactions we received during the scan.
+    // New history entries for transactions viewable or freezable to us, or received during the
+    // scan.
     history: Vec<(TransactionUID<L>, TransactionParams<L>)>,
     // Lightweight Merkle tree containing paths for the commitments of each record in `records`.
-    // This allows us to update the paths as we scan so that at the end of the scan, we have a path for
-    // each record relative to the current Merkle root.
+    // This allows us to update the paths as we scan so that at the end of the scan, we have a path
+    // for each record relative to the current Merkle root.
     records_mt: LWMerkleTree,
 }
 
-impl<L: Ledger> PartialEq<Self> for BackgroundKeyScan<L> {
+impl<L: Ledger, Key: KeyPair + DeserializeOwned + Serialize> PartialEq<Self>
+    for BackgroundKeyScan<L, Key>
+{
     fn eq(&self, other: &Self) -> bool {
         self.key.pub_key() == other.key.pub_key()
             && self.next_event == other.next_event
@@ -124,7 +168,41 @@ impl<L: Ledger> PartialEq<Self> for BackgroundKeyScan<L> {
     }
 }
 
-impl<'a, L: Ledger> Arbitrary<'a> for BackgroundKeyScan<L>
+impl<'a, L: Ledger> Arbitrary<'a> for BackgroundKeyScan<L, ViewerKeyPair>
+where
+    TransactionHash<L>: Arbitrary<'a>,
+{
+    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
+        Ok(Self {
+            key: u.arbitrary::<ArbitraryViewerKeyPair>()?.into(),
+            next_event: u.arbitrary()?,
+            from_event: u.arbitrary()?,
+            to_event: u.arbitrary()?,
+            records: Default::default(),
+            history: Default::default(),
+            records_mt: u.arbitrary()?,
+        })
+    }
+}
+
+impl<'a, L: Ledger> Arbitrary<'a> for BackgroundKeyScan<L, FreezerKeyPair>
+where
+    TransactionHash<L>: Arbitrary<'a>,
+{
+    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
+        Ok(Self {
+            key: u.arbitrary::<ArbitraryFreezerKeyPair>()?.into(),
+            next_event: u.arbitrary()?,
+            from_event: u.arbitrary()?,
+            to_event: u.arbitrary()?,
+            records: Default::default(),
+            history: Default::default(),
+            records_mt: u.arbitrary()?,
+        })
+    }
+}
+
+impl<'a, L: Ledger> Arbitrary<'a> for BackgroundKeyScan<L, UserKeyPair>
 where
     TransactionHash<L>: Arbitrary<'a>,
 {
@@ -141,9 +219,9 @@ where
     }
 }
 
-impl<L: Ledger> BackgroundKeyScan<L> {
+impl<L: Ledger, Key: KeyPair + DeserializeOwned + Serialize> BackgroundKeyScan<L, Key> {
     pub fn new(
-        key: UserKeyPair,
+        key: Key,
         next_event: EventIndex,
         from: EventIndex,
         to: EventIndex,
@@ -169,7 +247,7 @@ impl<L: Ledger> BackgroundKeyScan<L> {
     ///
     /// If `merkle_commitment` does not match the scan's Merkle tree, meaning the scan is
     /// in progress, it returns `self` so that the scan can continue to be used.
-    pub fn finalize(self, merkle_commitment: MerkleCommitment) -> ScanStatus<L> {
+    pub fn finalize(self, merkle_commitment: MerkleCommitment) -> ScanStatus<L, Key> {
         if merkle_commitment == self.records_mt.commitment() {
             let mt = self.records_mt;
             let records = self
@@ -187,8 +265,8 @@ impl<L: Ledger> BackgroundKeyScan<L> {
         }
     }
 
-    pub fn address(&self) -> UserAddress {
-        self.key.address()
+    pub fn address(&self) -> Key::PubKey {
+        self.key.pub_key()
     }
 
     pub fn next_event(&self) -> EventIndex {
@@ -205,6 +283,162 @@ impl<L: Ledger> BackgroundKeyScan<L> {
         (self.next_event, self.to_event)
     }
 
+    fn handle_event_out_of_range(&mut self, event: LedgerEvent<L>) {
+        if let LedgerEvent::Commit { block, .. } = event {
+            // Remove records invalidated by the new block's nullifiers.
+            for n in block
+                .txns()
+                .into_iter()
+                .flat_map(|txn| txn.input_nullifiers())
+            {
+                if let Some((_, uid)) = self.records.remove(&n) {
+                    // If we removed a record that we had already discovered, prune it's path from
+                    // the Merkle tree.
+                    self.records_mt.forget(uid);
+                }
+            }
+
+            // Add new commitments to the Merkle tree in order to update the root, then forget the
+            // new Merkle paths since we don't care about records in this range.
+            let first_uid = self.records_mt.num_leaves();
+            self.records_mt.extend(
+                block
+                    .txns()
+                    .into_iter()
+                    .flat_map(|txn| txn.output_commitments()),
+            );
+            for uid in first_uid..self.records_mt.num_leaves() {
+                self.records_mt.forget(uid);
+            }
+        }
+    }
+}
+
+impl<L: Ledger> BackgroundKeyScan<L, ViewerKeyPair> {
+    pub fn handle_event(&mut self, event: LedgerEvent<L>, source: EventSource) {
+        if self.from_event.index(source) <= self.next_event.index(source)
+            && self.next_event.index(source) < self.to_event.index(source)
+        {
+            // If this event falls in the range from which we want to discover records, try and do
+            // so.
+            self.handle_event_in_range(event);
+        } else {
+            // Otherwise, just update our data structures.
+            self.handle_event_out_of_range(event);
+        }
+
+        self.next_event += EventIndex::from_source(source, 1);
+    }
+
+    fn handle_event_in_range(&mut self, event: LedgerEvent<L>) {
+        if let LedgerEvent::Commit { block, .. } = event {
+            let mut uid = self.records_mt.num_leaves();
+
+            // Add the record commitments from this block.
+            self.records_mt.extend(
+                block
+                    .txns()
+                    .into_iter()
+                    .flat_map(|txn| txn.output_commitments()),
+            );
+
+            for txn in block.txns() {
+                if let Some(records) = txn.output_openings() {
+                    // If the transaction exposes its records, add the records themselves if
+                    // they are viewable by us; forget their Merkle paths if they do not.
+                    let mut viewable_records = vec![];
+                    for record in records {
+                        if record.asset_def.policy_ref().viewer_pub_key() == &self.key.pub_key() {
+                            viewable_records.push(record.clone());
+                        } else {
+                            self.records_mt.forget(uid);
+                        }
+
+                        uid += 1;
+                    }
+                    if !viewable_records.is_empty() {
+                        self.history.push((
+                            TransactionUID::<L>(txn.hash().clone()),
+                            receive_history_entry(txn.kind(), &viewable_records),
+                        ));
+                    }
+                } else {
+                    // If the transaction does not expose its records forget all of the Merkle
+                    // paths we added for it. If we are a receiver of this transaction, we will
+                    // remember the relevant paths later on when we get the owner memos.
+                    for _ in txn.output_commitments() {
+                        self.records_mt.forget(uid);
+                        uid += 1;
+                    }
+                }
+            }
+        }
+    }
+}
+
+impl<L: Ledger> BackgroundKeyScan<L, FreezerKeyPair> {
+    pub fn handle_event(&mut self, event: LedgerEvent<L>, source: EventSource) {
+        if self.from_event.index(source) <= self.next_event.index(source)
+            && self.next_event.index(source) < self.to_event.index(source)
+        {
+            // If this event falls in the range from which we want to discover records, try and do
+            // so.
+            self.handle_event_in_range(event);
+        } else {
+            // Otherwise, just update our data structures.
+            self.handle_event_out_of_range(event);
+        }
+
+        self.next_event += EventIndex::from_source(source, 1);
+    }
+
+    fn handle_event_in_range(&mut self, event: LedgerEvent<L>) {
+        if let LedgerEvent::Commit { block, .. } = event {
+            let mut uid = self.records_mt.num_leaves();
+
+            // Add the record commitments from this block.
+            self.records_mt.extend(
+                block
+                    .txns()
+                    .into_iter()
+                    .flat_map(|txn| txn.output_commitments()),
+            );
+
+            for txn in block.txns() {
+                if let Some(records) = txn.output_openings() {
+                    // If the transaction exposes its records, add the records themselves if
+                    // they are freezable by us; forget their Merkle paths if they do not.
+                    let mut freezable_records = vec![];
+                    for record in records {
+                        if record.asset_def.policy_ref().freezer_pub_key() == &self.key.pub_key() {
+                            freezable_records.push(record.clone());
+                        } else {
+                            self.records_mt.forget(uid);
+                        }
+
+                        uid += 1;
+                    }
+                    if !freezable_records.is_empty() {
+                        self.history.push((
+                            TransactionUID::<L>(txn.hash().clone()),
+                            receive_history_entry(txn.kind(), &freezable_records),
+                        ));
+                    }
+                } else {
+                    // If the transaction does not expose its records forget all of the Merkle
+                    // paths we added for it. If we are a receiver of this transaction, we will
+                    // remember the relevant paths later on when we get the owner memos.
+                    for _ in txn.output_commitments() {
+                        self.records_mt.forget(uid);
+                        uid += 1;
+                    }
+                }
+            }
+        }
+    }
+}
+
+impl<L: Ledger> BackgroundKeyScan<L, UserKeyPair> {
     pub fn handle_event(&mut self, event: LedgerEvent<L>, source: EventSource) {
         if self.from_event.index(source) <= self.next_event.index(source)
             && self.next_event.index(source) < self.to_event.index(source)
@@ -331,36 +565,6 @@ impl<L: Ledger> BackgroundKeyScan<L> {
             }
 
             LedgerEvent::Reject { .. } => {}
-        }
-    }
-
-    fn handle_event_out_of_range(&mut self, event: LedgerEvent<L>) {
-        if let LedgerEvent::Commit { block, .. } = event {
-            // Remove records invalidated by the new block's nullifiers.
-            for n in block
-                .txns()
-                .into_iter()
-                .flat_map(|txn| txn.input_nullifiers())
-            {
-                if let Some((_, uid)) = self.records.remove(&n) {
-                    // If we removed a record that we had already discovered, prune it's path from
-                    // the Merkle tree.
-                    self.records_mt.forget(uid);
-                }
-            }
-
-            // Add new commitments to the Merkle tree in order to update the root, then forget the
-            // new Merkle paths since we don't care about records in this range.
-            let first_uid = self.records_mt.num_leaves();
-            self.records_mt.extend(
-                block
-                    .txns()
-                    .into_iter()
-                    .flat_map(|txn| txn.output_commitments()),
-            );
-            for uid in first_uid..self.records_mt.num_leaves() {
-                self.records_mt.forget(uid);
-            }
         }
     }
 }

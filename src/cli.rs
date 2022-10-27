@@ -702,18 +702,32 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
              description: Option<String>, scan_from: Option<EventIndex>, wait: Option<bool>| {
                 let description = description.unwrap_or_default();
                 match key_type {
-                    KeyType::Viewing => match keystore.generate_viewing_account(description).await {
-                        Ok(pub_key) => cli_writeln!(io, "{}", pub_key),
+                    KeyType::Viewing => match keystore.generate_viewing_account(description, scan_from).await {
+                        Ok(pub_key) => {
+                            if wait == Some(true) {
+                                if let Err(err) = keystore.await_viewing_key_scan(&pub_key).await {
+                                    cli_writeln!(io, "Error waiting for key scan: {}", err);
+                                }
+                            }
+                            cli_writeln!(io, "{}", pub_key)
+                        },
                         Err(err) => cli_writeln!(io, "Error generating viewing key: {}", err),
                     },
-                    KeyType::Freezing => match keystore.generate_freezing_account(description).await {
-                        Ok(pub_key) => cli_writeln!(io, "{}", pub_key),
+                    KeyType::Freezing => match keystore.generate_freezing_account(description, scan_from).await {
+                        Ok(pub_key) =>{
+                            if wait == Some(true) {
+                                if let Err(err) = keystore.await_freezing_key_scan(&pub_key).await {
+                                    cli_writeln!(io, "Error waiting for key scan: {}", err);
+                                }
+                            }
+                            cli_writeln!(io, "{}", pub_key)
+                    },
                         Err(err) => cli_writeln!(io, "Error generating freezing key: {}", err),
                     },
                     KeyType::Sending => match keystore.generate_sending_account(description, scan_from).await {
                         Ok(pub_key) => {
                             if wait == Some(true) {
-                                if let Err(err) = keystore.await_key_scan(&pub_key.address()).await {
+                                if let Err(err) = keystore.await_sending_key_scan(&pub_key.address()).await {
                                     cli_writeln!(io, "Error waiting for key scan: {}", err);
                                 }
                             }
@@ -749,8 +763,19 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                 let description = description.unwrap_or_default();
                 match key_type {
                     KeyType::Viewing => match bincode::deserialize::<ViewerKeyPair>(&bytes) {
-                        Ok(key) => match keystore.add_viewing_account(key.clone(), description).await {
-                            Ok(()) => cli_writeln!(io, "{}", key.pub_key()),
+                        Ok(key) => match keystore.add_viewing_account(key.clone(), description,  scan_from.unwrap_or_default(),).await {
+                            Ok(()) => {
+                                if wait == Some(true) {
+                                    if let Err(err) = keystore.await_viewing_key_scan(&key.pub_key()).await {
+                                        cli_writeln!(io, "Error waiting for key scan: {}", err);
+                                        return
+                                    }
+                                } else{
+                                    cli_writeln!(io,
+                                        "Note: assets viewable by this key will become available
+                                        after a scan of the ledger. This may take a long time.");
+                                }
+                                cli_writeln!(io, "{}", key.pub_key())},
                             Err(err) => cli_writeln!(io, "Error saving viewing key: {}", err),
                         },
                         Err(err) => {
@@ -758,8 +783,19 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                         }
                     },
                     KeyType::Freezing => match bincode::deserialize::<FreezerKeyPair>(&bytes) {
-                        Ok(key) => match keystore.add_freezing_account(key.clone(), description).await {
-                            Ok(()) => cli_writeln!(io, "{}", key.pub_key()),
+                        Ok(key) => match keystore.add_freezing_account(key.clone(), description,  scan_from.unwrap_or_default(),).await {
+                            Ok(()) => {
+                                if wait == Some(true) {
+                                    if let Err(err) = keystore.await_freezing_key_scan(&key.pub_key()).await {
+                                        cli_writeln!(io, "Error waiting for key scan: {}", err);
+                                        return
+                                    }
+                                } else{
+                                    cli_writeln!(io,
+                                        "Note: assets freezable by this key will become available
+                                        after a scan of the ledger. This may take a long time.");
+                                }
+                                cli_writeln!(io, "{}", key.pub_key())},
                             Err(err) => cli_writeln!(io, "Error saving freezing key: {}", err),
                         },
                         Err(err) => {
@@ -774,7 +810,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                         ).await {
                             Ok(()) => {
                                 if wait == Some(true) {
-                                    if let Err(err) = keystore.await_key_scan(&key.address()).await {
+                                    if let Err(err) = keystore.await_sending_key_scan(&key.address()).await {
                                         cli_writeln!(io, "Error waiting for key scan: {}", err);
                                         return
                                     }

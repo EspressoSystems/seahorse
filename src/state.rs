@@ -4,7 +4,7 @@ use crate::{
 };
 use async_std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use futures::{channel::oneshot, TryFuture, TryFutureExt};
-use jf_cap::keys::UserAddress;
+use jf_cap::keys::{FreezerPubKey, UserAddress, ViewerPubKey};
 use rand_chacha::ChaChaRng;
 use reef::Ledger;
 use serde::{de::DeserializeOwned, Serialize};
@@ -21,7 +21,9 @@ pub struct KeystoreSharedState<
     pub(crate) model: KeystoreModel<'a, L, Backend, Meta>,
     pub(crate) sync_handles: Vec<(EventIndex, oneshot::Sender<()>)>,
     pub(crate) txn_subscribers: HashMap<TransactionUID<L>, Vec<oneshot::Sender<TransactionStatus>>>,
-    pub(crate) pending_key_scans: HashMap<UserAddress, Vec<oneshot::Sender<()>>>,
+    pub(crate) pending_viewing_key_scans: HashMap<ViewerPubKey, Vec<oneshot::Sender<()>>>,
+    pub(crate) pending_freezing_key_scans: HashMap<FreezerPubKey, Vec<oneshot::Sender<()>>>,
+    pub(crate) pending_sending_key_scans: HashMap<UserAddress, Vec<oneshot::Sender<()>>>,
 }
 
 impl<
@@ -50,12 +52,25 @@ impl<
     pub fn new(
         state: LedgerState<'a, L>,
         model: KeystoreModel<'a, L, Backend, Meta>,
-        key_scans: impl IntoIterator<Item = UserAddress>,
+        viewing_key_scans: impl IntoIterator<Item = ViewerPubKey>,
+        freezing_key_scans: impl IntoIterator<Item = FreezerPubKey>,
+        sending_key_scans: impl IntoIterator<Item = UserAddress>,
     ) -> Self {
         Self {
             state,
             model,
-            pending_key_scans: key_scans.into_iter().map(|key| (key, vec![])).collect(),
+            pending_viewing_key_scans: viewing_key_scans
+                .into_iter()
+                .map(|key| (key, vec![]))
+                .collect(),
+            pending_freezing_key_scans: freezing_key_scans
+                .into_iter()
+                .map(|key| (key, vec![]))
+                .collect(),
+            pending_sending_key_scans: sending_key_scans
+                .into_iter()
+                .map(|key| (key, vec![]))
+                .collect(),
             sync_handles: Default::default(),
             txn_subscribers: Default::default(),
         }
@@ -96,10 +111,16 @@ impl<
     pub fn new(
         state: LedgerState<'a, L>,
         model: KeystoreModel<'a, L, Backend, Meta>,
-        key_scans: impl IntoIterator<Item = UserAddress>,
+        viewing_key_scans: impl IntoIterator<Item = ViewerPubKey>,
+        freezing_key_scans: impl IntoIterator<Item = FreezerPubKey>,
+        sending_key_scans: impl IntoIterator<Item = UserAddress>,
     ) -> Self {
         Self(RwLock::new(KeystoreSharedState::new(
-            state, model, key_scans,
+            state,
+            model,
+            viewing_key_scans,
+            freezing_key_scans,
+            sending_key_scans,
         )))
     }
 

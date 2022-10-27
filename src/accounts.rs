@@ -12,7 +12,7 @@
 
 use crate::{
     events::{EventSource, LedgerEvent},
-    key_scan::{BackgroundKeyScan, ScanOutputs, ScanStatus},
+    key_scan::{BackgroundKeyScan, KeyPair, ScanOutputs, ScanStatus},
     key_value_store::KeyValueStore,
     EncryptingResourceAdapter, KeystoreError,
 };
@@ -20,51 +20,16 @@ use atomic_store::{AppendLog, AtomicStoreLoader};
 use chrono::{DateTime, Local};
 use derivative::Derivative;
 use jf_cap::{
-    keys::{FreezerKeyPair, FreezerPubKey, UserAddress, UserKeyPair, ViewerKeyPair, ViewerPubKey},
+    keys::{FreezerKeyPair, UserKeyPair, ViewerKeyPair},
     MerkleCommitment,
 };
 use reef::Ledger;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use std::fmt::Display;
-use std::hash::Hash;
 use std::ops::{Deref, DerefMut};
-
-/// Keys with a public part.
-pub trait KeyPair: Clone + Send + Sync {
-    type PubKey: Clone + DeserializeOwned + Display + Eq + Hash + Serialize;
-    fn pub_key(&self) -> Self::PubKey;
-}
-
-impl KeyPair for ViewerKeyPair {
-    type PubKey = ViewerPubKey;
-
-    fn pub_key(&self) -> Self::PubKey {
-        self.pub_key()
-    }
-}
-
-impl KeyPair for FreezerKeyPair {
-    type PubKey = FreezerPubKey;
-
-    fn pub_key(&self) -> Self::PubKey {
-        self.pub_key()
-    }
-}
-
-impl KeyPair for UserKeyPair {
-    // The `PubKey` here is supposed to be a conceptual "primary key" for looking up
-    // `UserKeyPairs`. We typically want to look up `UserKeyPairs` by `Address`, not `UserPubKey`,
-    // because if we have a `UserPubKey` we can always get an `Address` to do the lookup.
-    type PubKey = UserAddress;
-
-    fn pub_key(&self) -> Self::PubKey {
-        self.address()
-    }
-}
 
 #[derive(Clone, Debug, Derivative, Deserialize, Serialize)]
 #[serde(bound = "Key: DeserializeOwned + Serialize")]
-pub struct Account<L: Ledger, Key: KeyPair> {
+pub struct Account<L: Ledger, Key: KeyPair + DeserializeOwned + Serialize> {
     /// The account key.
     key: Key,
     /// Optional index into the HD key stream.
@@ -76,14 +41,14 @@ pub struct Account<L: Ledger, Key: KeyPair> {
     /// Whether the account is used.
     used: bool,
     /// Optional ledger scan.
-    scan: Option<BackgroundKeyScan<L>>,
+    scan: Option<BackgroundKeyScan<L, Key>>,
     /// The time when the account was created.
     created_time: DateTime<Local>,
     /// The last time when the account was modified.
     modified_time: DateTime<Local>,
 }
 
-impl<L: Ledger, Key: KeyPair> Account<L, Key> {
+impl<L: Ledger, Key: KeyPair + DeserializeOwned + Serialize> Account<L, Key> {
     /// Get the account key.
     pub fn key(&self) -> &Key {
         &self.key
@@ -110,7 +75,7 @@ impl<L: Ledger, Key: KeyPair> Account<L, Key> {
     }
 
     /// Get the optional ledger scan.
-    pub fn scan(&self) -> Option<&BackgroundKeyScan<L>> {
+    pub fn scan(&self) -> Option<&BackgroundKeyScan<L, Key>> {
         self.scan.as_ref()
     }
 
@@ -155,11 +120,22 @@ impl<'a, L: Ledger, Key: KeyPair + DeserializeOwned + Serialize> AccountEditor<'
     }
 
     /// Set the optional ledger scan.
-    pub(crate) fn set_scan(mut self, scan: Option<BackgroundKeyScan<L>>) -> Self {
+    pub(crate) fn set_scan(mut self, scan: Option<BackgroundKeyScan<L, Key>>) -> Self {
         self.account.scan = scan;
         self
     }
 
+    /// Save the account to the store.
+    ///
+    /// Returns the stored account.
+    pub fn save(&mut self) -> Result<Account<L, Key>, KeystoreError<L>> {
+        self.store.store(&self.account.pub_key(), &self.account)?;
+        self.account.modified_time = Local::now();
+        Ok(self.account.clone())
+    }
+}
+
+impl<'a, L: Ledger> AccountEditor<'a, L, ViewerKeyPair> {
     /// Update the ledger scan.
     ///
     /// Returns
@@ -173,8 +149,8 @@ impl<'a, L: Ledger, Key: KeyPair + DeserializeOwned + Serialize> AccountEditor<'
         records_commitment: MerkleCommitment,
     ) -> Result<
         (
-            AccountEditor<'a, L, Key>,
-            Option<(UserKeyPair, ScanOutputs<L>)>,
+            AccountEditor<'a, L, ViewerKeyPair>,
+            Option<(ViewerKeyPair, ScanOutputs<L>)>,
         ),
         KeystoreError<L>,
     > {
@@ -196,14 +172,83 @@ impl<'a, L: Ledger, Key: KeyPair + DeserializeOwned + Serialize> AccountEditor<'
             }
         }
     }
+}
 
-    /// Save the account to the store.
+impl<'a, L: Ledger> AccountEditor<'a, L, FreezerKeyPair> {
+    /// Update the ledger scan.
     ///
-    /// Returns the stored account.
-    pub fn save(&mut self) -> Result<Account<L, Key>, KeystoreError<L>> {
-        self.store.store(&self.account.pub_key(), &self.account)?;
-        self.account.modified_time = Local::now();
-        Ok(self.account.clone())
+    /// Returns
+    /// * `Err` if the scan isn't found, or
+    /// * `Ok((self, scan_info))`, where `scan_info` contains the scanned information if and only
+    /// if the scan is complete.
+    pub(crate) async fn update_scan(
+        mut self,
+        event: LedgerEvent<L>,
+        source: EventSource,
+        records_commitment: MerkleCommitment,
+    ) -> Result<
+        (
+            AccountEditor<'a, L, FreezerKeyPair>,
+            Option<(FreezerKeyPair, ScanOutputs<L>)>,
+        ),
+        KeystoreError<L>,
+    > {
+        let mut scan = match self.account.scan.take() {
+            Some(scan) => scan,
+            None => return Err(KeystoreError::ScanNotFound),
+        };
+        scan.handle_event(event, source);
+        // Check if the scan is complete.
+        match scan.finalize(records_commitment) {
+            ScanStatus::Finished {
+                key,
+                records,
+                history,
+            } => Ok((self, Some((key, ScanOutputs { records, history })))),
+            ScanStatus::InProgress(scan) => {
+                self.account.scan = Some(scan);
+                Ok((self, None))
+            }
+        }
+    }
+}
+
+impl<'a, L: Ledger> AccountEditor<'a, L, UserKeyPair> {
+    /// Update the ledger scan.
+    ///
+    /// Returns
+    /// * `Err` if the scan isn't found, or
+    /// * `Ok((self, scan_info))`, where `scan_info` contains the scanned information if and only
+    /// if the scan is complete.
+    pub(crate) async fn update_scan(
+        mut self,
+        event: LedgerEvent<L>,
+        source: EventSource,
+        records_commitment: MerkleCommitment,
+    ) -> Result<
+        (
+            AccountEditor<'a, L, UserKeyPair>,
+            Option<(UserKeyPair, ScanOutputs<L>)>,
+        ),
+        KeystoreError<L>,
+    > {
+        let mut scan = match self.account.scan.take() {
+            Some(scan) => scan,
+            None => return Err(KeystoreError::ScanNotFound),
+        };
+        scan.handle_event(event, source);
+        // Check if the scan is complete.
+        match scan.finalize(records_commitment) {
+            ScanStatus::Finished {
+                key,
+                records,
+                history,
+            } => Ok((self, Some((key, ScanOutputs { records, history })))),
+            ScanStatus::InProgress(scan) => {
+                self.account.scan = Some(scan);
+                Ok((self, None))
+            }
+        }
     }
 }
 
