@@ -360,10 +360,18 @@ impl<L: Ledger, Key: KeyPair + DeserializeOwned + Serialize> BackgroundKeyScan<L
                                     }
                                 }
                                 KeyType::Freezing(freezing_key) => {
+                                    let comm = RecordCommitment::from(&record);
                                     if record.asset_def.policy_ref().freezer_pub_key()
                                         == &freezing_key.pub_key()
                                     {
                                         received_records.push(record.clone());
+                                        let nullifier = freezing_key.nullify(
+                                            &record.pub_key.address(),
+                                            uid,
+                                            &comm,
+                                        );
+                                        // If the record is freezable by us, add it to our records.
+                                        self.records.insert(nullifier, (record, uid));
                                     } else {
                                         self.records_mt.forget(uid);
                                     }
@@ -502,6 +510,9 @@ pub fn receive_history_entry<L: Ledger>(
     } else if kind == TransactionKind::<L>::freeze()
         && last_record.freeze_flag == FreezeFlag::Unfrozen
     {
+        // If the input `kind` is `freeze`, the transaction may be either freezing or unfreezing.
+        // To determine the exact kind, we check the flag of the last record, and change the kind
+        // to `unfreeze` if the flag is `Unfrozen`.
         TransactionKind::<L>::unfreeze()
     } else {
         kind

@@ -12,7 +12,7 @@
 
 use crate::{
     events::{EventIndex, EventSource, LedgerEvent},
-    key_scan::{receive_history_entry, BackgroundKeyScan},
+    key_scan::{receive_history_entry, BackgroundKeyScan, KeyPair, KeyType},
     lw_merkle_tree::LWMerkleTree,
     records::{Record, Records},
     transactions::{SignedMemos, Transaction, TransactionParams, Transactions},
@@ -44,7 +44,8 @@ use jf_cap::{
         ReceiverMemo, RecordCommitment, RecordOpening, TxnFeeInfo,
     },
     transfer::{TransferNote, TransferNoteInput},
-    AccMemberWitness, KeyPair, MerkleLeafProof, MerklePath, Signature, TransactionNote,
+    AccMemberWitness, KeyPair as JfKeyPair, MerkleLeafProof, MerklePath, Signature,
+    TransactionNote,
 };
 use jf_primitives::aead::EncKey;
 use jf_utils::tagged_blob;
@@ -1149,7 +1150,7 @@ impl<'a, L: 'static + Ledger> LedgerState<'a, L> {
         records: &[RecordOpening],
         include: impl IntoIterator<Item = bool>,
         rng: &mut ChaChaRng,
-        sig_key_pair: &KeyPair,
+        sig_key_pair: &JfKeyPair,
     ) -> Result<(Vec<Option<ReceiverMemo>>, Signature), KeystoreError<L>> {
         let memos: Vec<_> = records
             .iter()
@@ -1871,10 +1872,11 @@ impl<'a, L: 'static + Ledger> LedgerState<'a, L> {
 
     pub(crate) async fn add_records<
         Meta: Serialize + DeserializeOwned + Send + Sync + Clone + PartialEq,
+        Key: KeyPair,
     >(
         &mut self,
         stores: &mut KeystoreStores<'a, L, Meta>,
-        key_pair: &UserKeyPair,
+        key: &Key,
         records: Vec<(RecordOpening, u64, MerklePath)>,
     ) -> Result<(), KeystoreError<L>> {
         for (record, uid, proof) in records {
@@ -1891,23 +1893,47 @@ impl<'a, L: 'static + Ledger> LedgerState<'a, L> {
             // Add the asset type if it is not already in the asset library.
             stores.assets_mut().create(record.asset_def.clone(), None)?;
 
-            // Mark the account receiving the record as used.
-            stores
-                .sending_accounts
-                .get_mut(&key_pair.address())
-                .unwrap()
-                .set_used()
-                .save()?;
-            // Save the record.
-            stores.records.create::<L>(
-                uid,
-                record.clone(),
-                key_pair.nullify(
-                    record.asset_def.policy_ref().freezer_pub_key(),
-                    uid,
-                    &RecordCommitment::from(&record),
-                ),
-            )?;
+            match key.clone().key_type() {
+                KeyType::Viewing(_) => {}
+                KeyType::Freezing(key) => {
+                    // Mark the account receiving the record as used.
+                    stores
+                        .freezing_accounts
+                        .get_mut(&key.pub_key())
+                        .unwrap()
+                        .set_used()
+                        .save()?;
+                    // Save the record.
+                    stores.records.create::<L>(
+                        uid,
+                        record.clone(),
+                        key.nullify(
+                            &record.pub_key.address(),
+                            uid,
+                            &RecordCommitment::from(&record),
+                        ),
+                    )?;
+                }
+                KeyType::Sending(key) => {
+                    // Mark the account receiving the record as used.
+                    stores
+                        .sending_accounts
+                        .get_mut(&key.address())
+                        .unwrap()
+                        .set_used()
+                        .save()?;
+                    // Save the record.
+                    stores.records.create::<L>(
+                        uid,
+                        record.clone(),
+                        key.nullify(
+                            record.asset_def.policy_ref().freezer_pub_key(),
+                            uid,
+                            &RecordCommitment::from(&record),
+                        ),
+                    )?;
+                }
+            }
         }
         Ok(())
     }
@@ -2330,7 +2356,7 @@ impl<'a, L: 'static + Ledger> LedgerState<'a, L> {
             let (frontier, next_event) = model.backend.get_initial_scan_state(scan_from).await?;
             let events = model.backend.subscribe(next_event, None).await;
 
-            // Create a background scan of the ledger to import records viewable by this key.
+            // Create a background scan of the ledger to import records freezable by this key.
             let scan: BackgroundKeyScan<L, FreezerKeyPair> = BackgroundKeyScan::new(
                 freezing_key.clone(),
                 next_event,

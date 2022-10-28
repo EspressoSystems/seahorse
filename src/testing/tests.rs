@@ -85,12 +85,12 @@ pub async fn test_keystore_freeze_unregistered() -> std::io::Result<()> {
             .unwrap();
         keystores[2]
             .0
-            .add_viewing_account(viewing_key, "viewing_key".into(), EventIndex::default())
+            .add_account(viewing_key, "viewing_key".into(), EventIndex::default())
             .await
             .unwrap();
         keystores[2]
             .0
-            .add_freezing_account(freeze_key, "freeze_key".into(), EventIndex::default())
+            .add_account(freeze_key, "freeze_key".into(), EventIndex::default())
             .await
             .unwrap();
         let asset = keystores[2]
@@ -538,12 +538,12 @@ pub mod generic_keystore_tests {
                 .unwrap();
             keystores[0]
                 .0
-                .add_viewing_account(viewing_key, "viewing_key".into(), EventIndex::default())
+                .add_account(viewing_key, "viewing_key".into(), EventIndex::default())
                 .await
                 .unwrap();
             keystores[0]
                 .0
-                .add_freezing_account(freeze_key, "freeze_key".into(), EventIndex::default())
+                .add_account(freeze_key, "freeze_key".into(), EventIndex::default())
                 .await
                 .unwrap();
             let asset = keystores[0]
@@ -886,12 +886,12 @@ pub mod generic_keystore_tests {
                 .unwrap();
             keystores[2]
                 .0
-                .add_viewing_account(viewing_key, "viewing_key".into(), EventIndex::default())
+                .add_account(viewing_key, "viewing_key".into(), EventIndex::default())
                 .await
                 .unwrap();
             keystores[2]
                 .0
-                .add_freezing_account(freeze_key, "freeze_key".into(), EventIndex::default())
+                .add_account(freeze_key, "freeze_key".into(), EventIndex::default())
                 .await
                 .unwrap();
             let asset = keystores[2]
@@ -2620,11 +2620,21 @@ pub mod generic_keystore_tests {
             .generate_freezing_account("freezing_account".into(), Some(EventIndex::default()))
             .await
             .unwrap();
+        keystores[0]
+            .0
+            .await_viewing_key_scan(&viewing_key)
+            .await
+            .unwrap();
+        keystores[0]
+            .0
+            .await_freezing_key_scan(&freezing_key)
+            .await
+            .unwrap();
         let viewing_account = keystores[0].0.viewing_account(&viewing_key).await.unwrap();
         assert_eq!(viewing_account.pub_key(), viewing_key);
         assert_eq!(viewing_account.description(), "viewing_account".to_string());
         assert!(!viewing_account.used());
-        assert!(viewing_account.scan().is_some());
+        assert_eq!(viewing_account.scan(), None);
         let freezing_account = keystores[0]
             .0
             .freezing_account(&freezing_key)
@@ -2636,7 +2646,7 @@ pub mod generic_keystore_tests {
             "freezing_account".to_string()
         );
         assert!(!freezing_account.used());
-        assert!(freezing_account.scan().is_some());
+        assert_eq!(freezing_account.scan(), None);
         t.check_storage(&keystores).await;
 
         // Generate one asset that is just viewable and one that is both viewable and freezable.

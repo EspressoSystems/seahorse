@@ -763,7 +763,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                 let description = description.unwrap_or_default();
                 match key_type {
                     KeyType::Viewing => match bincode::deserialize::<ViewerKeyPair>(&bytes) {
-                        Ok(key) => match keystore.add_viewing_account(key.clone(), description,  scan_from.unwrap_or_default(),).await {
+                        Ok(key) => match keystore.add_account(key.clone(), description,  scan_from.unwrap_or_default(),).await {
                             Ok(()) => {
                                 if wait == Some(true) {
                                     if let Err(err) = keystore.await_viewing_key_scan(&key.pub_key()).await {
@@ -783,7 +783,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                         }
                     },
                     KeyType::Freezing => match bincode::deserialize::<FreezerKeyPair>(&bytes) {
-                        Ok(key) => match keystore.add_freezing_account(key.clone(), description,  scan_from.unwrap_or_default(),).await {
+                        Ok(key) => match keystore.add_account(key.clone(), description,  scan_from.unwrap_or_default(),).await {
                             Ok(()) => {
                                 if wait == Some(true) {
                                     if let Err(err) = keystore.await_freezing_key_scan(&key.pub_key()).await {
@@ -803,7 +803,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
                         }
                     },
                     KeyType::Sending => match bincode::deserialize::<UserKeyPair>(&bytes) {
-                        Ok(key) => match keystore.add_sending_account(
+                        Ok(key) => match keystore.add_account(
                             key.clone(),
                             description,
                             scan_from.unwrap_or_default(),
