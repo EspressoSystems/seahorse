@@ -161,13 +161,12 @@ pub struct BackgroundKeyScan<L: Ledger, Key: KeyPair + DeserializeOwned + Serial
     from_event: EventIndex,
     // The first event after the range of interest.
     to_event: EventIndex,
-    // Record openings we have discovered which are viewable, freezable, or belong to these key.
-    // These records are kept in a separate pool until the scan is complete so that if the scan
+    // Record openings we have discovered which are freezable or owned by these key. These
+    // records are kept in a separate pool until the scan is complete so that if the scan
     // encounters an event which spends some of these records, we can remove the spent records
     // without ever reflecting them in the keystore's balance.
     records: HashMap<Nullifier, (RecordOpening, u64)>,
-    // New history entries for transactions viewable or freezable to us, or received during the
-    // scan.
+    // New history entries for transactions with records viewable, freezable or owned by us.
     history: Vec<(TransactionUID<L>, TransactionParams<L>)>,
     // Lightweight Merkle tree containing paths for the commitments of each record in `records`.
     // This allows us to update the paths as we scan so that at the end of the scan, we have a path
@@ -344,9 +343,9 @@ impl<L: Ledger, Key: KeyPair + DeserializeOwned + Serialize> BackgroundKeyScan<L
                     }
 
                     if let Some(records) = txn.output_openings() {
-                        // If the transaction exposes its records, add the records themselves if they
-                        // are viewable or freezable by, or belong to us; forget their Merkle paths if
-                        // they do not.
+                        // For each record exposed by the transaction, if it's viewable, freezable,
+                        // or owned by us, add it to the receiving history. Otherwise, forget its
+                        // Merkle path.
                         let mut received_records = vec![];
                         for record in records {
                             match self.key.clone().key_type() {
