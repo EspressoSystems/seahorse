@@ -416,6 +416,141 @@
 <span id="410">410</span>
 <span id="411">411</span>
 <span id="412">412</span>
+<span id="413">413</span>
+<span id="414">414</span>
+<span id="415">415</span>
+<span id="416">416</span>
+<span id="417">417</span>
+<span id="418">418</span>
+<span id="419">419</span>
+<span id="420">420</span>
+<span id="421">421</span>
+<span id="422">422</span>
+<span id="423">423</span>
+<span id="424">424</span>
+<span id="425">425</span>
+<span id="426">426</span>
+<span id="427">427</span>
+<span id="428">428</span>
+<span id="429">429</span>
+<span id="430">430</span>
+<span id="431">431</span>
+<span id="432">432</span>
+<span id="433">433</span>
+<span id="434">434</span>
+<span id="435">435</span>
+<span id="436">436</span>
+<span id="437">437</span>
+<span id="438">438</span>
+<span id="439">439</span>
+<span id="440">440</span>
+<span id="441">441</span>
+<span id="442">442</span>
+<span id="443">443</span>
+<span id="444">444</span>
+<span id="445">445</span>
+<span id="446">446</span>
+<span id="447">447</span>
+<span id="448">448</span>
+<span id="449">449</span>
+<span id="450">450</span>
+<span id="451">451</span>
+<span id="452">452</span>
+<span id="453">453</span>
+<span id="454">454</span>
+<span id="455">455</span>
+<span id="456">456</span>
+<span id="457">457</span>
+<span id="458">458</span>
+<span id="459">459</span>
+<span id="460">460</span>
+<span id="461">461</span>
+<span id="462">462</span>
+<span id="463">463</span>
+<span id="464">464</span>
+<span id="465">465</span>
+<span id="466">466</span>
+<span id="467">467</span>
+<span id="468">468</span>
+<span id="469">469</span>
+<span id="470">470</span>
+<span id="471">471</span>
+<span id="472">472</span>
+<span id="473">473</span>
+<span id="474">474</span>
+<span id="475">475</span>
+<span id="476">476</span>
+<span id="477">477</span>
+<span id="478">478</span>
+<span id="479">479</span>
+<span id="480">480</span>
+<span id="481">481</span>
+<span id="482">482</span>
+<span id="483">483</span>
+<span id="484">484</span>
+<span id="485">485</span>
+<span id="486">486</span>
+<span id="487">487</span>
+<span id="488">488</span>
+<span id="489">489</span>
+<span id="490">490</span>
+<span id="491">491</span>
+<span id="492">492</span>
+<span id="493">493</span>
+<span id="494">494</span>
+<span id="495">495</span>
+<span id="496">496</span>
+<span id="497">497</span>
+<span id="498">498</span>
+<span id="499">499</span>
+<span id="500">500</span>
+<span id="501">501</span>
+<span id="502">502</span>
+<span id="503">503</span>
+<span id="504">504</span>
+<span id="505">505</span>
+<span id="506">506</span>
+<span id="507">507</span>
+<span id="508">508</span>
+<span id="509">509</span>
+<span id="510">510</span>
+<span id="511">511</span>
+<span id="512">512</span>
+<span id="513">513</span>
+<span id="514">514</span>
+<span id="515">515</span>
+<span id="516">516</span>
+<span id="517">517</span>
+<span id="518">518</span>
+<span id="519">519</span>
+<span id="520">520</span>
+<span id="521">521</span>
+<span id="522">522</span>
+<span id="523">523</span>
+<span id="524">524</span>
+<span id="525">525</span>
+<span id="526">526</span>
+<span id="527">527</span>
+<span id="528">528</span>
+<span id="529">529</span>
+<span id="530">530</span>
+<span id="531">531</span>
+<span id="532">532</span>
+<span id="533">533</span>
+<span id="534">534</span>
+<span id="535">535</span>
+<span id="536">536</span>
+<span id="537">537</span>
+<span id="538">538</span>
+<span id="539">539</span>
+<span id="540">540</span>
+<span id="541">541</span>
+<span id="542">542</span>
+<span id="543">543</span>
+<span id="544">544</span>
+<span id="545">545</span>
+<span id="546">546</span>
+<span id="547">547</span>
 </pre><pre class="rust"><code><span class="doccomment">/// Ledger scanning utilities.</span>
 <span class="doccomment">///</span>
 <span class="doccomment">/// This module provides an interface for searching a ledger for records belonging to a particular</span>
@@ -430,11 +565,11 @@
     <span class="ident">transactions::TransactionParams</span>,
 };
 <span class="kw">use</span> <span class="ident">arbitrary</span>::{<span class="ident">Arbitrary</span>, <span class="ident">Unstructured</span>};
-<span class="kw">use</span> <span class="ident">arbitrary_wrappers::ArbitraryUserKeyPair</span>;
+<span class="kw">use</span> <span class="ident">arbitrary_wrappers</span>::{<span class="ident">ArbitraryFreezerKeyPair</span>, <span class="ident">ArbitraryUserKeyPair</span>, <span class="ident">ArbitraryViewerKeyPair</span>};
 <span class="kw">use</span> <span class="ident">chrono::Local</span>;
 <span class="kw">use</span> <span class="ident">espresso_macros::ser_test</span>;
 <span class="kw">use</span> <span class="ident">jf_cap</span>::{
-    <span class="ident">keys</span>::{<span class="ident">UserAddress</span>, <span class="ident">UserKeyPair</span>},
+    <span class="ident">keys</span>::{<span class="ident">FreezerKeyPair</span>, <span class="ident">FreezerPubKey</span>, <span class="ident">UserAddress</span>, <span class="ident">UserKeyPair</span>, <span class="ident">ViewerKeyPair</span>, <span class="ident">ViewerPubKey</span>},
     <span class="ident">structs</span>::{<span class="ident">FreezeFlag</span>, <span class="ident">Nullifier</span>, <span class="ident">RecordCommitment</span>, <span class="ident">RecordOpening</span>},
     <span class="ident">MerkleCommitment</span>, <span class="ident">MerkleLeafProof</span>, <span class="ident">MerklePath</span>,
 };
@@ -442,11 +577,66 @@
     <span class="ident">traits</span>::{<span class="ident">Block</span> <span class="kw">as</span> <span class="kw">_</span>, <span class="ident">Transaction</span> <span class="kw">as</span> <span class="kw">_</span>, <span class="ident">TransactionKind</span> <span class="kw">as</span> <span class="kw">_</span>},
     <span class="ident">Ledger</span>, <span class="ident">TransactionHash</span>, <span class="ident">TransactionKind</span>,
 };
-<span class="kw">use</span> <span class="ident">serde</span>::{<span class="ident">Deserialize</span>, <span class="ident">Serialize</span>};
+<span class="kw">use</span> <span class="ident">serde</span>::{<span class="ident">de::DeserializeOwned</span>, <span class="ident">Deserialize</span>, <span class="ident">Serialize</span>};
 <span class="kw">use</span> <span class="ident">std::collections::HashMap</span>;
+<span class="kw">use</span> <span class="ident">std::fmt::Display</span>;
+<span class="kw">use</span> <span class="ident">std::hash::Hash</span>;
 
 <span class="doccomment">/// The information about each discovered record returned by a key-specific scan.</span>
 <span class="kw">pub</span> <span class="kw">type</span> <span class="ident">ScannedRecord</span> <span class="op">=</span> (<span class="ident">RecordOpening</span>, <span class="ident">u64</span>, <span class="ident">MerklePath</span>);
+
+<span class="doccomment">/// Types of keys.</span>
+<span class="kw">pub</span> <span class="kw">enum</span> <span class="ident">KeyType</span> {
+    <span class="ident">Viewing</span>(<span class="ident">ViewerKeyPair</span>),
+    <span class="ident">Freezing</span>(<span class="ident">FreezerKeyPair</span>),
+    <span class="ident">Sending</span>(<span class="ident">UserKeyPair</span>),
+}
+
+<span class="doccomment">/// Keys with a public part.</span>
+<span class="kw">pub</span> <span class="kw">trait</span> <span class="ident">KeyPair</span>: <span class="ident">Clone</span> <span class="op">+</span> <span class="ident">Send</span> <span class="op">+</span> <span class="ident">Sync</span> {
+    <span class="kw">type</span> <span class="ident">PubKey</span>: <span class="ident">Clone</span> <span class="op">+</span> <span class="ident">DeserializeOwned</span> <span class="op">+</span> <span class="ident">Display</span> <span class="op">+</span> <span class="ident">Eq</span> <span class="op">+</span> <span class="ident">Hash</span> <span class="op">+</span> <span class="ident">Serialize</span>;
+    <span class="kw">fn</span> <span class="ident">key_type</span>(<span class="self">self</span>) -&gt; <span class="ident">KeyType</span>;
+    <span class="kw">fn</span> <span class="ident">pub_key</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="ident"><span class="self">Self</span>::PubKey</span>;
+}
+
+<span class="kw">impl</span> <span class="ident">KeyPair</span> <span class="kw">for</span> <span class="ident">ViewerKeyPair</span> {
+    <span class="kw">type</span> <span class="ident">PubKey</span> <span class="op">=</span> <span class="ident">ViewerPubKey</span>;
+
+    <span class="kw">fn</span> <span class="ident">key_type</span>(<span class="self">self</span>) -&gt; <span class="ident">KeyType</span> {
+        <span class="ident">KeyType::Viewing</span>(<span class="self">self</span>)
+    }
+
+    <span class="kw">fn</span> <span class="ident">pub_key</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="ident"><span class="self">Self</span>::PubKey</span> {
+        <span class="self">self</span>.<span class="ident">pub_key</span>()
+    }
+}
+
+<span class="kw">impl</span> <span class="ident">KeyPair</span> <span class="kw">for</span> <span class="ident">FreezerKeyPair</span> {
+    <span class="kw">type</span> <span class="ident">PubKey</span> <span class="op">=</span> <span class="ident">FreezerPubKey</span>;
+
+    <span class="kw">fn</span> <span class="ident">key_type</span>(<span class="self">self</span>) -&gt; <span class="ident">KeyType</span> {
+        <span class="ident">KeyType::Freezing</span>(<span class="self">self</span>)
+    }
+
+    <span class="kw">fn</span> <span class="ident">pub_key</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="ident"><span class="self">Self</span>::PubKey</span> {
+        <span class="self">self</span>.<span class="ident">pub_key</span>()
+    }
+}
+
+<span class="kw">impl</span> <span class="ident">KeyPair</span> <span class="kw">for</span> <span class="ident">UserKeyPair</span> {
+    <span class="comment">// The `PubKey` here is supposed to be a conceptual &quot;primary key&quot; for looking up</span>
+    <span class="comment">// `UserKeyPairs`. We typically want to look up `UserKeyPairs` by `Address`, not `UserPubKey`,</span>
+    <span class="comment">// because if we have a `UserPubKey` we can always get an `Address` to do the lookup.</span>
+    <span class="kw">type</span> <span class="ident">PubKey</span> <span class="op">=</span> <span class="ident">UserAddress</span>;
+
+    <span class="kw">fn</span> <span class="ident">key_type</span>(<span class="self">self</span>) -&gt; <span class="ident">KeyType</span> {
+        <span class="ident">KeyType::Sending</span>(<span class="self">self</span>)
+    }
+
+    <span class="kw">fn</span> <span class="ident">pub_key</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="ident"><span class="self">Self</span>::PubKey</span> {
+        <span class="self">self</span>.<span class="ident">address</span>()
+    }
+}
 
 <span class="doccomment">/// All the outputs of a key-specific ledger scan.</span>
 <span class="doccomment">///</span>
@@ -460,17 +650,17 @@
 
 <span class="doccomment">/// The status of a ledger scan.</span>
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Clone</span>)]</span>
-<span class="kw">pub</span> <span class="kw">enum</span> <span class="ident">ScanStatus</span><span class="op">&lt;</span><span class="ident">L</span>: <span class="ident">Ledger</span><span class="op">&gt;</span> {
+<span class="kw">pub</span> <span class="kw">enum</span> <span class="ident">ScanStatus</span><span class="op">&lt;</span><span class="ident">L</span>: <span class="ident">Ledger</span>, <span class="ident">Key</span>: <span class="ident">KeyPair</span> <span class="op">+</span> <span class="ident">DeserializeOwned</span> <span class="op">+</span> <span class="ident">Serialize</span><span class="op">&gt;</span> {
     <span class="ident">Finished</span> {
         <span class="doccomment">/// The scanned key.</span>
-        <span class="ident">key</span>: <span class="ident">UserKeyPair</span>,
+        <span class="ident">key</span>: <span class="ident">Key</span>,
         <span class="doccomment">/// The list of records discovered by the scan.</span>
         <span class="ident">records</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">ScannedRecord</span><span class="op">&gt;</span>,
         <span class="doccomment">/// The list of transaction history entries corresponding to transactions received by the</span>
         <span class="doccomment">/// scan.</span>
         <span class="ident">history</span>: <span class="ident">Vec</span><span class="op">&lt;</span>(<span class="ident">TransactionUID</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span>, <span class="ident">TransactionParams</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span>)<span class="op">&gt;</span>,
     },
-    <span class="ident">InProgress</span>(<span class="ident">BackgroundKeyScan</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span>),
+    <span class="ident">InProgress</span>(<span class="ident">BackgroundKeyScan</span><span class="op">&lt;</span><span class="ident">L</span>, <span class="ident">Key</span><span class="op">&gt;</span>),
 }
 
 <span class="doccomment">/// An in-progress scan of past ledger events.</span>
@@ -507,31 +697,39 @@
 <span class="doccomment">/// recipient. It is able to create Merkle paths for the new records either by using the Merkle</span>
 <span class="doccomment">/// paths included in `Memos` events, or by using the frontier at the time it appends the</span>
 <span class="doccomment">/// commitment for an attached record opening to the tree.</span>
-<span class="attribute">#[<span class="ident">ser_test</span>(<span class="ident">arbitrary</span>, <span class="ident">ark</span>(<span class="bool-val">false</span>), <span class="ident">types</span>(<span class="ident">reef::cap::Ledger</span>))]</span>
+<span class="attribute">#[<span class="ident">ser_test</span>(
+    <span class="ident">arbitrary</span>,
+    <span class="ident">ark</span>(<span class="bool-val">false</span>),
+    <span class="ident">types</span>(<span class="ident">reef::cap::Ledger</span>, <span class="ident">ViewerKeyPair</span>),
+    <span class="ident">types</span>(<span class="ident">reef::cap::Ledger</span>, <span class="ident">FreezerKeyPair</span>),
+    <span class="ident">types</span>(<span class="ident">reef::cap::Ledger</span>, <span class="ident">UserKeyPair</span>)
+)]</span>
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Debug</span>, <span class="ident">Clone</span>, <span class="ident">Serialize</span>, <span class="ident">Deserialize</span>)]</span>
 <span class="attribute">#[<span class="ident">serde</span>(<span class="ident">bound</span> <span class="op">=</span> <span class="string">&quot;L: Ledger&quot;</span>)]</span>
-<span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">BackgroundKeyScan</span><span class="op">&lt;</span><span class="ident">L</span>: <span class="ident">Ledger</span><span class="op">&gt;</span> {
-    <span class="ident">key</span>: <span class="ident">UserKeyPair</span>,
+<span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">BackgroundKeyScan</span><span class="op">&lt;</span><span class="ident">L</span>: <span class="ident">Ledger</span>, <span class="ident">Key</span>: <span class="ident">KeyPair</span> <span class="op">+</span> <span class="ident">DeserializeOwned</span> <span class="op">+</span> <span class="ident">Serialize</span><span class="op">&gt;</span> {
+    <span class="ident">key</span>: <span class="ident">Key</span>,
     <span class="comment">// The index of the next event in the event stream.</span>
     <span class="ident">next_event</span>: <span class="ident">EventIndex</span>,
     <span class="comment">// The first event of interest.</span>
     <span class="ident">from_event</span>: <span class="ident">EventIndex</span>,
     <span class="comment">// The first event after the range of interest.</span>
     <span class="ident">to_event</span>: <span class="ident">EventIndex</span>,
-    <span class="comment">// Record openings we have discovered which belong to these key. These records are kept in a</span>
-    <span class="comment">// separate pool until the scan is complete so that if the scan encounters an event which spends</span>
-    <span class="comment">// some of these records, we can remove the spent records without ever reflecting them in the</span>
-    <span class="comment">// keystore&#39;s balance.</span>
+    <span class="comment">// Record openings we have discovered which are freezable or owned by these key. These</span>
+    <span class="comment">// records are kept in a separate pool until the scan is complete so that if the scan</span>
+    <span class="comment">// encounters an event which spends some of these records, we can remove the spent records</span>
+    <span class="comment">// without ever reflecting them in the keystore&#39;s balance.</span>
     <span class="ident">records</span>: <span class="ident">HashMap</span><span class="op">&lt;</span><span class="ident">Nullifier</span>, (<span class="ident">RecordOpening</span>, <span class="ident">u64</span>)<span class="op">&gt;</span>,
-    <span class="comment">// New history entries for transactions we received during the scan.</span>
+    <span class="comment">// New history entries for transactions with records viewable, freezable or owned by us.</span>
     <span class="ident">history</span>: <span class="ident">Vec</span><span class="op">&lt;</span>(<span class="ident">TransactionUID</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span>, <span class="ident">TransactionParams</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span>)<span class="op">&gt;</span>,
     <span class="comment">// Lightweight Merkle tree containing paths for the commitments of each record in `records`.</span>
-    <span class="comment">// This allows us to update the paths as we scan so that at the end of the scan, we have a path for</span>
-    <span class="comment">// each record relative to the current Merkle root.</span>
+    <span class="comment">// This allows us to update the paths as we scan so that at the end of the scan, we have a path</span>
+    <span class="comment">// for each record relative to the current Merkle root.</span>
     <span class="ident">records_mt</span>: <span class="ident">LWMerkleTree</span>,
 }
 
-<span class="kw">impl</span><span class="op">&lt;</span><span class="ident">L</span>: <span class="ident">Ledger</span><span class="op">&gt;</span> <span class="ident">PartialEq</span><span class="op">&lt;</span><span class="self">Self</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">BackgroundKeyScan</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span> {
+<span class="kw">impl</span><span class="op">&lt;</span><span class="ident">L</span>: <span class="ident">Ledger</span>, <span class="ident">Key</span>: <span class="ident">KeyPair</span> <span class="op">+</span> <span class="ident">DeserializeOwned</span> <span class="op">+</span> <span class="ident">Serialize</span><span class="op">&gt;</span> <span class="ident">PartialEq</span><span class="op">&lt;</span><span class="self">Self</span><span class="op">&gt;</span>
+    <span class="kw">for</span> <span class="ident">BackgroundKeyScan</span><span class="op">&lt;</span><span class="ident">L</span>, <span class="ident">Key</span><span class="op">&gt;</span>
+{
     <span class="kw">fn</span> <span class="ident">eq</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">other</span>: <span class="kw-2">&amp;</span><span class="self">Self</span>) -&gt; <span class="ident">bool</span> {
         <span class="self">self</span>.<span class="ident">key</span>.<span class="ident">pub_key</span>() <span class="op">==</span> <span class="ident">other</span>.<span class="ident">key</span>.<span class="ident">pub_key</span>()
             <span class="op">&amp;&amp;</span> <span class="self">self</span>.<span class="ident">next_event</span> <span class="op">==</span> <span class="ident">other</span>.<span class="ident">next_event</span>
@@ -542,7 +740,41 @@
     }
 }
 
-<span class="kw">impl</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span>: <span class="ident">Ledger</span><span class="op">&gt;</span> <span class="ident">Arbitrary</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">BackgroundKeyScan</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span>
+<span class="kw">impl</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span>: <span class="ident">Ledger</span><span class="op">&gt;</span> <span class="ident">Arbitrary</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">BackgroundKeyScan</span><span class="op">&lt;</span><span class="ident">L</span>, <span class="ident">ViewerKeyPair</span><span class="op">&gt;</span>
+<span class="kw">where</span>
+    <span class="ident">TransactionHash</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span>: <span class="ident">Arbitrary</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span><span class="op">&gt;</span>,
+{
+    <span class="kw">fn</span> <span class="ident">arbitrary</span>(<span class="ident">u</span>: <span class="kw-2">&amp;mut</span> <span class="ident">Unstructured</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span><span class="op">&gt;</span>) -&gt; <span class="ident">arbitrary::Result</span><span class="op">&lt;</span><span class="self">Self</span><span class="op">&gt;</span> {
+        <span class="prelude-val">Ok</span>(<span class="self">Self</span> {
+            <span class="ident">key</span>: <span class="ident">u</span>.<span class="ident">arbitrary</span>::<span class="op">&lt;</span><span class="ident">ArbitraryViewerKeyPair</span><span class="op">&gt;</span>()<span class="question-mark">?</span>.<span class="ident">into</span>(),
+            <span class="ident">next_event</span>: <span class="ident">u</span>.<span class="ident">arbitrary</span>()<span class="question-mark">?</span>,
+            <span class="ident">from_event</span>: <span class="ident">u</span>.<span class="ident">arbitrary</span>()<span class="question-mark">?</span>,
+            <span class="ident">to_event</span>: <span class="ident">u</span>.<span class="ident">arbitrary</span>()<span class="question-mark">?</span>,
+            <span class="ident">records</span>: <span class="ident">Default::default</span>(),
+            <span class="ident">history</span>: <span class="ident">Default::default</span>(),
+            <span class="ident">records_mt</span>: <span class="ident">u</span>.<span class="ident">arbitrary</span>()<span class="question-mark">?</span>,
+        })
+    }
+}
+
+<span class="kw">impl</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span>: <span class="ident">Ledger</span><span class="op">&gt;</span> <span class="ident">Arbitrary</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">BackgroundKeyScan</span><span class="op">&lt;</span><span class="ident">L</span>, <span class="ident">FreezerKeyPair</span><span class="op">&gt;</span>
+<span class="kw">where</span>
+    <span class="ident">TransactionHash</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span>: <span class="ident">Arbitrary</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span><span class="op">&gt;</span>,
+{
+    <span class="kw">fn</span> <span class="ident">arbitrary</span>(<span class="ident">u</span>: <span class="kw-2">&amp;mut</span> <span class="ident">Unstructured</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span><span class="op">&gt;</span>) -&gt; <span class="ident">arbitrary::Result</span><span class="op">&lt;</span><span class="self">Self</span><span class="op">&gt;</span> {
+        <span class="prelude-val">Ok</span>(<span class="self">Self</span> {
+            <span class="ident">key</span>: <span class="ident">u</span>.<span class="ident">arbitrary</span>::<span class="op">&lt;</span><span class="ident">ArbitraryFreezerKeyPair</span><span class="op">&gt;</span>()<span class="question-mark">?</span>.<span class="ident">into</span>(),
+            <span class="ident">next_event</span>: <span class="ident">u</span>.<span class="ident">arbitrary</span>()<span class="question-mark">?</span>,
+            <span class="ident">from_event</span>: <span class="ident">u</span>.<span class="ident">arbitrary</span>()<span class="question-mark">?</span>,
+            <span class="ident">to_event</span>: <span class="ident">u</span>.<span class="ident">arbitrary</span>()<span class="question-mark">?</span>,
+            <span class="ident">records</span>: <span class="ident">Default::default</span>(),
+            <span class="ident">history</span>: <span class="ident">Default::default</span>(),
+            <span class="ident">records_mt</span>: <span class="ident">u</span>.<span class="ident">arbitrary</span>()<span class="question-mark">?</span>,
+        })
+    }
+}
+
+<span class="kw">impl</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span>: <span class="ident">Ledger</span><span class="op">&gt;</span> <span class="ident">Arbitrary</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">BackgroundKeyScan</span><span class="op">&lt;</span><span class="ident">L</span>, <span class="ident">UserKeyPair</span><span class="op">&gt;</span>
 <span class="kw">where</span>
     <span class="ident">TransactionHash</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span>: <span class="ident">Arbitrary</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span><span class="op">&gt;</span>,
 {
@@ -559,9 +791,9 @@
     }
 }
 
-<span class="kw">impl</span><span class="op">&lt;</span><span class="ident">L</span>: <span class="ident">Ledger</span><span class="op">&gt;</span> <span class="ident">BackgroundKeyScan</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span> {
+<span class="kw">impl</span><span class="op">&lt;</span><span class="ident">L</span>: <span class="ident">Ledger</span>, <span class="ident">Key</span>: <span class="ident">KeyPair</span> <span class="op">+</span> <span class="ident">DeserializeOwned</span> <span class="op">+</span> <span class="ident">Serialize</span><span class="op">&gt;</span> <span class="ident">BackgroundKeyScan</span><span class="op">&lt;</span><span class="ident">L</span>, <span class="ident">Key</span><span class="op">&gt;</span> {
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">new</span>(
-        <span class="ident">key</span>: <span class="ident">UserKeyPair</span>,
+        <span class="ident">key</span>: <span class="ident">Key</span>,
         <span class="ident">next_event</span>: <span class="ident">EventIndex</span>,
         <span class="ident">from</span>: <span class="ident">EventIndex</span>,
         <span class="ident">to</span>: <span class="ident">EventIndex</span>,
@@ -587,7 +819,7 @@
     <span class="doccomment">///</span>
     <span class="doccomment">/// If `merkle_commitment` does not match the scan&#39;s Merkle tree, meaning the scan is</span>
     <span class="doccomment">/// in progress, it returns `self` so that the scan can continue to be used.</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">finalize</span>(<span class="self">self</span>, <span class="ident">merkle_commitment</span>: <span class="ident">MerkleCommitment</span>) -&gt; <span class="ident">ScanStatus</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span> {
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">finalize</span>(<span class="self">self</span>, <span class="ident">merkle_commitment</span>: <span class="ident">MerkleCommitment</span>) -&gt; <span class="ident">ScanStatus</span><span class="op">&lt;</span><span class="ident">L</span>, <span class="ident">Key</span><span class="op">&gt;</span> {
         <span class="kw">if</span> <span class="ident">merkle_commitment</span> <span class="op">==</span> <span class="self">self</span>.<span class="ident">records_mt</span>.<span class="ident">commitment</span>() {
             <span class="kw">let</span> <span class="ident">mt</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">records_mt</span>;
             <span class="kw">let</span> <span class="ident">records</span> <span class="op">=</span> <span class="self">self</span>
@@ -605,8 +837,8 @@
         }
     }
 
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">address</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="ident">UserAddress</span> {
-        <span class="self">self</span>.<span class="ident">key</span>.<span class="ident">address</span>()
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">address</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="ident">Key::PubKey</span> {
+        <span class="self">self</span>.<span class="ident">key</span>.<span class="ident">pub_key</span>()
     }
 
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">next_event</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="ident">EventIndex</span> {
@@ -652,32 +884,65 @@
                 );
 
                 <span class="kw">for</span> <span class="ident">txn</span> <span class="kw">in</span> <span class="ident">block</span>.<span class="ident">txns</span>() {
-                    <span class="comment">// Remove any records that were spent by this transaction.</span>
-                    <span class="kw">for</span> <span class="ident">n</span> <span class="kw">in</span> <span class="ident">txn</span>.<span class="ident">input_nullifiers</span>() {
-                        <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>((<span class="kw">_</span>, <span class="ident">uid</span>)) <span class="op">=</span> <span class="self">self</span>.<span class="ident">records</span>.<span class="ident">remove</span>(<span class="kw-2">&amp;</span><span class="ident">n</span>) {
-                            <span class="comment">// If we removed a record that we had already discovered, prune it&#39;s</span>
-                            <span class="comment">// path from the Merkle tree.</span>
-                            <span class="self">self</span>.<span class="ident">records_mt</span>.<span class="ident">forget</span>(<span class="ident">uid</span>);
+                    <span class="kw">if</span> <span class="kw">let</span> <span class="ident">KeyType::Sending</span>(<span class="kw">_</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">key</span>.<span class="ident">clone</span>().<span class="ident">key_type</span>() {
+                        <span class="comment">// Remove any records that were spent by this transaction.</span>
+                        <span class="kw">for</span> <span class="ident">n</span> <span class="kw">in</span> <span class="ident">txn</span>.<span class="ident">input_nullifiers</span>() {
+                            <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>((<span class="kw">_</span>, <span class="ident">uid</span>)) <span class="op">=</span> <span class="self">self</span>.<span class="ident">records</span>.<span class="ident">remove</span>(<span class="kw-2">&amp;</span><span class="ident">n</span>) {
+                                <span class="comment">// If we removed a record that we had already discovered, prune it&#39;s</span>
+                                <span class="comment">// path from the Merkle tree.</span>
+                                <span class="self">self</span>.<span class="ident">records_mt</span>.<span class="ident">forget</span>(<span class="ident">uid</span>);
+                            }
                         }
                     }
 
                     <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">records</span>) <span class="op">=</span> <span class="ident">txn</span>.<span class="ident">output_openings</span>() {
-                        <span class="comment">// If the transaction exposes its records, add the records themselves if</span>
-                        <span class="comment">// they belong to us; forget their Merkle paths if they do not.</span>
+                        <span class="comment">// For each record exposed by the transaction, if it&#39;s viewable, freezable,</span>
+                        <span class="comment">// or owned by us, add it to the receiving history. Otherwise, forget its</span>
+                        <span class="comment">// Merkle path.</span>
                         <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">received_records</span> <span class="op">=</span> <span class="macro">vec!</span>[];
                         <span class="kw">for</span> <span class="ident">record</span> <span class="kw">in</span> <span class="ident">records</span> {
-                            <span class="kw">let</span> <span class="ident">comm</span> <span class="op">=</span> <span class="ident">RecordCommitment::from</span>(<span class="kw-2">&amp;</span><span class="ident">record</span>);
-                            <span class="kw">if</span> <span class="ident">record</span>.<span class="ident">pub_key</span> <span class="op">==</span> <span class="self">self</span>.<span class="ident">key</span>.<span class="ident">pub_key</span>() {
-                                <span class="ident">received_records</span>.<span class="ident">push</span>(<span class="ident">record</span>.<span class="ident">clone</span>());
-                                <span class="kw">let</span> <span class="ident">nullifier</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">key</span>.<span class="ident">nullify</span>(
-                                    <span class="ident">record</span>.<span class="ident">asset_def</span>.<span class="ident">policy_ref</span>().<span class="ident">freezer_pub_key</span>(),
-                                    <span class="ident">uid</span>,
-                                    <span class="kw-2">&amp;</span><span class="ident">comm</span>,
-                                );
-                                <span class="comment">// If the record belongs to us, add it to our records.</span>
-                                <span class="self">self</span>.<span class="ident">records</span>.<span class="ident">insert</span>(<span class="ident">nullifier</span>, (<span class="ident">record</span>, <span class="ident">uid</span>));
-                            } <span class="kw">else</span> {
-                                <span class="self">self</span>.<span class="ident">records_mt</span>.<span class="ident">forget</span>(<span class="ident">uid</span>);
+                            <span class="kw">match</span> <span class="self">self</span>.<span class="ident">key</span>.<span class="ident">clone</span>().<span class="ident">key_type</span>() {
+                                <span class="ident">KeyType::Viewing</span>(<span class="ident">viewing_key</span>) =&gt; {
+                                    <span class="kw">if</span> <span class="ident">record</span>.<span class="ident">asset_def</span>.<span class="ident">policy_ref</span>().<span class="ident">viewer_pub_key</span>()
+                                        <span class="op">==</span> <span class="kw-2">&amp;</span><span class="ident">viewing_key</span>.<span class="ident">pub_key</span>()
+                                    {
+                                        <span class="ident">received_records</span>.<span class="ident">push</span>(<span class="ident">record</span>.<span class="ident">clone</span>());
+                                    } <span class="kw">else</span> {
+                                        <span class="self">self</span>.<span class="ident">records_mt</span>.<span class="ident">forget</span>(<span class="ident">uid</span>);
+                                    }
+                                }
+                                <span class="ident">KeyType::Freezing</span>(<span class="ident">freezing_key</span>) =&gt; {
+                                    <span class="kw">let</span> <span class="ident">comm</span> <span class="op">=</span> <span class="ident">RecordCommitment::from</span>(<span class="kw-2">&amp;</span><span class="ident">record</span>);
+                                    <span class="kw">if</span> <span class="ident">record</span>.<span class="ident">asset_def</span>.<span class="ident">policy_ref</span>().<span class="ident">freezer_pub_key</span>()
+                                        <span class="op">==</span> <span class="kw-2">&amp;</span><span class="ident">freezing_key</span>.<span class="ident">pub_key</span>()
+                                    {
+                                        <span class="ident">received_records</span>.<span class="ident">push</span>(<span class="ident">record</span>.<span class="ident">clone</span>());
+                                        <span class="kw">let</span> <span class="ident">nullifier</span> <span class="op">=</span> <span class="ident">freezing_key</span>.<span class="ident">nullify</span>(
+                                            <span class="kw-2">&amp;</span><span class="ident">record</span>.<span class="ident">pub_key</span>.<span class="ident">address</span>(),
+                                            <span class="ident">uid</span>,
+                                            <span class="kw-2">&amp;</span><span class="ident">comm</span>,
+                                        );
+                                        <span class="comment">// If the record is freezable by us, add it to our records.</span>
+                                        <span class="self">self</span>.<span class="ident">records</span>.<span class="ident">insert</span>(<span class="ident">nullifier</span>, (<span class="ident">record</span>, <span class="ident">uid</span>));
+                                    } <span class="kw">else</span> {
+                                        <span class="self">self</span>.<span class="ident">records_mt</span>.<span class="ident">forget</span>(<span class="ident">uid</span>);
+                                    }
+                                }
+                                <span class="ident">KeyType::Sending</span>(<span class="ident">sending_key</span>) =&gt; {
+                                    <span class="kw">let</span> <span class="ident">comm</span> <span class="op">=</span> <span class="ident">RecordCommitment::from</span>(<span class="kw-2">&amp;</span><span class="ident">record</span>);
+                                    <span class="kw">if</span> <span class="ident">record</span>.<span class="ident">pub_key</span> <span class="op">==</span> <span class="ident">sending_key</span>.<span class="ident">pub_key</span>() {
+                                        <span class="ident">received_records</span>.<span class="ident">push</span>(<span class="ident">record</span>.<span class="ident">clone</span>());
+                                        <span class="kw">let</span> <span class="ident">nullifier</span> <span class="op">=</span> <span class="ident">sending_key</span>.<span class="ident">nullify</span>(
+                                            <span class="ident">record</span>.<span class="ident">asset_def</span>.<span class="ident">policy_ref</span>().<span class="ident">freezer_pub_key</span>(),
+                                            <span class="ident">uid</span>,
+                                            <span class="kw-2">&amp;</span><span class="ident">comm</span>,
+                                        );
+                                        <span class="comment">// If the record belongs to us, add it to our records.</span>
+                                        <span class="self">self</span>.<span class="ident">records</span>.<span class="ident">insert</span>(<span class="ident">nullifier</span>, (<span class="ident">record</span>, <span class="ident">uid</span>));
+                                    } <span class="kw">else</span> {
+                                        <span class="self">self</span>.<span class="ident">records_mt</span>.<span class="ident">forget</span>(<span class="ident">uid</span>);
+                                    }
+                                }
                             }
 
                             <span class="ident">uid</span> <span class="op">+</span><span class="op">=</span> <span class="number">1</span>;
@@ -705,45 +970,47 @@
                 <span class="ident">transaction</span>,
                 ..
             } =&gt; {
-                <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">records</span> <span class="op">=</span> <span class="ident">Vec::new</span>();
-                <span class="kw">for</span> (<span class="ident">memo</span>, <span class="ident">comm</span>, <span class="ident">uid</span>, <span class="ident">proof</span>) <span class="kw">in</span> <span class="ident">outputs</span> {
-                    <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Ok</span>(<span class="ident">record_opening</span>) <span class="op">=</span> <span class="ident">memo</span>.<span class="ident">decrypt</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">key</span>, <span class="kw-2">&amp;</span><span class="ident">comm</span>, <span class="kw-2">&amp;</span>[]) {
-                        <span class="kw">if</span> <span class="op">!</span><span class="ident">record_opening</span>.<span class="ident">is_dummy</span>() {
-                            <span class="comment">// If this record is for us (i.e. its corresponding memo decrypts under</span>
-                            <span class="comment">// our key) and not a dummy, then add it to our received records.</span>
-                            <span class="ident">records</span>.<span class="ident">push</span>((
-                                <span class="ident">record_opening</span>,
-                                <span class="ident">uid</span>,
-                                <span class="ident">MerkleLeafProof::new</span>(<span class="ident">comm</span>.<span class="ident">to_field_element</span>(), <span class="ident">proof</span>.<span class="ident">clone</span>()),
-                            ));
+                <span class="kw">if</span> <span class="kw">let</span> <span class="ident">KeyType::Sending</span>(<span class="ident">sending_key</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">key</span>.<span class="ident">clone</span>().<span class="ident">key_type</span>() {
+                    <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">records</span> <span class="op">=</span> <span class="ident">Vec::new</span>();
+                    <span class="kw">for</span> (<span class="ident">memo</span>, <span class="ident">comm</span>, <span class="ident">uid</span>, <span class="ident">proof</span>) <span class="kw">in</span> <span class="ident">outputs</span> {
+                        <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Ok</span>(<span class="ident">record_opening</span>) <span class="op">=</span> <span class="ident">memo</span>.<span class="ident">decrypt</span>(<span class="kw-2">&amp;</span><span class="ident">sending_key</span>, <span class="kw-2">&amp;</span><span class="ident">comm</span>, <span class="kw-2">&amp;</span>[]) {
+                            <span class="kw">if</span> <span class="op">!</span><span class="ident">record_opening</span>.<span class="ident">is_dummy</span>() {
+                                <span class="comment">// If this record is for us (i.e. its corresponding memo decrypts under</span>
+                                <span class="comment">// our key) and not a dummy, then add it to our received records.</span>
+                                <span class="ident">records</span>.<span class="ident">push</span>((
+                                    <span class="ident">record_opening</span>,
+                                    <span class="ident">uid</span>,
+                                    <span class="ident">MerkleLeafProof::new</span>(<span class="ident">comm</span>.<span class="ident">to_field_element</span>(), <span class="ident">proof</span>.<span class="ident">clone</span>()),
+                                ));
+                            }
                         }
                     }
-                }
 
-                <span class="comment">// Add received records to our collection.</span>
-                <span class="kw">for</span> (<span class="ident">ro</span>, <span class="ident">uid</span>, <span class="ident">proof</span>) <span class="kw">in</span> <span class="kw-2">&amp;</span><span class="ident">records</span> {
-                    <span class="kw">let</span> <span class="ident">nullifier</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">key</span>.<span class="ident">nullify</span>(
-                        <span class="ident">ro</span>.<span class="ident">asset_def</span>.<span class="ident">policy_ref</span>().<span class="ident">freezer_pub_key</span>(),
-                        <span class="kw-2">*</span><span class="ident">uid</span>,
-                        <span class="kw-2">&amp;</span><span class="ident">RecordCommitment::from</span>(<span class="ident">ro</span>),
-                    );
-                    <span class="kw">if</span> <span class="self">self</span>.<span class="ident">records_mt</span>.<span class="ident">remember</span>(<span class="kw-2">*</span><span class="ident">uid</span>, <span class="ident">proof</span>).<span class="ident">is_ok</span>() {
-                        <span class="self">self</span>.<span class="ident">records</span>.<span class="ident">insert</span>(<span class="ident">nullifier</span>, (<span class="ident">ro</span>.<span class="ident">clone</span>(), <span class="kw-2">*</span><span class="ident">uid</span>));
-                    } <span class="kw">else</span> {
-                        <span class="macro">tracing::error!</span>(<span class="string">&quot;Got bad Merkle proof. Unable to add record {}&quot;</span>, <span class="ident">uid</span>);
+                    <span class="comment">// Add received records to our collection.</span>
+                    <span class="kw">for</span> (<span class="ident">ro</span>, <span class="ident">uid</span>, <span class="ident">proof</span>) <span class="kw">in</span> <span class="kw-2">&amp;</span><span class="ident">records</span> {
+                        <span class="kw">let</span> <span class="ident">nullifier</span> <span class="op">=</span> <span class="ident">sending_key</span>.<span class="ident">nullify</span>(
+                            <span class="ident">ro</span>.<span class="ident">asset_def</span>.<span class="ident">policy_ref</span>().<span class="ident">freezer_pub_key</span>(),
+                            <span class="kw-2">*</span><span class="ident">uid</span>,
+                            <span class="kw-2">&amp;</span><span class="ident">RecordCommitment::from</span>(<span class="ident">ro</span>),
+                        );
+                        <span class="kw">if</span> <span class="self">self</span>.<span class="ident">records_mt</span>.<span class="ident">remember</span>(<span class="kw-2">*</span><span class="ident">uid</span>, <span class="ident">proof</span>).<span class="ident">is_ok</span>() {
+                            <span class="self">self</span>.<span class="ident">records</span>.<span class="ident">insert</span>(<span class="ident">nullifier</span>, (<span class="ident">ro</span>.<span class="ident">clone</span>(), <span class="kw-2">*</span><span class="ident">uid</span>));
+                        } <span class="kw">else</span> {
+                            <span class="macro">tracing::error!</span>(<span class="string">&quot;Got bad Merkle proof. Unable to add record {}&quot;</span>, <span class="ident">uid</span>);
+                        }
                     }
-                }
 
-                <span class="kw">if</span> <span class="op">!</span><span class="ident">records</span>.<span class="ident">is_empty</span>() {
-                    <span class="comment">// Add a history entry for the received transaction.</span>
-                    <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>((<span class="kw">_</span>, <span class="kw">_</span>, <span class="ident">hash</span>, <span class="ident">txn_kind</span>)) <span class="op">=</span> <span class="ident">transaction</span> {
-                        <span class="self">self</span>.<span class="ident">history</span>.<span class="ident">push</span>((
-                            <span class="ident">TransactionUID</span>::<span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span>(<span class="ident">hash</span>),
-                            <span class="ident">receive_history_entry</span>(
-                                <span class="ident">txn_kind</span>,
-                                <span class="kw-2">&amp;</span><span class="ident">records</span>.<span class="ident">into_iter</span>().<span class="ident">map</span>(<span class="op">|</span>(<span class="ident">ro</span>, <span class="kw">_</span>, <span class="kw">_</span>)<span class="op">|</span> <span class="ident">ro</span>).<span class="ident">collect</span>::<span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="kw">_</span><span class="op">&gt;</span><span class="op">&gt;</span>(),
-                            ),
-                        ));
+                    <span class="kw">if</span> <span class="op">!</span><span class="ident">records</span>.<span class="ident">is_empty</span>() {
+                        <span class="comment">// Add a history entry for the received transaction.</span>
+                        <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>((<span class="kw">_</span>, <span class="kw">_</span>, <span class="ident">hash</span>, <span class="ident">txn_kind</span>)) <span class="op">=</span> <span class="ident">transaction</span> {
+                            <span class="self">self</span>.<span class="ident">history</span>.<span class="ident">push</span>((
+                                <span class="ident">TransactionUID</span>::<span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span>(<span class="ident">hash</span>),
+                                <span class="ident">receive_history_entry</span>(
+                                    <span class="ident">txn_kind</span>,
+                                    <span class="kw-2">&amp;</span><span class="ident">records</span>.<span class="ident">into_iter</span>().<span class="ident">map</span>(<span class="op">|</span>(<span class="ident">ro</span>, <span class="kw">_</span>, <span class="kw">_</span>)<span class="op">|</span> <span class="ident">ro</span>).<span class="ident">collect</span>::<span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="kw">_</span><span class="op">&gt;</span><span class="op">&gt;</span>(),
+                                ),
+                            ));
+                        }
                     }
                 }
             }
@@ -795,6 +1062,9 @@
     } <span class="kw">else</span> <span class="kw">if</span> <span class="ident">kind</span> <span class="op">==</span> <span class="ident">TransactionKind</span>::<span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="ident">::freeze</span>()
         <span class="op">&amp;&amp;</span> <span class="ident">last_record</span>.<span class="ident">freeze_flag</span> <span class="op">==</span> <span class="ident">FreezeFlag::Unfrozen</span>
     {
+        <span class="comment">// If the input `kind` is `freeze`, the transaction may be either freezing or unfreezing.</span>
+        <span class="comment">// To determine the exact kind, we check the flag of the last record, and change the kind</span>
+        <span class="comment">// to `unfreeze` if the flag is `Unfrozen`.</span>
         <span class="ident">TransactionKind</span>::<span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="ident">::unfreeze</span>()
     } <span class="kw">else</span> {
         <span class="ident">kind</span>

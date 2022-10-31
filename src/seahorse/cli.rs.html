@@ -1508,6 +1508,42 @@
 <span id="1502">1502</span>
 <span id="1503">1503</span>
 <span id="1504">1504</span>
+<span id="1505">1505</span>
+<span id="1506">1506</span>
+<span id="1507">1507</span>
+<span id="1508">1508</span>
+<span id="1509">1509</span>
+<span id="1510">1510</span>
+<span id="1511">1511</span>
+<span id="1512">1512</span>
+<span id="1513">1513</span>
+<span id="1514">1514</span>
+<span id="1515">1515</span>
+<span id="1516">1516</span>
+<span id="1517">1517</span>
+<span id="1518">1518</span>
+<span id="1519">1519</span>
+<span id="1520">1520</span>
+<span id="1521">1521</span>
+<span id="1522">1522</span>
+<span id="1523">1523</span>
+<span id="1524">1524</span>
+<span id="1525">1525</span>
+<span id="1526">1526</span>
+<span id="1527">1527</span>
+<span id="1528">1528</span>
+<span id="1529">1529</span>
+<span id="1530">1530</span>
+<span id="1531">1531</span>
+<span id="1532">1532</span>
+<span id="1533">1533</span>
+<span id="1534">1534</span>
+<span id="1535">1535</span>
+<span id="1536">1536</span>
+<span id="1537">1537</span>
+<span id="1538">1538</span>
+<span id="1539">1539</span>
+<span id="1540">1540</span>
 </pre><pre class="rust"><code><span class="comment">// Copyright (c) 2022 Espresso Systems (espressosys.com)</span>
 <span class="comment">// This file is part of the Seahorse library.</span>
 
@@ -2212,18 +2248,32 @@
              <span class="ident">description</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">String</span><span class="op">&gt;</span>, <span class="ident">scan_from</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">EventIndex</span><span class="op">&gt;</span>, <span class="ident">wait</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">bool</span><span class="op">&gt;</span><span class="op">|</span> {
                 <span class="kw">let</span> <span class="ident">description</span> <span class="op">=</span> <span class="ident">description</span>.<span class="ident">unwrap_or_default</span>();
                 <span class="kw">match</span> <span class="ident">key_type</span> {
-                    <span class="ident">KeyType::Viewing</span> =&gt; <span class="kw">match</span> <span class="ident">keystore</span>.<span class="ident">generate_viewing_account</span>(<span class="ident">description</span>).<span class="kw">await</span> {
-                        <span class="prelude-val">Ok</span>(<span class="ident">pub_key</span>) =&gt; <span class="macro">cli_writeln!</span>(<span class="ident">io</span>, <span class="string">&quot;{}&quot;</span>, <span class="ident">pub_key</span>),
+                    <span class="ident">KeyType::Viewing</span> =&gt; <span class="kw">match</span> <span class="ident">keystore</span>.<span class="ident">generate_viewing_account</span>(<span class="ident">description</span>, <span class="ident">scan_from</span>).<span class="kw">await</span> {
+                        <span class="prelude-val">Ok</span>(<span class="ident">pub_key</span>) =&gt; {
+                            <span class="kw">if</span> <span class="ident">wait</span> <span class="op">==</span> <span class="prelude-val">Some</span>(<span class="bool-val">true</span>) {
+                                <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span> <span class="ident">keystore</span>.<span class="ident">await_viewing_key_scan</span>(<span class="kw-2">&amp;</span><span class="ident">pub_key</span>).<span class="kw">await</span> {
+                                    <span class="macro">cli_writeln!</span>(<span class="ident">io</span>, <span class="string">&quot;Error waiting for key scan: {}&quot;</span>, <span class="ident">err</span>);
+                                }
+                            }
+                            <span class="macro">cli_writeln!</span>(<span class="ident">io</span>, <span class="string">&quot;{}&quot;</span>, <span class="ident">pub_key</span>)
+                        },
                         <span class="prelude-val">Err</span>(<span class="ident">err</span>) =&gt; <span class="macro">cli_writeln!</span>(<span class="ident">io</span>, <span class="string">&quot;Error generating viewing key: {}&quot;</span>, <span class="ident">err</span>),
                     },
-                    <span class="ident">KeyType::Freezing</span> =&gt; <span class="kw">match</span> <span class="ident">keystore</span>.<span class="ident">generate_freezing_account</span>(<span class="ident">description</span>).<span class="kw">await</span> {
-                        <span class="prelude-val">Ok</span>(<span class="ident">pub_key</span>) =&gt; <span class="macro">cli_writeln!</span>(<span class="ident">io</span>, <span class="string">&quot;{}&quot;</span>, <span class="ident">pub_key</span>),
+                    <span class="ident">KeyType::Freezing</span> =&gt; <span class="kw">match</span> <span class="ident">keystore</span>.<span class="ident">generate_freezing_account</span>(<span class="ident">description</span>, <span class="ident">scan_from</span>).<span class="kw">await</span> {
+                        <span class="prelude-val">Ok</span>(<span class="ident">pub_key</span>) =&gt;{
+                            <span class="kw">if</span> <span class="ident">wait</span> <span class="op">==</span> <span class="prelude-val">Some</span>(<span class="bool-val">true</span>) {
+                                <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span> <span class="ident">keystore</span>.<span class="ident">await_freezing_key_scan</span>(<span class="kw-2">&amp;</span><span class="ident">pub_key</span>).<span class="kw">await</span> {
+                                    <span class="macro">cli_writeln!</span>(<span class="ident">io</span>, <span class="string">&quot;Error waiting for key scan: {}&quot;</span>, <span class="ident">err</span>);
+                                }
+                            }
+                            <span class="macro">cli_writeln!</span>(<span class="ident">io</span>, <span class="string">&quot;{}&quot;</span>, <span class="ident">pub_key</span>)
+                    },
                         <span class="prelude-val">Err</span>(<span class="ident">err</span>) =&gt; <span class="macro">cli_writeln!</span>(<span class="ident">io</span>, <span class="string">&quot;Error generating freezing key: {}&quot;</span>, <span class="ident">err</span>),
                     },
                     <span class="ident">KeyType::Sending</span> =&gt; <span class="kw">match</span> <span class="ident">keystore</span>.<span class="ident">generate_sending_account</span>(<span class="ident">description</span>, <span class="ident">scan_from</span>).<span class="kw">await</span> {
                         <span class="prelude-val">Ok</span>(<span class="ident">pub_key</span>) =&gt; {
                             <span class="kw">if</span> <span class="ident">wait</span> <span class="op">==</span> <span class="prelude-val">Some</span>(<span class="bool-val">true</span>) {
-                                <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span> <span class="ident">keystore</span>.<span class="ident">await_key_scan</span>(<span class="kw-2">&amp;</span><span class="ident">pub_key</span>.<span class="ident">address</span>()).<span class="kw">await</span> {
+                                <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span> <span class="ident">keystore</span>.<span class="ident">await_sending_key_scan</span>(<span class="kw-2">&amp;</span><span class="ident">pub_key</span>.<span class="ident">address</span>()).<span class="kw">await</span> {
                                     <span class="macro">cli_writeln!</span>(<span class="ident">io</span>, <span class="string">&quot;Error waiting for key scan: {}&quot;</span>, <span class="ident">err</span>);
                                 }
                             }
@@ -2259,8 +2309,19 @@
                 <span class="kw">let</span> <span class="ident">description</span> <span class="op">=</span> <span class="ident">description</span>.<span class="ident">unwrap_or_default</span>();
                 <span class="kw">match</span> <span class="ident">key_type</span> {
                     <span class="ident">KeyType::Viewing</span> =&gt; <span class="kw">match</span> <span class="ident">bincode::deserialize</span>::<span class="op">&lt;</span><span class="ident">ViewerKeyPair</span><span class="op">&gt;</span>(<span class="kw-2">&amp;</span><span class="ident">bytes</span>) {
-                        <span class="prelude-val">Ok</span>(<span class="ident">key</span>) =&gt; <span class="kw">match</span> <span class="ident">keystore</span>.<span class="ident">add_viewing_account</span>(<span class="ident">key</span>.<span class="ident">clone</span>(), <span class="ident">description</span>).<span class="kw">await</span> {
-                            <span class="prelude-val">Ok</span>(()) =&gt; <span class="macro">cli_writeln!</span>(<span class="ident">io</span>, <span class="string">&quot;{}&quot;</span>, <span class="ident">key</span>.<span class="ident">pub_key</span>()),
+                        <span class="prelude-val">Ok</span>(<span class="ident">key</span>) =&gt; <span class="kw">match</span> <span class="ident">keystore</span>.<span class="ident">add_account</span>(<span class="ident">key</span>.<span class="ident">clone</span>(), <span class="ident">description</span>,  <span class="ident">scan_from</span>.<span class="ident">unwrap_or_default</span>(),).<span class="kw">await</span> {
+                            <span class="prelude-val">Ok</span>(()) =&gt; {
+                                <span class="kw">if</span> <span class="ident">wait</span> <span class="op">==</span> <span class="prelude-val">Some</span>(<span class="bool-val">true</span>) {
+                                    <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span> <span class="ident">keystore</span>.<span class="ident">await_viewing_key_scan</span>(<span class="kw-2">&amp;</span><span class="ident">key</span>.<span class="ident">pub_key</span>()).<span class="kw">await</span> {
+                                        <span class="macro">cli_writeln!</span>(<span class="ident">io</span>, <span class="string">&quot;Error waiting for key scan: {}&quot;</span>, <span class="ident">err</span>);
+                                        <span class="kw">return</span>
+                                    }
+                                } <span class="kw">else</span>{
+                                    <span class="macro">cli_writeln!</span>(<span class="ident">io</span>,
+                                        <span class="string">&quot;Note: assets viewable by this key will become available
+                                        after a scan of the ledger. This may take a long time.&quot;</span>);
+                                }
+                                <span class="macro">cli_writeln!</span>(<span class="ident">io</span>, <span class="string">&quot;{}&quot;</span>, <span class="ident">key</span>.<span class="ident">pub_key</span>())},
                             <span class="prelude-val">Err</span>(<span class="ident">err</span>) =&gt; <span class="macro">cli_writeln!</span>(<span class="ident">io</span>, <span class="string">&quot;Error saving viewing key: {}&quot;</span>, <span class="ident">err</span>),
                         },
                         <span class="prelude-val">Err</span>(<span class="ident">err</span>) =&gt; {
@@ -2268,8 +2329,19 @@
                         }
                     },
                     <span class="ident">KeyType::Freezing</span> =&gt; <span class="kw">match</span> <span class="ident">bincode::deserialize</span>::<span class="op">&lt;</span><span class="ident">FreezerKeyPair</span><span class="op">&gt;</span>(<span class="kw-2">&amp;</span><span class="ident">bytes</span>) {
-                        <span class="prelude-val">Ok</span>(<span class="ident">key</span>) =&gt; <span class="kw">match</span> <span class="ident">keystore</span>.<span class="ident">add_freezing_account</span>(<span class="ident">key</span>.<span class="ident">clone</span>(), <span class="ident">description</span>).<span class="kw">await</span> {
-                            <span class="prelude-val">Ok</span>(()) =&gt; <span class="macro">cli_writeln!</span>(<span class="ident">io</span>, <span class="string">&quot;{}&quot;</span>, <span class="ident">key</span>.<span class="ident">pub_key</span>()),
+                        <span class="prelude-val">Ok</span>(<span class="ident">key</span>) =&gt; <span class="kw">match</span> <span class="ident">keystore</span>.<span class="ident">add_account</span>(<span class="ident">key</span>.<span class="ident">clone</span>(), <span class="ident">description</span>,  <span class="ident">scan_from</span>.<span class="ident">unwrap_or_default</span>(),).<span class="kw">await</span> {
+                            <span class="prelude-val">Ok</span>(()) =&gt; {
+                                <span class="kw">if</span> <span class="ident">wait</span> <span class="op">==</span> <span class="prelude-val">Some</span>(<span class="bool-val">true</span>) {
+                                    <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span> <span class="ident">keystore</span>.<span class="ident">await_freezing_key_scan</span>(<span class="kw-2">&amp;</span><span class="ident">key</span>.<span class="ident">pub_key</span>()).<span class="kw">await</span> {
+                                        <span class="macro">cli_writeln!</span>(<span class="ident">io</span>, <span class="string">&quot;Error waiting for key scan: {}&quot;</span>, <span class="ident">err</span>);
+                                        <span class="kw">return</span>
+                                    }
+                                } <span class="kw">else</span>{
+                                    <span class="macro">cli_writeln!</span>(<span class="ident">io</span>,
+                                        <span class="string">&quot;Note: assets freezable by this key will become available
+                                        after a scan of the ledger. This may take a long time.&quot;</span>);
+                                }
+                                <span class="macro">cli_writeln!</span>(<span class="ident">io</span>, <span class="string">&quot;{}&quot;</span>, <span class="ident">key</span>.<span class="ident">pub_key</span>())},
                             <span class="prelude-val">Err</span>(<span class="ident">err</span>) =&gt; <span class="macro">cli_writeln!</span>(<span class="ident">io</span>, <span class="string">&quot;Error saving freezing key: {}&quot;</span>, <span class="ident">err</span>),
                         },
                         <span class="prelude-val">Err</span>(<span class="ident">err</span>) =&gt; {
@@ -2277,14 +2349,14 @@
                         }
                     },
                     <span class="ident">KeyType::Sending</span> =&gt; <span class="kw">match</span> <span class="ident">bincode::deserialize</span>::<span class="op">&lt;</span><span class="ident">UserKeyPair</span><span class="op">&gt;</span>(<span class="kw-2">&amp;</span><span class="ident">bytes</span>) {
-                        <span class="prelude-val">Ok</span>(<span class="ident">key</span>) =&gt; <span class="kw">match</span> <span class="ident">keystore</span>.<span class="ident">add_sending_account</span>(
+                        <span class="prelude-val">Ok</span>(<span class="ident">key</span>) =&gt; <span class="kw">match</span> <span class="ident">keystore</span>.<span class="ident">add_account</span>(
                             <span class="ident">key</span>.<span class="ident">clone</span>(),
                             <span class="ident">description</span>,
                             <span class="ident">scan_from</span>.<span class="ident">unwrap_or_default</span>(),
                         ).<span class="kw">await</span> {
                             <span class="prelude-val">Ok</span>(()) =&gt; {
                                 <span class="kw">if</span> <span class="ident">wait</span> <span class="op">==</span> <span class="prelude-val">Some</span>(<span class="bool-val">true</span>) {
-                                    <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span> <span class="ident">keystore</span>.<span class="ident">await_key_scan</span>(<span class="kw-2">&amp;</span><span class="ident">key</span>.<span class="ident">address</span>()).<span class="kw">await</span> {
+                                    <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Err</span>(<span class="ident">err</span>) <span class="op">=</span> <span class="ident">keystore</span>.<span class="ident">await_sending_key_scan</span>(<span class="kw-2">&amp;</span><span class="ident">key</span>.<span class="ident">address</span>()).<span class="kw">await</span> {
                                         <span class="macro">cli_writeln!</span>(<span class="ident">io</span>, <span class="string">&quot;Error waiting for key scan: {}&quot;</span>, <span class="ident">err</span>);
                                         <span class="kw">return</span>
                                     }

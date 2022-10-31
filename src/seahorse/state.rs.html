@@ -278,13 +278,34 @@
 <span id="272">272</span>
 <span id="273">273</span>
 <span id="274">274</span>
+<span id="275">275</span>
+<span id="276">276</span>
+<span id="277">277</span>
+<span id="278">278</span>
+<span id="279">279</span>
+<span id="280">280</span>
+<span id="281">281</span>
+<span id="282">282</span>
+<span id="283">283</span>
+<span id="284">284</span>
+<span id="285">285</span>
+<span id="286">286</span>
+<span id="287">287</span>
+<span id="288">288</span>
+<span id="289">289</span>
+<span id="290">290</span>
+<span id="291">291</span>
+<span id="292">292</span>
+<span id="293">293</span>
+<span id="294">294</span>
+<span id="295">295</span>
 </pre><pre class="rust"><code><span class="kw">use</span> <span class="kw">crate</span>::{
     <span class="ident">ledger_state::LedgerState</span>, <span class="ident">EventIndex</span>, <span class="ident">KeystoreBackend</span>, <span class="ident">KeystoreError</span>, <span class="ident">KeystoreModel</span>,
     <span class="ident">TransactionStatus</span>, <span class="ident">TransactionUID</span>,
 };
 <span class="kw">use</span> <span class="ident">async_std::sync</span>::{<span class="ident">RwLock</span>, <span class="ident">RwLockReadGuard</span>, <span class="ident">RwLockWriteGuard</span>};
 <span class="kw">use</span> <span class="ident">futures</span>::{<span class="ident">channel::oneshot</span>, <span class="ident">TryFuture</span>, <span class="ident">TryFutureExt</span>};
-<span class="kw">use</span> <span class="ident">jf_cap::keys::UserAddress</span>;
+<span class="kw">use</span> <span class="ident">jf_cap::keys</span>::{<span class="ident">FreezerPubKey</span>, <span class="ident">UserAddress</span>, <span class="ident">ViewerPubKey</span>};
 <span class="kw">use</span> <span class="ident">rand_chacha::ChaChaRng</span>;
 <span class="kw">use</span> <span class="ident">reef::Ledger</span>;
 <span class="kw">use</span> <span class="ident">serde</span>::{<span class="ident">de::DeserializeOwned</span>, <span class="ident">Serialize</span>};
@@ -301,7 +322,9 @@
     <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="ident">model</span>: <span class="ident">KeystoreModel</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span>, <span class="ident">Backend</span>, <span class="ident">Meta</span><span class="op">&gt;</span>,
     <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="ident">sync_handles</span>: <span class="ident">Vec</span><span class="op">&lt;</span>(<span class="ident">EventIndex</span>, <span class="ident">oneshot::Sender</span><span class="op">&lt;</span>()<span class="op">&gt;</span>)<span class="op">&gt;</span>,
     <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="ident">txn_subscribers</span>: <span class="ident">HashMap</span><span class="op">&lt;</span><span class="ident">TransactionUID</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span>, <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">oneshot::Sender</span><span class="op">&lt;</span><span class="ident">TransactionStatus</span><span class="op">&gt;</span><span class="op">&gt;</span><span class="op">&gt;</span>,
-    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="ident">pending_key_scans</span>: <span class="ident">HashMap</span><span class="op">&lt;</span><span class="ident">UserAddress</span>, <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">oneshot::Sender</span><span class="op">&lt;</span>()<span class="op">&gt;</span><span class="op">&gt;</span><span class="op">&gt;</span>,
+    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="ident">pending_viewing_key_scans</span>: <span class="ident">HashMap</span><span class="op">&lt;</span><span class="ident">ViewerPubKey</span>, <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">oneshot::Sender</span><span class="op">&lt;</span>()<span class="op">&gt;</span><span class="op">&gt;</span><span class="op">&gt;</span>,
+    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="ident">pending_freezing_key_scans</span>: <span class="ident">HashMap</span><span class="op">&lt;</span><span class="ident">FreezerPubKey</span>, <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">oneshot::Sender</span><span class="op">&lt;</span>()<span class="op">&gt;</span><span class="op">&gt;</span><span class="op">&gt;</span>,
+    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="ident">pending_sending_key_scans</span>: <span class="ident">HashMap</span><span class="op">&lt;</span><span class="ident">UserAddress</span>, <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">oneshot::Sender</span><span class="op">&lt;</span>()<span class="op">&gt;</span><span class="op">&gt;</span><span class="op">&gt;</span>,
 }
 
 <span class="kw">impl</span><span class="op">&lt;</span>
@@ -330,12 +353,25 @@
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">new</span>(
         <span class="ident">state</span>: <span class="ident">LedgerState</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span><span class="op">&gt;</span>,
         <span class="ident">model</span>: <span class="ident">KeystoreModel</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span>, <span class="ident">Backend</span>, <span class="ident">Meta</span><span class="op">&gt;</span>,
-        <span class="ident">key_scans</span>: <span class="kw">impl</span> <span class="ident">IntoIterator</span><span class="op">&lt;</span><span class="ident">Item</span> <span class="op">=</span> <span class="ident">UserAddress</span><span class="op">&gt;</span>,
+        <span class="ident">viewing_key_scans</span>: <span class="kw">impl</span> <span class="ident">IntoIterator</span><span class="op">&lt;</span><span class="ident">Item</span> <span class="op">=</span> <span class="ident">ViewerPubKey</span><span class="op">&gt;</span>,
+        <span class="ident">freezing_key_scans</span>: <span class="kw">impl</span> <span class="ident">IntoIterator</span><span class="op">&lt;</span><span class="ident">Item</span> <span class="op">=</span> <span class="ident">FreezerPubKey</span><span class="op">&gt;</span>,
+        <span class="ident">sending_key_scans</span>: <span class="kw">impl</span> <span class="ident">IntoIterator</span><span class="op">&lt;</span><span class="ident">Item</span> <span class="op">=</span> <span class="ident">UserAddress</span><span class="op">&gt;</span>,
     ) -&gt; <span class="self">Self</span> {
         <span class="self">Self</span> {
             <span class="ident">state</span>,
             <span class="ident">model</span>,
-            <span class="ident">pending_key_scans</span>: <span class="ident">key_scans</span>.<span class="ident">into_iter</span>().<span class="ident">map</span>(<span class="op">|</span><span class="ident">key</span><span class="op">|</span> (<span class="ident">key</span>, <span class="macro">vec!</span>[])).<span class="ident">collect</span>(),
+            <span class="ident">pending_viewing_key_scans</span>: <span class="ident">viewing_key_scans</span>
+                .<span class="ident">into_iter</span>()
+                .<span class="ident">map</span>(<span class="op">|</span><span class="ident">key</span><span class="op">|</span> (<span class="ident">key</span>, <span class="macro">vec!</span>[]))
+                .<span class="ident">collect</span>(),
+            <span class="ident">pending_freezing_key_scans</span>: <span class="ident">freezing_key_scans</span>
+                .<span class="ident">into_iter</span>()
+                .<span class="ident">map</span>(<span class="op">|</span><span class="ident">key</span><span class="op">|</span> (<span class="ident">key</span>, <span class="macro">vec!</span>[]))
+                .<span class="ident">collect</span>(),
+            <span class="ident">pending_sending_key_scans</span>: <span class="ident">sending_key_scans</span>
+                .<span class="ident">into_iter</span>()
+                .<span class="ident">map</span>(<span class="op">|</span><span class="ident">key</span><span class="op">|</span> (<span class="ident">key</span>, <span class="macro">vec!</span>[]))
+                .<span class="ident">collect</span>(),
             <span class="ident">sync_handles</span>: <span class="ident">Default::default</span>(),
             <span class="ident">txn_subscribers</span>: <span class="ident">Default::default</span>(),
         }
@@ -376,10 +412,16 @@
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">new</span>(
         <span class="ident">state</span>: <span class="ident">LedgerState</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span><span class="op">&gt;</span>,
         <span class="ident">model</span>: <span class="ident">KeystoreModel</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span>, <span class="ident">Backend</span>, <span class="ident">Meta</span><span class="op">&gt;</span>,
-        <span class="ident">key_scans</span>: <span class="kw">impl</span> <span class="ident">IntoIterator</span><span class="op">&lt;</span><span class="ident">Item</span> <span class="op">=</span> <span class="ident">UserAddress</span><span class="op">&gt;</span>,
+        <span class="ident">viewing_key_scans</span>: <span class="kw">impl</span> <span class="ident">IntoIterator</span><span class="op">&lt;</span><span class="ident">Item</span> <span class="op">=</span> <span class="ident">ViewerPubKey</span><span class="op">&gt;</span>,
+        <span class="ident">freezing_key_scans</span>: <span class="kw">impl</span> <span class="ident">IntoIterator</span><span class="op">&lt;</span><span class="ident">Item</span> <span class="op">=</span> <span class="ident">FreezerPubKey</span><span class="op">&gt;</span>,
+        <span class="ident">sending_key_scans</span>: <span class="kw">impl</span> <span class="ident">IntoIterator</span><span class="op">&lt;</span><span class="ident">Item</span> <span class="op">=</span> <span class="ident">UserAddress</span><span class="op">&gt;</span>,
     ) -&gt; <span class="self">Self</span> {
         <span class="self">Self</span>(<span class="ident">RwLock::new</span>(<span class="ident">KeystoreSharedState::new</span>(
-            <span class="ident">state</span>, <span class="ident">model</span>, <span class="ident">key_scans</span>,
+            <span class="ident">state</span>,
+            <span class="ident">model</span>,
+            <span class="ident">viewing_key_scans</span>,
+            <span class="ident">freezing_key_scans</span>,
+            <span class="ident">sending_key_scans</span>,
         )))
     }
 

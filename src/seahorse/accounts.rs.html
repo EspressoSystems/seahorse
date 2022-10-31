@@ -300,50 +300,6 @@
 <span id="294">294</span>
 <span id="295">295</span>
 <span id="296">296</span>
-<span id="297">297</span>
-<span id="298">298</span>
-<span id="299">299</span>
-<span id="300">300</span>
-<span id="301">301</span>
-<span id="302">302</span>
-<span id="303">303</span>
-<span id="304">304</span>
-<span id="305">305</span>
-<span id="306">306</span>
-<span id="307">307</span>
-<span id="308">308</span>
-<span id="309">309</span>
-<span id="310">310</span>
-<span id="311">311</span>
-<span id="312">312</span>
-<span id="313">313</span>
-<span id="314">314</span>
-<span id="315">315</span>
-<span id="316">316</span>
-<span id="317">317</span>
-<span id="318">318</span>
-<span id="319">319</span>
-<span id="320">320</span>
-<span id="321">321</span>
-<span id="322">322</span>
-<span id="323">323</span>
-<span id="324">324</span>
-<span id="325">325</span>
-<span id="326">326</span>
-<span id="327">327</span>
-<span id="328">328</span>
-<span id="329">329</span>
-<span id="330">330</span>
-<span id="331">331</span>
-<span id="332">332</span>
-<span id="333">333</span>
-<span id="334">334</span>
-<span id="335">335</span>
-<span id="336">336</span>
-<span id="337">337</span>
-<span id="338">338</span>
-<span id="339">339</span>
-<span id="340">340</span>
 </pre><pre class="rust"><code><span class="comment">// Copyright (c) 2022 Espresso Systems (espressosys.com)</span>
 <span class="comment">// This file is part of the Seahorse library.</span>
 
@@ -358,59 +314,21 @@
 
 <span class="kw">use</span> <span class="kw">crate</span>::{
     <span class="ident">events</span>::{<span class="ident">EventSource</span>, <span class="ident">LedgerEvent</span>},
-    <span class="ident">key_scan</span>::{<span class="ident">BackgroundKeyScan</span>, <span class="ident">ScanOutputs</span>, <span class="ident">ScanStatus</span>},
+    <span class="ident">key_scan</span>::{<span class="ident">BackgroundKeyScan</span>, <span class="ident">KeyPair</span>, <span class="ident">ScanOutputs</span>, <span class="ident">ScanStatus</span>},
     <span class="ident">key_value_store::KeyValueStore</span>,
     <span class="ident">EncryptingResourceAdapter</span>, <span class="ident">KeystoreError</span>,
 };
 <span class="kw">use</span> <span class="ident">atomic_store</span>::{<span class="ident">AppendLog</span>, <span class="ident">AtomicStoreLoader</span>};
 <span class="kw">use</span> <span class="ident">chrono</span>::{<span class="ident">DateTime</span>, <span class="ident">Local</span>};
 <span class="kw">use</span> <span class="ident">derivative::Derivative</span>;
-<span class="kw">use</span> <span class="ident">jf_cap</span>::{
-    <span class="ident">keys</span>::{<span class="ident">FreezerKeyPair</span>, <span class="ident">FreezerPubKey</span>, <span class="ident">UserAddress</span>, <span class="ident">UserKeyPair</span>, <span class="ident">ViewerKeyPair</span>, <span class="ident">ViewerPubKey</span>},
-    <span class="ident">MerkleCommitment</span>,
-};
+<span class="kw">use</span> <span class="ident">jf_cap::MerkleCommitment</span>;
 <span class="kw">use</span> <span class="ident">reef::Ledger</span>;
 <span class="kw">use</span> <span class="ident">serde</span>::{<span class="ident">de::DeserializeOwned</span>, <span class="ident">Deserialize</span>, <span class="ident">Serialize</span>};
-<span class="kw">use</span> <span class="ident">std::fmt::Display</span>;
-<span class="kw">use</span> <span class="ident">std::hash::Hash</span>;
 <span class="kw">use</span> <span class="ident">std::ops</span>::{<span class="ident">Deref</span>, <span class="ident">DerefMut</span>};
-
-<span class="doccomment">/// Keys with a public part.</span>
-<span class="kw">pub</span> <span class="kw">trait</span> <span class="ident">KeyPair</span>: <span class="ident">Clone</span> <span class="op">+</span> <span class="ident">Send</span> <span class="op">+</span> <span class="ident">Sync</span> {
-    <span class="kw">type</span> <span class="ident">PubKey</span>: <span class="ident">Clone</span> <span class="op">+</span> <span class="ident">DeserializeOwned</span> <span class="op">+</span> <span class="ident">Display</span> <span class="op">+</span> <span class="ident">Eq</span> <span class="op">+</span> <span class="ident">Hash</span> <span class="op">+</span> <span class="ident">Serialize</span>;
-    <span class="kw">fn</span> <span class="ident">pub_key</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="ident"><span class="self">Self</span>::PubKey</span>;
-}
-
-<span class="kw">impl</span> <span class="ident">KeyPair</span> <span class="kw">for</span> <span class="ident">ViewerKeyPair</span> {
-    <span class="kw">type</span> <span class="ident">PubKey</span> <span class="op">=</span> <span class="ident">ViewerPubKey</span>;
-
-    <span class="kw">fn</span> <span class="ident">pub_key</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="ident"><span class="self">Self</span>::PubKey</span> {
-        <span class="self">self</span>.<span class="ident">pub_key</span>()
-    }
-}
-
-<span class="kw">impl</span> <span class="ident">KeyPair</span> <span class="kw">for</span> <span class="ident">FreezerKeyPair</span> {
-    <span class="kw">type</span> <span class="ident">PubKey</span> <span class="op">=</span> <span class="ident">FreezerPubKey</span>;
-
-    <span class="kw">fn</span> <span class="ident">pub_key</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="ident"><span class="self">Self</span>::PubKey</span> {
-        <span class="self">self</span>.<span class="ident">pub_key</span>()
-    }
-}
-
-<span class="kw">impl</span> <span class="ident">KeyPair</span> <span class="kw">for</span> <span class="ident">UserKeyPair</span> {
-    <span class="comment">// The `PubKey` here is supposed to be a conceptual &quot;primary key&quot; for looking up</span>
-    <span class="comment">// `UserKeyPairs`. We typically want to look up `UserKeyPairs` by `Address`, not `UserPubKey`,</span>
-    <span class="comment">// because if we have a `UserPubKey` we can always get an `Address` to do the lookup.</span>
-    <span class="kw">type</span> <span class="ident">PubKey</span> <span class="op">=</span> <span class="ident">UserAddress</span>;
-
-    <span class="kw">fn</span> <span class="ident">pub_key</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="ident"><span class="self">Self</span>::PubKey</span> {
-        <span class="self">self</span>.<span class="ident">address</span>()
-    }
-}
 
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Clone</span>, <span class="ident">Debug</span>, <span class="ident">Derivative</span>, <span class="ident">Deserialize</span>, <span class="ident">Serialize</span>)]</span>
 <span class="attribute">#[<span class="ident">serde</span>(<span class="ident">bound</span> <span class="op">=</span> <span class="string">&quot;Key: DeserializeOwned + Serialize&quot;</span>)]</span>
-<span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">Account</span><span class="op">&lt;</span><span class="ident">L</span>: <span class="ident">Ledger</span>, <span class="ident">Key</span>: <span class="ident">KeyPair</span><span class="op">&gt;</span> {
+<span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">Account</span><span class="op">&lt;</span><span class="ident">L</span>: <span class="ident">Ledger</span>, <span class="ident">Key</span>: <span class="ident">KeyPair</span> <span class="op">+</span> <span class="ident">DeserializeOwned</span> <span class="op">+</span> <span class="ident">Serialize</span><span class="op">&gt;</span> {
     <span class="doccomment">/// The account key.</span>
     <span class="ident">key</span>: <span class="ident">Key</span>,
     <span class="doccomment">/// Optional index into the HD key stream.</span>
@@ -422,14 +340,14 @@
     <span class="doccomment">/// Whether the account is used.</span>
     <span class="ident">used</span>: <span class="ident">bool</span>,
     <span class="doccomment">/// Optional ledger scan.</span>
-    <span class="ident">scan</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">BackgroundKeyScan</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span>,
+    <span class="ident">scan</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">BackgroundKeyScan</span><span class="op">&lt;</span><span class="ident">L</span>, <span class="ident">Key</span><span class="op">&gt;</span><span class="op">&gt;</span>,
     <span class="doccomment">/// The time when the account was created.</span>
     <span class="ident">created_time</span>: <span class="ident">DateTime</span><span class="op">&lt;</span><span class="ident">Local</span><span class="op">&gt;</span>,
     <span class="doccomment">/// The last time when the account was modified.</span>
     <span class="ident">modified_time</span>: <span class="ident">DateTime</span><span class="op">&lt;</span><span class="ident">Local</span><span class="op">&gt;</span>,
 }
 
-<span class="kw">impl</span><span class="op">&lt;</span><span class="ident">L</span>: <span class="ident">Ledger</span>, <span class="ident">Key</span>: <span class="ident">KeyPair</span><span class="op">&gt;</span> <span class="ident">Account</span><span class="op">&lt;</span><span class="ident">L</span>, <span class="ident">Key</span><span class="op">&gt;</span> {
+<span class="kw">impl</span><span class="op">&lt;</span><span class="ident">L</span>: <span class="ident">Ledger</span>, <span class="ident">Key</span>: <span class="ident">KeyPair</span> <span class="op">+</span> <span class="ident">DeserializeOwned</span> <span class="op">+</span> <span class="ident">Serialize</span><span class="op">&gt;</span> <span class="ident">Account</span><span class="op">&lt;</span><span class="ident">L</span>, <span class="ident">Key</span><span class="op">&gt;</span> {
     <span class="doccomment">/// Get the account key.</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">key</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span><span class="ident">Key</span> {
         <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">key</span>
@@ -456,7 +374,7 @@
     }
 
     <span class="doccomment">/// Get the optional ledger scan.</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">scan</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="kw-2">&amp;</span><span class="ident">BackgroundKeyScan</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">scan</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="kw-2">&amp;</span><span class="ident">BackgroundKeyScan</span><span class="op">&lt;</span><span class="ident">L</span>, <span class="ident">Key</span><span class="op">&gt;</span><span class="op">&gt;</span> {
         <span class="self">self</span>.<span class="ident">scan</span>.<span class="ident">as_ref</span>()
     }
 
@@ -501,7 +419,7 @@
     }
 
     <span class="doccomment">/// Set the optional ledger scan.</span>
-    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn</span> <span class="ident">set_scan</span>(<span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">scan</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">BackgroundKeyScan</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span>) -&gt; <span class="self">Self</span> {
+    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn</span> <span class="ident">set_scan</span>(<span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">scan</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">BackgroundKeyScan</span><span class="op">&lt;</span><span class="ident">L</span>, <span class="ident">Key</span><span class="op">&gt;</span><span class="op">&gt;</span>) -&gt; <span class="self">Self</span> {
         <span class="self">self</span>.<span class="ident">account</span>.<span class="ident">scan</span> <span class="op">=</span> <span class="ident">scan</span>;
         <span class="self">self</span>
     }
@@ -517,13 +435,7 @@
         <span class="ident">event</span>: <span class="ident">LedgerEvent</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span>,
         <span class="ident">source</span>: <span class="ident">EventSource</span>,
         <span class="ident">records_commitment</span>: <span class="ident">MerkleCommitment</span>,
-    ) -&gt; <span class="prelude-ty">Result</span><span class="op">&lt;</span>
-        (
-            <span class="ident">AccountEditor</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span>, <span class="ident">Key</span><span class="op">&gt;</span>,
-            <span class="prelude-ty">Option</span><span class="op">&lt;</span>(<span class="ident">UserKeyPair</span>, <span class="ident">ScanOutputs</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span>)<span class="op">&gt;</span>,
-        ),
-        <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span>,
-    <span class="op">&gt;</span> {
+    ) -&gt; <span class="prelude-ty">Result</span><span class="op">&lt;</span>(<span class="ident">AccountEditor</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">L</span>, <span class="ident">Key</span><span class="op">&gt;</span>, <span class="prelude-ty">Option</span><span class="op">&lt;</span>(<span class="ident">Key</span>, <span class="ident">ScanOutputs</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span>)<span class="op">&gt;</span>), <span class="ident">KeystoreError</span><span class="op">&lt;</span><span class="ident">L</span><span class="op">&gt;</span><span class="op">&gt;</span> {
         <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">scan</span> <span class="op">=</span> <span class="kw">match</span> <span class="self">self</span>.<span class="ident">account</span>.<span class="ident">scan</span>.<span class="ident">take</span>() {
             <span class="prelude-val">Some</span>(<span class="ident">scan</span>) =&gt; <span class="ident">scan</span>,
             <span class="prelude-val">None</span> =&gt; <span class="kw">return</span> <span class="prelude-val">Err</span>(<span class="ident">KeystoreError::ScanNotFound</span>),
