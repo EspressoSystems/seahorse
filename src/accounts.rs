@@ -12,59 +12,21 @@
 
 use crate::{
     events::{EventSource, LedgerEvent},
-    key_scan::{BackgroundKeyScan, ScanOutputs, ScanStatus},
+    key_scan::{BackgroundKeyScan, KeyPair, ScanOutputs, ScanStatus},
     key_value_store::KeyValueStore,
     EncryptingResourceAdapter, KeystoreError,
 };
 use atomic_store::{AppendLog, AtomicStoreLoader};
 use chrono::{DateTime, Local};
 use derivative::Derivative;
-use jf_cap::{
-    keys::{FreezerKeyPair, FreezerPubKey, UserAddress, UserKeyPair, ViewerKeyPair, ViewerPubKey},
-    MerkleCommitment,
-};
+use jf_cap::MerkleCommitment;
 use reef::Ledger;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use std::fmt::Display;
-use std::hash::Hash;
 use std::ops::{Deref, DerefMut};
-
-/// Keys with a public part.
-pub trait KeyPair: Clone + Send + Sync {
-    type PubKey: Clone + DeserializeOwned + Display + Eq + Hash + Serialize;
-    fn pub_key(&self) -> Self::PubKey;
-}
-
-impl KeyPair for ViewerKeyPair {
-    type PubKey = ViewerPubKey;
-
-    fn pub_key(&self) -> Self::PubKey {
-        self.pub_key()
-    }
-}
-
-impl KeyPair for FreezerKeyPair {
-    type PubKey = FreezerPubKey;
-
-    fn pub_key(&self) -> Self::PubKey {
-        self.pub_key()
-    }
-}
-
-impl KeyPair for UserKeyPair {
-    // The `PubKey` here is supposed to be a conceptual "primary key" for looking up
-    // `UserKeyPairs`. We typically want to look up `UserKeyPairs` by `Address`, not `UserPubKey`,
-    // because if we have a `UserPubKey` we can always get an `Address` to do the lookup.
-    type PubKey = UserAddress;
-
-    fn pub_key(&self) -> Self::PubKey {
-        self.address()
-    }
-}
 
 #[derive(Clone, Debug, Derivative, Deserialize, Serialize)]
 #[serde(bound = "Key: DeserializeOwned + Serialize")]
-pub struct Account<L: Ledger, Key: KeyPair> {
+pub struct Account<L: Ledger, Key: KeyPair + DeserializeOwned + Serialize> {
     /// The account key.
     key: Key,
     /// Optional index into the HD key stream.
@@ -76,14 +38,14 @@ pub struct Account<L: Ledger, Key: KeyPair> {
     /// Whether the account is used.
     used: bool,
     /// Optional ledger scan.
-    scan: Option<BackgroundKeyScan<L>>,
+    scan: Option<BackgroundKeyScan<L, Key>>,
     /// The time when the account was created.
     created_time: DateTime<Local>,
     /// The last time when the account was modified.
     modified_time: DateTime<Local>,
 }
 
-impl<L: Ledger, Key: KeyPair> Account<L, Key> {
+impl<L: Ledger, Key: KeyPair + DeserializeOwned + Serialize> Account<L, Key> {
     /// Get the account key.
     pub fn key(&self) -> &Key {
         &self.key
@@ -110,7 +72,7 @@ impl<L: Ledger, Key: KeyPair> Account<L, Key> {
     }
 
     /// Get the optional ledger scan.
-    pub fn scan(&self) -> Option<&BackgroundKeyScan<L>> {
+    pub fn scan(&self) -> Option<&BackgroundKeyScan<L, Key>> {
         self.scan.as_ref()
     }
 
@@ -155,7 +117,7 @@ impl<'a, L: Ledger, Key: KeyPair + DeserializeOwned + Serialize> AccountEditor<'
     }
 
     /// Set the optional ledger scan.
-    pub(crate) fn set_scan(mut self, scan: Option<BackgroundKeyScan<L>>) -> Self {
+    pub(crate) fn set_scan(mut self, scan: Option<BackgroundKeyScan<L, Key>>) -> Self {
         self.account.scan = scan;
         self
     }
@@ -171,13 +133,7 @@ impl<'a, L: Ledger, Key: KeyPair + DeserializeOwned + Serialize> AccountEditor<'
         event: LedgerEvent<L>,
         source: EventSource,
         records_commitment: MerkleCommitment,
-    ) -> Result<
-        (
-            AccountEditor<'a, L, Key>,
-            Option<(UserKeyPair, ScanOutputs<L>)>,
-        ),
-        KeystoreError<L>,
-    > {
+    ) -> Result<(AccountEditor<'a, L, Key>, Option<(Key, ScanOutputs<L>)>), KeystoreError<L>> {
         let mut scan = match self.account.scan.take() {
             Some(scan) => scan,
             None => return Err(KeystoreError::ScanNotFound),

@@ -85,12 +85,12 @@ pub async fn test_keystore_freeze_unregistered() -> std::io::Result<()> {
             .unwrap();
         keystores[2]
             .0
-            .add_viewing_account(viewing_key, "viewing_key".into())
+            .add_account(viewing_key, "viewing_key".into(), EventIndex::default())
             .await
             .unwrap();
         keystores[2]
             .0
-            .add_freezing_account(freeze_key, "freeze_key".into())
+            .add_account(freeze_key, "freeze_key".into(), EventIndex::default())
             .await
             .unwrap();
         let asset = keystores[2]
@@ -538,12 +538,12 @@ pub mod generic_keystore_tests {
                 .unwrap();
             keystores[0]
                 .0
-                .add_viewing_account(viewing_key, "viewing_key".into())
+                .add_account(viewing_key, "viewing_key".into(), EventIndex::default())
                 .await
                 .unwrap();
             keystores[0]
                 .0
-                .add_freezing_account(freeze_key, "freeze_key".into())
+                .add_account(freeze_key, "freeze_key".into(), EventIndex::default())
                 .await
                 .unwrap();
             let asset = keystores[0]
@@ -886,12 +886,12 @@ pub mod generic_keystore_tests {
                 .unwrap();
             keystores[2]
                 .0
-                .add_viewing_account(viewing_key, "viewing_key".into())
+                .add_account(viewing_key, "viewing_key".into(), EventIndex::default())
                 .await
                 .unwrap();
             keystores[2]
                 .0
-                .add_freezing_account(freeze_key, "freeze_key".into())
+                .add_account(freeze_key, "freeze_key".into(), EventIndex::default())
                 .await
                 .unwrap();
             let asset = keystores[2]
@@ -2038,7 +2038,11 @@ pub mod generic_keystore_tests {
         t.check_storage(&keystores).await;
 
         // Check that the scan discovered the existing record.
-        keystores[0].0.await_key_scan(&key.address()).await.unwrap();
+        keystores[0]
+            .0
+            .await_sending_key_scan(&key.address())
+            .await
+            .unwrap();
         assert_eq!(
             keystores[0]
                 .0
@@ -2371,7 +2375,7 @@ pub mod generic_keystore_tests {
         // viewable subset if we use the right viewer key, which we will define now:
         let viewing_key0 = keystores[0]
             .0
-            .generate_viewing_account("viewing_key".into())
+            .generate_viewing_account("viewing_key".into(), Some(EventIndex::default()))
             .await
             .unwrap();
 
@@ -2390,7 +2394,7 @@ pub mod generic_keystore_tests {
         // mint some to keystores[0].
         let viewing_key1 = keystores[1]
             .0
-            .generate_viewing_account("viewing_key".into())
+            .generate_viewing_account("viewing_key".into(), Some(EventIndex::default()))
             .await
             .unwrap();
         let minted_asset = keystores[1]
@@ -2608,12 +2612,22 @@ pub mod generic_keystore_tests {
         // Create empty viewing and freezing accounts.
         let viewing_key = keystores[0]
             .0
-            .generate_viewing_account("viewing_account".into())
+            .generate_viewing_account("viewing_account".into(), Some(EventIndex::default()))
             .await
             .unwrap();
         let freezing_key = keystores[0]
             .0
-            .generate_freezing_account("freezing_account".into())
+            .generate_freezing_account("freezing_account".into(), Some(EventIndex::default()))
+            .await
+            .unwrap();
+        keystores[0]
+            .0
+            .await_viewing_key_scan(&viewing_key)
+            .await
+            .unwrap();
+        keystores[0]
+            .0
+            .await_freezing_key_scan(&freezing_key)
             .await
             .unwrap();
         let viewing_account = keystores[0].0.viewing_account(&viewing_key).await.unwrap();
@@ -3059,7 +3073,7 @@ pub mod generic_keystore_tests {
             .unwrap();
         keystores[0]
             .0
-            .await_key_scan(&pub_key.address())
+            .await_sending_key_scan(&pub_key.address())
             .await
             .unwrap();
     }

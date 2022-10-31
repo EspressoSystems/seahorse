@@ -51,7 +51,7 @@ use crate::{
     encryption::Cipher,
     events::{EventIndex, EventSource, LedgerEvent},
     hd::KeyTree,
-    key_scan::ScanOutputs,
+    key_scan::{KeyPair, KeyType, ScanOutputs},
     ledger_state::*,
     loader::KeystoreLoader,
     meta::MetaStore,
@@ -161,6 +161,12 @@ pub enum KeystoreError<L: Ledger> {
     CannotDecryptMemo {},
     TransactionError {
         source: crate::ledger_state::TransactionError,
+    },
+    ViewerKeyExists {
+        pub_key: ViewerPubKey,
+    },
+    FreezerKeyExists {
+        pub_key: FreezerPubKey,
     },
     UserKeyExists {
         pub_key: UserPubKey,
@@ -694,10 +700,28 @@ impl<
         state: LedgerState<'a, L>,
     ) -> Result<Keystore<'a, Backend, L, Meta>, KeystoreError<L>> {
         let mut events = backend.subscribe(state.now(), None).await;
-        let mut key_scans = vec![];
+        let mut viewing_key_scans = vec![];
+        let mut freezing_key_scans = vec![];
+        let mut sending_key_scans = vec![];
         for account in stores.viewing_accounts.iter() {
             if let Some(scan) = &account.scan() {
-                key_scans.push((
+                viewing_key_scans.push((
+                    scan.address(),
+                    backend.subscribe(scan.next_event(), None).await,
+                ));
+            }
+        }
+        for account in stores.freezing_accounts.iter() {
+            if let Some(scan) = &account.scan() {
+                freezing_key_scans.push((
+                    scan.address(),
+                    backend.subscribe(scan.next_event(), None).await,
+                ));
+            }
+        }
+        for account in stores.sending_accounts.iter() {
+            if let Some(scan) = &account.scan() {
+                sending_key_scans.push((
                     scan.address(),
                     backend.subscribe(scan.next_event(), None).await,
                 ));
@@ -730,7 +754,9 @@ impl<
         let mutex = Arc::new(KeystoreSharedStateRwLock::new(
             state,
             model,
-            key_scans.iter().map(|(key, _)| key.clone()),
+            viewing_key_scans.iter().map(|(key, _)| key.clone()),
+            freezing_key_scans.iter().map(|(key, _)| key.clone()),
+            sending_key_scans.iter().map(|(key, _)| key.clone()),
         ));
         let mut scope = unsafe {
             // Creating an AsyncScope is considered unsafe because `std::mem::forget` is allowed
@@ -776,8 +802,14 @@ impl<
 
         // Spawn background tasks for any scans which were in progress when the keystore was last
         // shut down.
-        for (key, events) in key_scans {
-            keystore.spawn_key_scan(key, events).await;
+        for (key, events) in viewing_key_scans {
+            keystore.spawn_viewing_key_scan(key, events).await;
+        }
+        for (key, events) in freezing_key_scans {
+            keystore.spawn_freezing_key_scan(key, events).await;
+        }
+        for (key, events) in sending_key_scans {
+            keystore.spawn_sending_key_scan(key, events).await;
         }
 
         Ok(keystore)
@@ -888,7 +920,7 @@ impl<
         }
     }
 
-    /// List records owned or viewable by this keystore.
+    /// List records freezable or owned by this keystore.
     pub async fn records(&self) -> Vec<Record> {
         let KeystoreSharedState { model, .. } = &*self.read().await;
         model.stores.records.iter().collect::<Vec<_>>()
@@ -1078,96 +1110,15 @@ impl<
             .await
     }
 
-    /// Add a viewing key to the keystore's key set.
-    pub fn add_viewing_account<'l>(
-        &'l mut self,
-        viewing_key: ViewerKeyPair,
-        description: String,
-    ) -> std::pin::Pin<Box<dyn SendFuture<'a, Result<(), KeystoreError<L>>> + 'l>>
-    where
-        'a: 'l,
-    {
-        Box::pin(async move {
-            self.write()
-                .await
-                .update(|KeystoreSharedState { state, model, .. }| {
-                    state.add_viewing_account(model, Some(viewing_key), description)
-                })
-                .await?;
-            Ok(())
-        })
-    }
-
-    /// Generate a new viewing key and add it to the keystore's key set.
-    pub fn generate_viewing_account<'l>(
-        &'l mut self,
-        description: String,
-    ) -> std::pin::Pin<Box<dyn SendFuture<'a, Result<ViewerPubKey, KeystoreError<L>>> + 'l>>
-    where
-        'a: 'l,
-    {
-        Box::pin(async move {
-            self.write()
-                .await
-                .update(|KeystoreSharedState { state, model, .. }| async move {
-                    Ok(state
-                        .add_viewing_account(model, None, description)
-                        .await?
-                        .pub_key())
-                })
-                .await
-        })
-    }
-
-    /// Add a freezing key to the keystore's key set.
-    pub fn add_freezing_account<'l>(
-        &'l mut self,
-        freeze_key: FreezerKeyPair,
-        description: String,
-    ) -> std::pin::Pin<Box<dyn SendFuture<'a, Result<(), KeystoreError<L>>> + 'l>>
-    where
-        'a: 'l,
-    {
-        Box::pin(async move {
-            self.write()
-                .await
-                .update(|KeystoreSharedState { state, model, .. }| {
-                    state.add_freezing_account(model, Some(freeze_key), description)
-                })
-                .await?;
-            Ok(())
-        })
-    }
-
-    /// Generate a new freezing key and add it to the keystore's key set.
-    pub fn generate_freezing_account<'l>(
-        &'l mut self,
-        description: String,
-    ) -> std::pin::Pin<Box<dyn SendFuture<'a, Result<FreezerPubKey, KeystoreError<L>>> + 'l>>
-    where
-        'a: 'l,
-    {
-        Box::pin(async move {
-            self.write()
-                .await
-                .update(|KeystoreSharedState { state, model, .. }| async move {
-                    Ok(state
-                        .add_freezing_account(model, None, description)
-                        .await?
-                        .pub_key())
-                })
-                .await
-        })
-    }
-
-    /// Add a sending key to the keystore's key set.
+    /// Add an account with the given key.
     ///
-    /// Since this key was not generated by this keystore, it may have already been used and thus may
-    /// own existing records. The keystore will start a scan of the ledger in the background to find
-    /// records owned by this key. The scan will start from the event specified by `scan_from`.
-    pub fn add_sending_account<'l>(
+    /// Since this key was not generated by this keystore, it may have already been used and thus
+    /// may have viewable, freezable or owned records. The keystore will start a scan of the
+    /// ledger in the background to find records viewable, freezable or spendable by this key. The
+    /// scan will start from the event specified by `scan_from`.
+    pub fn add_account<'l, Key: KeyPair + 'l>(
         &'l mut self,
-        user_key: UserKeyPair,
+        key: Key,
         description: String,
         scan_from: EventIndex,
     ) -> std::pin::Pin<Box<dyn SendFuture<'a, Result<(), KeystoreError<L>>> + 'l>>
@@ -1175,38 +1126,202 @@ impl<
         'a: 'l,
     {
         Box::pin(async move {
-            let (user_key, events) = self
-                .write()
-                .await
-                .update(
-                    |KeystoreSharedState {
-                         state,
-                         model,
-                         pending_key_scans,
-                         ..
-                     }| async move {
-                        let (user_key, events) = state
-                            .add_sending_account(
-                                model,
-                                Some(user_key),
-                                description,
-                                Some(scan_from),
-                            )
-                            .await?;
-                        // Register the key scan in `pending_key_scans` so that `await_key_scan`
-                        // will work.
-                        pending_key_scans.insert(user_key.address(), vec![]);
-                        Ok((user_key, events))
-                    },
-                )
-                .await?;
+            match key.key_type() {
+                KeyType::Viewing(viewing_key) => {
+                    let (viewing_key, events) = self
+                        .write()
+                        .await
+                        .update(
+                            |KeystoreSharedState {
+                                 state,
+                                 model,
+                                 pending_viewing_key_scans,
+                                 ..
+                             }| async move {
+                                let (viewing_key, events) = state
+                                    .add_viewing_account(
+                                        model,
+                                        Some(viewing_key),
+                                        description,
+                                        Some(scan_from),
+                                    )
+                                    .await?;
+                                // Register the key scan in `pending_viewing_key_scans` so that
+                                // `await_viewing_key_scan` will work.
+                                pending_viewing_key_scans.insert(viewing_key.pub_key(), vec![]);
+                                Ok((viewing_key, events))
+                            },
+                        )
+                        .await?;
+
+                    if let Some(events) = events {
+                        // Start a background task to scan for records viewable by the new key.
+                        self.spawn_viewing_key_scan(viewing_key.pub_key(), events)
+                            .await;
+                    }
+                }
+                KeyType::Freezing(freezing_key) => {
+                    let (freezing_key, events) = self
+                        .write()
+                        .await
+                        .update(
+                            |KeystoreSharedState {
+                                 state,
+                                 model,
+                                 pending_freezing_key_scans,
+                                 ..
+                             }| async move {
+                                let (freezing_key, events) = state
+                                    .add_freezing_account(
+                                        model,
+                                        Some(freezing_key),
+                                        description,
+                                        Some(scan_from),
+                                    )
+                                    .await?;
+                                // Register the key scan in `pending_freezing_key_scans` so that
+                                // `await_freezing_key_scan` will work.
+                                pending_freezing_key_scans.insert(freezing_key.pub_key(), vec![]);
+                                Ok((freezing_key, events))
+                            },
+                        )
+                        .await?;
+
+                    if let Some(events) = events {
+                        // Start a background task to scan for records freezable by the new key.
+                        self.spawn_freezing_key_scan(freezing_key.pub_key(), events)
+                            .await;
+                    }
+                }
+                KeyType::Sending(sending_key) => {
+                    let (sending_key, events) = self
+                        .write()
+                        .await
+                        .update(
+                            |KeystoreSharedState {
+                                 state,
+                                 model,
+                                 pending_sending_key_scans,
+                                 ..
+                             }| async move {
+                                let (sending_key, events) = state
+                                    .add_sending_account(
+                                        model,
+                                        Some(sending_key),
+                                        description,
+                                        Some(scan_from),
+                                    )
+                                    .await?;
+                                // Register the key scan in `pending_sending_key_scans` so that
+                                // `await_sending_key_scan` will work.
+                                pending_sending_key_scans.insert(sending_key.address(), vec![]);
+                                Ok((sending_key, events))
+                            },
+                        )
+                        .await?;
+
+                    if let Some(events) = events {
+                        // Start a background task to scan for records belonging to the new key.
+                        self.spawn_sending_key_scan(sending_key.address(), events)
+                            .await;
+                    }
+                }
+            }
+            Ok(())
+        })
+    }
+
+    /// Generate a new viewing key and add it to the keystore's key set.
+    ///
+    /// Keys are generated deterministically based on the mnemonic phrase used to load the keystore.
+    /// If this is a recovery of an HD keystore from a mnemonic phrase, `scan_from` can be used to
+    /// initiate a background scan of the ledger from the given event index to find records already
+    /// viewable by the new key.
+    pub fn generate_viewing_account<'l>(
+        &'l mut self,
+        description: String,
+        scan_from: Option<EventIndex>,
+    ) -> std::pin::Pin<Box<dyn SendFuture<'a, Result<ViewerPubKey, KeystoreError<L>>> + 'l>>
+    where
+        'a: 'l,
+    {
+        Box::pin(async move {
+            let (viewing_key, events) = {
+                self.write()
+                    .await
+                    .update(
+                        |KeystoreSharedState {
+                             state,
+                             model,
+                             pending_viewing_key_scans,
+                             ..
+                         }| async move {
+                            let (viewing_key, events) = state
+                                .add_viewing_account(model, None, description, scan_from)
+                                .await?;
+                            // Register the key scan in `pending_viewing_key_scans` so that
+                            // `await_viewing_key_scan` will work.
+                            pending_viewing_key_scans.insert(viewing_key.pub_key(), vec![]);
+                            Ok((viewing_key, events))
+                        },
+                    )
+                    .await?
+            };
 
             if let Some(events) = events {
-                // Start a background task to scan for records belonging to the new key.
-                self.spawn_key_scan(user_key.address(), events).await;
+                // Start a background task to scan for records viewable by the new key.
+                self.spawn_viewing_key_scan(viewing_key.pub_key(), events)
+                    .await;
             }
 
-            Ok(())
+            Ok(viewing_key.pub_key())
+        })
+    }
+
+    /// Generate a new freezing key and add it to the keystore's key set.
+    ///
+    /// Keys are generated deterministically based on the mnemonic phrase used to load the keystore.
+    /// If this is a recovery of an HD keystore from a mnemonic phrase, `scan_from` can be used to
+    /// initiate a background scan of the ledger from the given event index to find records already
+    /// freezable by the new key.
+    pub fn generate_freezing_account<'l>(
+        &'l mut self,
+        description: String,
+        scan_from: Option<EventIndex>,
+    ) -> std::pin::Pin<Box<dyn SendFuture<'a, Result<FreezerPubKey, KeystoreError<L>>> + 'l>>
+    where
+        'a: 'l,
+    {
+        Box::pin(async move {
+            let (freezing_key, events) = {
+                self.write()
+                    .await
+                    .update(
+                        |KeystoreSharedState {
+                             state,
+                             model,
+                             pending_freezing_key_scans,
+                             ..
+                         }| async move {
+                            let (freezing_key, events) = state
+                                .add_freezing_account(model, None, description, scan_from)
+                                .await?;
+                            // Register the key scan in `pending_freezing_key_scans` so that
+                            // `await_vfreezing_key_scan` will work.
+                            pending_freezing_key_scans.insert(freezing_key.pub_key(), vec![]);
+                            Ok((freezing_key, events))
+                        },
+                    )
+                    .await?
+            };
+
+            if let Some(events) = events {
+                // Start a background task to scan for records freezable by the new key.
+                self.spawn_freezing_key_scan(freezing_key.pub_key(), events)
+                    .await;
+            }
+
+            Ok(freezing_key.pub_key())
         })
     }
 
@@ -1232,15 +1347,15 @@ impl<
                         |KeystoreSharedState {
                              state,
                              model,
-                             pending_key_scans,
+                             pending_sending_key_scans,
                              ..
                          }| async move {
                             let (user_key, events) = state
                                 .add_sending_account(model, None, description, scan_from)
                                 .await?;
-                            // Register the key scan in `pending_key_scans` so that `await_key_scan`
-                            // will work.
-                            pending_key_scans.insert(user_key.address(), vec![]);
+                            // Register the key scan in `pending_sending_key_scans` so that
+                            // `await_sending_key_scan` will work.
+                            pending_sending_key_scans.insert(user_key.address(), vec![]);
                             Ok((user_key, events))
                         },
                     )
@@ -1249,7 +1364,8 @@ impl<
 
             if let Some(events) = events {
                 // Start a background task to scan for records belonging to the new key.
-                self.spawn_key_scan(user_key.address(), events).await;
+                self.spawn_sending_key_scan(user_key.address(), events)
+                    .await;
             }
 
             Ok(user_key.pub_key())
@@ -1519,16 +1635,20 @@ impl<
         self.sync(peer.now().await).await
     }
 
-    /// A future which completes when there are no more in-progress ledger scans for `address`.
-    pub async fn await_key_scan(&self, address: &UserAddress) -> Result<(), KeystoreError<L>> {
+    /// A future which completes when there are no more in-progress ledger scans for the viewing public key.
+    pub async fn await_viewing_key_scan(
+        &self,
+        pub_key: &ViewerPubKey,
+    ) -> Result<(), KeystoreError<L>> {
         let receiver = {
             self.write()
                 .await
                 .update(
                     |KeystoreSharedState {
-                         pending_key_scans, ..
+                         pending_viewing_key_scans,
+                         ..
                      }| async move {
-                        let senders = match pending_key_scans.get_mut(address) {
+                        let senders = match pending_viewing_key_scans.get_mut(pub_key) {
                             Some(senders) => senders,
                             // If there is not an in-progress scan for this key, return immediately.
                             None => return Ok(None),
@@ -1546,7 +1666,152 @@ impl<
         }
     }
 
-    async fn spawn_key_scan(
+    /// A future which completes when there are no more in-progress ledger scans for the freezing public key.
+    pub async fn await_freezing_key_scan(
+        &self,
+        pub_key: &FreezerPubKey,
+    ) -> Result<(), KeystoreError<L>> {
+        let receiver = {
+            self.write()
+                .await
+                .update(
+                    |KeystoreSharedState {
+                         pending_freezing_key_scans,
+                         ..
+                     }| async move {
+                        let senders = match pending_freezing_key_scans.get_mut(pub_key) {
+                            Some(senders) => senders,
+                            // If there is not an in-progress scan for this key, return immediately.
+                            None => return Ok(None),
+                        };
+                        let (sender, receiver) = oneshot::channel();
+                        senders.push(sender);
+                        Ok(Some(receiver))
+                    },
+                )
+                .await?
+        };
+        match receiver {
+            Some(receiver) => receiver.await.map_err(|_| KeystoreError::Cancelled {}),
+            None => Ok(()),
+        }
+    }
+
+    /// A future which completes when there are no more in-progress ledger scans for the sending address.
+    pub async fn await_sending_key_scan(
+        &self,
+        address: &UserAddress,
+    ) -> Result<(), KeystoreError<L>> {
+        let receiver = {
+            self.write()
+                .await
+                .update(
+                    |KeystoreSharedState {
+                         pending_sending_key_scans,
+                         ..
+                     }| async move {
+                        let senders = match pending_sending_key_scans.get_mut(address) {
+                            Some(senders) => senders,
+                            // If there is not an in-progress scan for this key, return immediately.
+                            None => return Ok(None),
+                        };
+                        let (sender, receiver) = oneshot::channel();
+                        senders.push(sender);
+                        Ok(Some(receiver))
+                    },
+                )
+                .await?
+        };
+        match receiver {
+            Some(receiver) => receiver.await.map_err(|_| KeystoreError::Cancelled {}),
+            None => Ok(()),
+        }
+    }
+
+    async fn spawn_viewing_key_scan(
+        &mut self,
+        pub_key: ViewerPubKey,
+        mut events: impl 'a + Stream<Item = (LedgerEvent<L>, EventSource)> + Unpin + Send,
+    ) {
+        let mutex = self.mutex.clone();
+        self.task_scope.spawn_cancellable(
+            async move {
+                let mut finished = false;
+                while !finished {
+                    let (next_event, source) = events.next().await.unwrap();
+                    loop {
+                        match mutex
+                            .write()
+                            .await
+                            .update(|state| {
+                                update_viewing_key_scan(&pub_key, next_event.clone(), source, state)
+                                    .boxed()
+                            })
+                            .await
+                        {
+                            Ok(f) => {
+                                finished = f;
+                                break;
+                            }
+                            Err(err) => {
+                                tracing::error!("error during key scan, retrying: {}", err);
+                                // Sleep a little bit before retrying, so that if the error is
+                                // persistent, we don't obnoxiously spam the logs or hog the mutex.
+                                sleep(Duration::from_secs(5)).await;
+                            }
+                        }
+                    }
+                }
+            },
+            || (),
+        );
+    }
+
+    async fn spawn_freezing_key_scan(
+        &mut self,
+        pub_key: FreezerPubKey,
+        mut events: impl 'a + Stream<Item = (LedgerEvent<L>, EventSource)> + Unpin + Send,
+    ) {
+        let mutex = self.mutex.clone();
+        self.task_scope.spawn_cancellable(
+            async move {
+                let mut finished = false;
+                while !finished {
+                    let (next_event, source) = events.next().await.unwrap();
+                    loop {
+                        match mutex
+                            .write()
+                            .await
+                            .update(|state| {
+                                update_freezing_key_scan(
+                                    &pub_key,
+                                    next_event.clone(),
+                                    source,
+                                    state,
+                                )
+                                .boxed()
+                            })
+                            .await
+                        {
+                            Ok(f) => {
+                                finished = f;
+                                break;
+                            }
+                            Err(err) => {
+                                tracing::error!("error during key scan, retrying: {}", err);
+                                // Sleep a little bit before retrying, so that if the error is
+                                // persistent, we don't obnoxiously spam the logs or hog the mutex.
+                                sleep(Duration::from_secs(5)).await;
+                            }
+                        }
+                    }
+                }
+            },
+            || (),
+        );
+    }
+
+    async fn spawn_sending_key_scan(
         &mut self,
         address: UserAddress,
         mut events: impl 'a + Stream<Item = (LedgerEvent<L>, EventSource)> + Unpin + Send,
@@ -1562,7 +1827,8 @@ impl<
                             .write()
                             .await
                             .update(|state| {
-                                update_key_scan(&address, next_event.clone(), source, state).boxed()
+                                update_sending_key_scan(&address, next_event.clone(), source, state)
+                                    .boxed()
                             })
                             .await
                         {
@@ -1686,7 +1952,130 @@ async fn update_ledger<
     Ok(())
 }
 
-async fn update_key_scan<
+async fn update_viewing_key_scan<
+    'a,
+    L: 'static + Ledger,
+    Backend: KeystoreBackend<'a, L>,
+    Meta: Send + DeserializeOwned + Serialize + Sync + Clone + PartialEq,
+>(
+    pub_key: &ViewerPubKey,
+    event: LedgerEvent<L>,
+    source: EventSource,
+    shared_state: &mut KeystoreSharedState<'a, L, Backend, Meta>,
+) -> Result<bool, KeystoreError<L>> {
+    let KeystoreSharedState {
+        state,
+        model,
+        pending_viewing_key_scans,
+        ..
+    } = shared_state;
+
+    let finished = match model
+        .stores
+        .viewing_accounts
+        .get_mut(pub_key)
+        .unwrap()
+        .update_scan(event, source, state.record_mt.commitment())
+        .await
+    {
+        Ok((mut editor, scan_info)) => {
+            editor.save()?;
+            match scan_info {
+                Some((
+                    _,
+                    ScanOutputs {
+                        records: _,
+                        history,
+                    },
+                )) => {
+                    for (uid, t) in history {
+                        model.stores.transactions.create(uid, t)?;
+                    }
+
+                    // Signal anyone waiting for a notification that this scan finished.
+                    for sender in pending_viewing_key_scans
+                        .remove(pub_key)
+                        .into_iter()
+                        .flatten()
+                    {
+                        // Ignore errors, it just means the receiving end of the channel has been
+                        // dropped.
+                        sender.send(()).ok();
+                    }
+
+                    true
+                }
+                None => false,
+            }
+        }
+        _ => false,
+    };
+
+    model.stores.ledger_states.update_dynamic(state)?;
+    Ok(finished)
+}
+
+async fn update_freezing_key_scan<
+    'a,
+    L: 'static + Ledger,
+    Backend: KeystoreBackend<'a, L>,
+    Meta: Send + DeserializeOwned + Serialize + Sync + Clone + PartialEq,
+>(
+    pub_key: &FreezerPubKey,
+    event: LedgerEvent<L>,
+    source: EventSource,
+    shared_state: &mut KeystoreSharedState<'a, L, Backend, Meta>,
+) -> Result<bool, KeystoreError<L>> {
+    let KeystoreSharedState {
+        state,
+        model,
+        pending_freezing_key_scans,
+        ..
+    } = shared_state;
+
+    let finished = match model
+        .stores
+        .freezing_accounts
+        .get_mut(pub_key)
+        .unwrap()
+        .update_scan(event, source, state.record_mt.commitment())
+        .await
+    {
+        Ok((mut editor, scan_info)) => {
+            editor.save()?;
+            match scan_info {
+                Some((key, ScanOutputs { records, history })) => {
+                    if let Err(err) = state.add_records(&mut model.stores, &key, records).await {
+                        tracing::error!("Error saving records from key scan {}: {}", pub_key, err);
+                    }
+                    for (uid, t) in history {
+                        model.stores.transactions.create(uid, t)?;
+                    }
+
+                    // Signal anyone waiting for a notification that this scan finished.
+                    for sender in pending_freezing_key_scans
+                        .remove(pub_key)
+                        .into_iter()
+                        .flatten()
+                    {
+                        // Ignore errors, it just means the receiving end of the channel has been
+                        // dropped.
+                        sender.send(()).ok();
+                    }
+
+                    true
+                }
+                None => false,
+            }
+        }
+        _ => false,
+    };
+
+    model.stores.ledger_states.update_dynamic(state)?;
+    Ok(finished)
+}
+
+async fn update_sending_key_scan<
     'a,
     L: 'static + Ledger,
     Backend: KeystoreBackend<'a, L>,
@@ -1700,7 +2089,7 @@ async fn update_key_scan<
     let KeystoreSharedState {
         state,
         model,
-        pending_key_scans,
+        pending_sending_key_scans,
         ..
     } = shared_state;
 
@@ -1724,7 +2113,11 @@ async fn update_key_scan<
                     }
 
                     // Signal anyone waiting for a notification that this scan finished.
-                    for sender in pending_key_scans.remove(address).into_iter().flatten() {
+                    for sender in pending_sending_key_scans
+                        .remove(address)
+                        .into_iter()
+                        .flatten()
+                    {
                         // Ignore errors, it just means the receiving end of the channel has been
                         // dropped.
                         sender.send(()).ok();
