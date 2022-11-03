@@ -232,7 +232,7 @@ impl<'a, const H: u8> MockBackendWithHeight<'a, H> {
 }
 
 #[async_trait]
-impl<'a, const H: u8> KeystoreBackend<'a, cap::LedgerWithHeight<H>>
+impl<'a, const H: u8> KeystoreBackend< cap::LedgerWithHeight<H>>
     for MockBackendWithHeight<'a, H>
 {
     type EventStream =
@@ -240,7 +240,7 @@ impl<'a, const H: u8> KeystoreBackend<'a, cap::LedgerWithHeight<H>>
 
     async fn create(
         &mut self,
-    ) -> Result<LedgerState<'a, cap::LedgerWithHeight<H>>, KeystoreError<cap::LedgerWithHeight<H>>>
+    ) -> Result<LedgerState< cap::LedgerWithHeight<H>>, KeystoreError<cap::LedgerWithHeight<H>>>
     {
         let state = {
             let mut ledger = self.ledger.lock().await;

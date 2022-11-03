@@ -249,7 +249,7 @@ mod tests {
 
     #[async_std::test]
     async fn test_round_trip() -> std::io::Result<()> {
-        let (mut stored, mut loader, mut rng) = get_test_state("test_round_trip").await;
+        let (mut stored, mut loader, mut rng): (_, MockKeystoreLoader, ChaChaRng) = get_test_state("test_round_trip").await;
 
         // Create a new storage instance to load the keystore back from disk, to ensure that what we
         // load comes only from persistent storage and not from any in-memory state of the first

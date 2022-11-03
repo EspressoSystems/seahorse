@@ -61,7 +61,7 @@ struct BenchLedgerScanner<'a, T: SystemUnderTest<'a> + Clone> {
     // A keystore state snapshotted from the initial state of the benchmark (after `start_time`). This
     // can be used to create a new keystore which will then scan all of the preopulated events in its
     // main event thread.
-    initial_state: LedgerState<'a, T::Ledger>,
+    initial_state: LedgerState< T::Ledger>,
 }
 
 type MockLedger<'a, T> = super::MockLedger<

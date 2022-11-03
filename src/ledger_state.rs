@@ -302,11 +302,11 @@ impl<L: Ledger> Hash for TransactionUID<L> {
     }
 }
 
-impl<'a, L: Ledger> Arbitrary<'a> for TransactionUID<L>
+impl<L: Ledger> Arbitrary<'static> for TransactionUID<L>
 where
-    TransactionHash<L>: Arbitrary<'a>,
+    TransactionHash<L>: Arbitrary<'static>,
 {
-    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
+    fn arbitrary(u: &mut Unstructured<'static>) -> arbitrary::Result<Self> {
         Ok(Self(u.arbitrary()?))
     }
 }
@@ -351,7 +351,7 @@ async fn try_open_memos<
     L: Ledger,
     Meta: Serialize + DeserializeOwned + Send + Sync + Clone + PartialEq,
 >(
-    stores: &mut KeystoreStores<'_, L, Meta>,
+    stores: &mut KeystoreStores<L, Meta>,
     key_pair: &UserKeyPair,
     memos: &[(ReceiverMemo, RecordCommitment, u64, MerklePath)],
     transaction: Option<(u64, u64, TransactionHash<L>, TransactionKind<L>)>,
@@ -390,7 +390,7 @@ async fn receive_attached_records<
     L: Ledger,
     Meta: Serialize + DeserializeOwned + Send + Sync + Clone + PartialEq,
 >(
-    stores: &mut KeystoreStores<'_, L, Meta>,
+    stores: &mut KeystoreStores< L, Meta>,
     txn: &reef::Transaction<L>,
     uids: &mut [(u64, bool)],
     add_to_history: bool,
@@ -452,7 +452,7 @@ async fn add_receive_history<
     L: Ledger,
     Meta: Serialize + DeserializeOwned + Send + Sync + Clone + PartialEq,
 >(
-    stores: &mut KeystoreStores<'_, L, Meta>,
+    stores: &mut KeystoreStores< L, Meta>,
     kind: TransactionKind<L>,
     hash: TransactionHash<L>,
     records: &[RecordOpening],
@@ -464,11 +464,10 @@ async fn add_receive_history<
 }
 
 async fn view_transaction<
-    'a,
     L: Ledger,
     Meta: Serialize + DeserializeOwned + Send + Sync + Clone + PartialEq,
 >(
-    model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
+    model: &mut KeystoreModel<L, impl KeystoreBackend<L>, Meta>,
     txn: &reef::Transaction<L>,
     uids: &mut [(u64, bool)],
 ) -> Result<(), KeystoreError<L>> {
@@ -573,7 +572,7 @@ fn u256_to_signed(u: U256) -> BigInt {
 }
 
 #[derive(Deserialize, Serialize, Derivative)]
-#[serde(bound = "")]
+#[serde(bound(deserialize = "'de: 'static"))]
 #[derivative(
     Clone(bound = ""),
     Debug(bound = ""),
@@ -581,7 +580,7 @@ fn u256_to_signed(u: U256) -> BigInt {
     Eq(bound = "")
 )]
 /// The state of the global ledger.
-pub struct LedgerState<'a, L: Ledger> {
+pub struct LedgerState<L: Ledger> {
     // For persistence, the fields in this struct are grouped into two categories based on how they
     // can be efficiently saved to disk:
     // 1. Static data, which never changes once a keystore is created, and so can be written to a
@@ -613,7 +612,7 @@ pub struct LedgerState<'a, L: Ledger> {
     ///
     /// These keys are constructed when the keystore is created, and they never change afterwards.
     #[serde(with = "serde_ark_unchecked")]
-    proving_keys: Arc<ProverKeySet<'a, key_set::OrderByOutputs>>,
+    proving_keys: Arc<ProverKeySet<'static, key_set::OrderByOutputs>>,
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // Dynamic data
@@ -628,10 +627,10 @@ pub struct LedgerState<'a, L: Ledger> {
     pub nullifiers: NullifierSet<L>,
 }
 
-impl<'a, L: 'static + Ledger> LedgerState<'a, L> {
+impl<L: 'static + Ledger> LedgerState<L> {
     /// Construct a ledger state.
     pub fn new(
-        proving_keys: Arc<ProverKeySet<'a, key_set::OrderByOutputs>>,
+        proving_keys: Arc<ProverKeySet<'static, key_set::OrderByOutputs>>,
         now: EventIndex,
         validator: Validator<L>,
         record_mt: LWMerkleTree,
@@ -646,7 +645,7 @@ impl<'a, L: 'static + Ledger> LedgerState<'a, L> {
         }
     }
     /// Get the proving keys.
-    pub fn proving_keys(&self) -> Arc<ProverKeySet<'a, key_set::OrderByOutputs>> {
+    pub fn proving_keys(&self) -> Arc<ProverKeySet<'static, key_set::OrderByOutputs>> {
         self.proving_keys.clone()
     }
 
@@ -696,13 +695,13 @@ impl<'a, L: 'static + Ledger> LedgerState<'a, L> {
     fn xfr_proving_key<'k>(
         rng: &mut ChaChaRng,
         any_key: UserPubKey,
-        proving_keys: &'k KeySet<TransferProvingKey<'a>, key_set::OrderByOutputs>,
+        proving_keys: &'k KeySet<TransferProvingKey<'static>, key_set::OrderByOutputs>,
         asset: &AssetDefinition,
         inputs: &mut Vec<TransferNoteInput<'k>>,
         outputs: &mut Vec<RecordOpening>,
         xfr_size_requirement: Option<(usize, usize)>,
         change_record: bool,
-    ) -> Result<(&'k TransferProvingKey<'a>, usize), KeystoreError<L>> {
+    ) -> Result<(&'k TransferProvingKey<'static>, usize), KeystoreError<L>> {
         let total_output_amount = outputs
             .iter()
             .fold(U256::zero(), |sum, ro| sum + RecordAmount::from(ro.amount));
@@ -797,11 +796,11 @@ impl<'a, L: 'static + Ledger> LedgerState<'a, L> {
 
     fn freeze_proving_key<'k>(
         rng: &mut ChaChaRng,
-        proving_keys: &'k KeySet<FreezeProvingKey<'a>, key_set::OrderByOutputs>,
+        proving_keys: &'k KeySet<FreezeProvingKey<'static>, key_set::OrderByOutputs>,
         asset: &AssetDefinition,
         inputs: &mut Vec<FreezeNoteInput<'k>>,
         key_pair: &'k FreezerKeyPair,
-    ) -> Result<&'k FreezeProvingKey<'a>, KeystoreError<L>> {
+    ) -> Result<&'k FreezeProvingKey<'static>, KeystoreError<L>> {
         let total_output_amount = inputs.iter().fold(U256::zero(), |sum, input| {
             sum + RecordAmount::from(input.ro.amount)
         });
@@ -845,11 +844,11 @@ impl<'a, L: 'static + Ledger> LedgerState<'a, L> {
         Ok(proving_key)
     }
 
-    fn transfer<'k>(
+    fn transfer(
         &mut self,
         records: &mut Records,
-        spec: TransferSpec<'k>,
-        proving_keys: &'k KeySet<TransferProvingKey<'a>, key_set::OrderByOutputs>,
+        spec: TransferSpec,
+        proving_keys: &KeySet<TransferProvingKey<'static>, key_set::OrderByOutputs>,
         rng: &mut ChaChaRng,
     ) -> Result<(TransferNote, TransactionParams<L>), KeystoreError<L>> {
         if *spec.asset == AssetCode::native() {
@@ -859,11 +858,11 @@ impl<'a, L: 'static + Ledger> LedgerState<'a, L> {
         }
     }
 
-    fn transfer_native<'k>(
+    fn transfer_native(
         &mut self,
         records: &mut Records,
-        spec: TransferSpec<'k>,
-        proving_keys: &'k KeySet<TransferProvingKey<'a>, key_set::OrderByOutputs>,
+        spec: TransferSpec,
+        proving_keys: &KeySet<TransferProvingKey<'static>, key_set::OrderByOutputs>,
         rng: &mut ChaChaRng,
     ) -> Result<(TransferNote, TransactionParams<L>), KeystoreError<L>> {
         let total_output_amount: U256 = spec
@@ -985,11 +984,11 @@ impl<'a, L: 'static + Ledger> LedgerState<'a, L> {
         Ok((note, txn_params))
     }
 
-    fn transfer_non_native<'k>(
+    fn transfer_non_native(
         &mut self,
         records_db: &mut Records,
-        spec: TransferSpec<'k>,
-        proving_keys: &'k KeySet<TransferProvingKey<'a>, key_set::OrderByOutputs>,
+        spec: TransferSpec,
+        proving_keys: &KeySet<TransferProvingKey<'static>, key_set::OrderByOutputs>,
         rng: &mut ChaChaRng,
     ) -> Result<(TransferNote, TransactionParams<L>), KeystoreError<L>> {
         assert_ne!(
@@ -1181,7 +1180,7 @@ impl<'a, L: 'static + Ledger> LedgerState<'a, L> {
         &mut self,
         records: &mut Records,
         sending_keys: &[UserKeyPair],
-        proving_key: &MintProvingKey<'a>,
+        proving_key: &MintProvingKey<'static>,
         fee: RecordAmount,
         asset: &(AssetDefinition, AssetCodeSeed, Vec<u8>),
         amount: RecordAmount,
@@ -1237,7 +1236,7 @@ impl<'a, L: 'static + Ledger> LedgerState<'a, L> {
         records: &mut Records,
         sending_keys: &[UserKeyPair],
         freezer_key_pair: &FreezerKeyPair,
-        proving_keys: &KeySet<FreezeProvingKey<'a>, key_set::OrderByOutputs>,
+        proving_keys: &KeySet<FreezeProvingKey<'static>, key_set::OrderByOutputs>,
         fee: RecordAmount,
         asset: &AssetDefinition,
         amount: U256,
@@ -1547,7 +1546,7 @@ impl<'a, L: 'static + Ledger> LedgerState<'a, L> {
     /// Compute the spendable balance of the given asset owned by the given addresses.
     pub fn balance<Meta: Serialize + DeserializeOwned + Send + Sync + Clone + PartialEq>(
         &self,
-        stores: &KeystoreStores<'a, L, Meta>,
+        stores: &KeystoreStores<L, Meta>,
         addresses: impl Iterator<Item = UserAddress>,
         asset: &AssetCode,
         frozen: FreezeFlag,
@@ -1564,7 +1563,7 @@ impl<'a, L: 'static + Ledger> LedgerState<'a, L> {
         Meta: Serialize + DeserializeOwned + Send + Sync + Clone + PartialEq,
     >(
         &self,
-        stores: &KeystoreStores<'a, L, Meta>,
+        stores: &KeystoreStores<L, Meta>,
         address: &UserAddress,
         asset: &AssetCode,
         frozen: FreezeFlag,
@@ -1583,7 +1582,7 @@ impl<'a, L: 'static + Ledger> LedgerState<'a, L> {
         Meta: Serialize + DeserializeOwned + Send + Sync + Clone + PartialEq,
     >(
         &mut self,
-        model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
+        model: &mut KeystoreModel<L, impl KeystoreBackend<L>, Meta>,
         event: LedgerEvent<L>,
         source: EventSource,
     ) -> Result<EventSummary<L>, KeystoreError<L>> {
@@ -1873,7 +1872,7 @@ impl<'a, L: 'static + Ledger> LedgerState<'a, L> {
         Meta: Serialize + DeserializeOwned + Send + Sync + Clone + PartialEq,
     >(
         &mut self,
-        stores: &mut KeystoreStores<'a, L, Meta>,
+        stores: &mut KeystoreStores<L, Meta>,
         key_pair: &UserKeyPair,
         records: Vec<(RecordOpening, u64, MerklePath)>,
     ) -> Result<(), KeystoreError<L>> {
@@ -1916,7 +1915,7 @@ impl<'a, L: 'static + Ledger> LedgerState<'a, L> {
         Meta: Serialize + DeserializeOwned + Send + Sync + Clone + PartialEq,
     >(
         &mut self,
-        stores: &mut KeystoreStores<'a, L, Meta>,
+        stores: &mut KeystoreStores<L, Meta>,
         memo: ReceiverMemo,
         comm: RecordCommitment,
         uid: u64,
@@ -1944,13 +1943,12 @@ impl<'a, L: 'static + Ledger> LedgerState<'a, L> {
     }
 
     async fn clear_pending_transaction<
-        't,
         Meta: Serialize + DeserializeOwned + Send + Sync + Clone + PartialEq,
     >(
         &mut self,
-        stores: &mut KeystoreStores<'a, L, Meta>,
+        stores: &mut KeystoreStores<L, Meta>,
         txn: &reef::Transaction<L>,
-        res: Option<CommittedTxn<'t>>,
+        res: Option<CommittedTxn<'_>>,
     ) -> Option<Transaction<L>> {
         let now = self.block_height();
         let pending = stores
@@ -2017,7 +2015,7 @@ impl<'a, L: 'static + Ledger> LedgerState<'a, L> {
         Meta: Serialize + DeserializeOwned + Send + Sync + Clone + PartialEq,
     >(
         &mut self,
-        model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
+        model: &mut KeystoreModel<L, impl KeystoreBackend<L>, Meta>,
         txn: &mut reef::Transaction<L>,
     ) -> Result<(), KeystoreError<L>> {
         let mut proofs = Vec::new();
@@ -2044,13 +2042,11 @@ impl<'a, L: 'static + Ledger> LedgerState<'a, L> {
         Meta: Serialize + DeserializeOwned + Send + Send + Sync + Clone + PartialEq,
     >(
         &'b mut self,
-        model: &'b mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
+        model: &'b mut KeystoreModel<L, impl KeystoreBackend<L>, Meta>,
         name: String,
         description: &'b [u8],
         policy: AssetPolicy,
-    ) -> impl 'b + Captures<'a> + Future<Output = Result<AssetDefinition, KeystoreError<L>>> + Send
-    where
-        'a: 'b,
+    ) -> impl 'b + Captures<'static> + Future<Output = Result<AssetDefinition, KeystoreError<L>>> + Send
     {
         async move {
             let seed = AssetCodeSeed::generate(&mut model.rng);
@@ -2109,14 +2105,14 @@ impl<'a, L: 'static + Ledger> LedgerState<'a, L> {
         Meta: Serialize + DeserializeOwned + Send + Sync + Clone + PartialEq,
     >(
         &mut self,
-        model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
+        model: &mut KeystoreModel<L, impl KeystoreBackend<L>, Meta>,
         user_key: Option<UserKeyPair>,
         description: String,
         scan_from: Option<EventIndex>,
     ) -> Result<
         (
             UserKeyPair,
-            Option<impl 'a + Stream<Item = (LedgerEvent<L>, EventSource)> + Send + Unpin>,
+            Option<impl 'static + Stream<Item = (LedgerEvent<L>, EventSource)> + Send + Unpin>,
         ),
         KeystoreError<L>,
     > {
@@ -2204,7 +2200,7 @@ impl<'a, L: 'static + Ledger> LedgerState<'a, L> {
         Meta: Serialize + DeserializeOwned + Send + Sync + Clone + PartialEq,
     >(
         &mut self,
-        model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
+        model: &mut KeystoreModel<L, impl KeystoreBackend<L>, Meta>,
         viewing_key: Option<ViewerKeyPair>,
         description: String,
     ) -> Result<ViewerKeyPair, KeystoreError<L>> {
@@ -2246,7 +2242,7 @@ impl<'a, L: 'static + Ledger> LedgerState<'a, L> {
         Meta: Serialize + DeserializeOwned + Send + Sync + Clone + PartialEq,
     >(
         &mut self,
-        model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
+        model: &mut KeystoreModel<L, impl KeystoreBackend<L>, Meta>,
         freezing_key: Option<FreezerKeyPair>,
         description: String,
     ) -> Result<FreezerKeyPair, KeystoreError<L>> {
@@ -2283,12 +2279,11 @@ impl<'a, L: 'static + Ledger> LedgerState<'a, L> {
     }
 
     pub(crate) fn build_transfer<
-        'k,
         Meta: Serialize + DeserializeOwned + Send + Sync + Clone + PartialEq,
     >(
         &mut self,
-        model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
-        spec: TransferSpec<'k>,
+        model: &mut KeystoreModel<L, impl KeystoreBackend<L>, Meta>,
+        spec: TransferSpec,
     ) -> Result<(TransferNote, TransactionParams<L>), KeystoreError<L>> {
         self.transfer(
             &mut model.stores.records,
@@ -2302,7 +2297,7 @@ impl<'a, L: 'static + Ledger> LedgerState<'a, L> {
         Meta: Serialize + DeserializeOwned + Send + Sync + Clone + PartialEq,
     >(
         &mut self,
-        model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
+        model: &mut KeystoreModel<L, impl KeystoreBackend<L>, Meta>,
         minter: Option<&UserAddress>,
         fee: RecordAmount,
         asset_code: &AssetCode,
@@ -2342,7 +2337,7 @@ impl<'a, L: 'static + Ledger> LedgerState<'a, L> {
         Meta: Serialize + DeserializeOwned + Send + Sync + Clone + PartialEq,
     >(
         &mut self,
-        model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
+        model: &mut KeystoreModel<L, impl KeystoreBackend<L>, Meta>,
         fee_address: Option<&UserAddress>,
         fee: RecordAmount,
         asset: &AssetCode,
@@ -2389,7 +2384,7 @@ impl<'a, L: 'static + Ledger> LedgerState<'a, L> {
         Meta: Serialize + DeserializeOwned + Send + Sync + Clone + PartialEq,
     >(
         &mut self,
-        model: &mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
+        model: &mut KeystoreModel<L, impl KeystoreBackend<L>, Meta>,
         note: TransactionNote,
         info: TransactionParams<L>,
     ) -> Result<TransactionUID<L>, KeystoreError<L>> {
@@ -2417,9 +2412,9 @@ impl<'a, L: 'static + Ledger> LedgerState<'a, L> {
     // inference, or at least a deficiency around async sugar combined with a bug in diagnostics.
     //
     // As a work-around, we do the desugaring manually so that we can explicitly specify that the
-    // return type implements Send. The return type also captures a reference with lifetime 'a,
+    // return type implements Send. The return type also captures a reference with lifetime 'static,
     // which is different from (but related to) the lifetime 'b of the returned Future, and
-    // `impl 'a + 'b + ...` does not work, so we use the work-around described at
+    // `impl 'static + 'b + ...` does not work, so we use the work-around described at
     // https://stackoverflow.com/questions/50547766/how-can-i-get-impl-trait-to-use-the-appropriate-lifetime-for-a-mutable-reference
     // to indicate the captured lifetime using the Captures trait.
     pub(crate) fn submit_elaborated_transaction<
@@ -2427,12 +2422,10 @@ impl<'a, L: 'static + Ledger> LedgerState<'a, L> {
         Meta: Serialize + DeserializeOwned + Send + Sync + Clone + PartialEq,
     >(
         &'b mut self,
-        model: &'b mut KeystoreModel<'a, L, impl KeystoreBackend<'a, L>, Meta>,
+        model: &'b mut KeystoreModel<L, impl KeystoreBackend<L>, Meta>,
         txn: reef::Transaction<L>,
         info: Option<TransactionParams<L>>,
-    ) -> impl 'b + Captures<'a> + Future<Output = Result<TransactionUID<L>, KeystoreError<L>>> + Send
-    where
-        'a: 'b,
+    ) -> impl 'b + Captures<'static> + Future<Output = Result<TransactionUID<L>, KeystoreError<L>>> + Send
     {
         async move {
             let stored_txn = if let Some(mut info) = info {
@@ -2494,13 +2487,13 @@ mod serde_ark_unchecked {
 /// Serialization intermediate for the static part of a ledger state.
 // // #[derive(Deserialize, Serialize, Debug)]
 #[derive(Deserialize, Serialize)]
-pub(crate) struct StaticState<'a> {
+pub(crate) struct StaticState {
     #[serde(with = "serde_ark_unchecked")]
-    proving_keys: Arc<ProverKeySet<'a, OrderByOutputs>>,
+    proving_keys: Arc<ProverKeySet<'static, OrderByOutputs>>,
 }
 
-impl<'a, L: Ledger> From<&LedgerState<'a, L>> for StaticState<'a> {
-    fn from(w: &LedgerState<'a, L>) -> Self {
+impl<L: Ledger> From<&LedgerState<L>> for StaticState {
+    fn from(w: &LedgerState<L>) -> Self {
         Self {
             proving_keys: w.proving_keys.clone(),
         }
@@ -2517,8 +2510,8 @@ pub(crate) struct DynamicState<L: Ledger> {
     nullifiers: NullifierSet<L>,
 }
 
-impl<'a, L: Ledger> From<&LedgerState<'a, L>> for DynamicState<L> {
-    fn from(w: &LedgerState<'a, L>) -> Self {
+impl<L: Ledger> From<&LedgerState<L>> for DynamicState<L> {
+    fn from(w: &LedgerState<L>) -> Self {
         Self {
             now: w.now,
             validator: w.validator.clone(),
@@ -2527,18 +2520,18 @@ impl<'a, L: Ledger> From<&LedgerState<'a, L>> for DynamicState<L> {
         }
     }
 }
-
+ 
 /// Storage for the static and dynamic parts of the ledger state.
-pub struct LedgerStates<'a, L: Ledger> {
-    static_store: RollingLog<EncryptingResourceAdapter<StaticState<'a>>>,
+pub struct LedgerStates<L: Ledger> {
+    static_store:  RollingLog<EncryptingResourceAdapter<StaticState>>,
     dynamic_store: RollingLog<EncryptingResourceAdapter<DynamicState<L>>>,
 }
 
-impl<'a, L: 'static + Ledger> LedgerStates<'a, L> {
+impl<L: 'static + Ledger> LedgerStates<L> {
     /// Create a ledger state store.
     pub(crate) fn new(
         loader: &mut AtomicStoreLoader,
-        static_adaptor: EncryptingResourceAdapter<StaticState<'a>>,
+        static_adaptor: EncryptingResourceAdapter<StaticState>,
         dynamic_adaptor: EncryptingResourceAdapter<DynamicState<L>>,
         fill_size: u64,
     ) -> Result<Self, KeystoreError<L>> {
@@ -2562,7 +2555,7 @@ impl<'a, L: 'static + Ledger> LedgerStates<'a, L> {
     }
 
     /// Load the ledger state from the store.
-    pub fn load(&self) -> Result<LedgerState<'a, L>, KeystoreError<L>> {
+    pub fn load(&self) -> Result<LedgerState<L>, KeystoreError<L>> {
         let static_state = self.static_store.load_latest()?;
         let dynamic_store = self.dynamic_store.load_latest()?;
         Ok(LedgerState::new(
@@ -2575,9 +2568,9 @@ impl<'a, L: 'static + Ledger> LedgerStates<'a, L> {
     }
 
     /// Update the store with the given ledger state.
-    pub fn update(&mut self, ledger_state: &LedgerState<'a, L>) -> Result<(), KeystoreError<L>> {
+    pub fn update(&mut self, ledger_state: &LedgerState<L>) -> Result<(), KeystoreError<L>> {
         self.static_store
-            .store_resource(&StaticState::<'a>::from(ledger_state))?;
+            .store_resource(&StaticState::from(ledger_state))?;
         self.dynamic_store
             .store_resource(&DynamicState::<L>::from(ledger_state))?;
         Ok(())
@@ -2586,7 +2579,7 @@ impl<'a, L: 'static + Ledger> LedgerStates<'a, L> {
     /// Update the dynamic store with the given ledger state.
     pub fn update_dynamic(
         &mut self,
-        ledger_state: &LedgerState<'a, L>,
+        ledger_state: &LedgerState<L>,
     ) -> Result<(), KeystoreError<L>> {
         self.dynamic_store
             .store_resource(&DynamicState::<L>::from(ledger_state))?;
