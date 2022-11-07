@@ -62,7 +62,6 @@ use crate::{
     },
     transactions::{Transaction, TransactionParams, Transactions},
 };
-use async_scoped::AsyncScope;
 use async_std::task::sleep;
 use async_trait::async_trait;
 use atomic_store::{
@@ -70,6 +69,7 @@ use atomic_store::{
     AtomicStoreLoader,
 };
 use core::fmt::Debug;
+use futures::future::BoxFuture;
 use futures::{channel::oneshot, prelude::*, stream::Stream};
 use jf_cap::{
     errors::TxnApiError,
@@ -473,9 +473,6 @@ pub struct Keystore<
     //    which the corresponding future is supposed to complete. Handles are added in sync() (main
     //    thread) and removed and completed in the event thread
     mutex: Arc<KeystoreSharedStateRwLock<L, Backend, Meta>>,
-    // Handle for the background tasks running the event handling loop and retroactive ledger scans.
-    // When dropped, this handle will cancel the tasks.
-    task_scope: AsyncScope<'static, ()>,
 }
 
 #[derive(Clone)]
@@ -531,7 +528,7 @@ impl<T: Serialize + for<'a> Deserialize<'a>> LoadStore for EncryptingResourceAda
 // Fun fact: replacing `std::pin::Pin` with `Pin` and adding `use std::pin::Pin` causes the compiler
 // to panic where this type alias is used in `Keystore::new`. As a result, the type alias `BoxFuture`
 // from `futures::future` does not work, so we define our own.
-type BoxFuture<'a, T> = std::pin::Pin<Box<dyn Future<Output = T> + Send + 'a>>;
+// type BoxFuture<'a, T> = std::pin::Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
 // `SendFuture` trait is needed for the cape repo to compile when calling key generation functions,
 // `generate_viewing_account`, `generate_freezing_account`, and `generate_sending_account`.
@@ -547,8 +544,8 @@ type BoxFuture<'a, T> = std::pin::Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 //
 // Related issues:
 // https://github.com/rust-lang/rust/issues/89657, https://github.com/rust-lang/rust/issues/90691.
-pub trait SendFuture<'a, T>: Future<Output = T> + Captures<'a> + Send {}
-impl<T, F: Future<Output = T> + Captures<'static> + Send> SendFuture<'static, T> for F {}
+// pub trait SendFuture<'a, T>: Future<Output = T> + Captures<'a> + Send {}
+// impl<T, F: Future<Output = T> + Captures<'static> + Send> SendFuture<'static, T> for F {}
 
 impl<
         L: 'static + Ledger,
@@ -744,47 +741,41 @@ impl<
             freezing_key_scans.iter().map(|(key, _)| key.clone()),
             sending_key_scans.iter().map(|(key, _)| key.clone()),
         ));
-        let mut scope = unsafe {
-            // Creating an AsyncScope is considered unsafe because `std::mem::forget` is allowed
-            // in safe code, and forgetting an AsyncScope can allow its inner futures to
-            // continue to be scheduled to run after the lifetime of the scope ends, since
-            // normally the destructor of the scope ensures that its futures are driven to
-            // completion before its lifetime ends.
-            //
-            // Since we are immediately going to store `scope` in the resulting `Keystore`, its
-            // lifetime will be the same as the `Keystore`, and its destructor will run as long as
-            // no one calls `forget` on the `Keystore` -- which no one should ever have any reason
-            // to.
-            AsyncScope::create()
-        };
+        // let mut scope = unsafe {
+        // Creating an AsyncScope is considered unsafe because `std::mem::forget` is allowed
+        // in safe code, and forgetting an AsyncScope can allow its inner futures to
+        // continue to be scheduled to run after the lifetime of the scope ends, since
+        // normally the destructor of the scope ensures that its futures are driven to
+        // completion before its lifetime ends.
+        //
+        // Since we are immediately going to store `scope` in the resulting `Keystore`, its
+        // lifetime will be the same as the `Keystore`, and its destructor will run as long as
+        // no one calls `forget` on the `Keystore` -- which no one should ever have any reason
+        // to.
+        // AsyncScope::create()
+        // };
 
         // Start the event loop.
         {
             let mutex = mutex.clone();
-            scope.spawn_cancellable(
-                async move {
-                    while let Some((event, source)) = events.next().await {
-                        while let Err(err) = mutex
-                            .write()
-                            .await
-                            .update(|state| update_ledger(event.clone(), source, state).boxed())
-                            .await
-                        {
-                            tracing::error!("error while scanning ledger, retrying: {}", err);
-                            // Sleep a little bit before retrying, so that if the error is
-                            // persistent, we don't obnoxiously spam the logs or hog the mutex.
-                            sleep(Duration::from_secs(5)).await;
-                        }
+            async_std::task::spawn(async move {
+                while let Some((event, source)) = events.next().await {
+                    while let Err(err) = mutex
+                        .write()
+                        .await
+                        .update(|state| update_ledger(event.clone(), source, state).boxed())
+                        .await
+                    {
+                        tracing::error!("error while scanning ledger, retrying: {}", err);
+                        // Sleep a little bit before retrying, so that if the error is
+                        // persistent, we don't obnoxiously spam the logs or hog the mutex.
+                        sleep(Duration::from_secs(5)).await;
                     }
-                },
-                || (),
-            );
+                }
+            });
         };
 
-        let mut keystore = Self {
-            mutex,
-            task_scope: scope,
-        };
+        let mut keystore = Self { mutex };
 
         // Spawn background tasks for any scans which were in progress when the keystore was last
         // shut down.
@@ -801,10 +792,10 @@ impl<
         Ok(keystore)
     }
 
-    pub async fn close(mut self) {
-        self.task_scope.cancel();
-        self.task_scope.collect::<Vec<_>>().await;
-    }
+    // pub async fn close(mut self) {
+    //     self.task_scope.cancel();
+    //     self.task_scope.collect::<Vec<_>>().await;
+    // }
 
     /// Access the shared state directly.
     pub async fn write(&self) -> KeystoreSharedStateWriteGuard<'_, L, Backend, Meta> {
@@ -926,17 +917,11 @@ impl<
 
     /// List past transactions involving this keystore.
     #[allow(clippy::type_complexity)]
-    pub fn transaction_history(
-        &self,
-    ) -> std::pin::Pin<
-        Box<dyn SendFuture<'static, Result<Vec<Transaction<L>>, KeystoreError<L>>> + '_>,
-    > {
-        Box::pin(async move {
-            let KeystoreSharedState { model, .. } = &*self.read().await;
-            let mut history = model.stores.transactions.iter().collect::<Vec<_>>();
-            history.sort_by_key(|txn| *txn.created_time());
-            Ok(history)
-        })
+    pub async fn transaction_history(&self) -> Result<Vec<Transaction<L>>, KeystoreError<L>> {
+        let KeystoreSharedState { model, .. } = &*self.read().await;
+        let mut history = model.stores.transactions.iter().collect::<Vec<_>>();
+        history.sort_by_key(|txn| *txn.created_time());
+        Ok(history)
     }
 
     /// Basic transfer without customization.
@@ -1103,133 +1088,16 @@ impl<
     /// may have viewable, freezable or owned records. The keystore will start a scan of the
     /// ledger in the background to find records viewable, freezable or spendable by this key. The
     /// scan will start from the event specified by `scan_from`.
-    pub fn add_account<Key: KeyPair + 'static>(
+    pub async fn add_account<Key: KeyPair + 'static>(
         &mut self,
         key: Key,
         description: String,
         scan_from: EventIndex,
-    ) -> std::pin::Pin<Box<dyn SendFuture<'static, Result<(), KeystoreError<L>>> + '_>> {
-        Box::pin(async move {
-            match key.key_type() {
-                KeyType::Viewing(viewing_key) => {
-                    let (viewing_key, events) = self
-                        .write()
-                        .await
-                        .update(
-                            |KeystoreSharedState {
-                                 state,
-                                 model,
-                                 pending_viewing_key_scans,
-                                 ..
-                             }| async move {
-                                let (viewing_key, events) = state
-                                    .add_viewing_account(
-                                        model,
-                                        Some(viewing_key),
-                                        description,
-                                        Some(scan_from),
-                                    )
-                                    .await?;
-                                // Register the key scan in `pending_viewing_key_scans` so that
-                                // `await_viewing_key_scan` will work.
-                                pending_viewing_key_scans.insert(viewing_key.pub_key(), vec![]);
-                                Ok((viewing_key, events))
-                            },
-                        )
-                        .await?;
-
-                    if let Some(events) = events {
-                        // Start a background task to scan for records viewable by the new key.
-                        self.spawn_viewing_key_scan(viewing_key.pub_key(), events)
-                            .await;
-                    }
-                }
-                KeyType::Freezing(freezing_key) => {
-                    let (freezing_key, events) = self
-                        .write()
-                        .await
-                        .update(
-                            |KeystoreSharedState {
-                                 state,
-                                 model,
-                                 pending_freezing_key_scans,
-                                 ..
-                             }| async move {
-                                let (freezing_key, events) = state
-                                    .add_freezing_account(
-                                        model,
-                                        Some(freezing_key),
-                                        description,
-                                        Some(scan_from),
-                                    )
-                                    .await?;
-                                // Register the key scan in `pending_freezing_key_scans` so that
-                                // `await_freezing_key_scan` will work.
-                                pending_freezing_key_scans.insert(freezing_key.pub_key(), vec![]);
-                                Ok((freezing_key, events))
-                            },
-                        )
-                        .await?;
-
-                    if let Some(events) = events {
-                        // Start a background task to scan for records freezable by the new key.
-                        self.spawn_freezing_key_scan(freezing_key.pub_key(), events)
-                            .await;
-                    }
-                }
-                KeyType::Sending(sending_key) => {
-                    let (sending_key, events) = self
-                        .write()
-                        .await
-                        .update(
-                            |KeystoreSharedState {
-                                 state,
-                                 model,
-                                 pending_sending_key_scans,
-                                 ..
-                             }| async move {
-                                let (sending_key, events) = state
-                                    .add_sending_account(
-                                        model,
-                                        Some(sending_key),
-                                        description,
-                                        Some(scan_from),
-                                    )
-                                    .await?;
-                                // Register the key scan in `pending_sending_key_scans` so that
-                                // `await_sending_key_scan` will work.
-                                pending_sending_key_scans.insert(sending_key.address(), vec![]);
-                                Ok((sending_key, events))
-                            },
-                        )
-                        .await?;
-
-                    if let Some(events) = events {
-                        // Start a background task to scan for records belonging to the new key.
-                        self.spawn_sending_key_scan(sending_key.address(), events)
-                            .await;
-                    }
-                }
-            }
-            Ok(())
-        })
-    }
-
-    /// Generate a new viewing key and add it to the keystore's key set.
-    ///
-    /// Keys are generated deterministically based on the mnemonic phrase used to load the keystore.
-    /// If this is a recovery of an HD keystore from a mnemonic phrase, `scan_from` can be used to
-    /// initiate a background scan of the ledger from the given event index to find records already
-    /// viewable by the new key.
-    pub fn generate_viewing_account(
-        &mut self,
-        description: String,
-        scan_from: Option<EventIndex>,
-    ) -> std::pin::Pin<Box<dyn SendFuture<'static, Result<ViewerPubKey, KeystoreError<L>>> + '_>>
-    {
-        Box::pin(async move {
-            let (viewing_key, events) = {
-                self.write()
+    ) -> Result<(), KeystoreError<L>> {
+        match key.key_type() {
+            KeyType::Viewing(viewing_key) => {
+                let (viewing_key, events) = self
+                    .write()
                     .await
                     .update(
                         |KeystoreSharedState {
@@ -1239,7 +1107,12 @@ impl<
                              ..
                          }| async move {
                             let (viewing_key, events) = state
-                                .add_viewing_account(model, None, description, scan_from)
+                                .add_viewing_account(
+                                    model,
+                                    Some(viewing_key),
+                                    description,
+                                    Some(scan_from),
+                                )
                                 .await?;
                             // Register the key scan in `pending_viewing_key_scans` so that
                             // `await_viewing_key_scan` will work.
@@ -1247,34 +1120,17 @@ impl<
                             Ok((viewing_key, events))
                         },
                     )
-                    .await?
-            };
+                    .await?;
 
-            if let Some(events) = events {
-                // Start a background task to scan for records viewable by the new key.
-                self.spawn_viewing_key_scan(viewing_key.pub_key(), events)
-                    .await;
+                if let Some(events) = events {
+                    // Start a background task to scan for records viewable by the new key.
+                    self.spawn_viewing_key_scan(viewing_key.pub_key(), events)
+                        .await;
+                }
             }
-
-            Ok(viewing_key.pub_key())
-        })
-    }
-
-    /// Generate a new freezing key and add it to the keystore's key set.
-    ///
-    /// Keys are generated deterministically based on the mnemonic phrase used to load the keystore.
-    /// If this is a recovery of an HD keystore from a mnemonic phrase, `scan_from` can be used to
-    /// initiate a background scan of the ledger from the given event index to find records already
-    /// freezable by the new key.
-    pub fn generate_freezing_account(
-        &mut self,
-        description: String,
-        scan_from: Option<EventIndex>,
-    ) -> std::pin::Pin<Box<dyn SendFuture<'static, Result<FreezerPubKey, KeystoreError<L>>> + '_>>
-    {
-        Box::pin(async move {
-            let (freezing_key, events) = {
-                self.write()
+            KeyType::Freezing(freezing_key) => {
+                let (freezing_key, events) = self
+                    .write()
                     .await
                     .update(
                         |KeystoreSharedState {
@@ -1284,42 +1140,30 @@ impl<
                              ..
                          }| async move {
                             let (freezing_key, events) = state
-                                .add_freezing_account(model, None, description, scan_from)
+                                .add_freezing_account(
+                                    model,
+                                    Some(freezing_key),
+                                    description,
+                                    Some(scan_from),
+                                )
                                 .await?;
                             // Register the key scan in `pending_freezing_key_scans` so that
-                            // `await_vfreezing_key_scan` will work.
+                            // `await_freezing_key_scan` will work.
                             pending_freezing_key_scans.insert(freezing_key.pub_key(), vec![]);
                             Ok((freezing_key, events))
                         },
                     )
-                    .await?
-            };
+                    .await?;
 
-            if let Some(events) = events {
-                // Start a background task to scan for records freezable by the new key.
-                self.spawn_freezing_key_scan(freezing_key.pub_key(), events)
-                    .await;
+                if let Some(events) = events {
+                    // Start a background task to scan for records freezable by the new key.
+                    self.spawn_freezing_key_scan(freezing_key.pub_key(), events)
+                        .await;
+                }
             }
-
-            Ok(freezing_key.pub_key())
-        })
-    }
-
-    /// Generate a new sending key and add it to the keystore's key set.
-    ///
-    /// Keys are generated deterministically based on the mnemonic phrase used to load the keystore.
-    /// If this is a recovery of an HD keystore from a mnemonic phrase, `scan_from` can be used to
-    /// initiate a background scan of the ledger from the given event index to find records already
-    /// belonging to the new key.
-    pub fn generate_sending_account(
-        &mut self,
-        description: String,
-        scan_from: Option<EventIndex>,
-    ) -> std::pin::Pin<Box<dyn SendFuture<'static, Result<UserPubKey, KeystoreError<L>>> + '_>>
-    {
-        Box::pin(async move {
-            let (user_key, events) = {
-                self.write()
+            KeyType::Sending(sending_key) => {
+                let (sending_key, events) = self
+                    .write()
                     .await
                     .update(
                         |KeystoreSharedState {
@@ -1328,26 +1172,156 @@ impl<
                              pending_sending_key_scans,
                              ..
                          }| async move {
-                            let (user_key, events) = state
-                                .add_sending_account(model, None, description, scan_from)
+                            let (sending_key, events) = state
+                                .add_sending_account(
+                                    model,
+                                    Some(sending_key),
+                                    description,
+                                    Some(scan_from),
+                                )
                                 .await?;
                             // Register the key scan in `pending_sending_key_scans` so that
                             // `await_sending_key_scan` will work.
-                            pending_sending_key_scans.insert(user_key.address(), vec![]);
-                            Ok((user_key, events))
+                            pending_sending_key_scans.insert(sending_key.address(), vec![]);
+                            Ok((sending_key, events))
                         },
                     )
-                    .await?
-            };
+                    .await?;
 
-            if let Some(events) = events {
-                // Start a background task to scan for records belonging to the new key.
-                self.spawn_sending_key_scan(user_key.address(), events)
-                    .await;
+                if let Some(events) = events {
+                    // Start a background task to scan for records belonging to the new key.
+                    self.spawn_sending_key_scan(sending_key.address(), events)
+                        .await;
+                }
             }
+        }
+        Ok(())
+    }
 
-            Ok(user_key.pub_key())
-        })
+    /// Generate a new viewing key and add it to the keystore's key set.
+    ///
+    /// Keys are generated deterministically based on the mnemonic phrase used to load the keystore.
+    /// If this is a recovery of an HD keystore from a mnemonic phrase, `scan_from` can be used to
+    /// initiate a background scan of the ledger from the given event index to find records already
+    /// viewable by the new key.
+    pub async fn generate_viewing_account(
+        &mut self,
+        description: String,
+        scan_from: Option<EventIndex>,
+    ) -> Result<ViewerPubKey, KeystoreError<L>> {
+        let (viewing_key, events) = {
+            self.write()
+                .await
+                .update(
+                    |KeystoreSharedState {
+                         state,
+                         model,
+                         pending_viewing_key_scans,
+                         ..
+                     }| async move {
+                        let (viewing_key, events) = state
+                            .add_viewing_account(model, None, description, scan_from)
+                            .await?;
+                        // Register the key scan in `pending_viewing_key_scans` so that
+                        // `await_viewing_key_scan` will work.
+                        pending_viewing_key_scans.insert(viewing_key.pub_key(), vec![]);
+                        Ok((viewing_key, events))
+                    },
+                )
+                .await?
+        };
+
+        if let Some(events) = events {
+            // Start a background task to scan for records viewable by the new key.
+            self.spawn_viewing_key_scan(viewing_key.pub_key(), events)
+                .await;
+        }
+
+        Ok(viewing_key.pub_key())
+    }
+
+    /// Generate a new freezing key and add it to the keystore's key set.
+    ///
+    /// Keys are generated deterministically based on the mnemonic phrase used to load the keystore.
+    /// If this is a recovery of an HD keystore from a mnemonic phrase, `scan_from` can be used to
+    /// initiate a background scan of the ledger from the given event index to find records already
+    /// freezable by the new key.
+    pub async fn generate_freezing_account(
+        &mut self,
+        description: String,
+        scan_from: Option<EventIndex>,
+    ) -> Result<FreezerPubKey, KeystoreError<L>> {
+        let (freezing_key, events) = {
+            self.write()
+                .await
+                .update(
+                    |KeystoreSharedState {
+                         state,
+                         model,
+                         pending_freezing_key_scans,
+                         ..
+                     }| async move {
+                        let (freezing_key, events) = state
+                            .add_freezing_account(model, None, description, scan_from)
+                            .await?;
+                        // Register the key scan in `pending_freezing_key_scans` so that
+                        // `await_vfreezing_key_scan` will work.
+                        pending_freezing_key_scans.insert(freezing_key.pub_key(), vec![]);
+                        Ok((freezing_key, events))
+                    },
+                )
+                .await?
+        };
+
+        if let Some(events) = events {
+            // Start a background task to scan for records freezable by the new key.
+            self.spawn_freezing_key_scan(freezing_key.pub_key(), events)
+                .await;
+        }
+
+        Ok(freezing_key.pub_key())
+    }
+
+    /// Generate a new sending key and add it to the keystore's key set.
+    ///
+    /// Keys are generated deterministically based on the mnemonic phrase used to load the keystore.
+    /// If this is a recovery of an HD keystore from a mnemonic phrase, `scan_from` can be used to
+    /// initiate a background scan of the ledger from the given event index to find records already
+    /// belonging to the new key.
+    pub async fn generate_sending_account(
+        &mut self,
+        description: String,
+        scan_from: Option<EventIndex>,
+    ) -> Result<UserPubKey, KeystoreError<L>> {
+        let (user_key, events) = {
+            self.write()
+                .await
+                .update(
+                    |KeystoreSharedState {
+                         state,
+                         model,
+                         pending_sending_key_scans,
+                         ..
+                     }| async move {
+                        let (user_key, events) = state
+                            .add_sending_account(model, None, description, scan_from)
+                            .await?;
+                        // Register the key scan in `pending_sending_key_scans` so that
+                        // `await_sending_key_scan` will work.
+                        pending_sending_key_scans.insert(user_key.address(), vec![]);
+                        Ok((user_key, events))
+                    },
+                )
+                .await?
+        };
+
+        if let Some(events) = events {
+            // Start a background task to scan for records belonging to the new key.
+            self.spawn_sending_key_scan(user_key.address(), events)
+                .await;
+        }
+
+        Ok(user_key.pub_key())
     }
 
     /// Manually add an encrypted record.
@@ -1712,37 +1686,34 @@ impl<
         mut events: impl 'static + Stream<Item = (LedgerEvent<L>, EventSource)> + Unpin + Send,
     ) {
         let mutex = self.mutex.clone();
-        self.task_scope.spawn_cancellable(
-            async move {
-                let mut finished = false;
-                while !finished {
-                    let (next_event, source) = events.next().await.unwrap();
-                    loop {
-                        match mutex
-                            .write()
-                            .await
-                            .update(|state| {
-                                update_viewing_key_scan(&pub_key, next_event.clone(), source, state)
-                                    .boxed()
-                            })
-                            .await
-                        {
-                            Ok(f) => {
-                                finished = f;
-                                break;
-                            }
-                            Err(err) => {
-                                tracing::error!("error during key scan, retrying: {}", err);
-                                // Sleep a little bit before retrying, so that if the error is
-                                // persistent, we don't obnoxiously spam the logs or hog the mutex.
-                                sleep(Duration::from_secs(5)).await;
-                            }
+        async_std::task::spawn(async move {
+            let mut finished = false;
+            while !finished {
+                let (next_event, source) = events.next().await.unwrap();
+                loop {
+                    match mutex
+                        .write()
+                        .await
+                        .update(|state| {
+                            update_viewing_key_scan(&pub_key, next_event.clone(), source, state)
+                                .boxed()
+                        })
+                        .await
+                    {
+                        Ok(f) => {
+                            finished = f;
+                            break;
+                        }
+                        Err(err) => {
+                            tracing::error!("error during key scan, retrying: {}", err);
+                            // Sleep a little bit before retrying, so that if the error is
+                            // persistent, we don't obnoxiously spam the logs or hog the mutex.
+                            sleep(Duration::from_secs(5)).await;
                         }
                     }
                 }
-            },
-            || (),
-        );
+            }
+        });
     }
 
     async fn spawn_freezing_key_scan(
@@ -1751,42 +1722,34 @@ impl<
         mut events: impl 'static + Stream<Item = (LedgerEvent<L>, EventSource)> + Unpin + Send,
     ) {
         let mutex = self.mutex.clone();
-        self.task_scope.spawn_cancellable(
-            async move {
-                let mut finished = false;
-                while !finished {
-                    let (next_event, source) = events.next().await.unwrap();
-                    loop {
-                        match mutex
-                            .write()
-                            .await
-                            .update(|state| {
-                                update_freezing_key_scan(
-                                    &pub_key,
-                                    next_event.clone(),
-                                    source,
-                                    state,
-                                )
+        async_std::task::spawn(async move {
+            let mut finished = false;
+            while !finished {
+                let (next_event, source) = events.next().await.unwrap();
+                loop {
+                    match mutex
+                        .write()
+                        .await
+                        .update(|state| {
+                            update_freezing_key_scan(&pub_key, next_event.clone(), source, state)
                                 .boxed()
-                            })
-                            .await
-                        {
-                            Ok(f) => {
-                                finished = f;
-                                break;
-                            }
-                            Err(err) => {
-                                tracing::error!("error during key scan, retrying: {}", err);
-                                // Sleep a little bit before retrying, so that if the error is
-                                // persistent, we don't obnoxiously spam the logs or hog the mutex.
-                                sleep(Duration::from_secs(5)).await;
-                            }
+                        })
+                        .await
+                    {
+                        Ok(f) => {
+                            finished = f;
+                            break;
+                        }
+                        Err(err) => {
+                            tracing::error!("error during key scan, retrying: {}", err);
+                            // Sleep a little bit before retrying, so that if the error is
+                            // persistent, we don't obnoxiously spam the logs or hog the mutex.
+                            sleep(Duration::from_secs(5)).await;
                         }
                     }
                 }
-            },
-            || (),
-        );
+            }
+        });
     }
 
     async fn spawn_sending_key_scan(
@@ -1795,37 +1758,34 @@ impl<
         mut events: impl 'static + Stream<Item = (LedgerEvent<L>, EventSource)> + Unpin + Send,
     ) {
         let mutex = self.mutex.clone();
-        self.task_scope.spawn_cancellable(
-            async move {
-                let mut finished = false;
-                while !finished {
-                    let (next_event, source) = events.next().await.unwrap();
-                    loop {
-                        match mutex
-                            .write()
-                            .await
-                            .update(|state| {
-                                update_sending_key_scan(&address, next_event.clone(), source, state)
-                                    .boxed()
-                            })
-                            .await
-                        {
-                            Ok(f) => {
-                                finished = f;
-                                break;
-                            }
-                            Err(err) => {
-                                tracing::error!("error during key scan, retrying: {}", err);
-                                // Sleep a little bit before retrying, so that if the error is
-                                // persistent, we don't obnoxiously spam the logs or hog the mutex.
-                                sleep(Duration::from_secs(5)).await;
-                            }
+        async_std::task::spawn(async move {
+            let mut finished = false;
+            while !finished {
+                let (next_event, source) = events.next().await.unwrap();
+                loop {
+                    match mutex
+                        .write()
+                        .await
+                        .update(|state| {
+                            update_sending_key_scan(&address, next_event.clone(), source, state)
+                                .boxed()
+                        })
+                        .await
+                    {
+                        Ok(f) => {
+                            finished = f;
+                            break;
+                        }
+                        Err(err) => {
+                            tracing::error!("error during key scan, retrying: {}", err);
+                            // Sleep a little bit before retrying, so that if the error is
+                            // persistent, we don't obnoxiously spam the logs or hog the mutex.
+                            sleep(Duration::from_secs(5)).await;
                         }
                     }
                 }
-            },
-            || (),
-        );
+            }
+        });
     }
 
     /// Insert an asset for testing purposes.

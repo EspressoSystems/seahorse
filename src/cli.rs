@@ -1113,8 +1113,6 @@ async fn repl<L: 'static + Ledger, C: CLI<Ledger = L>>(
             "Unknown command. Type 'help' for a list of valid commands."
         );
     }
-
-    keystore.close().await;
     Ok(())
 }
 
