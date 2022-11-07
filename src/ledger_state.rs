@@ -12,7 +12,7 @@
 
 use crate::{
     events::{EventIndex, EventSource, LedgerEvent},
-    key_scan::{receive_history_entry, BackgroundKeyScan},
+    key_scan::{receive_history_entry, BackgroundKeyScan, KeyPair, KeyType},
     lw_merkle_tree::LWMerkleTree,
     records::{Record, Records},
     transactions::{SignedMemos, Transaction, TransactionParams, Transactions},
@@ -44,7 +44,8 @@ use jf_cap::{
         ReceiverMemo, RecordCommitment, RecordOpening, TxnFeeInfo,
     },
     transfer::{TransferNote, TransferNoteInput},
-    AccMemberWitness, KeyPair, MerkleLeafProof, MerklePath, Signature, TransactionNote,
+    AccMemberWitness, KeyPair as JfKeyPair, MerkleLeafProof, MerklePath, Signature,
+    TransactionNote,
 };
 use jf_primitives::aead::EncKey;
 use jf_utils::tagged_blob;
@@ -1147,7 +1148,7 @@ impl<L: 'static + Ledger> LedgerState<L> {
         records: &[RecordOpening],
         include: impl IntoIterator<Item = bool>,
         rng: &mut ChaChaRng,
-        sig_key_pair: &KeyPair,
+        sig_key_pair: &JfKeyPair,
     ) -> Result<(Vec<Option<ReceiverMemo>>, Signature), KeystoreError<L>> {
         let memos: Vec<_> = records
             .iter()
@@ -1869,10 +1870,11 @@ impl<L: 'static + Ledger> LedgerState<L> {
 
     pub(crate) async fn add_records<
         Meta: Serialize + DeserializeOwned + Send + Sync + Clone + PartialEq,
+        Key: KeyPair,
     >(
         &mut self,
         stores: &mut KeystoreStores<L, Meta>,
-        key_pair: &UserKeyPair,
+        key: &Key,
         records: Vec<(RecordOpening, u64, MerklePath)>,
     ) -> Result<(), KeystoreError<L>> {
         for (record, uid, proof) in records {
@@ -1889,23 +1891,47 @@ impl<L: 'static + Ledger> LedgerState<L> {
             // Add the asset type if it is not already in the asset library.
             stores.assets_mut().create(record.asset_def.clone(), None)?;
 
-            // Mark the account receiving the record as used.
-            stores
-                .sending_accounts
-                .get_mut(&key_pair.address())
-                .unwrap()
-                .set_used()
-                .save()?;
-            // Save the record.
-            stores.records.create::<L>(
-                uid,
-                record.clone(),
-                key_pair.nullify(
-                    record.asset_def.policy_ref().freezer_pub_key(),
-                    uid,
-                    &RecordCommitment::from(&record),
-                ),
-            )?;
+            match key.clone().key_type() {
+                KeyType::Viewing(_) => {}
+                KeyType::Freezing(key) => {
+                    // Mark the account receiving the record as used.
+                    stores
+                        .freezing_accounts
+                        .get_mut(&key.pub_key())
+                        .unwrap()
+                        .set_used()
+                        .save()?;
+                    // Save the record.
+                    stores.records.create::<L>(
+                        uid,
+                        record.clone(),
+                        key.nullify(
+                            &record.pub_key.address(),
+                            uid,
+                            &RecordCommitment::from(&record),
+                        ),
+                    )?;
+                }
+                KeyType::Sending(key) => {
+                    // Mark the account receiving the record as used.
+                    stores
+                        .sending_accounts
+                        .get_mut(&key.address())
+                        .unwrap()
+                        .set_used()
+                        .save()?;
+                    // Save the record.
+                    stores.records.create::<L>(
+                        uid,
+                        record.clone(),
+                        key.nullify(
+                            record.asset_def.policy_ref().freezer_pub_key(),
+                            uid,
+                            &RecordCommitment::from(&record),
+                        ),
+                    )?;
+                }
+            }
         }
         Ok(())
     }
@@ -2123,8 +2149,7 @@ impl<L: 'static + Ledger> LedgerState<L> {
                     .get(&user_key.address())
                     .is_ok()
                 {
-                    // For other key types, adding a key that already exists is a no-op. However,
-                    // because of the background ledger scans associated with user keys, we want to
+                    // Because of the background ledger scans associated with user keys, we want to
                     // report an error, since the user may have attempted to add the same key with
                     // two different `scan_from` parameters, and we have not actually started the
                     // second scan in this case.
@@ -2195,6 +2220,11 @@ impl<L: 'static + Ledger> LedgerState<L> {
     // `viewing_key` can be provided to add an arbitrary key, not necessarily derived from this
     // keystore's deterministic key stream. Otherwise, the next key in the key stream will be derived
     // and added.
+    //
+    // If `scan_from` is provided, a new ledger scan will be created and the corresponding event
+    // stream will be returned. Note that the caller is responsible for actually starting the task
+    // which processes this scan, since the Keystore (not the LedgerState) has the data structures
+    // needed to manage tasks (the AsyncScope, mutexes, etc.).
     pub(crate) async fn add_viewing_account<
         Meta: Serialize + DeserializeOwned + Send + Sync + Clone + PartialEq,
     >(
@@ -2202,7 +2232,14 @@ impl<L: 'static + Ledger> LedgerState<L> {
         model: &mut KeystoreModel<L, impl KeystoreBackend<L>, Meta>,
         viewing_key: Option<ViewerKeyPair>,
         description: String,
-    ) -> Result<ViewerKeyPair, KeystoreError<L>> {
+        scan_from: Option<EventIndex>,
+    ) -> Result<
+        (
+            ViewerKeyPair,
+            Option<impl Stream<Item = (LedgerEvent<L>, EventSource)> + Send + Unpin>,
+        ),
+        KeystoreError<L>,
+    > {
         let (viewing_key, index) = match viewing_key {
             Some(viewing_key) => {
                 if model
@@ -2211,7 +2248,13 @@ impl<L: 'static + Ledger> LedgerState<L> {
                     .get(&viewing_key.pub_key())
                     .is_ok()
                 {
-                    return Ok(viewing_key);
+                    // Because of the background ledger scans associated with user keys, we want to
+                    // report an error, since the user may have attempted to add the same key with
+                    // two different `scan_from` parameters, and we have not actually started the
+                    // second scan in this case.
+                    return Err(KeystoreError::<L>::ViewerKeyExists {
+                        pub_key: viewing_key.pub_key(),
+                    });
                 }
                 (viewing_key, None)
             }
@@ -2224,19 +2267,43 @@ impl<L: 'static + Ledger> LedgerState<L> {
             }
         };
 
+        let (scan, events) = if let Some(scan_from) = scan_from {
+            // Get the stream of events for the background scan worker task to process.
+            let (frontier, next_event) = model.backend.get_initial_scan_state(scan_from).await?;
+            let events = model.backend.subscribe(next_event, None).await;
+
+            // Create a background scan of the ledger to import records viewable by this key.
+            let scan: BackgroundKeyScan<L, ViewerKeyPair> = BackgroundKeyScan::new(
+                viewing_key.clone(),
+                next_event,
+                scan_from,
+                self.now(),
+                LWMerkleTree::sparse(frontier),
+            );
+            (Some(scan), Some(events))
+        } else {
+            (None, None)
+        };
+
         model
             .stores
             .viewing_accounts
             .create(viewing_key.clone(), index)?
             .with_description(description)
+            .set_scan(scan)
             .save()?;
         model.stores.ledger_states.update_dynamic(self)?;
-        Ok(viewing_key)
+        Ok((viewing_key, events))
     }
 
     // `freezing_key` can be provided to add an arbitrary key, not necessarily derived from this
     // keystore's deterministic key stream. Otherwise, the next key in the key stream will be derived
     // and added.
+    //
+    // If `scan_from` is provided, a new ledger scan will be created and the corresponding event
+    // stream will be returned. Note that the caller is responsible for actually starting the task
+    // which processes this scan, since the Keystore (not the LedgerState) has the data structures
+    // needed to manage tasks (the AsyncScope, mutexes, etc.).
     pub(crate) async fn add_freezing_account<
         Meta: Serialize + DeserializeOwned + Send + Sync + Clone + PartialEq,
     >(
@@ -2244,7 +2311,14 @@ impl<L: 'static + Ledger> LedgerState<L> {
         model: &mut KeystoreModel<L, impl KeystoreBackend<L>, Meta>,
         freezing_key: Option<FreezerKeyPair>,
         description: String,
-    ) -> Result<FreezerKeyPair, KeystoreError<L>> {
+        scan_from: Option<EventIndex>,
+    ) -> Result<
+        (
+            FreezerKeyPair,
+            Option<impl Stream<Item = (LedgerEvent<L>, EventSource)> + Send + Unpin>,
+        ),
+        KeystoreError<L>,
+    > {
         let (freezing_key, index) = match freezing_key {
             Some(freezing_key) => {
                 if model
@@ -2253,7 +2327,13 @@ impl<L: 'static + Ledger> LedgerState<L> {
                     .get(&freezing_key.pub_key())
                     .is_ok()
                 {
-                    return Ok(freezing_key);
+                    // Because of the background ledger scans associated with user keys, we want to
+                    // report an error, since the user may have attempted to add the same key with
+                    // two different `scan_from` parameters, and we have not actually started the
+                    // second scan in this case.
+                    return Err(KeystoreError::<L>::FreezerKeyExists {
+                        pub_key: freezing_key.pub_key(),
+                    });
                 }
                 (freezing_key, None)
             }
@@ -2266,15 +2346,34 @@ impl<L: 'static + Ledger> LedgerState<L> {
             }
         };
 
+        let (scan, events) = if let Some(scan_from) = scan_from {
+            // Get the stream of events for the background scan worker task to process.
+            let (frontier, next_event) = model.backend.get_initial_scan_state(scan_from).await?;
+            let events = model.backend.subscribe(next_event, None).await;
+
+            // Create a background scan of the ledger to import records freezable by this key.
+            let scan: BackgroundKeyScan<L, FreezerKeyPair> = BackgroundKeyScan::new(
+                freezing_key.clone(),
+                next_event,
+                scan_from,
+                self.now(),
+                LWMerkleTree::sparse(frontier),
+            );
+            (Some(scan), Some(events))
+        } else {
+            (None, None)
+        };
+
         model
             .stores
             .freezing_accounts
             .create(freezing_key.clone(), index)?
             .with_description(description)
+            .set_scan(scan)
             .save()?;
         model.stores.ledger_states.update_dynamic(self)?;
 
-        Ok(freezing_key)
+        Ok((freezing_key, events))
     }
 
     pub(crate) fn build_transfer<

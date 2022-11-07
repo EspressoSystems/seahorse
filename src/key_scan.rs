@@ -12,11 +12,11 @@ use crate::{
     transactions::TransactionParams,
 };
 use arbitrary::{Arbitrary, Unstructured};
-use arbitrary_wrappers::ArbitraryUserKeyPair;
+use arbitrary_wrappers::{ArbitraryFreezerKeyPair, ArbitraryUserKeyPair, ArbitraryViewerKeyPair};
 use chrono::Local;
 use espresso_macros::ser_test;
 use jf_cap::{
-    keys::{UserAddress, UserKeyPair},
+    keys::{FreezerKeyPair, FreezerPubKey, UserAddress, UserKeyPair, ViewerKeyPair, ViewerPubKey},
     structs::{FreezeFlag, Nullifier, RecordCommitment, RecordOpening},
     MerkleCommitment, MerkleLeafProof, MerklePath,
 };
@@ -24,11 +24,66 @@ use reef::{
     traits::{Block as _, Transaction as _, TransactionKind as _},
     Ledger, TransactionHash, TransactionKind,
 };
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fmt::Display;
+use std::hash::Hash;
 
 /// The information about each discovered record returned by a key-specific scan.
 pub type ScannedRecord = (RecordOpening, u64, MerklePath);
+
+/// Types of keys.
+pub enum KeyType {
+    Viewing(ViewerKeyPair),
+    Freezing(FreezerKeyPair),
+    Sending(UserKeyPair),
+}
+
+/// Keys with a public part.
+pub trait KeyPair: Clone + Send + Sync {
+    type PubKey: Clone + DeserializeOwned + Display + Eq + Hash + Serialize;
+    fn key_type(self) -> KeyType;
+    fn pub_key(&self) -> Self::PubKey;
+}
+
+impl KeyPair for ViewerKeyPair {
+    type PubKey = ViewerPubKey;
+
+    fn key_type(self) -> KeyType {
+        KeyType::Viewing(self)
+    }
+
+    fn pub_key(&self) -> Self::PubKey {
+        self.pub_key()
+    }
+}
+
+impl KeyPair for FreezerKeyPair {
+    type PubKey = FreezerPubKey;
+
+    fn key_type(self) -> KeyType {
+        KeyType::Freezing(self)
+    }
+
+    fn pub_key(&self) -> Self::PubKey {
+        self.pub_key()
+    }
+}
+
+impl KeyPair for UserKeyPair {
+    // The `PubKey` here is supposed to be a conceptual "primary key" for looking up
+    // `UserKeyPairs`. We typically want to look up `UserKeyPairs` by `Address`, not `UserPubKey`,
+    // because if we have a `UserPubKey` we can always get an `Address` to do the lookup.
+    type PubKey = UserAddress;
+
+    fn key_type(self) -> KeyType {
+        KeyType::Sending(self)
+    }
+
+    fn pub_key(&self) -> Self::PubKey {
+        self.address()
+    }
+}
 
 /// All the outputs of a key-specific ledger scan.
 ///
@@ -42,17 +97,17 @@ pub struct ScanOutputs<L: Ledger> {
 
 /// The status of a ledger scan.
 #[derive(Clone)]
-pub enum ScanStatus<L: Ledger> {
+pub enum ScanStatus<L: Ledger, Key: KeyPair + DeserializeOwned + Serialize> {
     Finished {
         /// The scanned key.
-        key: UserKeyPair,
+        key: Key,
         /// The list of records discovered by the scan.
         records: Vec<ScannedRecord>,
         /// The list of transaction history entries corresponding to transactions received by the
         /// scan.
         history: Vec<(TransactionUID<L>, TransactionParams<L>)>,
     },
-    InProgress(BackgroundKeyScan<L>),
+    InProgress(BackgroundKeyScan<L, Key>),
 }
 
 /// An in-progress scan of past ledger events.
@@ -89,31 +144,39 @@ pub enum ScanStatus<L: Ledger> {
 /// recipient. It is able to create Merkle paths for the new records either by using the Merkle
 /// paths included in `Memos` events, or by using the frontier at the time it appends the
 /// commitment for an attached record opening to the tree.
-#[ser_test(arbitrary, ark(false), types(reef::cap::Ledger))]
+#[ser_test(
+    arbitrary,
+    ark(false),
+    types(reef::cap::Ledger, ViewerKeyPair),
+    types(reef::cap::Ledger, FreezerKeyPair),
+    types(reef::cap::Ledger, UserKeyPair)
+)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(bound = "L: Ledger")]
-pub struct BackgroundKeyScan<L: Ledger> {
-    key: UserKeyPair,
+pub struct BackgroundKeyScan<L: Ledger, Key: KeyPair + DeserializeOwned + Serialize> {
+    key: Key,
     // The index of the next event in the event stream.
     next_event: EventIndex,
     // The first event of interest.
     from_event: EventIndex,
     // The first event after the range of interest.
     to_event: EventIndex,
-    // Record openings we have discovered which belong to these key. These records are kept in a
-    // separate pool until the scan is complete so that if the scan encounters an event which spends
-    // some of these records, we can remove the spent records without ever reflecting them in the
-    // keystore's balance.
+    // Record openings we have discovered which are freezable or owned by these key. These
+    // records are kept in a separate pool until the scan is complete so that if the scan
+    // encounters an event which spends some of these records, we can remove the spent records
+    // without ever reflecting them in the keystore's balance.
     records: HashMap<Nullifier, (RecordOpening, u64)>,
-    // New history entries for transactions we received during the scan.
+    // New history entries for transactions with records viewable, freezable or owned by us.
     history: Vec<(TransactionUID<L>, TransactionParams<L>)>,
     // Lightweight Merkle tree containing paths for the commitments of each record in `records`.
-    // This allows us to update the paths as we scan so that at the end of the scan, we have a path for
-    // each record relative to the current Merkle root.
+    // This allows us to update the paths as we scan so that at the end of the scan, we have a path
+    // for each record relative to the current Merkle root.
     records_mt: LWMerkleTree,
 }
 
-impl<L: Ledger> PartialEq<Self> for BackgroundKeyScan<L> {
+impl<L: Ledger, Key: KeyPair + DeserializeOwned + Serialize> PartialEq<Self>
+    for BackgroundKeyScan<L, Key>
+{
     fn eq(&self, other: &Self) -> bool {
         self.key.pub_key() == other.key.pub_key()
             && self.next_event == other.next_event
@@ -124,7 +187,41 @@ impl<L: Ledger> PartialEq<Self> for BackgroundKeyScan<L> {
     }
 }
 
-impl<'a, L: Ledger> Arbitrary<'a> for BackgroundKeyScan<L>
+impl<'a, L: Ledger> Arbitrary<'a> for BackgroundKeyScan<L, ViewerKeyPair>
+where
+    TransactionHash<L>: Arbitrary<'a>,
+{
+    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
+        Ok(Self {
+            key: u.arbitrary::<ArbitraryViewerKeyPair>()?.into(),
+            next_event: u.arbitrary()?,
+            from_event: u.arbitrary()?,
+            to_event: u.arbitrary()?,
+            records: Default::default(),
+            history: Default::default(),
+            records_mt: u.arbitrary()?,
+        })
+    }
+}
+
+impl<'a, L: Ledger> Arbitrary<'a> for BackgroundKeyScan<L, FreezerKeyPair>
+where
+    TransactionHash<L>: Arbitrary<'a>,
+{
+    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
+        Ok(Self {
+            key: u.arbitrary::<ArbitraryFreezerKeyPair>()?.into(),
+            next_event: u.arbitrary()?,
+            from_event: u.arbitrary()?,
+            to_event: u.arbitrary()?,
+            records: Default::default(),
+            history: Default::default(),
+            records_mt: u.arbitrary()?,
+        })
+    }
+}
+
+impl<'a, L: Ledger> Arbitrary<'a> for BackgroundKeyScan<L, UserKeyPair>
 where
     TransactionHash<L>: Arbitrary<'a>,
 {
@@ -141,9 +238,9 @@ where
     }
 }
 
-impl<L: Ledger> BackgroundKeyScan<L> {
+impl<L: Ledger, Key: KeyPair + DeserializeOwned + Serialize> BackgroundKeyScan<L, Key> {
     pub fn new(
-        key: UserKeyPair,
+        key: Key,
         next_event: EventIndex,
         from: EventIndex,
         to: EventIndex,
@@ -169,7 +266,7 @@ impl<L: Ledger> BackgroundKeyScan<L> {
     ///
     /// If `merkle_commitment` does not match the scan's Merkle tree, meaning the scan is
     /// in progress, it returns `self` so that the scan can continue to be used.
-    pub fn finalize(self, merkle_commitment: MerkleCommitment) -> ScanStatus<L> {
+    pub fn finalize(self, merkle_commitment: MerkleCommitment) -> ScanStatus<L, Key> {
         if merkle_commitment == self.records_mt.commitment() {
             let mt = self.records_mt;
             let records = self
@@ -187,8 +284,8 @@ impl<L: Ledger> BackgroundKeyScan<L> {
         }
     }
 
-    pub fn address(&self) -> UserAddress {
-        self.key.address()
+    pub fn address(&self) -> Key::PubKey {
+        self.key.pub_key()
     }
 
     pub fn next_event(&self) -> EventIndex {
@@ -234,32 +331,65 @@ impl<L: Ledger> BackgroundKeyScan<L> {
                 );
 
                 for txn in block.txns() {
-                    // Remove any records that were spent by this transaction.
-                    for n in txn.input_nullifiers() {
-                        if let Some((_, uid)) = self.records.remove(&n) {
-                            // If we removed a record that we had already discovered, prune it's
-                            // path from the Merkle tree.
-                            self.records_mt.forget(uid);
+                    if let KeyType::Sending(_) = self.key.clone().key_type() {
+                        // Remove any records that were spent by this transaction.
+                        for n in txn.input_nullifiers() {
+                            if let Some((_, uid)) = self.records.remove(&n) {
+                                // If we removed a record that we had already discovered, prune it's
+                                // path from the Merkle tree.
+                                self.records_mt.forget(uid);
+                            }
                         }
                     }
 
                     if let Some(records) = txn.output_openings() {
-                        // If the transaction exposes its records, add the records themselves if
-                        // they belong to us; forget their Merkle paths if they do not.
+                        // For each record exposed by the transaction, if it's viewable, freezable,
+                        // or owned by us, add it to the receiving history. Otherwise, forget its
+                        // Merkle path.
                         let mut received_records = vec![];
                         for record in records {
-                            let comm = RecordCommitment::from(&record);
-                            if record.pub_key == self.key.pub_key() {
-                                received_records.push(record.clone());
-                                let nullifier = self.key.nullify(
-                                    record.asset_def.policy_ref().freezer_pub_key(),
-                                    uid,
-                                    &comm,
-                                );
-                                // If the record belongs to us, add it to our records.
-                                self.records.insert(nullifier, (record, uid));
-                            } else {
-                                self.records_mt.forget(uid);
+                            match self.key.clone().key_type() {
+                                KeyType::Viewing(viewing_key) => {
+                                    if record.asset_def.policy_ref().viewer_pub_key()
+                                        == &viewing_key.pub_key()
+                                    {
+                                        received_records.push(record.clone());
+                                    } else {
+                                        self.records_mt.forget(uid);
+                                    }
+                                }
+                                KeyType::Freezing(freezing_key) => {
+                                    let comm = RecordCommitment::from(&record);
+                                    if record.asset_def.policy_ref().freezer_pub_key()
+                                        == &freezing_key.pub_key()
+                                    {
+                                        received_records.push(record.clone());
+                                        let nullifier = freezing_key.nullify(
+                                            &record.pub_key.address(),
+                                            uid,
+                                            &comm,
+                                        );
+                                        // If the record is freezable by us, add it to our records.
+                                        self.records.insert(nullifier, (record, uid));
+                                    } else {
+                                        self.records_mt.forget(uid);
+                                    }
+                                }
+                                KeyType::Sending(sending_key) => {
+                                    let comm = RecordCommitment::from(&record);
+                                    if record.pub_key == sending_key.pub_key() {
+                                        received_records.push(record.clone());
+                                        let nullifier = sending_key.nullify(
+                                            record.asset_def.policy_ref().freezer_pub_key(),
+                                            uid,
+                                            &comm,
+                                        );
+                                        // If the record belongs to us, add it to our records.
+                                        self.records.insert(nullifier, (record, uid));
+                                    } else {
+                                        self.records_mt.forget(uid);
+                                    }
+                                }
                             }
 
                             uid += 1;
@@ -287,45 +417,47 @@ impl<L: Ledger> BackgroundKeyScan<L> {
                 transaction,
                 ..
             } => {
-                let mut records = Vec::new();
-                for (memo, comm, uid, proof) in outputs {
-                    if let Ok(record_opening) = memo.decrypt(&self.key, &comm, &[]) {
-                        if !record_opening.is_dummy() {
-                            // If this record is for us (i.e. its corresponding memo decrypts under
-                            // our key) and not a dummy, then add it to our received records.
-                            records.push((
-                                record_opening,
-                                uid,
-                                MerkleLeafProof::new(comm.to_field_element(), proof.clone()),
-                            ));
+                if let KeyType::Sending(sending_key) = self.key.clone().key_type() {
+                    let mut records = Vec::new();
+                    for (memo, comm, uid, proof) in outputs {
+                        if let Ok(record_opening) = memo.decrypt(&sending_key, &comm, &[]) {
+                            if !record_opening.is_dummy() {
+                                // If this record is for us (i.e. its corresponding memo decrypts under
+                                // our key) and not a dummy, then add it to our received records.
+                                records.push((
+                                    record_opening,
+                                    uid,
+                                    MerkleLeafProof::new(comm.to_field_element(), proof.clone()),
+                                ));
+                            }
                         }
                     }
-                }
 
-                // Add received records to our collection.
-                for (ro, uid, proof) in &records {
-                    let nullifier = self.key.nullify(
-                        ro.asset_def.policy_ref().freezer_pub_key(),
-                        *uid,
-                        &RecordCommitment::from(ro),
-                    );
-                    if self.records_mt.remember(*uid, proof).is_ok() {
-                        self.records.insert(nullifier, (ro.clone(), *uid));
-                    } else {
-                        tracing::error!("Got bad Merkle proof. Unable to add record {}", uid);
+                    // Add received records to our collection.
+                    for (ro, uid, proof) in &records {
+                        let nullifier = sending_key.nullify(
+                            ro.asset_def.policy_ref().freezer_pub_key(),
+                            *uid,
+                            &RecordCommitment::from(ro),
+                        );
+                        if self.records_mt.remember(*uid, proof).is_ok() {
+                            self.records.insert(nullifier, (ro.clone(), *uid));
+                        } else {
+                            tracing::error!("Got bad Merkle proof. Unable to add record {}", uid);
+                        }
                     }
-                }
 
-                if !records.is_empty() {
-                    // Add a history entry for the received transaction.
-                    if let Some((_, _, hash, txn_kind)) = transaction {
-                        self.history.push((
-                            TransactionUID::<L>(hash),
-                            receive_history_entry(
-                                txn_kind,
-                                &records.into_iter().map(|(ro, _, _)| ro).collect::<Vec<_>>(),
-                            ),
-                        ));
+                    if !records.is_empty() {
+                        // Add a history entry for the received transaction.
+                        if let Some((_, _, hash, txn_kind)) = transaction {
+                            self.history.push((
+                                TransactionUID::<L>(hash),
+                                receive_history_entry(
+                                    txn_kind,
+                                    &records.into_iter().map(|(ro, _, _)| ro).collect::<Vec<_>>(),
+                                ),
+                            ));
+                        }
                     }
                 }
             }
@@ -377,6 +509,9 @@ pub fn receive_history_entry<L: Ledger>(
     } else if kind == TransactionKind::<L>::freeze()
         && last_record.freeze_flag == FreezeFlag::Unfrozen
     {
+        // If the input `kind` is `freeze`, the transaction may be either freezing or unfreezing.
+        // To determine the exact kind, we check the flag of the last record, and change the kind
+        // to `unfreeze` if the flag is `Unfrozen`.
         TransactionKind::<L>::unfreeze()
     } else {
         kind

@@ -413,7 +413,10 @@ pub trait SystemUnderTest: Default + Send + Sync {
                 // Wait for the keystore to find any records already belonging to this key from the
                 // initial grants.
 
-                keystore.await_key_scan(&key_pair.address()).await.unwrap();
+                keystore
+                    .await_sending_key_scan(&key_pair.address())
+                    .await
+                    .unwrap();
                 pub_keys.push(key_pair.pub_key());
             }
             keystores.push((keystore, pub_keys, tmp_dir));

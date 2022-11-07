@@ -100,7 +100,7 @@ async fn generate_independent_transactions<
     let mut w = t
         .create_keystore(KeyTree::random(&mut rng).0, &ledger)
         .await;
-    w.0.add_sending_account(receiver.clone(), "key".into(), EventIndex::default())
+    w.0.add_account(receiver.clone(), "key".into(), EventIndex::default())
         .await
         .unwrap();
 
@@ -209,7 +209,7 @@ async fn bench_ledger_scanner_setup<T: SystemUnderTest<Ledger = L> + Clone, L: '
     let mut w = t
         .create_keystore(KeyTree::random(&mut rng).0, &ledger)
         .await;
-    w.0.add_sending_account(txns.receiver.clone(), "key".into(), EventIndex::default())
+    w.0.add_account(txns.receiver.clone(), "key".into(), EventIndex::default())
         .await
         .unwrap();
 
@@ -324,10 +324,10 @@ fn bench_ledger_scanner_run<
                     w.sync(bench.end_time).await.unwrap();
 
                     let start = Instant::now();
-                    w.add_sending_account(scan_key.clone(), "key".into(), bench.start_time)
+                    w.add_account(scan_key.clone(), "key".into(), bench.start_time)
                         .await
                         .unwrap();
-                    w.await_key_scan(&scan_key.address()).await.unwrap();
+                    w.await_sending_key_scan(&scan_key.address()).await.unwrap();
                     dur += start.elapsed();
 
                     // Ensure the wallet gets dropped before `_tmp_dir`.
