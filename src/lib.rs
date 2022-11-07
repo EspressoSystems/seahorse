@@ -429,11 +429,6 @@ pub fn import_asset<
     Ok(())
 }
 
-// Trait used to indicate that an abstract return type captures a reference with the lifetime 'a.
-// See https://stackoverflow.com/questions/50547766/how-can-i-get-impl-trait-to-use-the-appropriate-lifetime-for-a-mutable-reference
-pub trait Captures<'a> {}
-impl<'a, T: ?Sized> Captures<'a> for T {}
-
 #[derive(Clone, Debug)]
 struct EventSummary<L: Ledger> {
     updated_txns: Vec<(TransactionUID<L>, TransactionStatus)>,
@@ -524,28 +519,6 @@ impl<T: Serialize + for<'a> Deserialize<'a>> LoadStore for EncryptingResourceAda
         bincode::serialize(&ciphertext).map_err(|source| ASPersistenceError::BincodeSer { source })
     }
 }
-
-// Fun fact: replacing `std::pin::Pin` with `Pin` and adding `use std::pin::Pin` causes the compiler
-// to panic where this type alias is used in `Keystore::new`. As a result, the type alias `BoxFuture`
-// from `futures::future` does not work, so we define our own.
-// type BoxFuture<'a, T> = std::pin::Pin<Box<dyn Future<Output = T> + Send + 'a>>;
-
-// `SendFuture` trait is needed for the cape repo to compile when calling key generation functions,
-// `generate_viewing_account`, `generate_freezing_account`, and `generate_sending_account`.
-//
-// Workaround:
-// 1. Wrap code of the key generation functions with `async move` to fix the implementation "not
-// general enough" error.
-// 2. Add a function lifetime `'l` and capture the lifetime `'a` of `self` with the `Captures` trait
-// to avoid conflicting lifetime requirements.
-// 3. Wrap the return type with `Box<dyn>` to resolve the failure during "building vtable
-// representation", and add the `SendFuture` trait to combine `Future` and `Captures` since `dyn`
-// can only take one non-auto trait.
-//
-// Related issues:
-// https://github.com/rust-lang/rust/issues/89657, https://github.com/rust-lang/rust/issues/90691.
-// pub trait SendFuture<'a, T>: Future<Output = T> + Captures<'a> + Send {}
-// impl<T, F: Future<Output = T> + Captures<'static> + Send> SendFuture<'static, T> for F {}
 
 impl<
         L: 'static + Ledger,

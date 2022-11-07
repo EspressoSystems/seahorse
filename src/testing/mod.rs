@@ -97,7 +97,7 @@ pub struct MockLedger<L: Ledger, N: MockNetwork<L>> {
     _phantom: std::marker::PhantomData<&'static ()>,
 }
 
-impl<'a, L: Ledger, N: MockNetwork<L>> MockLedger<L, N> {
+impl<L: Ledger, N: MockNetwork<L>> MockLedger<L, N> {
     pub fn new(network: N, records: MerkleTree) -> Self {
         Self {
             current_block: vec![],

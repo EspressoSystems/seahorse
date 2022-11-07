@@ -1818,7 +1818,7 @@ pub mod generic_keystore_tests {
     const MULTI_XFR_LARGE: MultiXfrParams = MultiXfrParams::new(50, 1000);
 
     #[allow(clippy::type_complexity)]
-    fn proptest_multixfr_keystore<'a, T: SystemUnderTest>(
+    fn proptest_multixfr_keystore<T: SystemUnderTest>(
         (txs, nkeys, ndefs, init_rec, init_recs): (
             Vec<Vec<(u8, u8, u8, u64)>>,
             u8,
@@ -1834,7 +1834,7 @@ pub mod generic_keystore_tests {
     }
 
     #[test]
-    pub fn proptest_multixfr_keystore_regression1<'a, T: SystemUnderTest>() {
+    pub fn proptest_multixfr_keystore_regression1<T: SystemUnderTest>() {
         // This input caused an assertion failure:
         //  assertion failed: block.contains(txn)
         // when checking that an expected transaction was in a keystore's transaction history in the
@@ -1867,7 +1867,7 @@ pub mod generic_keystore_tests {
     }
 
     #[test]
-    pub fn proptest_multixfr_keystore_small<'a, T: SystemUnderTest>() {
+    pub fn proptest_multixfr_keystore_small<T: SystemUnderTest>() {
         TestRunner::new(test_runner::Config {
             cases: 1,
             ..test_runner::Config::default()
@@ -1887,7 +1887,7 @@ pub mod generic_keystore_tests {
 
     #[test]
     #[ignore]
-    pub fn proptest_multixfr_keystore_many_small_tests<'a, T: SystemUnderTest>() {
+    pub fn proptest_multixfr_keystore_many_small_tests<T: SystemUnderTest>() {
         TestRunner::new(test_runner::Config {
             cases: 10,
             ..test_runner::Config::default()
@@ -1907,7 +1907,7 @@ pub mod generic_keystore_tests {
 
     #[test]
     #[ignore]
-    pub fn proptest_multixfr_keystore_one_big_test<'a, T: SystemUnderTest>() {
+    pub fn proptest_multixfr_keystore_one_big_test<T: SystemUnderTest>() {
         TestRunner::new(test_runner::Config {
             cases: 1,
             ..test_runner::Config::default()

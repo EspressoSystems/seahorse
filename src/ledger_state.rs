@@ -16,12 +16,11 @@ use crate::{
     lw_merkle_tree::LWMerkleTree,
     records::{Record, Records},
     transactions::{SignedMemos, Transaction, TransactionParams, Transactions},
-    Captures, EncryptingResourceAdapter, EventSummary, KeystoreBackend, KeystoreError,
-    KeystoreModel, KeystoreStores, MintInfo,
+    EncryptingResourceAdapter, EventSummary, KeystoreBackend, KeystoreError, KeystoreModel,
+    KeystoreStores, MintInfo,
 };
 use arbitrary::{Arbitrary, Unstructured};
 use ark_serialize::*;
-use ark_std::future::Future;
 use atomic_store::{AtomicStoreLoader, RollingLog};
 use chrono::Local;
 use derivative::Derivative;
@@ -2062,7 +2061,7 @@ impl<L: 'static + Ledger> LedgerState<L> {
     // `submit_elaborated_transaction`, where the default async desugaring loses track of the `Send`
     // impl for the result type. As with the other function, this can be fixed by manually
     // desugaring the type signature.
-    pub(crate) fn define_asset<
+    pub(crate) async fn define_asset<
         'b,
         Meta: Serialize + DeserializeOwned + Send + Send + Sync + Clone + PartialEq,
     >(
@@ -2071,49 +2070,46 @@ impl<L: 'static + Ledger> LedgerState<L> {
         name: String,
         description: &'b [u8],
         policy: AssetPolicy,
-    ) -> impl 'b + Captures<'static> + Future<Output = Result<AssetDefinition, KeystoreError<L>>> + Send
-    {
-        async move {
-            let seed = AssetCodeSeed::generate(&mut model.rng);
-            let code = AssetCode::new_domestic(seed, description);
-            let definition = AssetDefinition::new(code, policy).context(CryptoSnafu)?;
-            let mint_info = MintInfo {
-                seed,
-                description: description.to_vec(),
-            };
+    ) -> Result<AssetDefinition, KeystoreError<L>> {
+        let seed = AssetCodeSeed::generate(&mut model.rng);
+        let code = AssetCode::new_domestic(seed, description);
+        let definition = AssetDefinition::new(code, policy).context(CryptoSnafu)?;
+        let mint_info = MintInfo {
+            seed,
+            description: description.to_vec(),
+        };
 
-            model
+        model
+            .stores
+            .assets_mut()
+            .create(definition.clone(), Some(mint_info.clone()))?
+            .with_name(name)
+            .with_description(mint_info.fmt_description())
+            .save()?;
+
+        // If the asset is viewable/freezable, mark the appropriate viewing/freezing accounts
+        // `used`.
+        let policy = definition.policy_ref();
+        if policy.is_viewer_pub_key_set() {
+            if let Ok(account) = model
                 .stores
-                .assets_mut()
-                .create(definition.clone(), Some(mint_info.clone()))?
-                .with_name(name)
-                .with_description(mint_info.fmt_description())
-                .save()?;
-
-            // If the asset is viewable/freezable, mark the appropriate viewing/freezing accounts
-            // `used`.
-            let policy = definition.policy_ref();
-            if policy.is_viewer_pub_key_set() {
-                if let Ok(account) = model
-                    .stores
-                    .viewing_accounts
-                    .get_mut(policy.viewer_pub_key())
-                {
-                    account.set_used().save()?;
-                }
+                .viewing_accounts
+                .get_mut(policy.viewer_pub_key())
+            {
+                account.set_used().save()?;
             }
-            if policy.is_freezer_pub_key_set() {
-                if let Ok(account) = model
-                    .stores
-                    .freezing_accounts
-                    .get_mut(policy.freezer_pub_key())
-                {
-                    account.set_used().save()?;
-                }
-            }
-            model.stores.ledger_states.update_dynamic(self)?;
-            Ok(definition)
         }
+        if policy.is_freezer_pub_key_set() {
+            if let Ok(account) = model
+                .stores
+                .freezing_accounts
+                .get_mut(policy.freezer_pub_key())
+            {
+                account.set_used().save()?;
+            }
+        }
+        model.stores.ledger_states.update_dynamic(self)?;
+        Ok(definition)
     }
 
     // Add a new user key and set up a scan of the ledger to import records belonging to this key.
@@ -2503,19 +2499,7 @@ impl<L: 'static + Ledger> LedgerState<L> {
             .await
     }
 
-    // For reasons that are not clearly understood, the default async desugaring for this function
-    // loses track of the fact that the result type implements Send, which causes very confusing
-    // error messages farther up the call stack (apparently at the point where this function is
-    // monomorphized) which do not point back to this location. This is likely due to a bug in type
-    // inference, or at least a deficiency around async sugar combined with a bug in diagnostics.
-    //
-    // As a work-around, we do the desugaring manually so that we can explicitly specify that the
-    // return type implements Send. The return type also captures a reference with lifetime 'static,
-    // which is different from (but related to) the lifetime 'b of the returned Future, and
-    // `impl 'static + 'b + ...` does not work, so we use the work-around described at
-    // https://stackoverflow.com/questions/50547766/how-can-i-get-impl-trait-to-use-the-appropriate-lifetime-for-a-mutable-reference
-    // to indicate the captured lifetime using the Captures trait.
-    pub(crate) fn submit_elaborated_transaction<
+    pub(crate) async fn submit_elaborated_transaction<
         'b,
         Meta: Serialize + DeserializeOwned + Send + Sync + Clone + PartialEq,
     >(
@@ -2523,37 +2507,34 @@ impl<L: 'static + Ledger> LedgerState<L> {
         model: &'b mut KeystoreModel<L, impl KeystoreBackend<L>, Meta>,
         txn: reef::Transaction<L>,
         info: Option<TransactionParams<L>>,
-    ) -> impl 'b + Captures<'static> + Future<Output = Result<TransactionUID<L>, KeystoreError<L>>> + Send
-    {
-        async move {
-            let stored_txn = if let Some(mut info) = info {
-                let now = self.block_height();
-                let timeout = now + (L::record_root_history() as u64);
-                let uid = TransactionUID(txn.hash());
-                for nullifier in txn.input_nullifiers() {
-                    // hold the record corresponding to this nullifier until the transaction is committed,
-                    // rejected, or expired.
-                    if let Ok(record) = model.stores.records.with_nullifier_mut::<L>(&nullifier) {
-                        assert!(!(*record).on_hold(now));
-                        record.hold_until(timeout).save::<L>()?;
-                    }
+    ) -> Result<TransactionUID<L>, KeystoreError<L>> {
+        let stored_txn = if let Some(mut info) = info {
+            let now = self.block_height();
+            let timeout = now + (L::record_root_history() as u64);
+            let uid = TransactionUID(txn.hash());
+            for nullifier in txn.input_nullifiers() {
+                // hold the record corresponding to this nullifier until the transaction is committed,
+                // rejected, or expired.
+                if let Ok(record) = model.stores.records.with_nullifier_mut::<L>(&nullifier) {
+                    assert!(!(*record).on_hold(now));
+                    record.hold_until(timeout).save::<L>()?;
                 }
-                info.timeout = Some(timeout);
-                let stored_txn = model.stores.transactions.create(uid, info)?;
-                model.stores.ledger_states.update_dynamic(self)?;
-                stored_txn.clone()
-            } else {
-                model
-                    .stores
-                    .transactions
-                    .get(&TransactionUID::<L>(txn.hash()))?
-            };
-            let uid = stored_txn.uid().clone();
-            // If we succeeded in creating and persisting the pending transaction, submit it to the
-            // validators.
-            model.backend.submit(txn.clone(), stored_txn).await?;
-            Ok(uid)
-        }
+            }
+            info.timeout = Some(timeout);
+            let stored_txn = model.stores.transactions.create(uid, info)?;
+            model.stores.ledger_states.update_dynamic(self)?;
+            stored_txn.clone()
+        } else {
+            model
+                .stores
+                .transactions
+                .get(&TransactionUID::<L>(txn.hash()))?
+        };
+        let uid = stored_txn.uid().clone();
+        // If we succeeded in creating and persisting the pending transaction, submit it to the
+        // validators.
+        model.backend.submit(txn.clone(), stored_txn).await?;
+        Ok(uid)
     }
 }
 

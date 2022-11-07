@@ -1141,15 +1141,15 @@ mod test {
     use std::time::Instant;
     use tempdir::TempDir;
 
-    type MockCapLedger<'a> = Arc<Mutex<MockLedger<cap::Ledger, MockNetwork<'a>>>>;
+    type MockCapLedger = Arc<Mutex<MockLedger<cap::Ledger, MockNetwork>>>;
 
-    struct MockArgs<'a> {
+    struct MockArgs {
         io: SharedIO,
-        ledger: MockCapLedger<'a>,
+        ledger: MockCapLedger,
         path: Option<PathBuf>,
     }
 
-    impl<'a> CLIArgs for MockArgs<'a> {
+    impl CLIArgs for MockArgs {
         fn key_gen_path(&self) -> Option<PathBuf> {
             None
         }
@@ -1170,18 +1170,18 @@ mod test {
     struct MockCLI;
 
     #[async_trait]
-    impl<'a> CLI for MockCLI {
+    impl CLI for MockCLI {
         type Ledger = cap::Ledger;
-        type Backend = MockBackend<'a>;
+        type Backend = MockBackend;
         type Loader = InteractiveLoader;
         type Meta = MnemonicPasswordLogin;
-        type Args = MockArgs<'a>;
+        type Args = MockArgs;
 
         async fn init_backend(
-            _universal_param: &'a UniversalParam,
+            _universal_param: &'static UniversalParam,
             args: Self::Args,
         ) -> Result<Self::Backend, KeystoreError<Self::Ledger>> {
-            Ok(MockBackend::new(args.ledger.clone()))
+            Ok(MockBackend::new(args.ledger))
         }
 
         async fn init_loader(
@@ -1198,10 +1198,10 @@ mod test {
         file.write_all(&bytes).unwrap();
         full_path
     }
-    async fn create_network<'a>(
+    async fn create_network(
         t: &mut MockSystem,
         initial_grants: &[u64],
-    ) -> (MockCapLedger<'a>, Vec<Vec<UserKeyPair>>) {
+    ) -> (MockCapLedger, Vec<Vec<UserKeyPair>>) {
         // Use `create_test_network` to create a ledger with some initial records.
         let (ledger, keystores) = t
             .create_test_network(&[(3, 3)], initial_grants.to_vec(), &mut Instant::now())
@@ -1221,7 +1221,7 @@ mod test {
     }
 
     async fn create_keystore(
-        ledger: MockCapLedger<'static>,
+        ledger: MockCapLedger,
         path: PathBuf,
     ) -> (Tee<PipeWriter>, Tee<PipeReader>) {
         let (io, input, output) = SharedIO::pipe();
