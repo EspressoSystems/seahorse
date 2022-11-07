@@ -2057,10 +2057,6 @@ impl<L: 'static + Ledger> LedgerState<L> {
         Ok(())
     }
 
-    // This function ran into the same mystifying compiler behavior as
-    // `submit_elaborated_transaction`, where the default async desugaring loses track of the `Send`
-    // impl for the result type. As with the other function, this can be fixed by manually
-    // desugaring the type signature.
     pub(crate) async fn define_asset<
         'b,
         Meta: Serialize + DeserializeOwned + Send + Send + Sync + Clone + PartialEq,
