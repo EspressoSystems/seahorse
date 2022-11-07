@@ -274,13 +274,8 @@ async fn bench_ledger_scanner_setup<T: SystemUnderTest<Ledger = L> + Clone, L: '
     }
 }
 
-fn bench_ledger_scanner_run<
-    'a,
-    'b,
-    T: SystemUnderTest + Clone,
-    M: Measurement<Value = Duration>,
->(
-    mut b: AsyncBencher<'_, 'b, AsyncStdExecutor, M>,
+fn bench_ledger_scanner_run<T: SystemUnderTest + Clone, M: Measurement<Value = Duration>>(
+    mut b: AsyncBencher<'_, '_, AsyncStdExecutor, M>,
     mut bench: BenchLedgerScanner<T>,
     cfg: BenchLedgerScannerConfig,
 ) {

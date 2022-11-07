@@ -358,8 +358,8 @@ mod tests {
             atomic_store.commit_version().unwrap();
 
             // Make sure loading after a revert does not return the reverted changes.
-            let state = ledger_states.load().unwrap();
-            state
+
+            ledger_states.load().unwrap()
         };
         assert_eq!(stored, loaded);
 

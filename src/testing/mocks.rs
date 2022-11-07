@@ -94,7 +94,7 @@ impl<const H: u8> MockNetworkWithHeight<H> {
     }
 }
 
-impl<'a, const H: u8> super::MockNetwork<cap::LedgerWithHeight<H>> for MockNetworkWithHeight<H> {
+impl<const H: u8> super::MockNetwork<cap::LedgerWithHeight<H>> for MockNetworkWithHeight<H> {
     fn now(&self) -> EventIndex {
         self.events.now()
     }
