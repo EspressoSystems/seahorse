@@ -232,7 +232,7 @@ pub mod generic_keystore_tests {
      *   keystores by the test)
      */
     #[allow(unused_assignments)]
-    async fn test_two_keystores<'a, T: SystemUnderTest<'a>>(native: bool) {
+    async fn test_two_keystores<T: SystemUnderTest>(native: bool) {
         let mut t = T::default();
         let mut now = Instant::now();
 
@@ -362,7 +362,7 @@ pub mod generic_keystore_tests {
         // which is longer than we want to borrow `keystores` for).
         async fn check_balance<'b, L: 'static + Ledger>(
             keystore: &(
-                Keystore<impl KeystoreBackend< L> + Sync + 'b, L, ()>,
+                Keystore<impl KeystoreBackend< L> + Sync + 'static, L, ()>,
                 Vec<UserPubKey>,
                 TempDir,
             ),
@@ -451,13 +451,13 @@ pub mod generic_keystore_tests {
     }
 
     #[async_std::test]
-    pub async fn test_two_keystores_native<'a, T: SystemUnderTest<'a>>() -> std::io::Result<()> {
+    pub async fn test_two_keystores_native<T: SystemUnderTest>() -> std::io::Result<()> {
         test_two_keystores::<T>(true).await;
         Ok(())
     }
 
     #[async_std::test]
-    pub async fn test_two_keystores_non_native<'a, T: SystemUnderTest<'a>>() -> std::io::Result<()>
+    pub async fn test_two_keystores_non_native<'a, T: SystemUnderTest>() -> std::io::Result<()>
     {
         test_two_keystores::<T>(false).await;
         Ok(())
@@ -474,7 +474,7 @@ pub mod generic_keystore_tests {
     // the failed transaction fails to verify and a Reject event is emitted.
     //
     // (native, mint), (native, freeze), and (mint, freeze) are pairs of mutually exclusive flags.
-    async fn test_keystore_rejected<'a, T: SystemUnderTest<'a>>(
+    async fn test_keystore_rejected<'a, T: SystemUnderTest>(
         native: bool,
         mint: bool,
         freeze: bool,
@@ -796,63 +796,63 @@ pub mod generic_keystore_tests {
     }
 
     #[async_std::test]
-    pub async fn test_keystore_rejected_native_xfr_invalid<'a, T: SystemUnderTest<'a>>(
+    pub async fn test_keystore_rejected_native_xfr_invalid<'a, T: SystemUnderTest>(
     ) -> std::io::Result<()> {
         test_keystore_rejected::<T>(true, false, false, false).await;
         Ok(())
     }
 
     #[async_std::test]
-    pub async fn test_keystore_rejected_native_xfr_timeout<'a, T: SystemUnderTest<'a>>(
+    pub async fn test_keystore_rejected_native_xfr_timeout<'a, T: SystemUnderTest>(
     ) -> std::io::Result<()> {
         test_keystore_rejected::<T>(true, false, false, true).await;
         Ok(())
     }
 
     #[async_std::test]
-    pub async fn test_keystore_rejected_non_native_xfr_invalid<'a, T: SystemUnderTest<'a>>(
+    pub async fn test_keystore_rejected_non_native_xfr_invalid<'a, T: SystemUnderTest>(
     ) -> std::io::Result<()> {
         test_keystore_rejected::<T>(false, false, false, false).await;
         Ok(())
     }
 
     #[async_std::test]
-    pub async fn test_keystore_rejected_non_native_xfr_timeout<'a, T: SystemUnderTest<'a>>(
+    pub async fn test_keystore_rejected_non_native_xfr_timeout<'a, T: SystemUnderTest>(
     ) -> std::io::Result<()> {
         test_keystore_rejected::<T>(false, false, false, true).await;
         Ok(())
     }
 
     #[async_std::test]
-    pub async fn test_keystore_rejected_non_native_mint_invalid<'a, T: SystemUnderTest<'a>>(
+    pub async fn test_keystore_rejected_non_native_mint_invalid<'a, T: SystemUnderTest>(
     ) -> std::io::Result<()> {
         test_keystore_rejected::<T>(false, true, false, false).await;
         Ok(())
     }
 
     #[async_std::test]
-    pub async fn test_keystore_rejected_non_native_mint_timeout<'a, T: SystemUnderTest<'a>>(
+    pub async fn test_keystore_rejected_non_native_mint_timeout<'a, T: SystemUnderTest>(
     ) -> std::io::Result<()> {
         test_keystore_rejected::<T>(false, true, false, true).await;
         Ok(())
     }
 
     #[async_std::test]
-    pub async fn test_keystore_rejected_non_native_freeze_invalid<'a, T: SystemUnderTest<'a>>(
+    pub async fn test_keystore_rejected_non_native_freeze_invalid<'a, T: SystemUnderTest>(
     ) -> std::io::Result<()> {
         test_keystore_rejected::<T>(false, false, true, false).await;
         Ok(())
     }
 
     #[async_std::test]
-    pub async fn test_keystore_rejected_non_native_freeze_timeout<'a, T: SystemUnderTest<'a>>(
+    pub async fn test_keystore_rejected_non_native_freeze_timeout<'a, T: SystemUnderTest>(
     ) -> std::io::Result<()> {
         test_keystore_rejected::<T>(false, false, true, true).await;
         Ok(())
     }
 
     #[async_std::test]
-    pub async fn test_keystore_freeze<'a, T: SystemUnderTest<'a>>() -> std::io::Result<()> {
+    pub async fn test_keystore_freeze<'a, T: SystemUnderTest>() -> std::io::Result<()> {
         let mut t = T::default();
         let mut now = Instant::now();
 
@@ -1156,7 +1156,7 @@ pub mod generic_keystore_tests {
      * quickcheck or proptest to do randomized fuzzing.
      */
     #[allow(clippy::type_complexity)]
-    async fn test_multixfr_keystore<'a, T: SystemUnderTest<'a>>(
+    async fn test_multixfr_keystore<'a, T: SystemUnderTest>(
         // List of blocks containing (def,key1,key2,amount) transfer specs
         // An asset def of 0 in a transfer spec or record indicates the native asset type; other
         // asset types are indexed startin from 1.
@@ -1345,9 +1345,9 @@ pub mod generic_keystore_tests {
         // Check initial balances. This cannot be a closure because rust infers the wrong lifetime
         // for the references (it tries to use 'a, which is longer than we want to borrow `keystores`
         // for).
-        async fn check_balances<'b, L: Ledger + 'static>(
+        async fn check_balances<L: Ledger + 'static>(
             keystores: &[(
-                Keystore<impl KeystoreBackend<L> + Sync + 'b, L, ()>,
+                Keystore<impl KeystoreBackend<L> + Sync + 'static, L, ()>,
                 Vec<UserPubKey>,
                 TempDir,
             )],
@@ -1376,9 +1376,9 @@ pub mod generic_keystore_tests {
         }
         check_balances(&keystores, &balances, &assets).await;
 
-        async fn check_histories<'b, L: Ledger + 'static>(
+        async fn check_histories<L: Ledger + 'static>(
             keystores: &[(
-                Keystore<impl KeystoreBackend<L> + Sync + 'b, L, ()>,
+                Keystore<impl KeystoreBackend<L> + Sync + 'static, L, ()>,
                 Vec<UserPubKey>,
                 TempDir,
             )],
@@ -1690,7 +1690,7 @@ pub mod generic_keystore_tests {
     }
 
     #[async_std::test]
-    pub async fn test_multixfr_keystore_simple<'a, T: SystemUnderTest<'a>>() -> std::io::Result<()>
+    pub async fn test_multixfr_keystore_simple<'a, T: SystemUnderTest>() -> std::io::Result<()>
     {
         let alice_grant = (0, 0, 3); // Alice gets 3 of coin 0 to start
         let bob_grant = (1, 1, 3); // Bob gets 3 of coin 1 to start
@@ -1704,7 +1704,7 @@ pub mod generic_keystore_tests {
     }
 
     #[async_std::test]
-    pub async fn test_multixfr_keystore_multi_xfr_block<'a, T: SystemUnderTest<'a>>(
+    pub async fn test_multixfr_keystore_multi_xfr_block<'a, T: SystemUnderTest>(
     ) -> std::io::Result<()> {
         // Alice and Bob each get 1 native token to start.
         let alice_grant = (0, 0, 1);
@@ -1720,7 +1720,7 @@ pub mod generic_keystore_tests {
     }
 
     #[async_std::test]
-    pub async fn test_multixfr_keystore_various_kinds<'a, T: SystemUnderTest<'a>>(
+    pub async fn test_multixfr_keystore_various_kinds<'a, T: SystemUnderTest>(
     ) -> std::io::Result<()> {
         let txns = vec![vec![
             (0, 0, 1, 1), // native asset transfer
@@ -1820,7 +1820,7 @@ pub mod generic_keystore_tests {
     const MULTI_XFR_LARGE: MultiXfrParams = MultiXfrParams::new(50, 1000);
 
     #[allow(clippy::type_complexity)]
-    fn proptest_multixfr_keystore<'a, T: SystemUnderTest<'a>>(
+    fn proptest_multixfr_keystore<'a, T: SystemUnderTest>(
         (txs, nkeys, ndefs, init_rec, init_recs): (
             Vec<Vec<(u8, u8, u8, u64)>>,
             u8,
@@ -1836,7 +1836,7 @@ pub mod generic_keystore_tests {
     }
 
     #[test]
-    pub fn proptest_multixfr_keystore_regression1<'a, T: SystemUnderTest<'a>>() {
+    pub fn proptest_multixfr_keystore_regression1<'a, T: SystemUnderTest>() {
         // This input caused an assertion failure:
         //  assertion failed: block.contains(txn)
         // when checking that an expected transaction was in a keystore's transaction history in the
@@ -1869,7 +1869,7 @@ pub mod generic_keystore_tests {
     }
 
     #[test]
-    pub fn proptest_multixfr_keystore_small<'a, T: SystemUnderTest<'a>>() {
+    pub fn proptest_multixfr_keystore_small<'a, T: SystemUnderTest>() {
         TestRunner::new(test_runner::Config {
             cases: 1,
             ..test_runner::Config::default()
@@ -1889,7 +1889,7 @@ pub mod generic_keystore_tests {
 
     #[test]
     #[ignore]
-    pub fn proptest_multixfr_keystore_many_small_tests<'a, T: SystemUnderTest<'a>>() {
+    pub fn proptest_multixfr_keystore_many_small_tests<'a, T: SystemUnderTest>() {
         TestRunner::new(test_runner::Config {
             cases: 10,
             ..test_runner::Config::default()
@@ -1909,7 +1909,7 @@ pub mod generic_keystore_tests {
 
     #[test]
     #[ignore]
-    pub fn proptest_multixfr_keystore_one_big_test<'a, T: SystemUnderTest<'a>>() {
+    pub fn proptest_multixfr_keystore_one_big_test<'a, T: SystemUnderTest>() {
         TestRunner::new(test_runner::Config {
             cases: 1,
             ..test_runner::Config::default()
@@ -1928,7 +1928,7 @@ pub mod generic_keystore_tests {
     }
 
     #[async_std::test]
-    pub async fn test_generate_user_key<'a, T: SystemUnderTest<'a>>() {
+    pub async fn test_generate_user_key<'a, T: SystemUnderTest>() {
         let mut t = T::default();
         let mut now = Instant::now();
         let (ledger, mut keystores) = t
@@ -2070,7 +2070,7 @@ pub mod generic_keystore_tests {
     }
 
     #[async_std::test]
-    pub async fn test_create_with_existing_ledger<'a, T: SystemUnderTest<'a>>() {
+    pub async fn test_create_with_existing_ledger<'a, T: SystemUnderTest>() {
         let mut t = T::default();
         let mut rng = ChaChaRng::from_seed([127u8; 32]);
 
@@ -2163,7 +2163,7 @@ pub mod generic_keystore_tests {
     }
 
     #[async_std::test]
-    pub async fn test_aggregate_addresses<'a, T: SystemUnderTest<'a>>() {
+    pub async fn test_aggregate_addresses<'a, T: SystemUnderTest>() {
         let mut t = T::default();
         let mut now = Instant::now();
 
@@ -2354,7 +2354,7 @@ pub mod generic_keystore_tests {
     }
 
     #[async_std::test]
-    pub async fn test_asset_library<'a, T: SystemUnderTest<'a>>() {
+    pub async fn test_asset_library<'a, T: SystemUnderTest>() {
         let mut t = T::default();
         let mut now = Instant::now();
         let initial_grant = 10;
@@ -2459,7 +2459,7 @@ pub mod generic_keystore_tests {
     }
 
     #[async_std::test]
-    pub async fn test_verified_assets<'a, T: SystemUnderTest<'a>>() {
+    pub async fn test_verified_assets<'a, T: SystemUnderTest>() {
         let mut t = T::default();
         let mut rng = ChaChaRng::from_seed([37; 32]);
         let mut now = Instant::now();
@@ -2558,7 +2558,7 @@ pub mod generic_keystore_tests {
     }
 
     #[async_std::test]
-    pub async fn test_accounts<'a, T: SystemUnderTest<'a>>() {
+    pub async fn test_accounts<'a, T: SystemUnderTest>() {
         let mut t = T::default();
         let mut now = Instant::now();
         let (ledger, mut keystores) = t
@@ -2720,7 +2720,7 @@ pub mod generic_keystore_tests {
     }
 
     #[async_std::test]
-    pub async fn test_update_asset<'a, T: SystemUnderTest<'a>>() {
+    pub async fn test_update_asset<'a, T: SystemUnderTest>() {
         let mut t = T::default();
         let mut rng = ChaChaRng::from_seed([4; 32]);
         let mut now = Instant::now();
@@ -2834,7 +2834,7 @@ pub mod generic_keystore_tests {
     }
 
     #[async_std::test]
-    pub async fn test_asset_icon<'a, T: SystemUnderTest<'a>>() {
+    pub async fn test_asset_icon<'a, T: SystemUnderTest>() {
         let mut t = T::default();
         let mut now = Instant::now();
         let (_, mut keystores) = t.create_test_network(&[(2, 2)], vec![0], &mut now).await;
@@ -2876,7 +2876,7 @@ pub mod generic_keystore_tests {
     }
 
     #[async_std::test]
-    pub async fn test_txn_history<'a, T: SystemUnderTest<'a>>() {
+    pub async fn test_txn_history<'a, T: SystemUnderTest>() {
         let mut t = T::default();
         let mut now = Instant::now();
         let (ledger, mut keystores) = t.create_test_network(&[(2, 2)], vec![4, 0], &mut now).await;
@@ -2998,7 +2998,7 @@ pub mod generic_keystore_tests {
     // Regression test for a bug where submitting an empty block would sometimes cause the event
     // handling thread to panic.
     #[async_std::test]
-    pub async fn test_empty_block_after_record_to_forget<'a, T: SystemUnderTest<'a>>() {
+    pub async fn test_empty_block_after_record_to_forget<'a, T: SystemUnderTest>() {
         let mut t = T::default();
         let mut now = Instant::now();
         let (ledger, mut keystores) = t.create_test_network(&[(2, 2)], vec![3, 0], &mut now).await;
@@ -3065,7 +3065,7 @@ pub mod generic_keystore_tests {
     }
 
     #[async_std::test]
-    pub async fn test_big_amount<'a, T: SystemUnderTest<'a>>() {
+    pub async fn test_big_amount<'a, T: SystemUnderTest>() {
         let max_record = 2u128.pow(127) - 1;
         let max_record_times_2 =
             U256::from_dec_str("340282366920938463463374607431768211454").unwrap();
@@ -3148,7 +3148,7 @@ pub mod generic_keystore_tests {
     }
 
     #[async_std::test]
-    pub async fn test_zero_fee<'a, T: SystemUnderTest<'a>>() {
+    pub async fn test_zero_fee<'a, T: SystemUnderTest>() {
         let mut t = T::default();
         let mut now = Instant::now();
         let mut rng = ChaChaRng::from_seed([118; 32]);

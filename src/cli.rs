@@ -1108,7 +1108,7 @@ mod test {
     use std::time::Instant;
     use tempdir::TempDir;
 
-    type MockCapLedger<'a> = Arc<Mutex<MockLedger<'a, cap::Ledger, MockNetwork<'a>>>>;
+    type MockCapLedger<'a> = Arc<Mutex<MockLedger<cap::Ledger, MockNetwork<'a>>>>;
 
     struct MockArgs<'a> {
         io: SharedIO,

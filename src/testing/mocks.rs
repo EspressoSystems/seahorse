@@ -33,20 +33,20 @@ use snafu::ResultExt;
 use std::collections::{HashMap, HashSet};
 use std::pin::Pin;
 
-pub struct MockNetworkWithHeight<'a, const H: u8> {
+pub struct MockNetworkWithHeight<const H: u8> {
     validator: cap::Validator<H>,
     nullifiers: HashSet<Nullifier>,
     records: MerkleTree,
     committed_blocks: Vec<(cap::Block, Vec<Vec<u64>>)>,
-    proving_keys: Arc<ProverKeySet<'a, key_set::OrderByOutputs>>,
+    proving_keys: Arc<ProverKeySet<'static, key_set::OrderByOutputs>>,
     pub address_map: HashMap<UserAddress, UserPubKey>,
     events: MockEventSource<cap::LedgerWithHeight<H>>,
 }
 
-impl<'a, const H: u8> MockNetworkWithHeight<'a, H> {
+impl<const H: u8> MockNetworkWithHeight<H> {
     pub fn new(
         rng: &mut ChaChaRng,
-        proof_crs: ProverKeySet<'a, OrderByOutputs>,
+        proof_crs: ProverKeySet<'static, OrderByOutputs>,
         records: MerkleTree,
         initial_grants: Vec<(RecordOpening, u64)>,
     ) -> Self {
@@ -94,8 +94,8 @@ impl<'a, const H: u8> MockNetworkWithHeight<'a, H> {
     }
 }
 
-impl<'a, const H: u8> super::MockNetwork<'a, cap::LedgerWithHeight<H>>
-    for MockNetworkWithHeight<'a, H>
+impl<'a, const H: u8> super::MockNetwork<cap::LedgerWithHeight<H>>
+    for MockNetworkWithHeight<H>
 {
     fn now(&self) -> EventIndex {
         self.events.now()
@@ -219,21 +219,21 @@ impl<'a, const H: u8> super::MockNetwork<'a, cap::LedgerWithHeight<H>>
 }
 
 #[derive(Clone)]
-pub struct MockBackendWithHeight<'a, const H: u8> {
-    ledger: Arc<Mutex<MockLedger<'a, cap::LedgerWithHeight<H>, MockNetworkWithHeight<'a, H>>>>,
+pub struct MockBackendWithHeight<const H: u8> {
+    ledger: Arc<Mutex<MockLedger<cap::LedgerWithHeight<H>, MockNetworkWithHeight<H>>>>,
 }
 
-impl<'a, const H: u8> MockBackendWithHeight<'a, H> {
+impl<const H: u8> MockBackendWithHeight<H> {
     pub fn new(
-        ledger: Arc<Mutex<MockLedger<'a, cap::LedgerWithHeight<H>, MockNetworkWithHeight<'a, H>>>>,
+        ledger: Arc<Mutex<MockLedger<cap::LedgerWithHeight<H>, MockNetworkWithHeight<H>>>>,
     ) -> Self {
         Self { ledger }
     }
 }
 
 #[async_trait]
-impl<'a, const H: u8> KeystoreBackend< cap::LedgerWithHeight<H>>
-    for MockBackendWithHeight<'a, H>
+impl<const H: u8> KeystoreBackend< cap::LedgerWithHeight<H>>
+    for MockBackendWithHeight<H>
 {
     type EventStream =
         Pin<Box<dyn Stream<Item = (LedgerEvent<cap::LedgerWithHeight<H>>, EventSource)> + Send>>;
@@ -339,15 +339,15 @@ impl<'a, const H: u8> KeystoreBackend< cap::LedgerWithHeight<H>>
 pub struct MockSystemWithHeight<const H: u8>;
 
 #[async_trait]
-impl<'a, const H: u8> super::SystemUnderTest<'a> for MockSystemWithHeight<H> {
+impl<const H: u8> super::SystemUnderTest for MockSystemWithHeight<H> {
     type Ledger = cap::LedgerWithHeight<H>;
-    type MockBackend = MockBackendWithHeight<'a, H>;
-    type MockNetwork = MockNetworkWithHeight<'a, H>;
+    type MockBackend = MockBackendWithHeight<H>;
+    type MockNetwork = MockNetworkWithHeight<H>;
 
     async fn create_network(
         &mut self,
         _verif_crs: VerifierKeySet,
-        proof_crs: ProverKeySet<'a, OrderByOutputs>,
+        proof_crs: ProverKeySet<'static, OrderByOutputs>,
         records: MerkleTree,
         initial_grants: Vec<(RecordOpening, u64)>,
     ) -> Self::MockNetwork {
@@ -357,15 +357,15 @@ impl<'a, const H: u8> super::SystemUnderTest<'a> for MockSystemWithHeight<H> {
 
     async fn create_backend(
         &mut self,
-        ledger: Arc<Mutex<MockLedger<'a, Self::Ledger, Self::MockNetwork>>>,
+        ledger: Arc<Mutex<MockLedger<Self::Ledger, Self::MockNetwork>>>,
         _initial_grants: Vec<(RecordOpening, u64)>,
     ) -> Self::MockBackend {
         MockBackendWithHeight::new(ledger)
     }
 }
 
-pub type MockBackend<'a> = MockBackendWithHeight<'a, 5>;
-pub type MockNetwork<'a> = MockNetworkWithHeight<'a, 5>;
+pub type MockBackend = MockBackendWithHeight<5>;
+pub type MockNetwork = MockNetworkWithHeight<5>;
 pub type MockSystem = MockSystemWithHeight<5>;
 
 #[cfg(test)]

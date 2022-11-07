@@ -174,7 +174,7 @@ mod tests {
     async fn get_test_state(
         name: &str,
     ) -> (
-        LedgerState<'static, cap::Ledger>,
+        LedgerState<cap::Ledger>,
         MockKeystoreLoader,
         ChaChaRng,
     ) {

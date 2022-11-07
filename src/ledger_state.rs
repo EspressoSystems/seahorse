@@ -302,11 +302,11 @@ impl<L: Ledger> Hash for TransactionUID<L> {
     }
 }
 
-impl<L: Ledger> Arbitrary<'static> for TransactionUID<L>
+impl<'a, L: Ledger> Arbitrary<'a> for TransactionUID<L>
 where
-    TransactionHash<L>: Arbitrary<'static>,
+    TransactionHash<L>: Arbitrary<'a>,
 {
-    fn arbitrary(u: &mut Unstructured<'static>) -> arbitrary::Result<Self> {
+    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
         Ok(Self(u.arbitrary()?))
     }
 }
