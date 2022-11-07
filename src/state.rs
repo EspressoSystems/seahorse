@@ -13,7 +13,7 @@ use std::collections::HashMap;
 /// Keystore state which is shared with event handling threads.
 pub struct KeystoreSharedState<
     L: 'static + Ledger,
-    Backend: KeystoreBackend< L>,
+    Backend: KeystoreBackend<L>,
     Meta: Serialize + DeserializeOwned + Send + Sync + Clone + PartialEq,
 > {
     pub(crate) state: LedgerState<L>,
@@ -25,7 +25,7 @@ pub struct KeystoreSharedState<
 
 impl<
         L: 'static + Ledger,
-        Backend: KeystoreBackend< L>,
+        Backend: KeystoreBackend<L>,
         Meta: Serialize + DeserializeOwned + Send + Sync + Clone + PartialEq,
     > KeystoreSharedState<L, Backend, Meta>
 {
@@ -40,12 +40,12 @@ impl<
 
 impl<
         L: Ledger,
-        Backend: KeystoreBackend< L>,
+        Backend: KeystoreBackend<L>,
         Meta: Serialize + DeserializeOwned + Send + Sync + Clone + PartialEq,
     > KeystoreSharedState<L, Backend, Meta>
 {
     pub fn new(
-        state: LedgerState< L>,
+        state: LedgerState<L>,
         model: KeystoreModel<L, Backend, Meta>,
         key_scans: impl IntoIterator<Item = UserAddress>,
     ) -> Self {
@@ -66,7 +66,7 @@ impl<
         &mut self.model.backend
     }
 
-    pub fn state(&self) -> LedgerState< L> {
+    pub fn state(&self) -> LedgerState<L> {
         self.state.clone()
     }
 
@@ -78,18 +78,18 @@ impl<
 /// A read-write lock where writes must go through atomic storage transactions.
 pub struct KeystoreSharedStateRwLock<
     L: 'static + Ledger,
-    Backend: KeystoreBackend< L>,
+    Backend: KeystoreBackend<L>,
     Meta: Send + Serialize + DeserializeOwned + Sync + Clone + PartialEq,
 >(RwLock<KeystoreSharedState<L, Backend, Meta>>);
 
 impl<
         L: 'static + Ledger,
-        Backend: KeystoreBackend< L>,
+        Backend: KeystoreBackend<L>,
         Meta: Send + Serialize + DeserializeOwned + Sync + Clone + PartialEq,
     > KeystoreSharedStateRwLock<L, Backend, Meta>
 {
     pub fn new(
-        state: LedgerState< L>,
+        state: LedgerState<L>,
         model: KeystoreModel<L, Backend, Meta>,
         key_scans: impl IntoIterator<Item = UserAddress>,
     ) -> Self {
@@ -129,7 +129,7 @@ pub type KeystoreSharedStateReadGuard<'l, L, Backend, Meta> =
 pub struct KeystoreSharedStateWriteGuard<
     'l,
     L: 'static + Ledger,
-    Backend: KeystoreBackend< L>,
+    Backend: KeystoreBackend<L>,
     Meta: Send + Serialize + DeserializeOwned + Sync + Clone + PartialEq,
 > {
     guard: RwLockWriteGuard<'l, KeystoreSharedState<L, Backend, Meta>>,
@@ -139,7 +139,7 @@ pub struct KeystoreSharedStateWriteGuard<
 impl<
         'l,
         L: 'static + Ledger,
-        Backend: KeystoreBackend< L>,
+        Backend: KeystoreBackend<L>,
         Meta: Send + Serialize + DeserializeOwned + Sync + Clone + PartialEq,
     > KeystoreSharedStateWriteGuard<'l, L, Backend, Meta>
 {
@@ -252,7 +252,7 @@ impl<
 impl<
         'l,
         L: 'static + Ledger,
-        Backend: KeystoreBackend< L>,
+        Backend: KeystoreBackend<L>,
         Meta: Send + Serialize + DeserializeOwned + Sync + Clone + PartialEq,
     > Drop for KeystoreSharedStateWriteGuard<'l, L, Backend, Meta>
 {

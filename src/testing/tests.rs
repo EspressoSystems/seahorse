@@ -362,7 +362,7 @@ pub mod generic_keystore_tests {
         // which is longer than we want to borrow `keystores` for).
         async fn check_balance<'b, L: 'static + Ledger>(
             keystore: &(
-                Keystore<impl KeystoreBackend< L> + Sync + 'static, L, ()>,
+                Keystore<impl KeystoreBackend<L> + Sync + 'static, L, ()>,
                 Vec<UserPubKey>,
                 TempDir,
             ),
@@ -457,8 +457,7 @@ pub mod generic_keystore_tests {
     }
 
     #[async_std::test]
-    pub async fn test_two_keystores_non_native<'a, T: SystemUnderTest>() -> std::io::Result<()>
-    {
+    pub async fn test_two_keystores_non_native<'a, T: SystemUnderTest>() -> std::io::Result<()> {
         test_two_keystores::<T>(false).await;
         Ok(())
     }
@@ -1690,8 +1689,7 @@ pub mod generic_keystore_tests {
     }
 
     #[async_std::test]
-    pub async fn test_multixfr_keystore_simple<'a, T: SystemUnderTest>() -> std::io::Result<()>
-    {
+    pub async fn test_multixfr_keystore_simple<'a, T: SystemUnderTest>() -> std::io::Result<()> {
         let alice_grant = (0, 0, 3); // Alice gets 3 of coin 0 to start
         let bob_grant = (1, 1, 3); // Bob gets 3 of coin 1 to start
         let txns = vec![vec![

@@ -290,7 +290,7 @@ pub trait KeystoreBackend<L: Ledger>: Send {
 /// Transient state derived from the persistent [LedgerState] and [KeystoreStores].
 pub struct KeystoreModel<
     L: 'static + Ledger,
-    Backend: KeystoreBackend< L>,
+    Backend: KeystoreBackend<L>,
     Meta: Serialize + DeserializeOwned + Send + Sync + Clone + PartialEq,
 > {
     backend: Backend,
@@ -319,10 +319,8 @@ pub struct KeystoreStores<
     sending_accounts: Accounts<L, UserKeyPair>,
 }
 
-impl<
-        L: 'static + Ledger,
-        Meta: Serialize + DeserializeOwned + Send + Sync + Clone + PartialEq,
-    > KeystoreStores<L, Meta>
+impl<L: 'static + Ledger, Meta: Serialize + DeserializeOwned + Send + Sync + Clone + PartialEq>
+    KeystoreStores<L, Meta>
 {
     /// Access the metadata storage layer
     pub fn meta_store(&self) -> &MetaStore<Meta> {
@@ -458,7 +456,7 @@ impl<L: Ledger> Default for EventSummary<L> {
 /// dropped. Therefore, [std::mem::forget] must not be used to forget a [Keystore] without running its
 /// destructor.
 pub struct Keystore<
-    Backend: KeystoreBackend< L>,
+    Backend: KeystoreBackend<L>,
     L: 'static + Ledger,
     Meta: Serialize + DeserializeOwned + Send + Sync + Clone + PartialEq,
 > {
@@ -548,7 +546,7 @@ impl<T, F: Future<Output = T> + Captures<'static> + Send> SendFuture<'static, T>
 
 impl<
         L: 'static + Ledger,
-        Backend: 'static + KeystoreBackend< L> + Send + Sync,
+        Backend: 'static + KeystoreBackend<L> + Send + Sync,
         Meta: 'static + Serialize + DeserializeOwned + Send + Sync + Clone + PartialEq,
     > Keystore<Backend, L, Meta>
 {
@@ -614,14 +612,13 @@ impl<
     pub fn new(
         mut backend: Backend,
         loader: &'static mut (impl KeystoreLoader<L, Meta = Meta> + Send),
-    ) -> BoxFuture<'static, Result<Keystore<Backend, L, Meta>, KeystoreError<L>>>
-    {
+    ) -> BoxFuture<'static, Result<Keystore<Backend, L, Meta>, KeystoreError<L>>> {
         Box::pin(async move {
             let mut stores = Self::create_stores(loader).await?;
             let state = if stores.meta_store.exists() {
                 stores.ledger_states.load()?
             } else {
-                let state: LedgerState< L> = backend.create().await?;
+                let state: LedgerState<L> = backend.create().await?;
                 stores.meta_store.create().await?;
                 stores.ledger_states.update(&state)?;
                 state
@@ -635,12 +632,11 @@ impl<
     pub fn with_state_and_keys<'l>(
         backend: Backend,
         loader: &'static mut (impl 'static + KeystoreLoader<L, Meta = Meta> + Send),
-        state: LedgerState< L>,
+        state: LedgerState<L>,
         viewing_key: Option<(ViewerKeyPair, String)>,
         freezing_key: Option<(FreezerKeyPair, String)>,
         sending_key: Option<(UserKeyPair, String)>,
-    ) -> BoxFuture<'l, Result<Keystore<Backend, L, Meta>, KeystoreError<L>>>
-    {
+    ) -> BoxFuture<'l, Result<Keystore<Backend, L, Meta>, KeystoreError<L>>> {
         Box::pin(async move {
             let mut stores = Self::create_stores(loader).await?;
             if let Some((key, description)) = viewing_key {
@@ -681,7 +677,7 @@ impl<
     async fn new_impl(
         backend: Backend,
         stores: KeystoreStores<L, Meta>,
-        state: LedgerState< L>,
+        state: LedgerState<L>,
     ) -> Result<Keystore<Backend, L, Meta>, KeystoreError<L>> {
         let mut events = backend.subscribe(state.now(), None).await;
         let mut key_scans = vec![];
@@ -900,8 +896,9 @@ impl<
     #[allow(clippy::type_complexity)]
     pub fn transaction_history(
         &self,
-    ) -> std::pin::Pin<Box<dyn SendFuture<'static, Result<Vec<Transaction<L>>, KeystoreError<L>>> + '_>>
-    {
+    ) -> std::pin::Pin<
+        Box<dyn SendFuture<'static, Result<Vec<Transaction<L>>, KeystoreError<L>>> + '_>,
+    > {
         Box::pin(async move {
             let KeystoreSharedState { model, .. } = &*self.read().await;
             let mut history = model.stores.transactions.iter().collect::<Vec<_>>();
@@ -1073,8 +1070,7 @@ impl<
         &mut self,
         viewing_key: ViewerKeyPair,
         description: String,
-    ) -> std::pin::Pin<Box<dyn SendFuture<'static, Result<(), KeystoreError<L>>> + '_>>
-    {
+    ) -> std::pin::Pin<Box<dyn SendFuture<'static, Result<(), KeystoreError<L>>> + '_>> {
         Box::pin(async move {
             self.write()
                 .await
@@ -1110,8 +1106,7 @@ impl<
         &mut self,
         freeze_key: FreezerKeyPair,
         description: String,
-    ) -> std::pin::Pin<Box<dyn SendFuture<'static, Result<(), KeystoreError<L>>> + '_>>
-    {
+    ) -> std::pin::Pin<Box<dyn SendFuture<'static, Result<(), KeystoreError<L>>> + '_>> {
         Box::pin(async move {
             self.write()
                 .await
@@ -1152,8 +1147,7 @@ impl<
         user_key: UserKeyPair,
         description: String,
         scan_from: EventIndex,
-    ) -> std::pin::Pin<Box<dyn SendFuture<'static, Result<(), KeystoreError<L>>> + '_>>
-    {
+    ) -> std::pin::Pin<Box<dyn SendFuture<'static, Result<(), KeystoreError<L>>> + '_>> {
         Box::pin(async move {
             let (user_key, events) = self
                 .write()
@@ -1623,7 +1617,7 @@ impl<
 
 async fn update_ledger<
     L: 'static + Ledger,
-    Backend: KeystoreBackend< L>,
+    Backend: KeystoreBackend<L>,
     Meta: Send + DeserializeOwned + Serialize + Sync + Clone + PartialEq,
 >(
     event: LedgerEvent<L>,
@@ -1665,7 +1659,7 @@ async fn update_ledger<
 
 async fn update_key_scan<
     L: 'static + Ledger,
-    Backend: KeystoreBackend< L>,
+    Backend: KeystoreBackend<L>,
     Meta: Send + DeserializeOwned + Serialize + Sync + Clone + PartialEq,
 >(
     address: &UserAddress,

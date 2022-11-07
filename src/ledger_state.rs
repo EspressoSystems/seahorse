@@ -390,7 +390,7 @@ async fn receive_attached_records<
     L: Ledger,
     Meta: Serialize + DeserializeOwned + Send + Sync + Clone + PartialEq,
 >(
-    stores: &mut KeystoreStores< L, Meta>,
+    stores: &mut KeystoreStores<L, Meta>,
     txn: &reef::Transaction<L>,
     uids: &mut [(u64, bool)],
     add_to_history: bool,
@@ -452,7 +452,7 @@ async fn add_receive_history<
     L: Ledger,
     Meta: Serialize + DeserializeOwned + Send + Sync + Clone + PartialEq,
 >(
-    stores: &mut KeystoreStores< L, Meta>,
+    stores: &mut KeystoreStores<L, Meta>,
     kind: TransactionKind<L>,
     hash: TransactionHash<L>,
     records: &[RecordOpening],
@@ -2520,10 +2520,10 @@ impl<L: Ledger> From<&LedgerState<L>> for DynamicState<L> {
         }
     }
 }
- 
+
 /// Storage for the static and dynamic parts of the ledger state.
 pub struct LedgerStates<L: Ledger> {
-    static_store:  RollingLog<EncryptingResourceAdapter<StaticState>>,
+    static_store: RollingLog<EncryptingResourceAdapter<StaticState>>,
     dynamic_store: RollingLog<EncryptingResourceAdapter<DynamicState<L>>>,
 }
 

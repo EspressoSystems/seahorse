@@ -61,13 +61,11 @@ struct BenchLedgerScanner<T: SystemUnderTest + Clone> {
     // A keystore state snapshotted from the initial state of the benchmark (after `start_time`). This
     // can be used to create a new keystore which will then scan all of the preopulated events in its
     // main event thread.
-    initial_state: LedgerState< T::Ledger>,
+    initial_state: LedgerState<T::Ledger>,
 }
 
-type MockLedger<T> = super::MockLedger<
-    <T as SystemUnderTest>::Ledger,
-    <T as SystemUnderTest>::MockNetwork,
->;
+type MockLedger<T> =
+    super::MockLedger<<T as SystemUnderTest>::Ledger, <T as SystemUnderTest>::MockNetwork>;
 
 // A cache of benchmark setups with pre-generated event streams, indexed by number of blocks and
 // number of transactions per block, so that we only have to generate each setup once. This
@@ -189,10 +187,7 @@ async fn generate_independent_transactions<
     }
 }
 
-async fn bench_ledger_scanner_setup<
-    T: SystemUnderTest<Ledger = L> + Clone,
-    L: 'static + Ledger,
->(
+async fn bench_ledger_scanner_setup<T: SystemUnderTest<Ledger = L> + Clone, L: 'static + Ledger>(
     blocks: usize,
     txns_per_block: usize,
     txns: BenchLedgerScannerTransactions<L>,
@@ -382,7 +377,7 @@ fn bench_ledger_scanner_run<
     }
 }
 
-pub fn instantiate_generic_keystore_bench<T: SystemUnderTest+ Clone>(c: &mut Criterion) {
+pub fn instantiate_generic_keystore_bench<T: SystemUnderTest + Clone>(c: &mut Criterion) {
     // Only generate one block per benchmark. Criterion is optimized for smaller benchmarks, and we
     // only care about scaling/parallelism within a block anyways.
     let blocks = 1;

@@ -60,7 +60,7 @@ pub trait CLI {
     /// The [KeystoreLoader] implementation to use to create or load the keystore.
     type Loader: 'static + KeystoreLoader<Self::Ledger, Meta = Self::Meta> + Send;
     /// The type of metadata used by [Self::Loader].
-    type Meta: 'static +  Send + Sync + Serialize + DeserializeOwned + Clone + PartialEq;
+    type Meta: 'static + Send + Sync + Serialize + DeserializeOwned + Clone + PartialEq;
     /// The type of command line options for use when configuring the CLI.
     type Args: CLIArgs;
 
@@ -110,8 +110,7 @@ pub trait CLIArgs {
     fn use_tmp_storage(&self) -> bool;
 }
 
-pub type Keystore<C> =
-    crate::Keystore<<C as CLI>::Backend, <C as CLI>::Ledger, <C as CLI>::Meta>;
+pub type Keystore<C> = crate::Keystore<<C as CLI>::Backend, <C as CLI>::Ledger, <C as CLI>::Meta>;
 
 /// A REPL command.
 ///

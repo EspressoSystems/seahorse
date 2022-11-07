@@ -94,9 +94,7 @@ impl<const H: u8> MockNetworkWithHeight<H> {
     }
 }
 
-impl<'a, const H: u8> super::MockNetwork<cap::LedgerWithHeight<H>>
-    for MockNetworkWithHeight<H>
-{
+impl<'a, const H: u8> super::MockNetwork<cap::LedgerWithHeight<H>> for MockNetworkWithHeight<H> {
     fn now(&self) -> EventIndex {
         self.events.now()
     }
@@ -232,15 +230,13 @@ impl<const H: u8> MockBackendWithHeight<H> {
 }
 
 #[async_trait]
-impl<const H: u8> KeystoreBackend< cap::LedgerWithHeight<H>>
-    for MockBackendWithHeight<H>
-{
+impl<const H: u8> KeystoreBackend<cap::LedgerWithHeight<H>> for MockBackendWithHeight<H> {
     type EventStream =
         Pin<Box<dyn Stream<Item = (LedgerEvent<cap::LedgerWithHeight<H>>, EventSource)> + Send>>;
 
     async fn create(
         &mut self,
-    ) -> Result<LedgerState< cap::LedgerWithHeight<H>>, KeystoreError<cap::LedgerWithHeight<H>>>
+    ) -> Result<LedgerState<cap::LedgerWithHeight<H>>, KeystoreError<cap::LedgerWithHeight<H>>>
     {
         let state = {
             let mut ledger = self.ledger.lock().await;

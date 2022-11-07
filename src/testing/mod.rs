@@ -204,7 +204,7 @@ impl<'a, L: Ledger, N: MockNetwork<L>> MockLedger<L, N> {
 #[async_trait]
 pub trait SystemUnderTest: Default + Send + Sync {
     type Ledger: 'static + Ledger;
-    type MockBackend: 'static + KeystoreBackend< Self::Ledger> + Send + Sync;
+    type MockBackend: 'static + KeystoreBackend<Self::Ledger> + Send + Sync;
     type MockNetwork: 'static + MockNetwork<Self::Ledger> + Send;
 
     async fn create_backend(
@@ -238,7 +238,7 @@ pub trait SystemUnderTest: Default + Send + Sync {
         &mut self,
         key_tree: KeyTree,
         ledger: &Arc<Mutex<MockLedger<Self::Ledger, Self::MockNetwork>>>,
-        state: LedgerState< Self::Ledger>,
+        state: LedgerState<Self::Ledger>,
         viewing_key: Option<(ViewerKeyPair, String)>,
         freezing_key: Option<(FreezerKeyPair, String)>,
         sending_key: Option<(UserKeyPair, String)>,
@@ -644,7 +644,7 @@ impl<L: Ledger + 'static> MockEventSource<L> {
 /// the events relating to this transaction).
 pub async fn await_transaction<
     L: Ledger + 'static,
-    Backend: KeystoreBackend< L> + Sync + 'static,
+    Backend: KeystoreBackend<L> + Sync + 'static,
     Meta: 'static + Serialize + DeserializeOwned + Send + Sync + Clone + PartialEq,
 >(
     receipt: &TransactionUID<L>,

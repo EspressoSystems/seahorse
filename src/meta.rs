@@ -173,11 +173,7 @@ mod tests {
 
     async fn get_test_state(
         name: &str,
-    ) -> (
-        LedgerState<cap::Ledger>,
-        MockKeystoreLoader,
-        ChaChaRng,
-    ) {
+    ) -> (LedgerState<cap::Ledger>, MockKeystoreLoader, ChaChaRng) {
         let mut rng = ChaChaRng::from_seed([0x42u8; 32]);
 
         // Pick a few different sizes. It doesn't matter since all we're going to be doing is
@@ -249,7 +245,8 @@ mod tests {
 
     #[async_std::test]
     async fn test_round_trip() -> std::io::Result<()> {
-        let (mut stored, mut loader, mut rng): (_, MockKeystoreLoader, ChaChaRng) = get_test_state("test_round_trip").await;
+        let (mut stored, mut loader, mut rng): (_, MockKeystoreLoader, ChaChaRng) =
+            get_test_state("test_round_trip").await;
 
         // Create a new storage instance to load the keystore back from disk, to ensure that what we
         // load comes only from persistent storage and not from any in-memory state of the first
