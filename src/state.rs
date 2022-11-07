@@ -12,13 +12,12 @@ use std::collections::HashMap;
 
 /// Keystore state which is shared with event handling threads.
 pub struct KeystoreSharedState<
-    'a,
     L: 'static + Ledger,
-    Backend: KeystoreBackend<'a, L>,
+    Backend: KeystoreBackend<L>,
     Meta: Serialize + DeserializeOwned + Send + Sync + Clone + PartialEq,
 > {
-    pub(crate) state: LedgerState<'a, L>,
-    pub(crate) model: KeystoreModel<'a, L, Backend, Meta>,
+    pub(crate) state: LedgerState<L>,
+    pub(crate) model: KeystoreModel<L, Backend, Meta>,
     pub(crate) sync_handles: Vec<(EventIndex, oneshot::Sender<()>)>,
     pub(crate) txn_subscribers: HashMap<TransactionUID<L>, Vec<oneshot::Sender<TransactionStatus>>>,
     pub(crate) pending_viewing_key_scans: HashMap<ViewerPubKey, Vec<oneshot::Sender<()>>>,
@@ -27,11 +26,10 @@ pub struct KeystoreSharedState<
 }
 
 impl<
-        'a,
         L: 'static + Ledger,
-        Backend: KeystoreBackend<'a, L>,
+        Backend: KeystoreBackend<L>,
         Meta: Serialize + DeserializeOwned + Send + Sync + Clone + PartialEq,
-    > KeystoreSharedState<'a, L, Backend, Meta>
+    > KeystoreSharedState<L, Backend, Meta>
 {
     fn commit(&mut self) -> Result<(), KeystoreError<L>> {
         self.model.stores.commit()
@@ -43,15 +41,14 @@ impl<
 }
 
 impl<
-        'a,
         L: Ledger,
-        Backend: KeystoreBackend<'a, L>,
+        Backend: KeystoreBackend<L>,
         Meta: Serialize + DeserializeOwned + Send + Sync + Clone + PartialEq,
-    > KeystoreSharedState<'a, L, Backend, Meta>
+    > KeystoreSharedState<L, Backend, Meta>
 {
     pub fn new(
-        state: LedgerState<'a, L>,
-        model: KeystoreModel<'a, L, Backend, Meta>,
+        state: LedgerState<L>,
+        model: KeystoreModel<L, Backend, Meta>,
         viewing_key_scans: impl IntoIterator<Item = ViewerPubKey>,
         freezing_key_scans: impl IntoIterator<Item = FreezerPubKey>,
         sending_key_scans: impl IntoIterator<Item = UserAddress>,
@@ -84,7 +81,7 @@ impl<
         &mut self.model.backend
     }
 
-    pub fn state(&self) -> LedgerState<'a, L> {
+    pub fn state(&self) -> LedgerState<L> {
         self.state.clone()
     }
 
@@ -95,22 +92,20 @@ impl<
 
 /// A read-write lock where writes must go through atomic storage transactions.
 pub struct KeystoreSharedStateRwLock<
-    'a,
     L: 'static + Ledger,
-    Backend: KeystoreBackend<'a, L>,
+    Backend: KeystoreBackend<L>,
     Meta: Send + Serialize + DeserializeOwned + Sync + Clone + PartialEq,
->(RwLock<KeystoreSharedState<'a, L, Backend, Meta>>);
+>(RwLock<KeystoreSharedState<L, Backend, Meta>>);
 
 impl<
-        'a,
         L: 'static + Ledger,
-        Backend: KeystoreBackend<'a, L>,
+        Backend: KeystoreBackend<L>,
         Meta: Send + Serialize + DeserializeOwned + Sync + Clone + PartialEq,
-    > KeystoreSharedStateRwLock<'a, L, Backend, Meta>
+    > KeystoreSharedStateRwLock<L, Backend, Meta>
 {
     pub fn new(
-        state: LedgerState<'a, L>,
-        model: KeystoreModel<'a, L, Backend, Meta>,
+        state: LedgerState<L>,
+        model: KeystoreModel<L, Backend, Meta>,
         viewing_key_scans: impl IntoIterator<Item = ViewerPubKey>,
         freezing_key_scans: impl IntoIterator<Item = FreezerPubKey>,
         sending_key_scans: impl IntoIterator<Item = UserAddress>,
@@ -124,17 +119,17 @@ impl<
         )))
     }
 
-    pub async fn read(&self) -> KeystoreSharedStateReadGuard<'_, 'a, L, Backend, Meta> {
+    pub async fn read(&self) -> KeystoreSharedStateReadGuard<'_, L, Backend, Meta> {
         self.0.read().await
     }
 
-    pub async fn write(&self) -> KeystoreSharedStateWriteGuard<'_, 'a, L, Backend, Meta> {
+    pub async fn write(&self) -> KeystoreSharedStateWriteGuard<'_, L, Backend, Meta> {
         KeystoreSharedStateWriteGuard::new(&self.0).await
     }
 }
 
-pub type KeystoreSharedStateReadGuard<'l, 'a, L, Backend, Meta> =
-    RwLockReadGuard<'l, KeystoreSharedState<'a, L, Backend, Meta>>;
+pub type KeystoreSharedStateReadGuard<'l, L, Backend, Meta> =
+    RwLockReadGuard<'l, KeystoreSharedState<L, Backend, Meta>>;
 
 /// A guard for [KeystoreSharedState] that allows writing and gracefully handles errors.
 ///
@@ -154,26 +149,24 @@ pub type KeystoreSharedStateReadGuard<'l, 'a, L, Backend, Meta> =
 /// automatically if the transaction fails.
 pub struct KeystoreSharedStateWriteGuard<
     'l,
-    'a,
     L: 'static + Ledger,
-    Backend: KeystoreBackend<'a, L>,
+    Backend: KeystoreBackend<L>,
     Meta: Send + Serialize + DeserializeOwned + Sync + Clone + PartialEq,
 > {
-    guard: RwLockWriteGuard<'l, KeystoreSharedState<'a, L, Backend, Meta>>,
+    guard: RwLockWriteGuard<'l, KeystoreSharedState<L, Backend, Meta>>,
     failed: bool,
 }
 
 impl<
         'l,
-        'a,
         L: 'static + Ledger,
-        Backend: KeystoreBackend<'a, L>,
+        Backend: KeystoreBackend<L>,
         Meta: Send + Serialize + DeserializeOwned + Sync + Clone + PartialEq,
-    > KeystoreSharedStateWriteGuard<'l, 'a, L, Backend, Meta>
+    > KeystoreSharedStateWriteGuard<'l, L, Backend, Meta>
 {
     async fn new(
-        mutex: &'l RwLock<KeystoreSharedState<'a, L, Backend, Meta>>,
-    ) -> KeystoreSharedStateWriteGuard<'l, 'a, L, Backend, Meta> {
+        mutex: &'l RwLock<KeystoreSharedState<L, Backend, Meta>>,
+    ) -> KeystoreSharedStateWriteGuard<'l, L, Backend, Meta> {
         Self {
             guard: mutex.write().await,
             failed: false,
@@ -246,7 +239,7 @@ impl<
     /// fail immediately without invoking `op` at all.
     pub async fn update<'s, F, Fut>(&'s mut self, op: F) -> Result<Fut::Ok, Fut::Error>
     where
-        F: FnOnce(&'s mut KeystoreSharedState<'a, L, Backend, Meta>) -> Fut,
+        F: FnOnce(&'s mut KeystoreSharedState<L, Backend, Meta>) -> Fut,
         Fut: TryFuture<Error = KeystoreError<L>>,
     {
         if self.failed {
@@ -279,11 +272,10 @@ impl<
 
 impl<
         'l,
-        'a,
         L: 'static + Ledger,
-        Backend: KeystoreBackend<'a, L>,
+        Backend: KeystoreBackend<L>,
         Meta: Send + Serialize + DeserializeOwned + Sync + Clone + PartialEq,
-    > Drop for KeystoreSharedStateWriteGuard<'l, 'a, L, Backend, Meta>
+    > Drop for KeystoreSharedStateWriteGuard<'l, L, Backend, Meta>
 {
     fn drop(&mut self) {
         if self.failed {

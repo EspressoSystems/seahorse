@@ -52,21 +52,21 @@ use tempdir::TempDir;
 
 /// The interface required of a particular ledger-specific instantiation.
 #[async_trait]
-pub trait CLI<'a> {
+pub trait CLI {
     /// The ledger for which we want to instantiate this CLI.
     type Ledger: 'static + Ledger;
     /// The [KeystoreBackend] implementation to use for the keystore.
-    type Backend: 'a + KeystoreBackend<'a, Self::Ledger> + Send + Sync;
+    type Backend: 'static + KeystoreBackend<Self::Ledger> + Send + Sync;
     /// The [KeystoreLoader] implementation to use to create or load the keystore.
-    type Loader: KeystoreLoader<Self::Ledger, Meta = Self::Meta> + Send;
+    type Loader: 'static + KeystoreLoader<Self::Ledger, Meta = Self::Meta> + Send;
     /// The type of metadata used by [Self::Loader].
-    type Meta: 'a + Send + Sync + Serialize + DeserializeOwned + Clone + PartialEq;
+    type Meta: 'static + Send + Sync + Serialize + DeserializeOwned + Clone + PartialEq;
     /// The type of command line options for use when configuring the CLI.
     type Args: CLIArgs;
 
     /// Create a backend for the keystore which is being controlled by the CLI.
     async fn init_backend(
-        universal_param: &'a UniversalParam,
+        universal_param: &'static UniversalParam,
         args: Self::Args,
     ) -> Result<Self::Backend, KeystoreError<Self::Ledger>>;
 
@@ -81,7 +81,7 @@ pub trait CLI<'a> {
     /// This method is optional. By default it returns an empty list, in which case the CLI
     /// instantiation will still provide commands for all of the basic, ledger-agnostic keystore
     /// functionality.
-    fn extra_commands() -> Vec<Command<'a, Self>>
+    fn extra_commands() -> Vec<Command<Self>>
     where
         Self: Sized,
     {
@@ -110,15 +110,14 @@ pub trait CLIArgs {
     fn use_tmp_storage(&self) -> bool;
 }
 
-pub type Keystore<'a, C> =
-    crate::Keystore<'a, <C as CLI<'a>>::Backend, <C as CLI<'a>>::Ledger, <C as CLI<'a>>::Meta>;
+pub type Keystore<C> = crate::Keystore<<C as CLI>::Backend, <C as CLI>::Ledger, <C as CLI>::Meta>;
 
 /// A REPL command.
 ///
 /// This struct can be created manually, but it is easier to use the [command!] macro, which
 /// automatically parses a function specification to create the documentation for command
 /// parameters.
-pub struct Command<'a, C: CLI<'a>> {
+pub struct Command<C: CLI> {
     /// The name of the command, for display and lookup.
     pub name: String,
     /// The parameters of the command and their types, as strings, for display purposes in the
@@ -130,21 +129,21 @@ pub struct Command<'a, C: CLI<'a>> {
     /// A brief description of what the command does.
     pub help: String,
     /// Run the command with a list of arguments.
-    pub run: CommandFunc<'a, C>,
+    pub run: CommandFunc<C>,
 }
 
-pub type CommandFunc<'a, C> = Box<
+pub type CommandFunc<C> = Box<
     dyn Send
         + Sync
         + for<'l> Fn(
             SharedIO,
-            &'l mut Keystore<'a, C>,
+            &'l mut Keystore<C>,
             Vec<String>,
             HashMap<String, String>,
         ) -> BoxFuture<'l, ()>,
 >;
 
-impl<'a, C: CLI<'a>> Display for Command<'a, C> {
+impl<C: CLI> Display for Command<C> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.name)?;
         for (param, ty) in &self.params {
@@ -160,8 +159,8 @@ impl<'a, C: CLI<'a>> Display for Command<'a, C> {
 
 /// Types which can be parsed from a string relative to a particular [Keystore].Stream
 #[async_trait]
-pub trait CLIInput<'a, C: CLI<'a>>: Sized {
-    async fn parse_for_keystore(keystore: &mut Keystore<'a, C>, s: &str) -> Option<Self>;
+pub trait CLIInput<'a, C: CLI>: Sized {
+    async fn parse_for_keystore(keystore: &mut Keystore<C>, s: &str) -> Option<Self>;
 }
 
 #[tagged_blob("RECPROOF")]
@@ -174,8 +173,8 @@ macro_rules! cli_input_from_str {
     ($($t:ty),*) => {
         $(
             #[async_trait]
-            impl<'a, C: CLI<'a>> CLIInput<'a, C> for $t {
-                async fn parse_for_keystore(_keystore: &mut Keystore<'a, C>, s: &str) -> Option<Self> {
+            impl<'a, C: CLI> CLIInput<'a, C> for $t {
+                async fn parse_for_keystore(_keystore: &mut Keystore<C>, s: &str) -> Option<Self> {
                     Self::from_str(s).ok()
                 }
             }
@@ -189,8 +188,8 @@ cli_input_from_str! {
 }
 
 #[async_trait]
-impl<'a, C: CLI<'a>, L: Ledger> CLIInput<'a, C> for TransactionUID<L> {
-    async fn parse_for_keystore(_keystore: &mut Keystore<'a, C>, s: &str) -> Option<Self> {
+impl<'a, C: CLI, L: Ledger> CLIInput<'a, C> for TransactionUID<L> {
+    async fn parse_for_keystore(_keystore: &mut Keystore<C>, s: &str) -> Option<Self> {
         Self::from_str(s).ok()
     }
 }
@@ -199,8 +198,8 @@ impl<'a, C: CLI<'a>, L: Ledger> CLIInput<'a, C> for TransactionUID<L> {
 // 0x prefix. If present, it interprets the remainder of the string as hex, otherwise it interprets
 // the entire string as decimal.
 #[async_trait]
-impl<'a, C: CLI<'a>> CLIInput<'a, C> for U256 {
-    async fn parse_for_keystore(_wallet: &mut Keystore<'a, C>, s: &str) -> Option<Self> {
+impl<'a, C: CLI> CLIInput<'a, C> for U256 {
+    async fn parse_for_keystore(_wallet: &mut Keystore<C>, s: &str) -> Option<Self> {
         if s.starts_with("0x") {
             s.parse().ok()
         } else {
@@ -307,8 +306,8 @@ pub use crate::{async_write as cli_write, async_writeln as cli_writeln};
 
 /// Types which can be listed in terminal output and parsed from a list index.
 #[async_trait]
-pub trait Listable<'a, C: CLI<'a>>: Sized {
-    async fn list(keystore: &mut Keystore<'a, C>) -> Vec<ListItem<Self>>;
+pub trait Listable<'a, C: CLI>: Sized {
+    async fn list(keystore: &mut Keystore<C>) -> Vec<ListItem<Self>>;
 }
 
 pub struct ListItem<T> {
@@ -328,8 +327,8 @@ impl<T: Display> Display for ListItem<T> {
 }
 
 #[async_trait]
-impl<'a, C: CLI<'a>, T: Listable<'a, C> + CLIInput<'a, C>> CLIInput<'a, C> for ListItem<T> {
-    async fn parse_for_keystore(keystore: &mut Keystore<'a, C>, s: &str) -> Option<Self> {
+impl<'a, C: CLI, T: Listable<'a, C> + CLIInput<'a, C>> CLIInput<'a, C> for ListItem<T> {
+    async fn parse_for_keystore(keystore: &mut Keystore<C>, s: &str) -> Option<Self> {
         if let Ok(index) = usize::from_str(s) {
             // If the input looks like a list index, build the list for type T and get an element of
             // type T by indexing.
@@ -353,8 +352,8 @@ impl<'a, C: CLI<'a>, T: Listable<'a, C> + CLIInput<'a, C>> CLIInput<'a, C> for L
 }
 
 #[async_trait]
-impl<'a, C: CLI<'a>> Listable<'a, C> for AssetCode {
-    async fn list(keystore: &mut Keystore<'a, C>) -> Vec<ListItem<Self>> {
+impl<'a, C: CLI> Listable<'a, C> for AssetCode {
+    async fn list(keystore: &mut Keystore<C>) -> Vec<ListItem<Self>> {
         // Get our viewing and freezing keys so we can check if the asset types are
         // viewable/freezable.
         let viewing_keys = keystore.viewing_pub_keys().await;
@@ -396,7 +395,7 @@ impl<'a, C: CLI<'a>> Listable<'a, C> for AssetCode {
     }
 }
 
-fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
+fn init_commands<C: CLI>() -> Vec<Command<C>> {
     let mut commands = C::extra_commands();
     commands.append(&mut vec![
         command!(
@@ -931,7 +930,7 @@ fn init_commands<'a, C: CLI<'a>>() -> Vec<Command<'a, C>> {
     commands
 }
 
-async fn print_keys<'a, C: CLI<'a>>(io: &mut SharedIO, keystore: &Keystore<'a, C>) {
+async fn print_keys<C: CLI>(io: &mut SharedIO, keystore: &Keystore<C>) {
     cli_writeln!(io, "Sending keys:");
     for key_pair in keystore.sending_keys().await {
         let account = keystore.sending_account(&key_pair.address()).await.unwrap();
@@ -956,8 +955,8 @@ pub enum KeyType {
 }
 
 #[async_trait]
-impl<'a, C: CLI<'a>> CLIInput<'a, C> for KeyType {
-    async fn parse_for_keystore(_keystore: &mut Keystore<'a, C>, s: &str) -> Option<Self> {
+impl<'a, C: CLI> CLIInput<'a, C> for KeyType {
+    async fn parse_for_keystore(_keystore: &mut Keystore<C>, s: &str) -> Option<Self> {
         match s {
             "view" | "viewing" => Some(Self::Viewing),
             "freeze" | "freezing" => Some(Self::Freezing),
@@ -967,9 +966,9 @@ impl<'a, C: CLI<'a>> CLIInput<'a, C> for KeyType {
     }
 }
 
-pub async fn finish_transaction<'a, C: CLI<'a>>(
+pub async fn finish_transaction<'a, C: CLI>(
     io: &mut SharedIO,
-    keystore: &Keystore<'a, C>,
+    keystore: &Keystore<C>,
     result: Result<TransactionUID<C::Ledger>, KeystoreError<C::Ledger>>,
     wait: Option<bool>,
     success_state: &str,
@@ -999,7 +998,7 @@ pub async fn finish_transaction<'a, C: CLI<'a>>(
 }
 
 /// Run the CLI based in the provided command line arguments.
-pub async fn cli_main<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
+pub async fn cli_main<'a, L: 'static + Ledger, C: CLI<Ledger = L>>(
     args: C::Args,
 ) -> Result<(), KeystoreError<L>> {
     if let Some(path) = args.key_gen_path() {
@@ -1009,7 +1008,7 @@ pub async fn cli_main<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
     }
 }
 
-pub fn key_gen<'a, C: CLI<'a>>(mut path: PathBuf) -> Result<(), KeystoreError<C::Ledger>> {
+pub fn key_gen<C: CLI>(mut path: PathBuf) -> Result<(), KeystoreError<C::Ledger>> {
     let key_pair = crate::new_key_pair();
 
     let mut file = File::create(path.clone()).context(IoSnafu)?;
@@ -1024,7 +1023,7 @@ pub fn key_gen<'a, C: CLI<'a>>(mut path: PathBuf) -> Result<(), KeystoreError<C:
     Ok(())
 }
 
-async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
+async fn repl<L: 'static + Ledger, C: CLI<Ledger = L>>(
     args: C::Args,
 ) -> Result<(), KeystoreError<L>> {
     let (storage, _tmp_dir) = match args.storage_path() {
@@ -1070,8 +1069,8 @@ async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
     // Loading the keystore takes a while. Let the user know that's expected.
     //todo !jeb.bearer Make it faster
     cli_writeln!(io, "connecting...");
-    let mut loader = C::init_loader(storage, input.clone()).await?;
-    let mut keystore = Keystore::<C>::new(backend, &mut loader).await?;
+    let loader = Box::leak(Box::new(C::init_loader(storage, input.clone()).await?));
+    let mut keystore = Keystore::<C>::new(backend, loader).await?;
     cli_writeln!(io, "Type 'help' for a list of commands.");
     let commands = init_commands::<C>();
 
@@ -1114,8 +1113,6 @@ async fn repl<'a, L: 'static + Ledger, C: CLI<'a, Ledger = L>>(
             "Unknown command. Type 'help' for a list of valid commands."
         );
     }
-
-    keystore.close().await;
     Ok(())
 }
 
@@ -1144,15 +1141,15 @@ mod test {
     use std::time::Instant;
     use tempdir::TempDir;
 
-    type MockCapLedger<'a> = Arc<Mutex<MockLedger<'a, cap::Ledger, MockNetwork<'a>>>>;
+    type MockCapLedger = Arc<Mutex<MockLedger<cap::Ledger, MockNetwork>>>;
 
-    struct MockArgs<'a> {
+    struct MockArgs {
         io: SharedIO,
-        ledger: MockCapLedger<'a>,
+        ledger: MockCapLedger,
         path: Option<PathBuf>,
     }
 
-    impl<'a> CLIArgs for MockArgs<'a> {
+    impl CLIArgs for MockArgs {
         fn key_gen_path(&self) -> Option<PathBuf> {
             None
         }
@@ -1173,18 +1170,18 @@ mod test {
     struct MockCLI;
 
     #[async_trait]
-    impl<'a> CLI<'a> for MockCLI {
+    impl CLI for MockCLI {
         type Ledger = cap::Ledger;
-        type Backend = MockBackend<'a>;
+        type Backend = MockBackend;
         type Loader = InteractiveLoader;
         type Meta = MnemonicPasswordLogin;
-        type Args = MockArgs<'a>;
+        type Args = MockArgs;
 
         async fn init_backend(
-            _universal_param: &'a UniversalParam,
+            _universal_param: &'static UniversalParam,
             args: Self::Args,
         ) -> Result<Self::Backend, KeystoreError<Self::Ledger>> {
-            Ok(MockBackend::new(args.ledger.clone()))
+            Ok(MockBackend::new(args.ledger))
         }
 
         async fn init_loader(
@@ -1201,10 +1198,10 @@ mod test {
         file.write_all(&bytes).unwrap();
         full_path
     }
-    async fn create_network<'a>(
+    async fn create_network(
         t: &mut MockSystem,
         initial_grants: &[u64],
-    ) -> (MockCapLedger<'a>, Vec<Vec<UserKeyPair>>) {
+    ) -> (MockCapLedger, Vec<Vec<UserKeyPair>>) {
         // Use `create_test_network` to create a ledger with some initial records.
         let (ledger, keystores) = t
             .create_test_network(&[(3, 3)], initial_grants.to_vec(), &mut Instant::now())
@@ -1224,7 +1221,7 @@ mod test {
     }
 
     async fn create_keystore(
-        ledger: MockCapLedger<'static>,
+        ledger: MockCapLedger,
         path: PathBuf,
     ) -> (Tee<PipeWriter>, Tee<PipeReader>) {
         let (io, input, output) = SharedIO::pipe();
