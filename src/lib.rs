@@ -69,7 +69,6 @@ use atomic_store::{
     AtomicStoreLoader,
 };
 use core::fmt::Debug;
-use futures::future::BoxFuture;
 use futures::{channel::oneshot, prelude::*, stream::Stream};
 use jf_cap::{
     errors::TxnApiError,
@@ -574,80 +573,65 @@ impl<
         })
     }
 
-    // This function suffers from github.com/rust-lang/rust/issues/89657, in which, if we define it
-    // as an async function, the compiler loses track of the fact that the resulting opaque Future
-    // implements Send, even though it does. Unfortunately, the workaround used for some other
-    // functions in this module (c.f. `submit_elaborated_transaction`) where we manually desugar the
-    // function signature to explicitly return `impl Future + Send` triggers a separate and possibly
-    // unrelated compiler bug, which results in a panic during compilation.
-    //
-    // Fortunately, there is a different workaround which does work. The idea is the same: to
-    // manually write out the opaque return type so that we can explicitly add the `Send` bound. The
-    // difference is that we use dynamic type erasure (Pin<Box<dyn Future>>) instead of static type
-    // erasure. I don't know why this doesn't crash the compiler, but it doesn't.
-    pub fn new(
+    pub async fn new(
         mut backend: Backend,
         loader: &'static mut (impl KeystoreLoader<L, Meta = Meta> + Send),
-    ) -> BoxFuture<'static, Result<Keystore<Backend, L, Meta>, KeystoreError<L>>> {
-        Box::pin(async move {
-            let mut stores = Self::create_stores(loader).await?;
-            let state = if stores.meta_store.exists() {
-                stores.ledger_states.load()?
-            } else {
-                let state: LedgerState<L> = backend.create().await?;
-                stores.meta_store.create().await?;
-                stores.ledger_states.update(&state)?;
-                state
-            };
-            stores.commit()?;
-            Self::new_impl(backend, stores, state).await
-        })
+    ) -> Result<Keystore<Backend, L, Meta>, KeystoreError<L>> {
+        let mut stores = Self::create_stores(loader).await?;
+        let state = if stores.meta_store.exists() {
+            stores.ledger_states.load()?
+        } else {
+            let state: LedgerState<L> = backend.create().await?;
+            stores.meta_store.create().await?;
+            stores.ledger_states.update(&state)?;
+            state
+        };
+        stores.commit()?;
+        Self::new_impl(backend, stores, state).await
     }
 
     #[cfg(any(test, bench, feature = "testing"))]
-    pub fn with_state_and_keys<'l>(
+    pub async fn with_state_and_keys(
         backend: Backend,
         loader: &'static mut (impl 'static + KeystoreLoader<L, Meta = Meta> + Send),
         state: LedgerState<L>,
         viewing_key: Option<(ViewerKeyPair, String)>,
         freezing_key: Option<(FreezerKeyPair, String)>,
         sending_key: Option<(UserKeyPair, String)>,
-    ) -> BoxFuture<'l, Result<Keystore<Backend, L, Meta>, KeystoreError<L>>> {
-        Box::pin(async move {
-            let mut stores = Self::create_stores(loader).await?;
-            if let Some((key, description)) = viewing_key {
-                stores
-                    .viewing_accounts
-                    .create(key, None)
-                    .unwrap()
-                    .with_description(description)
-                    .save()
-                    .unwrap();
-            }
-            if let Some((key, description)) = freezing_key {
-                stores
-                    .freezing_accounts
-                    .create(key, None)
-                    .unwrap()
-                    .with_description(description)
-                    .save()
-                    .unwrap();
-            }
-            if let Some((key, description)) = sending_key {
-                stores
-                    .sending_accounts
-                    .create(key, None)
-                    .unwrap()
-                    .with_description(description)
-                    .save()
-                    .unwrap();
-            }
+    ) -> Result<Keystore<Backend, L, Meta>, KeystoreError<L>> {
+        let mut stores = Self::create_stores(loader).await?;
+        if let Some((key, description)) = viewing_key {
+            stores
+                .viewing_accounts
+                .create(key, None)
+                .unwrap()
+                .with_description(description)
+                .save()
+                .unwrap();
+        }
+        if let Some((key, description)) = freezing_key {
+            stores
+                .freezing_accounts
+                .create(key, None)
+                .unwrap()
+                .with_description(description)
+                .save()
+                .unwrap();
+        }
+        if let Some((key, description)) = sending_key {
+            stores
+                .sending_accounts
+                .create(key, None)
+                .unwrap()
+                .with_description(description)
+                .save()
+                .unwrap();
+        }
 
-            stores.meta_store.create().await?;
-            stores.ledger_states.update(&state)?;
-            stores.commit()?;
-            Self::new_impl(backend, stores, state).await
-        })
+        stores.meta_store.create().await?;
+        stores.ledger_states.update(&state)?;
+        stores.commit()?;
+        Self::new_impl(backend, stores, state).await
     }
 
     async fn new_impl(
@@ -714,20 +698,6 @@ impl<
             freezing_key_scans.iter().map(|(key, _)| key.clone()),
             sending_key_scans.iter().map(|(key, _)| key.clone()),
         ));
-        // let mut scope = unsafe {
-        // Creating an AsyncScope is considered unsafe because `std::mem::forget` is allowed
-        // in safe code, and forgetting an AsyncScope can allow its inner futures to
-        // continue to be scheduled to run after the lifetime of the scope ends, since
-        // normally the destructor of the scope ensures that its futures are driven to
-        // completion before its lifetime ends.
-        //
-        // Since we are immediately going to store `scope` in the resulting `Keystore`, its
-        // lifetime will be the same as the `Keystore`, and its destructor will run as long as
-        // no one calls `forget` on the `Keystore` -- which no one should ever have any reason
-        // to.
-        // AsyncScope::create()
-        // };
-
         // Start the event loop.
         {
             let mutex = mutex.clone();
@@ -764,11 +734,6 @@ impl<
 
         Ok(keystore)
     }
-
-    // pub async fn close(mut self) {
-    //     self.task_scope.cancel();
-    //     self.task_scope.collect::<Vec<_>>().await;
-    // }
 
     /// Access the shared state directly.
     pub async fn write(&self) -> KeystoreSharedStateWriteGuard<'_, L, Backend, Meta> {
