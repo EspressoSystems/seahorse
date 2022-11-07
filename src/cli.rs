@@ -972,7 +972,7 @@ pub async fn cli_main<'a, L: 'static + Ledger, C: CLI<Ledger = L>>(
     }
 }
 
-pub fn key_gen<'a, C: CLI>(mut path: PathBuf) -> Result<(), KeystoreError<C::Ledger>> {
+pub fn key_gen<C: CLI>(mut path: PathBuf) -> Result<(), KeystoreError<C::Ledger>> {
     let key_pair = crate::new_key_pair();
 
     let mut file = File::create(path.clone()).context(IoSnafu)?;

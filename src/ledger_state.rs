@@ -572,7 +572,6 @@ fn u256_to_signed(u: U256) -> BigInt {
 }
 
 #[derive(Deserialize, Serialize, Derivative)]
-#[serde(bound(deserialize = "'de: 'static"))]
 #[derivative(
     Clone(bound = ""),
     Debug(bound = ""),
