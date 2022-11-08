@@ -412,9 +412,6 @@
 <span id="406">406</span>
 <span id="407">407</span>
 <span id="408">408</span>
-<span id="409">409</span>
-<span id="410">410</span>
-<span id="411">411</span>
 </pre><pre class="rust"><code><span class="comment">// Copyright (c) 2022 Espresso Systems (espressosys.com)</span>
 <span class="comment">// This file is part of the Seahorse library.</span>
 
@@ -590,11 +587,7 @@
 
     <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">get_test_state</span>(
         <span class="ident">name</span>: <span class="kw-2">&amp;</span><span class="ident">str</span>,
-    ) -&gt; (
-        <span class="ident">LedgerState</span><span class="op">&lt;</span><span class="lifetime">&#39;static</span>, <span class="ident">cap::Ledger</span><span class="op">&gt;</span>,
-        <span class="ident">MockKeystoreLoader</span>,
-        <span class="ident">ChaChaRng</span>,
-    ) {
+    ) -&gt; (<span class="ident">LedgerState</span><span class="op">&lt;</span><span class="ident">cap::Ledger</span><span class="op">&gt;</span>, <span class="ident">MockKeystoreLoader</span>, <span class="ident">ChaChaRng</span>) {
         <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">rng</span> <span class="op">=</span> <span class="ident">ChaChaRng::from_seed</span>([<span class="number">0x42u8</span>; <span class="number">32</span>]);
 
         <span class="comment">// Pick a few different sizes. It doesn&#39;t matter since all we&#39;re going to be doing is</span>
@@ -666,7 +659,8 @@
 
     <span class="attribute">#[<span class="ident">async_std::test</span>]</span>
     <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">test_round_trip</span>() -&gt; <span class="ident">std::io::Result</span><span class="op">&lt;</span>()<span class="op">&gt;</span> {
-        <span class="kw">let</span> (<span class="kw-2">mut</span> <span class="ident">stored</span>, <span class="kw-2">mut</span> <span class="ident">loader</span>, <span class="kw-2">mut</span> <span class="ident">rng</span>) <span class="op">=</span> <span class="ident">get_test_state</span>(<span class="string">&quot;test_round_trip&quot;</span>).<span class="kw">await</span>;
+        <span class="kw">let</span> (<span class="kw-2">mut</span> <span class="ident">stored</span>, <span class="kw-2">mut</span> <span class="ident">loader</span>, <span class="kw-2">mut</span> <span class="ident">rng</span>): (<span class="kw">_</span>, <span class="ident">MockKeystoreLoader</span>, <span class="ident">ChaChaRng</span>) <span class="op">=</span>
+            <span class="ident">get_test_state</span>(<span class="string">&quot;test_round_trip&quot;</span>).<span class="kw">await</span>;
 
         <span class="comment">// Create a new storage instance to load the keystore back from disk, to ensure that what we</span>
         <span class="comment">// load comes only from persistent storage and not from any in-memory state of the first</span>
@@ -778,8 +772,8 @@
             <span class="ident">atomic_store</span>.<span class="ident">commit_version</span>().<span class="ident">unwrap</span>();
 
             <span class="comment">// Make sure loading after a revert does not return the reverted changes.</span>
-            <span class="kw">let</span> <span class="ident">state</span> <span class="op">=</span> <span class="ident">ledger_states</span>.<span class="ident">load</span>().<span class="ident">unwrap</span>();
-            <span class="ident">state</span>
+
+            <span class="ident">ledger_states</span>.<span class="ident">load</span>().<span class="ident">unwrap</span>()
         };
         <span class="macro">assert_eq!</span>(<span class="ident">stored</span>, <span class="ident">loaded</span>);
 
