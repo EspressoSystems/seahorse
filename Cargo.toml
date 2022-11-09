@@ -35,7 +35,7 @@ rand_chacha = { version = "0.3.1", features = ["serde1"] }
 regex = "1.7.0"
 rpassword = "7.1"
 rust-argon2 = "1.0.0"
-rustyline = "9.0.0"
+rustyline = "10.0.0"
 serde = { version = "1.0", features = ["derive"] }
 sha3 = "^0.10"
 snafu = { version = "0.7", features = ["backtraces"] }
