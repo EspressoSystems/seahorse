@@ -27,7 +27,7 @@ jobs:
         name: Checkout Repository
 
       - name: Enable Rust Caching
-        uses: Swatinem/rust-cache@v1
+        uses: Swatinem/rust-cache@v2
 
       - name: Bench
         run: cargo bench --features=testing
