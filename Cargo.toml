@@ -2,7 +2,7 @@
 name = "seahorse"
 description = "A generic cap-style cryptocurrency keystore."
 authors = ["Espresso Systems <hello@espressosys.com>"]
-version = "0.3.1"
+version = "0.3.2"
 edition = "2018"
 license = "GPL-3.0-or-later"
 
@@ -55,8 +55,8 @@ espresso-macros = { git = "https://github.com/EspressoSystems/espresso-macros.gi
 jf-cap = { features=["std"], git = "https://github.com/EspressoSystems/cap.git", branch = "testnet-v1" }
 jf-primitives = { features=["std"], git = "https://github.com/EspressoSystems/jellyfish.git", tag = "0.1.2" }
 jf-utils = { features=["std"], git = "https://github.com/EspressoSystems/jellyfish.git", tag = "0.1.2" }
-arbitrary-wrappers = { git = "https://github.com/EspressoSystems/arbitrary-wrappers.git"}
-reef = {  git = "https://github.com/EspressoSystems/reef.git", tag = "0.3.0" }
+arbitrary-wrappers = { git = "https://github.com/EspressoSystems/arbitrary-wrappers.git", tag = "0.3.0" }
+reef = {  git = "https://github.com/EspressoSystems/reef.git", tag = "0.3.1" }
 tagged-base64 = { git = "https://github.com/EspressoSystems/tagged-base64.git", tag = "0.2.1" }
 
 [dev-dependencies]
@@ -65,7 +65,7 @@ proptest = "1.0.0"
 quickcheck = "1.0"
 quickcheck_macros = "1.0"
 rand = "0.8.5"
-reef = { git = "https://github.com/EspressoSystems/reef.git", tag = "0.3.0", features = ["testing"] }
+reef = { git = "https://github.com/EspressoSystems/reef.git", tag = "0.3.1", features = ["testing"] }
 
 [features]
 slow-tests = []
