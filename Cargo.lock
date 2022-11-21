@@ -2300,7 +2300,7 @@ checksum = "f9b7d56ba4a8344d6be9729995e6b06f928af29998cdf79fe390cbf6b1fee838"
 [[package]]
 name = "key-set"
 version = "0.3.0"
-source = "git+https://github.com/EspressoSystems/key-set.git#e340c4006f07f15044d6333b8a39e1e3cf4230d0"
+source = "git+https://github.com/EspressoSystems/key-set.git?tag=0.3.0#e340c4006f07f15044d6333b8a39e1e3cf4230d0"
 dependencies = [
  "ark-serialize",
  "bincode",
@@ -3207,7 +3207,7 @@ dependencies = [
 [[package]]
 name = "reef"
 version = "0.3.0"
-source = "git+https://github.com/EspressoSystems/reef.git#c716c9a36128c1e3e3fab48fcf17579066e821dd"
+source = "git+https://github.com/EspressoSystems/reef.git?tag=0.3.0#c49a3685827ce1e8b5f986eaff43b9243d465bd1"
 dependencies = [
  "arbitrary",
  "arbitrary-wrappers",
@@ -3432,7 +3432,7 @@ checksum = "d29ab0c6d3fc0ee92fe66e2d99f700eab17a8d57d1c1d3b748380fb20baa78cd"
 
 [[package]]
 name = "seahorse"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "arbitrary",
  "arbitrary-wrappers",

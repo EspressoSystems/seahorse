@@ -15,11 +15,11 @@
       let
         overlays = [ (import rust-overlay) ];
         pkgs = import nixpkgs { inherit system overlays; };
-        stableToolchain = pkgs.rust-bin.stable."1.63.0".minimal.override {
+        stableToolchain = pkgs.rust-bin.stable."1.64.0".minimal.override {
           extensions = [ "rustfmt" "clippy" "llvm-tools-preview" "rust-src" ];
         };
         stableMuslRustToolchain =
-          pkgs.rust-bin.stable."1.63.0".minimal.override {
+          pkgs.rust-bin.stable."1.65.0".minimal.override {
             extensions = [ "rustfmt" "clippy" "llvm-tools-preview" "rust-src" ];
             targets = [ "x86_64-unknown-linux-musl" ];
           };
