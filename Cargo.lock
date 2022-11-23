@@ -135,8 +135,22 @@ dependencies = [
 
 [[package]]
 name = "arbitrary-wrappers"
-version = "0.2.1"
-source = "git+https://github.com/EspressoSystems/arbitrary-wrappers.git#691a65234f605400c4f824af1fb600a6f460d938"
+version = "0.3.0"
+source = "git+https://github.com/EspressoSystems/arbitrary-wrappers.git?tag=0.3.0#df1ed9ac9dca13fe3960df7f543840dd67868de8"
+dependencies = [
+ "arbitrary",
+ "ark-std",
+ "espresso-macros",
+ "itertools",
+ "jf-cap",
+ "rand_chacha 0.3.1",
+ "serde",
+]
+
+[[package]]
+name = "arbitrary-wrappers"
+version = "0.3.0"
+source = "git+https://github.com/EspressoSystems/arbitrary-wrappers.git#df1ed9ac9dca13fe3960df7f543840dd67868de8"
 dependencies = [
  "arbitrary",
  "ark-std",
@@ -3206,11 +3220,11 @@ dependencies = [
 
 [[package]]
 name = "reef"
-version = "0.3.0"
-source = "git+https://github.com/EspressoSystems/reef.git#c716c9a36128c1e3e3fab48fcf17579066e821dd"
+version = "0.3.1"
+source = "git+https://github.com/EspressoSystems/reef.git#f21b54f4937d5d62f942389ae839b3f524a16dd3"
 dependencies = [
  "arbitrary",
- "arbitrary-wrappers",
+ "arbitrary-wrappers 0.3.0 (git+https://github.com/EspressoSystems/arbitrary-wrappers.git?tag=0.3.0)",
  "ark-serialize",
  "commit",
  "funty",
@@ -3435,7 +3449,7 @@ name = "seahorse"
 version = "0.3.0"
 dependencies = [
  "arbitrary",
- "arbitrary-wrappers",
+ "arbitrary-wrappers 0.3.0 (git+https://github.com/EspressoSystems/arbitrary-wrappers.git)",
  "ark-serialize",
  "ark-std",
  "async-scoped",
