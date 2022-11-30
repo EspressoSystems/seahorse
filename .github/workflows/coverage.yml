@@ -2,27 +2,20 @@ name: Code Coverage Workflow
 
 on:
   schedule:
-    - cron: '0 1 * * 0'
+    - cron: '0 0 1 * *'
   workflow_dispatch:
 
 jobs:
   code-coverage:
-    runs-on: [self-hosted, X64]
-    container:
-      image: ghcr.io/espressosystems/nix:main
-      volumes:
-        - github_nix:/nix
-    timeout-minutes: 240
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v3.1.0
 
-      - uses: cachix/cachix-action@v12
-        with:
-          name: espresso-systems-private
-          authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
+      - uses: cachix/install-nix-action@v18
 
       - name: Generate coverage reports
+        timeout-minutes: 240
         run: |
           git config --global --add safe.directory "$PWD"
           nix run "github:NixOS/nix?ref=1849e6a1f64734c488c2b1469249d65ce08cef93" -- develop .#perfShell -c env SEAHORSE_TEST_TXN_HISTORY_TIME_TOLERANCE=10 cargo-llvm-cov llvm-cov --lib --bins --tests --release --workspace --all-features --lcov --output-path lcov.info -- --test-threads=1
