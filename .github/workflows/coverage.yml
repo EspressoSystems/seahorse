@@ -1,28 +1,38 @@
-name: Code Coverage Workflow
+name: Code Coverage
 
 on:
-  schedule:
-    - cron: '0 0 1 * *'
+  push:
+    branches:
+      - main
+      - coverage
   workflow_dispatch:
 
 jobs:
-  code-coverage:
+  coverage:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v3.1.0
+      - uses: actions/checkout@v3
+        name: Checkout Repository
 
-      - uses: cachix/install-nix-action@v18
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.63
 
-      - name: Generate coverage reports
-        timeout-minutes: 240
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+
+      - name: Enable Rust Caching
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Generate code coverage
         run: |
-          git config --global --add safe.directory "$PWD"
-          nix run "github:NixOS/nix?ref=1849e6a1f64734c488c2b1469249d65ce08cef93" -- develop .#perfShell -c env SEAHORSE_TEST_TXN_HISTORY_TIME_TOLERANCE=10 cargo-llvm-cov llvm-cov --lib --bins --tests --release --workspace --all-features --lcov --output-path lcov.info -- --test-threads=1
+          mkdir coverage
+          SEAHORSE_TEST_TXN_HISTORY_TIME_TOLERANCE=10 cargo llvm-cov --lib --bins --tests --release --workspace --all-features --lcov --output-path ./coverage/lcov.info
+        timeout-minutes: 240
 
       - name: Coveralls upload
         uses: coverallsapp/github-action@master
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          path-to-lcov: lcov.info
-          fail_ci_if_error: true
