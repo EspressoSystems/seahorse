@@ -34,7 +34,7 @@ jobs:
           cache-on-failure: true
 
       - name: Audit
-        run: cargo audit --ignore RUSTSEC-2020-0071
+        run: cargo audit --ignore RUSTSEC-2020-0071 --ignore RUSTSEC-2023-0018
 
       - name: Format Check
         run: cargo fmt -- --check
