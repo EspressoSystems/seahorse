@@ -126,20 +126,34 @@ checksum = "98161a4e3e2184da77bb14f02184cdd111e83bbbcc9979dfee3c44b9a85f5602"
 
 [[package]]
 name = "arbitrary"
-version = "1.2.0"
+version = "1.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "29d47fbf90d5149a107494b15a7dc8d69b351be2db3bb9691740e88ec17fd880"
+checksum = "e2d098ff73c1ca148721f37baad5ea6a465a13f9573aba8641fbbbae8164a54e"
 dependencies = [
  "derive_arbitrary",
 ]
 
 [[package]]
 name = "arbitrary-wrappers"
-version = "0.2.1"
-source = "git+https://github.com/EspressoSystems/arbitrary-wrappers.git#691a65234f605400c4f824af1fb600a6f460d938"
+version = "0.3.0"
+source = "git+https://github.com/EspressoSystems/arbitrary-wrappers.git?tag=0.3.0#df1ed9ac9dca13fe3960df7f543840dd67868de8"
 dependencies = [
  "arbitrary",
- "ark-std",
+ "ark-std 0.3.0",
+ "espresso-macros",
+ "itertools",
+ "jf-cap",
+ "rand_chacha 0.3.1",
+ "serde",
+]
+
+[[package]]
+name = "arbitrary-wrappers"
+version = "0.3.0"
+source = "git+https://github.com/EspressoSystems/arbitrary-wrappers.git#842b3ecb3f0baa1b1e47cf477844820300380749"
+dependencies = [
+ "arbitrary",
+ "ark-std 0.4.0",
  "espresso-macros",
  "itertools",
  "jf-cap",
@@ -154,7 +168,7 @@ source = "git+https://github.com/arkworks-rs/curves?rev=677b4ae751a274037880ede8
 dependencies = [
  "ark-ec",
  "ark-ff",
- "ark-std",
+ "ark-std 0.3.0",
 ]
 
 [[package]]
@@ -165,7 +179,7 @@ checksum = "65be532f9dd1e98ad0150b037276cde464c6f371059e6dd02c0222395761f6aa"
 dependencies = [
  "ark-ec",
  "ark-ff",
- "ark-std",
+ "ark-std 0.3.0",
 ]
 
 [[package]]
@@ -176,7 +190,7 @@ checksum = "ea691771ebbb28aea556c044e2e5c5227398d840cee0c34d4d20fa8eb2689e8c"
 dependencies = [
  "ark-ec",
  "ark-ff",
- "ark-std",
+ "ark-std 0.3.0",
 ]
 
 [[package]]
@@ -187,7 +201,7 @@ dependencies = [
  "ark-bls12-377",
  "ark-ec",
  "ark-ff",
- "ark-std",
+ "ark-std 0.3.0",
 ]
 
 [[package]]
@@ -198,7 +212,7 @@ checksum = "dea978406c4b1ca13c2db2373b05cc55429c3575b8b21f1b9ee859aa5b03dd42"
 dependencies = [
  "ark-ff",
  "ark-serialize",
- "ark-std",
+ "ark-std 0.3.0",
  "derivative",
  "num-traits",
  "rayon",
@@ -213,7 +227,7 @@ dependencies = [
  "ark-bls12-377",
  "ark-ec",
  "ark-ff",
- "ark-std",
+ "ark-std 0.3.0",
 ]
 
 [[package]]
@@ -225,7 +239,7 @@ dependencies = [
  "ark-bls12-381",
  "ark-ec",
  "ark-ff",
- "ark-std",
+ "ark-std 0.3.0",
 ]
 
 [[package]]
@@ -237,7 +251,7 @@ dependencies = [
  "ark-bn254",
  "ark-ec",
  "ark-ff",
- "ark-std",
+ "ark-std 0.3.0",
 ]
 
 [[package]]
@@ -249,7 +263,7 @@ dependencies = [
  "ark-ff-asm",
  "ark-ff-macros",
  "ark-serialize",
- "ark-std",
+ "ark-std 0.3.0",
  "derivative",
  "num-bigint 0.4.3",
  "num-traits",
@@ -266,7 +280,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "db02d390bf6643fb404d3d22d31aee1c4bc4459600aef9113833d17e786c6e44"
 dependencies = [
  "quote",
- "syn",
+ "syn 1.0.102",
 ]
 
 [[package]]
@@ -278,7 +292,7 @@ dependencies = [
  "num-bigint 0.4.3",
  "num-traits",
  "quote",
- "syn",
+ "syn 1.0.102",
 ]
 
 [[package]]
@@ -289,7 +303,7 @@ checksum = "7b0f78f47537c2f15706db7e98fe64cc1711dbf9def81218194e17239e53e5aa"
 dependencies = [
  "ark-ff",
  "ark-serialize",
- "ark-std",
+ "ark-std 0.3.0",
  "derivative",
  "hashbrown 0.11.2",
  "rayon",
@@ -305,7 +319,7 @@ dependencies = [
  "ark-poly",
  "ark-serialize",
  "ark-sponge",
- "ark-std",
+ "ark-std 0.3.0",
  "derivative",
  "digest 0.9.0",
 ]
@@ -317,7 +331,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d6c2b318ee6e10f8c2853e73a83adc0ccb88995aa978d8a3408d492ab2ee671"
 dependencies = [
  "ark-serialize-derive",
- "ark-std",
+ "ark-std 0.3.0",
  "digest 0.9.0",
 ]
 
@@ -329,7 +343,7 @@ checksum = "8dd4e5f0bf8285d5ed538d27fab7411f3e297908fd93c62195de8bee3f199e82"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn",
+ "syn 1.0.102",
 ]
 
 [[package]]
@@ -341,7 +355,7 @@ dependencies = [
  "ark-ec",
  "ark-ff",
  "ark-serialize",
- "ark-std",
+ "ark-std 0.3.0",
  "derivative",
  "digest 0.9.0",
  "rand_chacha 0.3.1",
@@ -356,6 +370,16 @@ dependencies = [
  "num-traits",
  "rand 0.8.5",
  "rayon",
+]
+
+[[package]]
+name = "ark-std"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "94893f1e0c6eeab764ade8dc4c0db24caf4fe7cbbaafc0eba0a9030f447b5185"
+dependencies = [
+ "num-traits",
+ "rand 0.8.5",
 ]
 
 [[package]]
@@ -377,7 +401,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a3203e79f4dd9bdda415ed03cf14dae5a2bf775c683a00f94e9cd1faf0f596e5"
 dependencies = [
  "quote",
- "syn",
+ "syn 1.0.102",
 ]
 
 [[package]]
@@ -521,7 +545,7 @@ checksum = "1e805d94e6b5001b651426cf4cd446b1ab5f319d27bab5c644f61de0a804360c"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn",
+ "syn 1.0.102",
 ]
 
 [[package]]
@@ -889,7 +913,7 @@ dependencies = [
  "proc-macro-error",
  "proc-macro2",
  "quote",
- "syn",
+ "syn 1.0.102",
 ]
 
 [[package]]
@@ -1177,7 +1201,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cdffe87e1d521a10f9696f833fe502293ea446d7f256c06128293a4119bdf4cb"
 dependencies = [
  "quote",
- "syn",
+ "syn 1.0.102",
 ]
 
 [[package]]
@@ -1254,7 +1278,7 @@ dependencies = [
  "proc-macro2",
  "quote",
  "strsim 0.10.0",
- "syn",
+ "syn 1.0.102",
 ]
 
 [[package]]
@@ -1265,7 +1289,7 @@ checksum = "ddfc69c5bfcbd2fc09a0f38451d2daf0e372e367986a83906d1b0dbc88134fb5"
 dependencies = [
  "darling_core",
  "quote",
- "syn",
+ "syn 1.0.102",
 ]
 
 [[package]]
@@ -1282,18 +1306,18 @@ checksum = "fcc3dd5e9e9c0b295d6e1e4d811fb6f157d5ffd784b8d202fc62eac8035a770b"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn",
+ "syn 1.0.102",
 ]
 
 [[package]]
 name = "derive_arbitrary"
-version = "1.1.6"
+version = "1.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "226ad66541d865d7a7173ad6a9e691c33fdb910ac723f4bc734b3e5294a1f931"
+checksum = "53e0efad4403bfc52dc201159c4b842a246a14b98c64b55dfd0f2d89729dfeb8"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn",
+ "syn 2.0.23",
 ]
 
 [[package]]
@@ -1306,7 +1330,7 @@ dependencies = [
  "proc-macro2",
  "quote",
  "rustc_version 0.4.0",
- "syn",
+ "syn 1.0.102",
 ]
 
 [[package]]
@@ -1364,7 +1388,7 @@ checksum = "3bf95dc3f046b9da4f2d51833c0d3547d8564ef6910f5c1ed130306a75b92886"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn",
+ "syn 1.0.102",
 ]
 
 [[package]]
@@ -1448,7 +1472,7 @@ source = "git+https://github.com/EspressoSystems/espresso-macros.git?tag=0.1.0#9
 dependencies = [
  "proc-macro2",
  "quote",
- "syn",
+ "syn 1.0.102",
 ]
 
 [[package]]
@@ -1697,7 +1721,7 @@ checksum = "bdfb8ce053d86b91919aad980c220b1fb8401a9394410e1c289ed7e66b61835d"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn",
+ "syn 1.0.102",
 ]
 
 [[package]]
@@ -2034,7 +2058,7 @@ checksum = "11d7a9f6330b71fea57921c9b61c47ee6e84f72d394754eff6163ae67e7395eb"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn",
+ "syn 1.0.102",
 ]
 
 [[package]]
@@ -2133,7 +2157,7 @@ dependencies = [
  "ark-ed-on-bn254",
  "ark-ff",
  "ark-serialize",
- "ark-std",
+ "ark-std 0.3.0",
  "bincode",
  "commit",
  "csv",
@@ -2174,7 +2198,7 @@ dependencies = [
  "ark-poly",
  "ark-poly-commit",
  "ark-serialize",
- "ark-std",
+ "ark-std 0.3.0",
  "derivative",
  "displaydoc",
  "downcast-rs",
@@ -2202,7 +2226,7 @@ dependencies = [
  "ark-ed-on-bls12-381",
  "ark-ff",
  "ark-serialize",
- "ark-std",
+ "ark-std 0.3.0",
  "crypto_box",
  "derivative",
  "digest 0.10.5",
@@ -2235,7 +2259,7 @@ dependencies = [
  "ark-ed-on-bn254",
  "ark-ff",
  "ark-serialize",
- "ark-std",
+ "ark-std 0.3.0",
  "derivative",
  "displaydoc",
  "generic-array",
@@ -2254,7 +2278,7 @@ dependencies = [
  "ark-ec",
  "ark-ff",
  "ark-serialize",
- "ark-std",
+ "ark-std 0.3.0",
  "digest 0.10.5",
  "jf-utils-derive",
  "serde",
@@ -2268,9 +2292,9 @@ name = "jf-utils-derive"
 version = "0.1.2"
 source = "git+https://github.com/EspressoSystems/jellyfish.git?tag=0.1.2#190213ac89c92118f1ed01421f427b83eed6d3d0"
 dependencies = [
- "ark-std",
+ "ark-std 0.3.0",
  "quote",
- "syn",
+ "syn 1.0.102",
 ]
 
 [[package]]
@@ -2672,7 +2696,7 @@ dependencies = [
  "proc-macro-crate",
  "proc-macro2",
  "quote",
- "syn",
+ "syn 1.0.102",
 ]
 
 [[package]]
@@ -2716,7 +2740,7 @@ checksum = "0f35583365be5d148e959284f42526841917b7bfa09e2d1a7ad5dde2cf0eaa39"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn",
+ "syn 1.0.102",
 ]
 
 [[package]]
@@ -2777,7 +2801,7 @@ checksum = "069bdb1e05adc7a8990dce9cc75370895fbe4e3d58b9b73bf1aee56359344a55"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn",
+ "syn 1.0.102",
 ]
 
 [[package]]
@@ -2933,7 +2957,7 @@ dependencies = [
  "proc-macro-error-attr",
  "proc-macro2",
  "quote",
- "syn",
+ "syn 1.0.102",
  "version_check",
 ]
 
@@ -2956,9 +2980,9 @@ checksum = "dbf0c48bc1d91375ae5c3cd81e3722dff1abcf81a30960240640d223f59fe0e5"
 
 [[package]]
 name = "proc-macro2"
-version = "1.0.46"
+version = "1.0.63"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "94e2ef8dbfc347b10c094890f778ee2e36ca9bb4262e86dc99cd217e35f3470b"
+checksum = "7b368fba921b0dce7e60f5e04ec15e565b3303972b42bcfde1d0713b881959eb"
 dependencies = [
  "unicode-ident",
 ]
@@ -3014,14 +3038,14 @@ checksum = "b22a693222d716a9587786f37ac3f6b4faedb5b80c23914e7303ff5a1d8016e9"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn",
+ "syn 1.0.102",
 ]
 
 [[package]]
 name = "quote"
-version = "1.0.21"
+version = "1.0.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bbe448f377a7d6961e30f5955f9b8d106c3f5e449d493ee1b125c1d43c2b5179"
+checksum = "573015e8ab27661678357f27dc26460738fd2b6c86e46f386fde94cb5d913105"
 dependencies = [
  "proc-macro2",
 ]
@@ -3206,11 +3230,11 @@ dependencies = [
 
 [[package]]
 name = "reef"
-version = "0.3.0"
-source = "git+https://github.com/EspressoSystems/reef.git#c716c9a36128c1e3e3fab48fcf17579066e821dd"
+version = "0.3.1"
+source = "git+https://github.com/EspressoSystems/reef.git#decbae2dedf8eaf0203ddaa857ff1aec89cdf387"
 dependencies = [
  "arbitrary",
- "arbitrary-wrappers",
+ "arbitrary-wrappers 0.3.0 (git+https://github.com/EspressoSystems/arbitrary-wrappers.git?tag=0.3.0)",
  "ark-serialize",
  "commit",
  "funty",
@@ -3435,9 +3459,9 @@ name = "seahorse"
 version = "0.3.0"
 dependencies = [
  "arbitrary",
- "arbitrary-wrappers",
+ "arbitrary-wrappers 0.3.0 (git+https://github.com/EspressoSystems/arbitrary-wrappers.git)",
  "ark-serialize",
- "ark-std",
+ "ark-std 0.3.0",
  "async-scoped",
  "async-std",
  "async-trait",
@@ -3554,7 +3578,7 @@ checksum = "4f1d362ca8fc9c3e3a7484440752472d68a6caa98f1ab81d99b5dfe517cec852"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn",
+ "syn 1.0.102",
 ]
 
 [[package]]
@@ -3616,7 +3640,7 @@ dependencies = [
  "darling",
  "proc-macro2",
  "quote",
- "syn",
+ "syn 1.0.102",
 ]
 
 [[package]]
@@ -3733,7 +3757,7 @@ dependencies = [
  "heck 0.4.0",
  "proc-macro2",
  "quote",
- "syn",
+ "syn 1.0.102",
 ]
 
 [[package]]
@@ -3803,7 +3827,7 @@ dependencies = [
  "quote",
  "serde",
  "serde_derive",
- "syn",
+ "syn 1.0.102",
 ]
 
 [[package]]
@@ -3819,7 +3843,7 @@ dependencies = [
  "serde_derive",
  "serde_json",
  "sha1",
- "syn",
+ "syn 1.0.102",
 ]
 
 [[package]]
@@ -3868,7 +3892,7 @@ dependencies = [
  "proc-macro-error",
  "proc-macro2",
  "quote",
- "syn",
+ "syn 1.0.102",
 ]
 
 [[package]]
@@ -3887,7 +3911,7 @@ dependencies = [
  "proc-macro2",
  "quote",
  "rustversion",
- "syn",
+ "syn 1.0.102",
 ]
 
 [[package]]
@@ -3931,6 +3955,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "syn"
+version = "2.0.23"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "59fb7d6d8281a51045d62b8eb3a7d1ce347b76f312af50cd3dc0af39c87c1737"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "unicode-ident",
+]
+
+[[package]]
 name = "synstructure"
 version = "0.12.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3938,7 +3973,7 @@ checksum = "f36bdaa60a83aca3921b5259d5400cbf5e90fc51931376a9bd4a0eb79aa7210f"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn",
+ "syn 1.0.102",
  "unicode-xid",
 ]
 
@@ -4039,7 +4074,7 @@ checksum = "982d17546b47146b28f7c22e3d08465f6b8903d0ea13c1660d9d84a6e7adcdbb"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn",
+ "syn 1.0.102",
 ]
 
 [[package]]
@@ -4120,7 +4155,7 @@ dependencies = [
  "proc-macro2",
  "quote",
  "standback",
- "syn",
+ "syn 1.0.102",
 ]
 
 [[package]]
@@ -4187,7 +4222,7 @@ checksum = "4017f8f45139870ca7e672686113917c71c7a6e02d4924eda67186083c03081a"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn",
+ "syn 1.0.102",
 ]
 
 [[package]]
@@ -4404,7 +4439,7 @@ dependencies = [
  "once_cell",
  "proc-macro2",
  "quote",
- "syn",
+ "syn 1.0.102",
  "wasm-bindgen-shared",
 ]
 
@@ -4438,7 +4473,7 @@ checksum = "07bc0c051dc5f23e307b13285f9d75df86bfdf816c5721e573dec1f9b8aa193c"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn",
+ "syn 1.0.102",
  "wasm-bindgen-backend",
  "wasm-bindgen-shared",
 ]
@@ -4599,6 +4634,6 @@ checksum = "3f8f187641dad4f680d25c4bfc4225b418165984179f26ca76ec4fb6441d3a17"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn",
+ "syn 1.0.102",
  "synstructure",
 ]
